@@ -1,0 +1,544 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["rich>=13"]
+# ///
+"""Generate deterministic append-only streams for orchestration benchmarks."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import dataclasses
+import enum
+import json
+import os
+import pathlib
+import random
+import signal
+import tempfile
+import time
+import typing as t
+
+
+class StreamMode(str, enum.Enum):
+    """A deterministic active-output stream category."""
+
+    EDITOR = "editor"
+    DEV_SERVER = "dev-server"
+    INSTALLER = "installer"
+    DELAYED_MATCH = "delayed-match"
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkloadOptions:
+    """Configuration for one fuzzer process.
+
+    Attributes
+    ----------
+    output_dir : pathlib.Path
+        Directory used for markers and append-only streams.
+    run_id : str
+        Run identity carried by every control marker.
+    source_root : pathlib.Path
+        Repository root containing ``src/libtmux`` source files.
+    seed : int
+        Seed that fixes corpus and frame selection.
+    frame_rate_hz : float
+        Number of frames emitted per stream each second.
+    duration_s : float
+        Maximum serving duration after activation.
+    delayed_match_after_s : float
+        Delay between an accepted request and its sentinel emission.
+    sentinel_prefix : str
+        Human-readable prefix for each unique sentinel.
+    heartbeat_interval_s : float
+        Maximum interval between heartbeat marker updates.
+    """
+
+    output_dir: pathlib.Path
+    run_id: str
+    source_root: pathlib.Path
+    seed: int
+    frame_rate_hz: float
+    duration_s: float
+    delayed_match_after_s: float
+    sentinel_prefix: str
+    heartbeat_interval_s: float
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkloadPaths:
+    """Filesystem locations owned by one fuzzer process.
+
+    Attributes
+    ----------
+    root : pathlib.Path
+        Exclusive output directory.
+    streams : pathlib.Path
+        Directory containing mode-specific append-only streams.
+    requests : pathlib.Path
+        Directory containing benchmark request markers.
+    sentinels : pathlib.Path
+        Directory containing request-specific emission evidence.
+    ready : pathlib.Path
+        Marker published after all service paths exist.
+    gate : pathlib.Path
+        Marker that releases the paused service.
+    heartbeat : pathlib.Path
+        Current fuzzer liveness marker.
+    stop : pathlib.Path
+        Marker requesting a graceful stop.
+    """
+
+    root: pathlib.Path
+    streams: pathlib.Path
+    requests: pathlib.Path
+    sentinels: pathlib.Path
+    ready: pathlib.Path
+    gate: pathlib.Path
+    heartbeat: pathlib.Path
+    stop: pathlib.Path
+
+
+@dataclasses.dataclass(frozen=True)
+class Frame:
+    """One rendered stream record.
+
+    Attributes
+    ----------
+    mode : StreamMode
+        Stream receiving the record.
+    epoch : int
+        Monotonic frame sequence number.
+    text : str
+        Newline-terminated record appended to the stream.
+    """
+
+    mode: StreamMode
+    epoch: int
+    text: str
+
+
+@dataclasses.dataclass(frozen=True)
+class SentinelEvidence:
+    """Request-specific sentinel scheduling and emission facts.
+
+    Attributes
+    ----------
+    schema_version : int
+        Marker schema version.
+    run_id : str
+        Run identity that owns the evidence.
+    request_id : str
+        Unique request identity.
+    scheduled_monotonic_ns : int
+        Requested emission deadline on the monotonic clock.
+    emitted_monotonic_ns : int
+        Actual append time on the monotonic clock.
+    sentinel : str
+        Canonical text appended to the delayed stream.
+    """
+
+    schema_version: int
+    run_id: str
+    request_id: str
+    scheduled_monotonic_ns: int
+    emitted_monotonic_ns: int
+    sentinel: str
+
+
+def stream_for_pane(ordinal: int, delayed_ordinal: int) -> StreamMode:
+    """Return the stable stream assignment for a pane ordinal.
+
+    >>> stream_for_pane(2, 2)
+    <StreamMode.DELAYED_MATCH: 'delayed-match'>
+    >>> stream_for_pane(3, 2)
+    <StreamMode.INSTALLER: 'installer'>
+    """
+    if ordinal == delayed_ordinal:
+        return StreamMode.DELAYED_MATCH
+    shared = (StreamMode.EDITOR, StreamMode.DEV_SERVER, StreamMode.INSTALLER)
+    compacted = ordinal - int(ordinal > delayed_ordinal)
+    return shared[compacted % len(shared)]
+
+
+def sentinel_text(run_id: str, request_id: str, value: str) -> str:
+    """Return a sentinel that identifies its owning run and request.
+
+    >>> sentinel_text("run-7", "sample-03", "READY")
+    'LIBTMUX_SENTINEL run=run-7 request=sample-03 value=READY'
+    """
+    return f"LIBTMUX_SENTINEL run={run_id} request={request_id} value={value}"
+
+
+def source_lines(source_root: pathlib.Path, seed: int) -> tuple[str, ...]:
+    """Read and stably shuffle labeled ``src/libtmux`` source lines.
+
+    >>> source_lines(pathlib.Path("missing"), seed=1)
+    ()
+    """
+    source_dir = source_root / "src" / "libtmux"
+    lines: list[str] = []
+    for path in sorted(source_dir.rglob("*.py")):
+        relative = path.relative_to(source_root)
+        decoded = path.read_bytes().decode("utf-8", errors="replace")
+        lines.extend(
+            f"{relative}:{number}: {line}"
+            for number, line in enumerate(decoded.splitlines(), start=1)
+        )
+    random.Random(seed).shuffle(lines)
+    return tuple(lines)
+
+
+def render_frame(
+    mode: StreamMode,
+    epoch: int,
+    corpus: tuple[str, ...],
+    seed: int,
+) -> Frame:
+    r"""Render one deterministic newline-terminated activity record.
+
+    >>> render_frame(StreamMode.DEV_SERVER, 4, (), 11).text
+    '[dev-server epoch=4] request=GET /sessions status=200 elapsed_ms=5\\n'
+    """
+    if mode is StreamMode.EDITOR:
+        source = corpus[(seed + epoch) % len(corpus)] if corpus else "<empty source>"
+        text = f"[editor epoch={epoch}] {source}\n"
+    elif mode is StreamMode.DEV_SERVER:
+        records = (
+            "request=GET /sessions status=200 elapsed_ms=5",
+            "rebuild target=workspace state=complete modules=12",
+            "warning code=W001 source=watcher action=retry",
+            "recovery service=api state=ready",
+        )
+        text = f"[dev-server epoch={epoch}] {records[(seed + epoch) % len(records)]}\n"
+    elif mode is StreamMode.INSTALLER:
+        phases = ("resolve", "download", "build", "install")
+        phase = phases[(seed + epoch) % len(phases)]
+        text = f"[installer epoch={epoch}] install phase={phase} unit={epoch + 1}/8\n"
+    else:
+        text = f"[delayed-match epoch={epoch}] scan state=waiting cursor={epoch}\n"
+    return Frame(mode=mode, epoch=epoch, text=text)
+
+
+def prepare_output(options: WorkloadOptions) -> WorkloadPaths:
+    """Create the exclusive marker tree and empty append-only stream files.
+
+    Raises
+    ------
+    FileExistsError
+        If another process already owns the requested output directory.
+    """
+    root = options.output_dir
+    root.mkdir(mode=0o700, parents=True, exist_ok=False)
+    streams = root / "streams"
+    requests = root / "requests"
+    sentinels = root / "sentinels"
+    for directory in (streams, requests, sentinels):
+        directory.mkdir()
+    for mode in StreamMode:
+        (streams / f"{mode.value}.log").touch(exist_ok=False)
+    return WorkloadPaths(
+        root=root,
+        streams=streams,
+        requests=requests,
+        sentinels=sentinels,
+        ready=root / "ready.json",
+        gate=root / "gate.json",
+        heartbeat=root / "heartbeat.json",
+        stop=root / "stop.json",
+    )
+
+
+def write_json_atomic(path: pathlib.Path, data: t.Mapping[str, t.Any]) -> None:
+    """Replace a marker only after its JSON bytes are durable on disk.
+
+    The sibling temporary file and replacement make readers see either the
+    previous complete marker or the next complete marker, never a partial one.
+    """
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as temporary:
+        temporary_path = pathlib.Path(temporary.name)
+        json.dump(data, temporary, sort_keys=True, separators=(",", ":"))
+        temporary.write("\n")
+        temporary.flush()
+        os.fsync(temporary.fileno())
+    try:
+        os.replace(temporary_path, path)  # noqa: PTH105
+        directory_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            directory_flags |= os.O_DIRECTORY
+        directory_fd = os.open(path.parent, directory_flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            temporary_path.unlink()
+        raise
+
+
+def read_control_marker(path: pathlib.Path, run_id: str) -> dict[str, t.Any] | None:
+    """Return a matching schema-v1 marker, ignoring absent or malformed files.
+
+    >>> read_control_marker(pathlib.Path("missing.json"), "run-7") is None
+    True
+    """
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    marker = t.cast(dict[str, t.Any], parsed)
+    if marker.get("schema_version") != 1 or marker.get("run_id") != run_id:
+        return None
+    return marker
+
+
+def _stream_path(paths: WorkloadPaths, mode: StreamMode) -> pathlib.Path:
+    """Return the append-only stream path for one mode."""
+    return paths.streams / f"{mode.value}.log"
+
+
+def _append_text(path: pathlib.Path, text: str) -> int:
+    """Append one complete text record and return its UTF-8 byte count."""
+    encoded = text.encode("utf-8")
+    with path.open("ab") as stream:
+        stream.write(encoded)
+        stream.flush()
+    return len(encoded)
+
+
+def _request_from_marker(
+    marker: dict[str, t.Any],
+    path: pathlib.Path,
+    options: WorkloadOptions,
+) -> tuple[str, int, str] | None:
+    """Validate one request marker and return its delayed sentinel inputs."""
+    request_id = marker.get("request_id")
+    requested = marker.get("requested_monotonic_ns")
+    value = marker.get("value", options.sentinel_prefix)
+    if (
+        not isinstance(request_id, str)
+        or not request_id
+        or path.stem != request_id
+        or isinstance(requested, bool)
+        or not isinstance(requested, int)
+        or isinstance(value, bool)
+        or not isinstance(value, str)
+        or not value
+    ):
+        return None
+    return request_id, requested, value
+
+
+def run_serve(options: WorkloadOptions) -> int:
+    """Serve paused deterministic streams until a matching stop or lifecycle exit."""
+    if options.frame_rate_hz <= 0:
+        message = "frame_rate_hz must be positive"
+        raise ValueError(message)
+    if options.duration_s <= 0:
+        message = "duration_s must be positive"
+        raise ValueError(message)
+    if options.delayed_match_after_s < 0:
+        message = "delayed_match_after_s must be non-negative"
+        raise ValueError(message)
+    if options.heartbeat_interval_s <= 0:
+        message = "heartbeat_interval_s must be positive"
+        raise ValueError(message)
+
+    paths = prepare_output(options)
+    corpus = source_lines(options.source_root, options.seed)
+    write_json_atomic(paths.ready, {"schema_version": 1, "run_id": options.run_id})
+
+    stopping = False
+
+    def request_stop(_signal_number: int, _frame: t.Any) -> None:
+        """Record a process signal for the serving loop."""
+        nonlocal stopping
+        stopping = True
+
+    previous_sigint = signal.signal(signal.SIGINT, request_stop)
+    previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
+    frame_interval_ns = max(1, int(1_000_000_000 / options.frame_rate_hz))
+    delay_ns = int(options.delayed_match_after_s * 1_000_000_000)
+    heartbeat_interval_ns = int(options.heartbeat_interval_s * 1_000_000_000)
+    bytes_since_heartbeat = 0
+    last_heartbeat_ns = 0
+    activated_at_ns: int | None = None
+    next_frame_ns: int | None = None
+    epoch = 0
+    seen_requests: set[str] = set()
+    pending_request: tuple[str, int, str] | None = None
+
+    def publish_heartbeat(state: str, now_ns: int, force: bool = False) -> None:
+        """Publish bounded liveness state when time or emitted bytes require it."""
+        nonlocal bytes_since_heartbeat, last_heartbeat_ns
+        if not force and (
+            now_ns - last_heartbeat_ns < heartbeat_interval_ns
+            and bytes_since_heartbeat < 65536
+        ):
+            return
+        write_json_atomic(
+            paths.heartbeat,
+            {
+                "schema_version": 1,
+                "run_id": options.run_id,
+                "state": state,
+                "epoch": epoch,
+                "monotonic_ns": now_ns,
+                "bytes_written": bytes_since_heartbeat,
+            },
+        )
+        bytes_since_heartbeat = 0
+        last_heartbeat_ns = now_ns
+
+    try:
+        while not stopping:
+            now_ns = time.monotonic_ns()
+            if read_control_marker(paths.stop, options.run_id) is not None:
+                break
+
+            if activated_at_ns is None:
+                if read_control_marker(paths.gate, options.run_id) is not None:
+                    activated_at_ns = now_ns
+                    next_frame_ns = now_ns
+                else:
+                    publish_heartbeat("paused", now_ns)
+                    time.sleep(0.005)
+                    continue
+
+            assert activated_at_ns is not None
+            assert next_frame_ns is not None
+            if now_ns - activated_at_ns >= int(options.duration_s * 1_000_000_000):
+                break
+
+            while now_ns >= next_frame_ns:
+                for mode in StreamMode:
+                    frame = render_frame(mode, epoch, corpus, options.seed)
+                    bytes_since_heartbeat += _append_text(
+                        _stream_path(paths, mode), frame.text
+                    )
+                epoch += 1
+                next_frame_ns += frame_interval_ns
+
+            if pending_request is None:
+                for request_path in sorted(paths.requests.glob("*.json")):
+                    if request_path.name in seen_requests:
+                        continue
+                    marker = read_control_marker(request_path, options.run_id)
+                    if marker is None:
+                        continue
+                    request = _request_from_marker(marker, request_path, options)
+                    if request is None:
+                        continue
+                    request_id, requested_ns, value = request
+                    pending_request = (
+                        request_id,
+                        requested_ns + delay_ns,
+                        sentinel_text(options.run_id, request_id, value),
+                    )
+                    seen_requests.add(request_path.name)
+                    break
+
+            if pending_request is not None and now_ns >= pending_request[1]:
+                request_id, scheduled_ns, sentinel = pending_request
+                bytes_since_heartbeat += _append_text(
+                    _stream_path(paths, StreamMode.DELAYED_MATCH), f"{sentinel}\n"
+                )
+                emitted_ns = time.monotonic_ns()
+                evidence = SentinelEvidence(
+                    schema_version=1,
+                    run_id=options.run_id,
+                    request_id=request_id,
+                    scheduled_monotonic_ns=scheduled_ns,
+                    emitted_monotonic_ns=emitted_ns,
+                    sentinel=sentinel,
+                )
+                write_json_atomic(
+                    paths.sentinels / f"{request_id}.json", dataclasses.asdict(evidence)
+                )
+                pending_request = None
+
+            publish_heartbeat("active", now_ns)
+            sleep_ns = max(0, next_frame_ns - time.monotonic_ns())
+            time.sleep(min(0.005, sleep_ns / 1_000_000_000))
+    finally:
+        now_ns = time.monotonic_ns()
+        publish_heartbeat("stopped", now_ns, force=True)
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
+    return 0
+
+
+def run_preview(options: WorkloadOptions) -> int:
+    """Render the deterministic frames interactively without importing Rich at load."""
+    if options.frame_rate_hz <= 0:
+        message = "frame_rate_hz must be positive"
+        raise ValueError(message)
+    import rich.live
+    import rich.text
+
+    corpus = source_lines(options.source_root, options.seed)
+    deadline = time.monotonic() + options.duration_s
+    epoch = 0
+    with rich.live.Live(refresh_per_second=10) as live:
+        while time.monotonic() < deadline:
+            rendered = [
+                render_frame(mode, epoch, corpus, options.seed).text.rstrip()
+                for mode in StreamMode
+            ]
+            live.update(rich.text.Text("\n".join(rendered)))
+            epoch += 1
+            time.sleep(1 / options.frame_rate_hz)
+    return 0
+
+
+def _options_from_namespace(arguments: argparse.Namespace) -> WorkloadOptions:
+    """Convert parsed command-line values into the typed workload configuration."""
+    return WorkloadOptions(
+        output_dir=pathlib.Path(arguments.output_dir),
+        run_id=arguments.run_id,
+        source_root=pathlib.Path(arguments.source_root),
+        seed=arguments.seed,
+        frame_rate_hz=arguments.frame_rate,
+        duration_s=arguments.duration,
+        delayed_match_after_s=arguments.delayed_match_after,
+        sentinel_prefix=arguments.sentinel_prefix,
+        heartbeat_interval_s=arguments.heartbeat_interval,
+    )
+
+
+def main(argv: t.Sequence[str] | None = None) -> int:
+    """Run the ``serve`` or Rich ``preview`` command."""
+    parser = argparse.ArgumentParser(prog="orchestration_fuzzer.py")
+    commands = parser.add_subparsers(dest="command", required=True)
+    for command in ("serve", "preview"):
+        command_parser = commands.add_parser(command)
+        command_parser.add_argument("--output-dir", default="orchestration-fuzzer")
+        command_parser.add_argument("--run-id", default="run-0")
+        command_parser.add_argument("--source-root", default=".")
+        command_parser.add_argument("--seed", type=int, default=0)
+        command_parser.add_argument("--frame-rate", type=float, default=10.0)
+        command_parser.add_argument("--duration", type=float, default=60.0)
+        command_parser.add_argument("--delayed-match-after", type=float, default=1.0)
+        command_parser.add_argument("--sentinel-prefix", default="READY")
+        command_parser.add_argument("--heartbeat-interval", type=float, default=0.25)
+    arguments = parser.parse_args(argv)
+    options = _options_from_namespace(arguments)
+    if arguments.command == "serve":
+        return run_serve(options)
+    return run_preview(options)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
