@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import errno
 import hashlib
 import importlib.util
 import json
@@ -645,6 +646,10 @@ def test_plan_writes_original_predictive_decision_without_talking_to_tmux(
         payload["original_guard_decision"] == payload["guard_decision"]
         or payload["original_guard_decision"]["kind"] == "predictive_refusal"
     )
+    assert payload["pidfd_capability"] == {
+        "available": True,
+        "reason": None,
+    }
 
 
 def test_validate_report_rejects_contradictory_ramp_terminal_sequence(
@@ -1020,7 +1025,9 @@ def test_pidfd_registry_signals_only_the_retained_real_child(
     benchmark_module: types.ModuleType,
 ) -> None:
     """A retained pidfd must terminate its exact child without a PID lookup."""
-    assert benchmark_module._pidfd_capability_error() is None
+    capability_error = benchmark_module._pidfd_capability_error()
+    if capability_error is not None:
+        pytest.skip(capability_error)
     target = subprocess.Popen(
         (sys.executable, "-c", "import time; time.sleep(60)"),
         stdin=subprocess.DEVNULL,
@@ -1048,6 +1055,147 @@ def test_pidfd_registry_signals_only_the_retained_real_child(
         if unrelated.poll() is None:
             unrelated.terminate()
         unrelated.wait(timeout=2.0)
+
+
+def test_pidfd_capability_probe_opens_signals_and_closes_self(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capability success requires a real signal-zero operation on a self pidfd."""
+    calls: list[tuple[t.Any, ...]] = []
+    descriptor = os.open("/proc/self/stat", os.O_RDONLY)
+
+    def open_pidfd(pid: int, flags: int) -> int:
+        calls.append(("open", pid, flags))
+        return descriptor
+
+    def send_signal(
+        received: int,
+        number: int,
+        siginfo: object,
+        flags: int,
+    ) -> None:
+        calls.append(("signal", received, number, siginfo, flags))
+
+    monkeypatch.setattr(benchmark_module.os, "pidfd_open", open_pidfd, raising=False)
+    monkeypatch.setattr(
+        benchmark_module.signal,
+        "pidfd_send_signal",
+        send_signal,
+        raising=False,
+    )
+
+    assert benchmark_module._pidfd_capability_error() is None
+    assert calls == [
+        ("open", os.getpid(), 0),
+        ("signal", descriptor, 0, None, 0),
+    ]
+    with pytest.raises(OSError, match="Bad file descriptor"):
+        os.fstat(descriptor)
+
+
+@pytest.mark.parametrize(
+    ("operation", "error_number"),
+    (
+        ("open", errno.ENOSYS),
+        ("open", errno.EACCES),
+        ("signal", errno.EPERM),
+        ("signal", errno.EINVAL),
+    ),
+)
+def test_run_scenario_refuses_failed_pidfd_self_probe_before_side_effects(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    operation: str,
+    error_number: int,
+) -> None:
+    """An unusable stable-signal syscall must refuse before any run resource."""
+    descriptor: int | None = None
+
+    def fail_open(pid: int, flags: int) -> int:
+        nonlocal descriptor
+        if operation == "open":
+            raise OSError(error_number, os.strerror(error_number))
+        descriptor = os.open("/proc/self/stat", os.O_RDONLY)
+        return descriptor
+
+    def fail_signal(
+        descriptor: int,
+        number: int,
+        siginfo: object,
+        flags: int,
+    ) -> None:
+        if operation == "signal":
+            raise OSError(error_number, os.strerror(error_number))
+        pytest.fail("open failure reached pidfd_send_signal")
+
+    monkeypatch.setattr(benchmark_module.os, "pidfd_open", fail_open, raising=False)
+    monkeypatch.setattr(
+        benchmark_module.signal,
+        "pidfd_send_signal",
+        fail_signal,
+        raising=False,
+    )
+    marker = tmp_path / "tmux-executed"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_tmux = fake_bin / "tmux"
+    fake_tmux.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib\n"
+        f"pathlib.Path({str(marker)!r}).touch()\n",
+        encoding="utf-8",
+    )
+    fake_tmux.chmod(fake_tmux.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+
+    def reject_spawn(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        pytest.fail("failed pidfd preflight spawned a worker")
+
+    monkeypatch.setattr(benchmark_module.subprocess, "Popen", reject_spawn)
+    output = tmp_path / f"pidfd-{operation}.json"
+    scratch_root = tmp_path / "scratch"
+
+    report = benchmark_module.run_scenario(
+        benchmark_module.Topology(1, 1, 1),
+        runs=1,
+        warmup=0,
+        output=output,
+        scratch_root=scratch_root,
+        host_snapshot=benchmark_module.HostSnapshot(
+            available_memory_bytes=16 * 1024**3,
+            pids_current=1,
+            pids_max=100_000,
+            nofile_soft_limit=65_536,
+        ),
+        policy=benchmark_module.ResourcePolicy(
+            pid_reserve=1,
+            memory_floor_bytes=1,
+        ),
+    )
+
+    assert report.status == "refused"
+    assert report.failed_phase == "preflight"
+    assert "pidfd" in t.cast(str, report.error)
+    assert os.strerror(error_number) in t.cast(str, report.error)
+    assert not scratch_root.exists()
+    assert report.scratch_path is None
+    assert report.socket_path is None
+    assert report.processes == ()
+    assert not marker.exists()
+    if descriptor is not None:
+        with pytest.raises(OSError, match="Bad file descriptor"):
+            os.fstat(descriptor)
+
+
+def test_pidfd_capability_real_self_probe(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """The supported test host must prove a stable signal-zero pidfd operation."""
+    if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
+        pytest.skip("interpreter does not expose Linux pidfd APIs")
+    assert benchmark_module._pidfd_capability_error() is None
 
 
 def test_pidfd_registry_rejects_reuse_between_open_checks(
@@ -4551,6 +4699,167 @@ def test_validator_requires_exact_warmup_observation_ordinals(
         benchmark_module.validate_report(report)
 
 
+def _failed_report_with_completed_mutation_prefix(
+    benchmark_module: types.ModuleType,
+    *,
+    phase_warmup: int = 2,
+    phase_runs: int = 2,
+    warmup_ordinals: tuple[int, ...] = (0, 1),
+    timed_ordinals: tuple[int, ...] = (0, 1),
+) -> t.Any:
+    """Build a valid active failure after one configurable completed cell."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    setup = benchmark_module.PhaseReport(
+        "setup",
+        topology,
+        topology,
+        samples=(
+            benchmark_module.RawSample(
+                1,
+                True,
+                verified=True,
+                strategy="setup",
+                ordinal=0,
+            ),
+        ),
+        status="completed",
+        runs=1,
+        observations=(benchmark_module.PhaseObservation(0, "setup", 1),),
+    )
+    stabilization = benchmark_module.PhaseReport(
+        "stabilization",
+        topology,
+        topology,
+        status="completed",
+        observations=(
+            benchmark_module.PhaseObservation(
+                0,
+                "stabilization",
+                1,
+                pane_count=topology.panes,
+            ),
+        ),
+    )
+    samples = tuple(
+        benchmark_module.RawSample(
+            10 + ordinal,
+            True,
+            verified=True,
+            strategy="mutation.bulk",
+            ordinal=ordinal,
+        )
+        for ordinal in timed_ordinals
+    )
+    durations = tuple(t.cast(int, sample.duration_ns) for sample in samples)
+    mutation = benchmark_module.PhaseReport(
+        "mutation.bulk",
+        topology,
+        topology,
+        samples=samples,
+        summary=(benchmark_module.summarize_ns(durations) if durations else None),
+        status="completed",
+        warmup=phase_warmup,
+        runs=phase_runs,
+        warmup_observations=tuple(
+            benchmark_module.PhaseObservation(
+                ordinal,
+                "mutation.bulk",
+                2 + ordinal,
+            )
+            for ordinal in warmup_ordinals
+        ),
+        observations=tuple(
+            benchmark_module.PhaseObservation(
+                t.cast(int, sample.ordinal),
+                "mutation.bulk",
+                t.cast(int, sample.duration_ns),
+            )
+            for sample in samples
+        ),
+    )
+    active_failure = benchmark_module.PhaseReport(
+        "wait.capture-poll",
+        topology,
+        topology,
+        status="failed",
+        warmup=2,
+        runs=2,
+        warmup_observations=(
+            benchmark_module.PhaseObservation(0, "wait.capture-poll", 3),
+        ),
+    )
+    return benchmark_module.RunReport(
+        topology,
+        observed_topology=topology,
+        status="failed",
+        phases=(setup, stabilization, mutation, active_failure),
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        run_id="run-7",
+        lane="subprocess",
+        mode="sync",
+        warmup=2,
+        runs=2,
+        failed_phase="wait.capture-poll",
+        error="injected active wait failure",
+        scratch_path="scratch",
+        socket_path="scratch/socket",
+        progress_path="progress.jsonl",
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("run",), None
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "report_changes",
+    (
+        {"phase_warmup": 1, "warmup_ordinals": (0,)},
+        {"phase_runs": 1, "timed_ordinals": (0,)},
+        {"phase_warmup": 2, "warmup_ordinals": (0, 0)},
+        {"phase_runs": 2, "timed_ordinals": (0, 0)},
+    ),
+)
+def test_validator_rejects_incomplete_completed_cell_before_active_failure(
+    benchmark_module: types.ModuleType,
+    report_changes: dict[str, t.Any],
+) -> None:
+    """A later valid failure cannot excuse malformed completed-prefix evidence."""
+    report = _failed_report_with_completed_mutation_prefix(
+        benchmark_module,
+        **report_changes,
+    )
+
+    with pytest.raises(ValueError, match=r"mutation\.bulk"):
+        benchmark_module.validate_report(report)
+
+
+def test_validator_accepts_partial_active_failure_after_complete_prefix(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """The one active failed cell may retain a valid incomplete warmup prefix."""
+    benchmark_module.validate_report(
+        _failed_report_with_completed_mutation_prefix(benchmark_module)
+    )
+
+
+def test_validator_rejects_failed_phase_that_disagrees_with_active_row(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Terminal metadata must name the exact active failed phase."""
+    report = dataclasses.replace(
+        _failed_report_with_completed_mutation_prefix(benchmark_module),
+        failed_phase="capture.serial",
+    )
+
+    with pytest.raises(ValueError, match="failed_phase"):
+        benchmark_module.validate_report(report)
+
+
 def test_cli_phase_failure_uses_supervisor_cleanup_contract(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -4864,7 +5173,7 @@ def test_cli_cancellation_uses_supervisor_cleanup_contract(
             process.kill()
             stdout, stderr = process.communicate(timeout=5)
 
-    assert process.returncode != 0, (stdout, stderr)
+    assert process.returncode == 130, (stdout, stderr)
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["status"] == "cutoff"
     assert payload["failed_phase"] == "cancellation"
@@ -4918,35 +5227,328 @@ def test_supervisor_cancellation_during_final_report_write_is_durable(
         benchmark_module.HostSnapshot(),
     )
     try:
-        report = benchmark_module.supervise_worker(
+        with pytest.raises(KeyboardInterrupt) as cancellation:
+            benchmark_module.supervise_worker(
+                benchmark_module.Topology(1, 1, 1),
+                lane=benchmark_module.EngineLane.SUBPROCESS,
+                mode=benchmark_module.ExecutionMode.SYNC,
+                runs=1,
+                warmup=0,
+                seed=11,
+                run_id="cancel-final-write",
+                scratch=tmp_path / "scratch",
+                socket_path=tmp_path / "scratch" / "tmux.sock",
+                output=report_path,
+                markdown_output=markdown_path,
+                guard_decision=decision,
+                original_guard_decision=decision,
+                policy=benchmark_module.ResourcePolicy(),
+                watchdog_s=30.0,
+                cleanup_grace_s=0.3,
+            )
+    finally:
+        release_write.set()
+        interrupter.join(timeout=5.0)
+
+    assert not interrupter.is_alive()
+    durable = benchmark_module.load_run_report(report_path)
+    assert isinstance(cancellation.value, KeyboardInterrupt)
+    assert durable.status == "cutoff"
+    assert durable.failed_phase == "cancellation"
+    assert durable.cleanup.complete
+    assert all(
+        not benchmark_module.process_identity_matches(row) for row in durable.processes
+    )
+    assert "cutoff" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_supervisor_interrupt_before_popen_return_is_durable_and_reraised(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A Popen interruption with no child must still publish then re-raise."""
+    interruption = KeyboardInterrupt("popen interruption")
+    mask_calls: list[tuple[int, frozenset[signal.Signals]]] = []
+    prior_mask = frozenset({signal.SIGUSR1})
+    real_popen = benchmark_module.subprocess.Popen
+    interrupted = False
+
+    def record_mask(
+        how: int,
+        signals: t.Iterable[signal.Signals],
+    ) -> frozenset[signal.Signals]:
+        mask_calls.append((how, frozenset(signals)))
+        return prior_mask
+
+    def interrupt_popen(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise interruption
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark_module.signal, "pthread_sigmask", record_mask)
+    monkeypatch.setattr(benchmark_module.subprocess, "Popen", interrupt_popen)
+    output = tmp_path / "popen-interrupt.json"
+    markdown = tmp_path / "popen-interrupt.md"
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        benchmark_module.supervise_worker(
             benchmark_module.Topology(1, 1, 1),
             lane=benchmark_module.EngineLane.SUBPROCESS,
             mode=benchmark_module.ExecutionMode.SYNC,
             runs=1,
             warmup=0,
             seed=11,
-            run_id="cancel-final-write",
+            run_id="popen-interrupt",
             scratch=tmp_path / "scratch",
             socket_path=tmp_path / "scratch" / "tmux.sock",
-            output=report_path,
-            markdown_output=markdown_path,
+            output=output,
+            markdown_output=markdown,
             guard_decision=decision,
             original_guard_decision=decision,
             policy=benchmark_module.ResourcePolicy(),
             watchdog_s=30.0,
             cleanup_grace_s=0.3,
         )
+
+    assert raised.value is interruption
+    assert mask_calls == [
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
+    ]
+    durable = benchmark_module.load_run_report(output)
+    assert durable.status == "cutoff"
+    assert durable.failed_phase == "cancellation"
+    assert durable.cleanup.complete
+    assert durable.processes == ()
+    assert not (tmp_path / "scratch").exists()
+
+
+def test_supervisor_interrupt_during_pidfd_handoff_recovers_exact_worker(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Post-spawn interruption must retain a pidfd, recover, and restore the mask."""
+    interruption = KeyboardInterrupt("handoff interruption")
+    real_popen = benchmark_module.subprocess.Popen
+    real_record = benchmark_module._record_process
+    spawned: list[subprocess.Popen[bytes]] = []
+    record_calls = 0
+    mask_calls: list[tuple[int, frozenset[signal.Signals]]] = []
+    prior_mask = frozenset({signal.SIGUSR2})
+
+    def record_popen(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[bytes]:
+        process = t.cast("subprocess.Popen[bytes]", real_popen(*args, **kwargs))
+        spawned.append(process)
+        return process
+
+    def interrupt_record(role: str, pid: int) -> t.Any:
+        nonlocal record_calls
+        identity = real_record(role, pid)
+        record_calls += 1
+        if role == "worker" and record_calls == 1:
+            raise interruption
+        return identity
+
+    def record_mask(
+        how: int,
+        signals: t.Iterable[signal.Signals],
+    ) -> frozenset[signal.Signals]:
+        mask_calls.append((how, frozenset(signals)))
+        return prior_mask
+
+    monkeypatch.setattr(benchmark_module.subprocess, "Popen", record_popen)
+    monkeypatch.setattr(benchmark_module, "_record_process", interrupt_record)
+    monkeypatch.setattr(benchmark_module.signal, "pthread_sigmask", record_mask)
+    output = tmp_path / "handoff-interrupt.json"
+    markdown = tmp_path / "handoff-interrupt.md"
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    worker_absent_before_test_cleanup = False
+    durable: t.Any = None
+    try:
+        with pytest.raises(KeyboardInterrupt) as raised:
+            benchmark_module.supervise_worker(
+                benchmark_module.Topology(1, 1, 1),
+                lane=benchmark_module.EngineLane.SUBPROCESS,
+                mode=benchmark_module.ExecutionMode.SYNC,
+                runs=1,
+                warmup=0,
+                seed=11,
+                run_id="handoff-interrupt",
+                scratch=tmp_path / "scratch",
+                socket_path=tmp_path / "scratch" / "tmux.sock",
+                output=output,
+                markdown_output=markdown,
+                guard_decision=decision,
+                original_guard_decision=decision,
+                policy=benchmark_module.ResourcePolicy(),
+                watchdog_s=30.0,
+                cleanup_grace_s=0.3,
+            )
+        worker_absent_before_test_cleanup = all(
+            process.poll() is not None for process in spawned
+        )
+        durable = benchmark_module.load_run_report(output)
     finally:
-        release_write.set()
+        for process in spawned:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5.0)
+
+    assert raised.value is interruption
+    assert worker_absent_before_test_cleanup
+    assert record_calls >= 2
+    assert mask_calls == [
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
+    ]
+    assert durable is not None
+    assert durable.status == "cutoff"
+    assert durable.failed_phase == "cancellation"
+    assert durable.cleanup.complete
+    assert all(
+        not benchmark_module.process_identity_matches(row) for row in durable.processes
+    )
+    assert not (tmp_path / "scratch").exists()
+
+
+def test_supervisor_restores_exact_prior_signal_mask_after_real_handoff(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A successful real worker handoff restores every preexisting mask bit."""
+    capability_error = benchmark_module._pidfd_capability_error()
+    if capability_error is not None:
+        pytest.skip(capability_error)
+    original_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGUSR1})
+    expected_mask = frozenset((*original_mask, signal.SIGUSR1))
+    output = tmp_path / "mask-restored.json"
+    try:
+        report = benchmark_module.run_scenario(
+            benchmark_module.Topology(1, 1, 1),
+            lane=benchmark_module.EngineLane.SUBPROCESS,
+            mode=benchmark_module.ExecutionMode.SYNC,
+            runs=1,
+            warmup=0,
+            output=output,
+            scratch_root=tmp_path / "scratch",
+            watchdog_s=30.0,
+            cleanup_grace_s=0.3,
+        )
+        observed_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ())
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, original_mask)
+
+    assert report.status == "completed"
+    assert frozenset(observed_mask) == expected_mask
+    assert report.cleanup.complete
+    assert report.scratch_path is not None
+    assert not pathlib.Path(report.scratch_path).exists()
+
+
+def test_supervisor_reraises_original_monitor_interrupt_after_recovery_interrupt(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Repeated interruption during recovery cannot replace the monitor object."""
+    interruption = KeyboardInterrupt("monitor interruption")
+    real_drain = benchmark_module._ProgressTracker.drain
+    real_recover = benchmark_module._recover_supervised_run
+    raised_monitor = False
+    recovery_started = threading.Event()
+    release_recovery = threading.Event()
+
+    def interrupt_monitor(tracker: t.Any, *, terminal: bool = False) -> bool:
+        nonlocal raised_monitor
+        advanced = real_drain(tracker, terminal=terminal)
+        if not terminal and advanced and not raised_monitor:
+            raised_monitor = True
+            raise interruption
+        return t.cast(bool, advanced)
+
+    def delayed_recovery(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        recovery_started.set()
+        assert release_recovery.wait(timeout=20.0)
+        return real_recover(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark_module._ProgressTracker, "drain", interrupt_monitor)
+    monkeypatch.setattr(benchmark_module, "_recover_supervised_run", delayed_recovery)
+
+    def interrupt_recovery() -> None:
+        assert recovery_started.wait(timeout=20.0)
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.05)
+        release_recovery.set()
+
+    interrupter = threading.Thread(target=interrupt_recovery)
+    interrupter.start()
+    output = tmp_path / "monitor-interrupt.json"
+    markdown = tmp_path / "monitor-interrupt.md"
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    try:
+        with pytest.raises(KeyboardInterrupt) as raised:
+            benchmark_module.supervise_worker(
+                benchmark_module.Topology(1, 1, 1),
+                lane=benchmark_module.EngineLane.SUBPROCESS,
+                mode=benchmark_module.ExecutionMode.SYNC,
+                runs=1,
+                warmup=0,
+                seed=11,
+                run_id="monitor-interrupt",
+                scratch=tmp_path / "scratch",
+                socket_path=tmp_path / "scratch" / "tmux.sock",
+                output=output,
+                markdown_output=markdown,
+                guard_decision=decision,
+                original_guard_decision=decision,
+                policy=benchmark_module.ResourcePolicy(),
+                watchdog_s=30.0,
+                cleanup_grace_s=0.3,
+                _test_stall_after="worker.started",
+            )
+    finally:
+        release_recovery.set()
         interrupter.join(timeout=5.0)
 
     assert not interrupter.is_alive()
-    assert report.status == "cutoff"
-    assert report.failed_phase == "cancellation"
-    assert report.cleanup.complete
-    durable = benchmark_module.load_run_report(report_path)
-    assert durable == report
-    assert "cutoff" in markdown_path.read_text(encoding="utf-8")
+    assert raised.value is interruption
+    durable = benchmark_module.load_run_report(output)
+    assert durable.status == "cutoff"
+    assert durable.failed_phase == "cancellation"
+    assert durable.cleanup.complete
+    assert all(
+        not benchmark_module.process_identity_matches(row) for row in durable.processes
+    )
+    assert not (tmp_path / "scratch").exists()
 
 
 def test_cli_process_identity_mismatch_never_signals_unrelated_pid(
@@ -5136,9 +5738,74 @@ def test_ramp_cancellation_during_aggregation_is_durable(
 
     interrupter = threading.Thread(target=interrupt_aggregation)
     interrupter.start()
-    report = None
     try:
-        report = benchmark_module.run_ramp(
+        with pytest.raises(KeyboardInterrupt) as cancellation:
+            benchmark_module.run_ramp(
+                (
+                    benchmark_module.Topology(1, 1, 1),
+                    benchmark_module.Topology(2, 1, 1),
+                ),
+                runs=1,
+                warmup=0,
+                output=output,
+                markdown_output=markdown,
+            )
+    finally:
+        release_write.set()
+        interrupter.join(timeout=5.0)
+
+    assert isinstance(cancellation.value, KeyboardInterrupt)
+    report = benchmark_module.load_run_report(output)
+    assert report.status == "cutoff"
+    assert report.ramp[-1].status == "cutoff"
+    assert report.cleanup.complete
+    assert "cutoff" in markdown.read_text(encoding="utf-8")
+
+
+def test_ramp_reraises_same_child_cancellation_after_durable_aggregation(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A child cancellation object survives ramp aggregation unchanged."""
+    interruption = KeyboardInterrupt("child cancellation")
+    output = tmp_path / "ramp-child-cancel.json"
+    markdown = tmp_path / "ramp-child-cancel.md"
+    child_output: pathlib.Path | None = None
+
+    def cancel_child(shape: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        nonlocal child_output
+        child_output = kwargs["output"]
+        child = benchmark_module.RunReport(
+            shape,
+            status="cutoff",
+            cleanup=benchmark_module.CleanupReport(
+                True,
+                processes_absent=True,
+                socket_absent=True,
+                scratch_absent=True,
+            ),
+            run_id="child-cancelled",
+            lane="control",
+            mode="async",
+            warmup=0,
+            runs=1,
+            failed_phase="cancellation",
+            error="KeyboardInterrupt: child cancellation",
+            scratch_path="child-scratch",
+            socket_path="child-scratch/tmux.sock",
+            progress_path="child-progress.jsonl",
+            environment=benchmark_module.EnvironmentReport(
+                "3.10", None, 1, 11, ("run",), None
+            ),
+        )
+        benchmark_module.write_json_atomic(child_output, child)
+        raise interruption
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", cancel_child)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        benchmark_module.run_ramp(
             (
                 benchmark_module.Topology(1, 1, 1),
                 benchmark_module.Topology(2, 1, 1),
@@ -5148,16 +5815,17 @@ def test_ramp_cancellation_during_aggregation_is_durable(
             output=output,
             markdown_output=markdown,
         )
-    finally:
-        release_write.set()
-        interrupter.join(timeout=5.0)
 
-    assert report is not None
+    assert raised.value is interruption
+    assert child_output is not None
+    report = benchmark_module.load_run_report(output)
     assert report.status == "cutoff"
-    assert report.ramp[-1].status == "cutoff"
+    assert tuple(step.status for step in report.ramp) == (
+        "cutoff",
+        "not_attempted",
+    )
+    assert report.ramp[0].reason == report.ramp[1].reason
     assert report.cleanup.complete
-    assert benchmark_module.load_run_report(output) == report
-    assert "cutoff" in markdown.read_text(encoding="utf-8")
 
 
 def test_cli_ramp_predictive_refusal_never_executes_tmux_binary(
@@ -5276,15 +5944,15 @@ def test_cli_run_supports_all_four_engine_mode_lanes(
     completed = _run_cli(
         "run",
         "--shape",
-        "1x1x1",
+        "2x2x2",
         "--lane",
         lane,
         "--mode",
         mode,
         "--runs",
-        "1",
+        "3",
         "--warmup",
-        "0",
+        "1",
         "--output",
         str(report_path),
         "--scratch-root",
@@ -5304,6 +5972,12 @@ def test_cli_run_supports_all_four_engine_mode_lanes(
     )
     assert phases["wait.control-stream"]["status"] == expected_control
     assert phases["wait.capture-poll"]["status"] == "completed"
+    for phase_name in _RUNNER_REPEATABLE_PHASES:
+        assert len(phases[phase_name]["warmup_observations"]) == 1
+        assert len(phases[phase_name]["samples"]) == 3
+    if expected_control == "completed":
+        assert len(phases["wait.control-stream"]["warmup_observations"]) == 1
+        assert len(phases["wait.control-stream"]["samples"]) == 3
     _assert_terminal_cleanup(payload)
 
 
