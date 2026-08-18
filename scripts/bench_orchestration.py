@@ -1770,6 +1770,57 @@ class ProcessIdentity:
 
 
 @dataclasses.dataclass(frozen=True)
+class SocketIdentity:
+    """Immutable filesystem identity of one owned Unix socket.
+
+    Attributes
+    ----------
+    st_dev : int
+        Device containing the socket node.
+    st_ino : int
+        Inode of the socket node.
+    st_uid : int
+        User that owns the socket node.
+    st_mode : int
+        Complete mode captured by ``lstat``; its file type must remain a socket.
+
+    Examples
+    --------
+    >>> identity = SocketIdentity(1, 2, os.getuid(), stat.S_IFSOCK | 0o600)
+    >>> stat.S_ISSOCK(identity.st_mode)
+    True
+    """
+
+    st_dev: int
+    st_ino: int
+    st_uid: int
+    st_mode: int
+
+
+@dataclasses.dataclass(frozen=True)
+class _SocketOwnership:
+    """Bind one tmux process identity to its original socket inode.
+
+    Attributes
+    ----------
+    process : ProcessIdentity
+        Exact tmux server PID and procfs start time.
+    socket : SocketIdentity
+        Socket fingerprint observed around the owner query.
+
+    Examples
+    --------
+    >>> owner = ProcessIdentity("server", 2, 3)
+    >>> socket_id = SocketIdentity(1, 2, os.getuid(), stat.S_IFSOCK | 0o600)
+    >>> _SocketOwnership(owner, socket_id).process is owner
+    True
+    """
+
+    process: ProcessIdentity
+    socket: SocketIdentity
+
+
+@dataclasses.dataclass(frozen=True)
 class ProgressEvent:
     """One append-only worker checkpoint observed by the supervisor.
 
@@ -1785,6 +1836,8 @@ class ProgressEvent:
         Worker monotonic publication time.
     processes : tuple[ProcessIdentity, ...]
         Exact identities first learned at this checkpoint; never cumulative.
+    socket_ownership : _SocketOwnership | None
+        Exact server/socket capability first learned at this checkpoint.
     schema_version : int
         Progress stream schema version.
 
@@ -1799,6 +1852,7 @@ class ProgressEvent:
     checkpoint: str
     monotonic_ns: int
     processes: tuple[ProcessIdentity, ...] = ()
+    socket_ownership: _SocketOwnership | None = None
     schema_version: int = 1
 
 
@@ -2003,6 +2057,8 @@ class RunContext:
         Timed construction duration excluding activity stabilization.
     processes : tuple[ProcessIdentity, ...]
         Fuzzer, server, and pane-follower identities.
+    socket_ownership : _SocketOwnership | None
+        Immutable server/socket capability captured during bootstrap.
     session_ids : tuple[str, ...]
         Verified stable session identifiers.
     window_ids : tuple[str, ...]
@@ -2061,6 +2117,7 @@ class RunContext:
     expected_window_parents: tuple[tuple[str, str], ...]
     setup_duration_ns: int
     processes: tuple[ProcessIdentity, ...]
+    socket_ownership: _SocketOwnership | None = None
     session_ids: tuple[str, ...] = ()
     window_ids: tuple[str, ...] = ()
     pane_ids: tuple[str, ...] = ()
@@ -2158,6 +2215,8 @@ class RunReport:
         Concise terminal reason retained by the supervisor.
     processes : tuple[ProcessIdentity, ...]
         Exact worker, fuzzer, server, and pane identities observed by progress.
+    socket_ownership : _SocketOwnership | None
+        Durable server/socket capability observed in worker progress.
     scratch_path : str | None
         Exact private run path whose absence cleanup verified.
     socket_path : str | None
@@ -2192,6 +2251,7 @@ class RunReport:
     failed_phase: str | None = None
     error: str | None = None
     processes: tuple[ProcessIdentity, ...] = ()
+    socket_ownership: _SocketOwnership | None = None
     scratch_path: str | None = None
     socket_path: str | None = None
     progress_path: str | None = None
@@ -2537,6 +2597,80 @@ def _identity_from_json(value: object) -> ProcessIdentity:
     )
 
 
+def _socket_identity_from_json(value: object) -> SocketIdentity:
+    """Decode one exact socket fingerprint.
+
+    >>> _socket_identity_from_json({
+    ...     "st_dev": 1, "st_ino": 2, "st_uid": 3,
+    ...     "st_mode": stat.S_IFSOCK | 0o600,
+    ... }).st_ino
+    2
+    """
+    row = _json_mapping(value, "socket identity")
+    return SocketIdentity(
+        st_dev=t.cast(int, row.get("st_dev")),
+        st_ino=t.cast(int, row.get("st_ino")),
+        st_uid=t.cast(int, row.get("st_uid")),
+        st_mode=t.cast(int, row.get("st_mode")),
+    )
+
+
+def _socket_ownership_from_json(value: object | None) -> _SocketOwnership | None:
+    """Decode an optional process/socket ownership capability.
+
+    >>> _socket_ownership_from_json(None) is None
+    True
+    """
+    if value is None:
+        return None
+    row = _json_mapping(value, "socket ownership")
+    ownership = _SocketOwnership(
+        process=_identity_from_json(row.get("process")),
+        socket=_socket_identity_from_json(row.get("socket")),
+    )
+    _validate_socket_ownership(ownership)
+    return ownership
+
+
+def _validate_socket_ownership(ownership: _SocketOwnership) -> None:
+    """Reject a capability that cannot identify one same-user tmux socket.
+
+    Parameters
+    ----------
+    ownership : _SocketOwnership
+        Process and filesystem identity decoded from durable evidence.
+
+    Returns
+    -------
+    None
+        After every identity component has its exact JSON-domain type and range.
+
+    Raises
+    ------
+    ValueError
+        If the process or socket fingerprint is malformed.
+    """
+    process = ownership.process
+    socket_identity = ownership.socket
+    if (
+        process.role != "server"
+        or type(process.pid) is not int
+        or process.pid <= 0
+        or type(process.start_time) is not int
+        or process.start_time <= 0
+        or type(socket_identity.st_dev) is not int
+        or socket_identity.st_dev < 0
+        or type(socket_identity.st_ino) is not int
+        or socket_identity.st_ino <= 0
+        or type(socket_identity.st_uid) is not int
+        or socket_identity.st_uid != os.getuid()
+        or type(socket_identity.st_mode) is not int
+        or not stat.S_ISSOCK(socket_identity.st_mode)
+    ):
+        message = "invalid socket ownership capability"
+        raise ValueError(message)
+
+
 def _environment_from_json(value: object | None) -> EnvironmentReport | None:
     """Decode optional descriptive environment evidence.
 
@@ -2628,6 +2762,7 @@ def run_report_from_json(value: object) -> RunReport:
         failed_phase=row.get("failed_phase"),
         error=row.get("error"),
         processes=tuple(_identity_from_json(item) for item in row.get("processes", [])),
+        socket_ownership=_socket_ownership_from_json(row.get("socket_ownership")),
         scratch_path=row.get("scratch_path"),
         socket_path=row.get("socket_path"),
         progress_path=row.get("progress_path"),
@@ -2934,6 +3069,128 @@ def validate_report(report: RunReport) -> None:
         _validate_executable_ramp(report)
 
 
+def _reachable_group_signatures(
+    strategy_names: tuple[str, ...],
+    *,
+    warmup: int,
+    runs: int,
+    seed: int,
+) -> frozenset[tuple[tuple[str, str, int, int], ...]]:
+    """Return report snapshots reachable at durable group boundaries.
+
+    >>> signatures = _reachable_group_signatures(
+    ...     ("a", "b"), warmup=1, runs=1, seed=1
+    ... )
+    >>> (("b", "in_progress", 0, 0),) in signatures
+    True
+
+    Parameters
+    ----------
+    strategy_names : tuple[str, ...]
+        Applicable strategies in production mapping order.
+    warmup : int
+        Untimed calls per strategy.
+    runs : int
+        Timed calls per strategy.
+    seed : int
+        Exact group schedule seed.
+
+    Returns
+    -------
+    frozenset[tuple[tuple[str, str, int, int], ...]]
+        Phase name, status, warmup count, and timed count for every snapshot
+        reachable before or after one scheduled invocation. Failed variants
+        represent an exception attributed to the current strategy.
+    """
+    states: dict[str, tuple[str, int, int]] = {}
+    reachable: set[tuple[tuple[str, str, int, int], ...]] = set()
+
+    def snapshot(strategy: str) -> tuple[tuple[str, str, int, int], ...]:
+        completed = tuple(
+            (name, status, warmup_count, timed_count)
+            for name, (status, warmup_count, timed_count) in states.items()
+            if status == "completed"
+        )
+        status, warmup_count, timed_count = states[strategy]
+        active = (
+            ()
+            if status == "completed"
+            else ((strategy, status, warmup_count, timed_count),)
+        )
+        if all(state[0] == "completed" for state in states.values()) and len(
+            states
+        ) == len(strategy_names):
+            return tuple((name, *states[name]) for name in strategy_names)
+        return (*completed, *active)
+
+    def retain(
+        current: str,
+        observed: tuple[tuple[str, str, int, int], ...],
+    ) -> None:
+        reachable.add(observed)
+        completed = tuple(
+            (name, status, warmup_count, timed_count)
+            for name, (status, warmup_count, timed_count) in states.items()
+            if name != current and status == "completed"
+        )
+        _status, warmup_count, timed_count = states[current]
+        reachable.add((*completed, (current, "failed", warmup_count, timed_count)))
+
+    for stage, strategy, ordinal in _repeatable_schedule(
+        strategy_names,
+        warmup=warmup,
+        runs=runs,
+        seed=seed,
+    ):
+        states.setdefault(strategy, ("in_progress", 0, 0))
+        retain(strategy, snapshot(strategy))
+        status, warmup_count, timed_count = states[strategy]
+        if stage == "warmup":
+            warmup_count = ordinal + 1
+        else:
+            timed_count = ordinal + 1
+            if ordinal == runs - 1:
+                status = "completed"
+        states[strategy] = (status, warmup_count, timed_count)
+        retain(strategy, snapshot(strategy))
+    return frozenset(reachable)
+
+
+def _interleaved_suffix_is_reachable(
+    report: RunReport,
+    group_index: int,
+    suffix: tuple[PhaseReport, ...],
+) -> bool:
+    """Return whether an executable suffix occurs in its exact seeded schedule."""
+    assert report.environment is not None
+    assert report.warmup is not None
+    assert report.runs is not None
+    group = _RUNNER_PHASE_GROUPS[group_index]
+    strategy_names: tuple[str, ...]
+    if group == _RUNNER_PHASE_GROUPS[3] and not (
+        report.lane == EngineLane.CONTROL.value
+        and report.mode == ExecutionMode.ASYNC.value
+    ):
+        strategy_names = ("wait.capture-poll",)
+    else:
+        strategy_names = group
+    observed = tuple(
+        (
+            phase.name,
+            phase.status,
+            len(phase.warmup_observations),
+            len(phase.samples),
+        )
+        for phase in suffix
+    )
+    return observed in _reachable_group_signatures(
+        strategy_names,
+        warmup=report.warmup,
+        runs=report.runs,
+        seed=report.environment.seed + group_index - 2,
+    )
+
+
 def _validate_executable_report(report: RunReport) -> None:
     """Validate the stronger contract for a supervisor-owned scenario.
 
@@ -3002,6 +3259,16 @@ def _validate_executable_report(report: RunReport) -> None:
         ):
             message = "executable report has an invalid process identity"
             raise ValueError(message)
+    ownership = report.socket_ownership
+    if ownership is not None:
+        try:
+            _validate_socket_ownership(ownership)
+        except ValueError as error:
+            message = "executable report has an invalid socket ownership capability"
+            raise ValueError(message) from error
+        if ownership.process not in report.processes:
+            message = "executable report has an invalid socket ownership capability"
+            raise ValueError(message)
     if report.status == "refused":
         if (
             report.failed_phase != "preflight"
@@ -3009,6 +3276,7 @@ def _validate_executable_report(report: RunReport) -> None:
             or report.observed_topology is not None
             or report.phases
             or report.processes
+            or report.socket_ownership is not None
             or report.scratch_path is not None
             or report.socket_path is not None
             or report.progress_path is not None
@@ -3022,44 +3290,63 @@ def _validate_executable_report(report: RunReport) -> None:
     if report.environment is None:
         message = "attempted executable report requires environment evidence"
         raise ValueError(message)
+    if type(report.environment.seed) is not int:
+        message = "attempted executable report requires an integer schedule seed"
+        raise ValueError(message)
     if not report.scratch_path or not report.socket_path or not report.progress_path:
         message = "attempted executable report requires owned resource paths"
+        raise ValueError(message)
+    server_identities = tuple(
+        identity for identity in report.processes if identity.role == "server"
+    )
+    if (
+        report.status == "completed" or (report.cleanup.complete and server_identities)
+    ) and (
+        ownership is None
+        or len(server_identities) != 1
+        or ownership.process != server_identities[0]
+    ):
+        message = "attempted executable report lacks exact socket ownership"
         raise ValueError(message)
     terminal_unsuccessful = report.status in {"failed", "cutoff"}
     phase_names = tuple(phase.name for phase in report.phases)
     canonical_prefix = phase_names == _RUNNER_PHASES[: len(phase_names)]
-    if not canonical_prefix:
-        active_names = tuple(
-            phase.name
-            for phase in report.phases
-            if phase.status in {"failed", "in_progress"}
-        )
-        active_name = active_names[0] if len(active_names) == 1 else None
-        interleaved_terminal_prefix = False
-        if terminal_unsuccessful and len(active_names) <= 1:
-            for group_index, group in enumerate(_RUNNER_PHASE_GROUPS):
-                prior_names = tuple(
-                    name
-                    for prior_group in _RUNNER_PHASE_GROUPS[:group_index]
-                    for name in prior_group
-                )
-                active_suffix = phase_names[len(prior_names) :]
-                if (
-                    phase_names[: len(prior_names)] != prior_names
-                    or not active_suffix
-                    or len(set(active_suffix)) != len(active_suffix)
-                    or not all(name in group for name in active_suffix)
-                ):
-                    continue
-                if active_name is not None and active_suffix[-1] != active_name:
-                    continue
-                if active_name is None and report.failed_phase != "cancellation":
-                    continue
-                interleaved_terminal_prefix = True
+    interleaved_candidate = False
+    interleaved_reachable = False
+    if terminal_unsuccessful:
+        for group_index, group in enumerate(_RUNNER_PHASE_GROUPS):
+            if len(group) <= 1:
+                continue
+            prior_names = tuple(
+                name
+                for prior_group in _RUNNER_PHASE_GROUPS[:group_index]
+                for name in prior_group
+            )
+            active_suffix = report.phases[len(prior_names) :]
+            active_names = tuple(phase.name for phase in active_suffix)
+            if (
+                phase_names[: len(prior_names)] != prior_names
+                or not active_names
+                or len(set(active_names)) != len(active_names)
+                or not all(name in group for name in active_names)
+            ):
+                continue
+            interleaved_candidate = True
+            if _interleaved_suffix_is_reachable(
+                report,
+                group_index,
+                active_suffix,
+            ):
+                interleaved_reachable = True
                 break
-        if not interleaved_terminal_prefix:
-            message = "attempted executable report phases must be a runner phase prefix"
-            raise ValueError(message)
+    if interleaved_candidate and not interleaved_reachable:
+        message = (
+            "attempted executable report lacks a reachable seeded strategy boundary"
+        )
+        raise ValueError(message)
+    if not canonical_prefix and not interleaved_reachable:
+        message = "attempted executable report phases must be a runner phase prefix"
+        raise ValueError(message)
     if terminal_unsuccessful and (not report.failed_phase or not report.error):
         message = "terminal unsuccessful report requires phase and error"
         raise ValueError(message)
@@ -3932,16 +4219,157 @@ def _stop_owned_process(
     )
 
 
+def _socket_identity(socket_path: pathlib.Path) -> SocketIdentity:
+    """Return the exact same-user Unix-socket identity from ``lstat``.
+
+    Parameters
+    ----------
+    socket_path : pathlib.Path
+        Socket path inside the run's private directory.
+
+    Returns
+    -------
+    SocketIdentity
+        Device, inode, owner, and mode from one non-following stat.
+
+    Raises
+    ------
+    OSError
+        If the path is absent, replaced by another file type, or not same-user.
+    """
+    status = socket_path.lstat()
+    if not stat.S_ISSOCK(status.st_mode) or status.st_uid != os.getuid():
+        message = f"configured socket is not an owned Unix socket: {socket_path}"
+        raise OSError(message)
+    return SocketIdentity(
+        st_dev=status.st_dev,
+        st_ino=status.st_ino,
+        st_uid=status.st_uid,
+        st_mode=status.st_mode,
+    )
+
+
+def _query_exact_socket_owner(
+    socket_path: pathlib.Path,
+    *,
+    timeout_s: float,
+) -> ProcessIdentity:
+    """Boundedly query one exact tmux socket for its current server identity.
+
+    Parameters
+    ----------
+    socket_path : pathlib.Path
+        Exact socket path to query without inherited tmux coordinates.
+    timeout_s : float
+        Maximum query duration.
+
+    Returns
+    -------
+    ProcessIdentity
+        Current tmux PID with a verified procfs start time.
+
+    Raises
+    ------
+    RuntimeError
+        If the query times out, fails, or does not identify a live process.
+    """
+    environment = os.environ.copy()
+    environment.pop("TMUX", None)
+    environment.pop("TMUX_PANE", None)
+    try:
+        result = subprocess.run(
+            (
+                "tmux",
+                "-S",
+                str(socket_path),
+                "display-message",
+                "-p",
+                "#{pid}",
+            ),
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as error:
+        message = "exact socket server identity query timed out"
+        raise RuntimeError(message) from error
+    except OSError as error:
+        message = f"exact socket server identity query: {type(error).__name__}: {error}"
+        raise RuntimeError(message) from error
+    if result.returncode != 0:
+        detail = result.stderr.strip()
+        suffix = f": {detail}" if detail else ""
+        message = (
+            f"exact socket server identity query exited {result.returncode}{suffix}"
+        )
+        raise RuntimeError(message)
+    try:
+        identity = _record_process("server", int(result.stdout.strip()))
+    except (RuntimeError, ValueError) as error:
+        message = f"exact socket server identity query: {type(error).__name__}: {error}"
+        raise RuntimeError(message) from error
+    if not process_identity_matches(identity):
+        message = "exact socket server identity changed after query"
+        raise RuntimeError(message)
+    return identity
+
+
+def _capture_socket_ownership(
+    socket_path: pathlib.Path,
+    *,
+    timeout_s: float,
+) -> _SocketOwnership:
+    """Capture one immutable process/socket capability around an owner query.
+
+    The socket lives in a mode-0700 run directory. Two ``lstat`` calls bind the
+    read-only tmux owner query to one inode before the capability is published.
+
+    Parameters
+    ----------
+    socket_path : pathlib.Path
+        Newly established exact tmux socket.
+    timeout_s : float
+        Maximum owner-query duration.
+
+    Returns
+    -------
+    _SocketOwnership
+        Process and socket identities that matched throughout capture.
+
+    Raises
+    ------
+    RuntimeError
+        If the path or process changes during capture.
+    OSError
+        If private-directory or socket ownership cannot be verified.
+    """
+    _verify_private_directory_mode(socket_path.parent)
+    before = _socket_identity(socket_path)
+    process = _query_exact_socket_owner(socket_path, timeout_s=timeout_s)
+    after = _socket_identity(socket_path)
+    if before != after or not process_identity_matches(process):
+        message = "exact socket ownership changed during capture"
+        raise RuntimeError(message)
+    return _SocketOwnership(process=process, socket=before)
+
+
 def _kill_exact_tmux_socket(
     socket_path: pathlib.Path,
     *,
     timeout_s: float,
-    server_identity: ProcessIdentity | None = None,
+    socket_ownership: _SocketOwnership | None = None,
 ) -> tuple[str, ...]:
-    """Boundedly request ``kill-server`` on one exact isolated socket.
+    """Boundedly clean only the server/socket pair captured at establishment.
 
     >>> _kill_exact_tmux_socket(pathlib.Path("missing.sock"), timeout_s=0.01)
     ()
+
+    An observed pathname mismatch fails closed. The original process is killed
+    only through its retained pidfd, while the replacement inode is preserved.
+    A same-user pathname race cannot be made atomic with ``unlink``; mode-0700
+    parent ownership and repeated identity checks bound the supported contract.
 
     Parameters
     ----------
@@ -3949,13 +4377,13 @@ def _kill_exact_tmux_socket(
         Exact isolated socket owned by one benchmark run.
     timeout_s : float
         Maximum wait for the helper and each stable-handle escalation.
-    server_identity : ProcessIdentity | None
-        Already recorded exact server identity, queried from the socket when absent.
+    socket_ownership : _SocketOwnership | None
+        Capability captured while the owned tmux server established the socket.
 
     Returns
     -------
     tuple[str, ...]
-        Empty only when the exact server and socket are absent afterward.
+        Empty only when the captured server and socket are absent afterward.
 
     Raises
     ------
@@ -3965,55 +4393,74 @@ def _kill_exact_tmux_socket(
     if timeout_s <= 0:
         message = "exact socket cleanup timeout must be positive"
         raise ValueError(message)
+    if socket_ownership is None:
+        return (
+            ()
+            if not socket_path.exists()
+            else (f"exact socket ownership capability unavailable: {socket_path}",)
+        )
+    owner = socket_ownership.process
+    errors: list[str] = []
+    registry = _PidfdRegistry()
+    original_live = process_identity_matches(owner)
+    retained = registry.retain(owner)
+
+    def finish() -> tuple[str, ...]:
+        errors.extend(registry.errors)
+        registry.close()
+        return tuple(errors)
+
+    def kill_original_without_path() -> None:
+        if not process_identity_matches(owner):
+            return
+        if not retained:
+            errors.append(
+                f"server pid {owner.pid} stable handle unavailable; "
+                "pathname cleanup refused"
+            )
+            return
+        registry.signal(owner, signal.SIGKILL)
+        survivors = _wait_identity_absence((owner,), timeout_s=timeout_s)
+        if survivors:
+            errors.append(
+                f"server pid {owner.pid} with start time {owner.start_time} remains"
+            )
+
+    if original_live and not retained:
+        errors.append(
+            f"server pid {owner.pid} stable handle unavailable; "
+            "pathname cleanup refused"
+        )
+        return finish()
     if not socket_path.exists():
-        return ()
+        kill_original_without_path()
+        return finish()
+    try:
+        _verify_private_directory_mode(socket_path.parent)
+        before = _socket_identity(socket_path)
+    except OSError as error:
+        errors.append(f"exact socket ownership: {type(error).__name__}: {error}")
+        kill_original_without_path()
+        return finish()
+    if before != socket_ownership.socket:
+        errors.append(f"configured socket ownership changed: {socket_path}")
+        kill_original_without_path()
+        return finish()
+    try:
+        current_owner = _query_exact_socket_owner(socket_path, timeout_s=timeout_s)
+        after = _socket_identity(socket_path)
+    except (OSError, RuntimeError) as error:
+        errors.append(f"exact socket ownership query: {type(error).__name__}: {error}")
+        kill_original_without_path()
+        return finish()
+    if after != socket_ownership.socket or current_owner != owner:
+        errors.append(f"configured socket owner changed: {socket_path}")
+        kill_original_without_path()
+        return finish()
+
     environment = os.environ.copy()
     environment.pop("TMUX", None)
     environment.pop("TMUX_PANE", None)
-    errors: list[str] = []
-    identity_was_supplied = server_identity is not None
-    if server_identity is None:
-        try:
-            server_pid_result = subprocess.run(
-                (
-                    "tmux",
-                    "-S",
-                    str(socket_path),
-                    "display-message",
-                    "-p",
-                    "#{pid}",
-                ),
-                env=environment,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s,
-            )
-        except subprocess.TimeoutExpired:
-            return ("exact socket server identity query timed out",)
-        except OSError as error:
-            return (f"exact socket server identity: {type(error).__name__}: {error}",)
-        if server_pid_result.returncode != 0:
-            detail = server_pid_result.stderr.strip()
-            suffix = f": {detail}" if detail else ""
-            exit_code = server_pid_result.returncode
-            return (f"exact socket server identity query exited {exit_code}{suffix}",)
-        try:
-            server_identity = _record_process(
-                "server",
-                int(server_pid_result.stdout.strip()),
-            )
-        except (RuntimeError, ValueError) as error:
-            return (f"exact socket server identity: {type(error).__name__}: {error}",)
-
-    if identity_was_supplied and not _wait_identity_absence(
-        (server_identity,),
-        timeout_s=timeout_s,
-    ):
-        return _remove_proven_stale_socket(socket_path, (server_identity,))
-
-    server_registry = _PidfdRegistry()
-    server_registry.retain(server_identity)
     helper: subprocess.Popen[bytes] | None = None
     helper_timed_out = False
     try:
@@ -4036,83 +4483,94 @@ def _kill_exact_tmux_socket(
                 helper_timed_out = True
                 errors.append("exact socket kill-server identity unavailable")
         else:
-            registry = _PidfdRegistry()
+            helper_registry = _PidfdRegistry()
             try:
-                registry.retain(helper_identity)
+                helper_retained = helper_registry.retain(helper_identity)
                 try:
                     helper.wait(timeout=timeout_s)
                 except subprocess.TimeoutExpired:
                     helper_timed_out = True
-                    registry.signal(helper_identity, signal.SIGTERM)
-                    try:
-                        helper.wait(timeout=timeout_s)
-                    except subprocess.TimeoutExpired:
-                        registry.signal(helper_identity, signal.SIGKILL)
+                    if helper_retained:
+                        helper_registry.signal(helper_identity, signal.SIGTERM)
                         try:
                             helper.wait(timeout=timeout_s)
                         except subprocess.TimeoutExpired:
-                            errors.append("exact socket kill-server helper remains")
-                errors.extend(registry.errors)
+                            helper_registry.signal(helper_identity, signal.SIGKILL)
+                            try:
+                                helper.wait(timeout=timeout_s)
+                            except subprocess.TimeoutExpired:
+                                errors.append("exact socket kill-server helper remains")
+                    else:
+                        errors.append(
+                            "exact socket kill-server helper stable handle unavailable"
+                        )
+                errors.extend(helper_registry.errors)
             finally:
-                registry.close()
+                helper_registry.close()
         if helper_timed_out:
             errors.append("exact socket kill-server timed out")
         elif helper.returncode != 0:
             errors.append(f"exact socket kill-server exited {helper.returncode}")
 
     try:
-        survivors = _wait_identity_absence((server_identity,), timeout_s=timeout_s)
+        survivors = _wait_identity_absence((owner,), timeout_s=timeout_s)
         for signal_number in (signal.SIGTERM, signal.SIGKILL):
             if not survivors:
                 break
-            server_registry.signal(server_identity, signal_number)
-            survivors = _wait_identity_absence(
-                (server_identity,),
-                timeout_s=timeout_s,
-            )
+            registry.signal(owner, signal_number)
+            survivors = _wait_identity_absence((owner,), timeout_s=timeout_s)
         if survivors:
             errors.append(
-                f"server pid {server_identity.pid} with start time "
-                f"{server_identity.start_time} remains"
+                f"server pid {owner.pid} with start time {owner.start_time} remains"
             )
         elif socket_path.exists():
-            errors.extend(_remove_proven_stale_socket(socket_path, (server_identity,)))
-        errors.extend(server_registry.errors)
+            errors.extend(_remove_proven_stale_socket(socket_path, socket_ownership))
+        errors.extend(registry.errors)
     finally:
-        server_registry.close()
+        registry.close()
     return tuple(errors)
 
 
 def _remove_proven_stale_socket(
     socket_path: pathlib.Path,
-    identities: t.Iterable[ProcessIdentity],
+    socket_ownership: _SocketOwnership | None,
 ) -> tuple[str, ...]:
-    """Remove a stale socket only after its recorded server is absent.
+    """Remove only the captured inode after proving its server is absent.
 
-    >>> _remove_proven_stale_socket(pathlib.Path("missing.sock"), ())
+    >>> _remove_proven_stale_socket(pathlib.Path("missing.sock"), None)
     ()
 
     Parameters
     ----------
     socket_path : pathlib.Path
-        Exact configured socket after a bounded ``kill-server`` attempt.
-    identities : collections.abc.Iterable[ProcessIdentity]
-        Recorded ownership evidence including the exact server identity.
+        Exact configured socket after a bounded server cleanup attempt.
+    socket_ownership : _SocketOwnership | None
+        Original process/socket capability.
 
     Returns
     -------
     tuple[str, ...]
-        Empty only when the path is absent or safely removed.
+        Empty only when the path is absent or the captured stale inode was removed.
     """
     if not socket_path.exists():
         return ()
-    servers = tuple(identity for identity in identities if identity.role == "server")
-    if not servers or any(process_identity_matches(identity) for identity in servers):
-        return (f"socket ownership is not proven absent: {socket_path}",)
+    if socket_ownership is None:
+        return (f"socket ownership capability unavailable: {socket_path}",)
     try:
-        status = socket_path.lstat()
-        if not stat.S_ISSOCK(status.st_mode) or status.st_uid != os.getuid():
-            return (f"configured socket was replaced: {socket_path}",)
+        _verify_private_directory_mode(socket_path.parent)
+        before = _socket_identity(socket_path)
+    except OSError as error:
+        return (f"stale socket identity: {type(error).__name__}: {error}",)
+    if before != socket_ownership.socket:
+        return (f"configured socket ownership changed: {socket_path}",)
+    if process_identity_matches(socket_ownership.process):
+        return (f"socket owner is not proven absent: {socket_path}",)
+    try:
+        after = _socket_identity(socket_path)
+        if after != socket_ownership.socket or process_identity_matches(
+            socket_ownership.process
+        ):
+            return (f"configured socket ownership changed: {socket_path}",)
         socket_path.unlink()
     except OSError as error:
         return (f"stale socket removal: {type(error).__name__}: {error}",)
@@ -4790,6 +5248,7 @@ def setup_sync(
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
+    _socket_ownership_callback: cabc.Callable[[_SocketOwnership], None] | None = None,
 ) -> RunContext:
     """Build and exactly verify one synchronous live topology.
 
@@ -4824,6 +5283,8 @@ def setup_sync(
         Unique pane assigned the delayed stream.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
+    _socket_ownership_callback : collections.abc.Callable | None
+        Private worker hook invoked when exact socket ownership is established.
 
     Returns
     -------
@@ -4843,7 +5304,6 @@ def setup_sync(
     from libtmux.experimental.ops import (
         BatchingPlanner,
         BoundedPlanner,
-        DisplayMessage,
         KillSession,
         ListClients,
         ListSessions,
@@ -4879,12 +5339,17 @@ def setup_sync(
             SetOption(server=True, option="exit-empty", value="off"),
             bootstrap,
         ).raise_for_status()
-        server_pid_result = run(DisplayMessage(message="#{pid}"), bootstrap)
-        server_pid_result.raise_for_status()
-        server_identity = _record_process("server", int(server_pid_result.text))
+        socket_ownership = _capture_socket_ownership(
+            context.socket_path,
+            timeout_s=_WAIT_TIMEOUT_MAX_S,
+        )
+        server_identity = socket_ownership.process
+        context.socket_ownership = socket_ownership
         context.processes = (*context.processes, server_identity)
         if context.process_identity_callback is not None:
             context.process_identity_callback((server_identity,))
+        if _socket_ownership_callback is not None:
+            _socket_ownership_callback(socket_ownership)
         if lane is EngineLane.CONTROL:
             run(ListSessions(), engine).raise_for_status()
 
@@ -4949,6 +5414,7 @@ async def setup_async(
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
+    _socket_ownership_callback: cabc.Callable[[_SocketOwnership], None] | None = None,
 ) -> RunContext:
     """Build and exactly verify one asynchronous live topology.
 
@@ -4981,6 +5447,8 @@ async def setup_async(
         Unique pane assigned the delayed stream.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
+    _socket_ownership_callback : collections.abc.Callable | None
+        Private worker hook invoked when exact socket ownership is established.
 
     Returns
     -------
@@ -5003,7 +5471,6 @@ async def setup_async(
     from libtmux.experimental.ops import (
         BatchingPlanner,
         BoundedPlanner,
-        DisplayMessage,
         KillSession,
         ListClients,
         ListSessions,
@@ -5043,12 +5510,17 @@ async def setup_async(
                 bootstrap,
             )
         ).raise_for_status()
-        server_pid_result = await arun(DisplayMessage(message="#{pid}"), bootstrap)
-        server_pid_result.raise_for_status()
-        server_identity = _record_process("server", int(server_pid_result.text))
+        socket_ownership = _capture_socket_ownership(
+            context.socket_path,
+            timeout_s=_WAIT_TIMEOUT_MAX_S,
+        )
+        server_identity = socket_ownership.process
+        context.socket_ownership = socket_ownership
         context.processes = (*context.processes, server_identity)
         if context.process_identity_callback is not None:
             context.process_identity_callback((server_identity,))
+        if _socket_ownership_callback is not None:
+            _socket_ownership_callback(socket_ownership)
         if lane is EngineLane.CONTROL:
             control = t.cast(AsyncControlModeEngine, engine)
             await control.start()
@@ -8416,6 +8888,46 @@ async def _await_if_needed(value: object) -> object:
     return value
 
 
+def _repeatable_schedule(
+    strategy_names: cabc.Iterable[str],
+    *,
+    warmup: int,
+    runs: int,
+    seed: int,
+) -> tuple[tuple[t.Literal["warmup", "timed"], str, int], ...]:
+    """Build the exact seeded, rotated repeatable-phase schedule.
+
+    >>> _repeatable_schedule(("a", "b"), warmup=1, runs=1, seed=1)
+    (('warmup', 'b', 0), ('warmup', 'a', 0), ('timed', 'a', 0), ('timed', 'b', 0))
+
+    Parameters
+    ----------
+    strategy_names : collections.abc.Iterable[str]
+        Strategy names in production mapping order.
+    warmup : int
+        Untimed invocation count per strategy.
+    runs : int
+        Timed invocation count per strategy.
+    seed : int
+        Seed used to shuffle the one base order.
+
+    Returns
+    -------
+    tuple[tuple[typing.Literal, str, int], ...]
+        Stage, strategy, and stage-local ordinal for every invocation.
+    """
+    base_order = list(strategy_names)
+    random.Random(seed).shuffle(base_order)
+    schedule: list[tuple[t.Literal["warmup", "timed"], str, int]] = []
+    for cycle in range(warmup + runs):
+        stage: t.Literal["warmup", "timed"] = "warmup" if cycle < warmup else "timed"
+        ordinal = cycle if stage == "warmup" else cycle - warmup
+        rotation = cycle % len(base_order)
+        cycle_order = (*base_order[rotation:], *base_order[:rotation])
+        schedule.extend((stage, strategy, ordinal) for strategy in cycle_order)
+    return tuple(schedule)
+
+
 def _require_live_postcondition(value: object) -> None:
     """Require an exact true live postcondition result.
 
@@ -8512,64 +9024,59 @@ async def run_repeatable_phase(
         message = "warmup must be nonnegative and runs must be positive"
         raise ValueError(message)
     sampler = snapshot_resources or (lambda: probe_host(ProcessReader()))
-    base_order = list(strategies)
-    random.Random(seed).shuffle(base_order)
     samples: list[RawSample] = []
     order: list[str] = []
-    total_cycles = warmup + runs
-    for cycle in range(total_cycles):
-        stage: t.Literal["warmup", "timed"] = "warmup" if cycle < warmup else "timed"
-        ordinal = cycle if stage == "warmup" else cycle - warmup
-        rotation = cycle % len(base_order)
-        cycle_order = (*base_order[rotation:], *base_order[:rotation])
-        for strategy in cycle_order:
-            order.append(strategy)
-            try:
-                if boundary_callback is not None:
-                    await _await_if_needed(boundary_callback(strategy))
-                resources_before = sampler()
-                produced = strategies[strategy]()
-                measurement = _validated_phase_measurement(
-                    await _await_if_needed(produced)
+    for stage, strategy, ordinal in _repeatable_schedule(
+        strategies,
+        warmup=warmup,
+        runs=runs,
+        seed=seed,
+    ):
+        order.append(strategy)
+        try:
+            if boundary_callback is not None:
+                await _await_if_needed(boundary_callback(strategy))
+            resources_before = sampler()
+            produced = strategies[strategy]()
+            measurement = _validated_phase_measurement(await _await_if_needed(produced))
+            postcondition = await _await_if_needed(live_postcondition(measurement))
+            _require_live_postcondition(postcondition)
+            resources_after = sampler()
+            raw_sample: RawSample | None = None
+            if stage == "timed":
+                raw_sample = RawSample(
+                    duration_ns=measurement.duration_ns,
+                    accepted=True,
+                    verified=True,
+                    strategy=strategy,
+                    ordinal=ordinal,
+                    resources_before=resources_before,
+                    resources_after=resources_after,
                 )
-                postcondition = await _await_if_needed(live_postcondition(measurement))
-                _require_live_postcondition(postcondition)
-                resources_after = sampler()
-                raw_sample: RawSample | None = None
-                if stage == "timed":
-                    raw_sample = RawSample(
-                        duration_ns=measurement.duration_ns,
-                        accepted=True,
-                        verified=True,
-                        strategy=strategy,
-                        ordinal=ordinal,
-                        resources_before=resources_before,
-                        resources_after=resources_after,
+                samples.append(raw_sample)
+            if progress_callback is not None:
+                await _await_if_needed(
+                    progress_callback(
+                        stage,
+                        strategy,
+                        ordinal,
+                        measurement,
+                        raw_sample,
                     )
-                    samples.append(raw_sample)
-                if progress_callback is not None:
-                    await _await_if_needed(
-                        progress_callback(
-                            stage,
-                            strategy,
-                            ordinal,
-                            measurement,
-                            raw_sample,
-                        )
-                    )
-            except RuntimeCutoffError:
-                raise
-            except Exception as error:  # noqa: BLE001
-                return RepeatablePhaseResult(
-                    samples=tuple(samples),
-                    order=tuple(order),
-                    failure=RepeatablePhaseFailure(
-                        stage=stage,
-                        strategy=strategy,
-                        ordinal=ordinal,
-                        error=f"{type(error).__name__}: {error}",
-                    ),
                 )
+        except RuntimeCutoffError:
+            raise
+        except Exception as error:  # noqa: BLE001
+            return RepeatablePhaseResult(
+                samples=tuple(samples),
+                order=tuple(order),
+                failure=RepeatablePhaseFailure(
+                    stage=stage,
+                    strategy=strategy,
+                    ordinal=ordinal,
+                    error=f"{type(error).__name__}: {error}",
+                ),
+            )
     return RepeatablePhaseResult(tuple(samples), tuple(order))
 
 
@@ -8673,22 +9180,13 @@ async def cleanup_run(
     except Exception as error:  # noqa: BLE001
         errors.append(f"engine close: {type(error).__name__}: {error}")
 
-    try:
-        context.server.kill()
-    except Exception as error:  # noqa: BLE001
-        errors.append(f"server kill: {type(error).__name__}: {error}")
-    if context.socket_path.exists():
-        server_identity = next(
-            (identity for identity in context.processes if identity.role == "server"),
-            None,
+    errors.extend(
+        _kill_exact_tmux_socket(
+            context.socket_path,
+            timeout_s=grace_s,
+            socket_ownership=context.socket_ownership,
         )
-        errors.extend(
-            _kill_exact_tmux_socket(
-                context.socket_path,
-                timeout_s=grace_s,
-                server_identity=server_identity,
-            )
-        )
+    )
 
     survivors = await _wait_for_process_absence(
         context.processes,
@@ -8699,6 +9197,8 @@ async def cleanup_run(
         if not survivors:
             break
         for identity in survivors:
+            if identity.role == "server":
+                continue
             registry.signal(identity, signal_number)
         survivors = await _wait_for_process_absence(
             context.processes,
@@ -8717,10 +9217,6 @@ async def cleanup_run(
     processes_absent = all(
         not process_identity_matches(identity) for identity in context.processes
     )
-    if processes_absent and context.socket_path.exists():
-        errors.extend(
-            _remove_proven_stale_socket(context.socket_path, context.processes)
-        )
     socket_absent = not context.socket_path.exists()
     if processes_absent and socket_absent:
         try:
@@ -9113,6 +9609,7 @@ def _progress_event_from_json(value: object) -> ProgressEvent:
         checkpoint=t.cast(str, row.get("checkpoint")),
         monotonic_ns=t.cast(int, row.get("monotonic_ns")),
         processes=tuple(_identity_from_json(item) for item in row.get("processes", [])),
+        socket_ownership=_socket_ownership_from_json(row.get("socket_ownership")),
         schema_version=t.cast(int, row.get("schema_version", 1)),
     )
     if (
@@ -9173,6 +9670,7 @@ class _WorkerRecorder:
         name: str,
         *,
         identity_delta: tuple[ProcessIdentity, ...] = (),
+        socket_ownership: _SocketOwnership | None = None,
     ) -> None:
         """Publish an increasing event before its matching report checkpoint.
 
@@ -9199,6 +9697,7 @@ class _WorkerRecorder:
                 checkpoint=name,
                 monotonic_ns=time.monotonic_ns(),
                 processes=identity_delta,
+                socket_ownership=socket_ownership,
             ),
         )
         write_json_atomic(self.checkpoint_path, self.report)
@@ -9262,6 +9761,34 @@ class _WorkerRecorder:
             role = roles.pop() if len(roles) == 1 else "identities"
             checkpoint = f"identity.{role}"
         self.checkpoint(checkpoint, identity_delta=tuple(delta))
+
+    def record_socket_ownership(self, ownership: _SocketOwnership) -> None:
+        """Durably publish the immutable server/socket capability once.
+
+        Parameters
+        ----------
+        ownership : _SocketOwnership
+            Capability captured around the exact socket owner query.
+
+        Raises
+        ------
+        RuntimeError
+            If a different capability was already recorded for this run.
+        """
+        existing = self.report.socket_ownership
+        if existing is not None and existing != ownership:
+            message = "worker socket ownership changed after establishment"
+            raise RuntimeError(message)
+        if existing is not None:
+            return
+        self.report = dataclasses.replace(
+            self.report,
+            socket_ownership=ownership,
+        )
+        self.checkpoint(
+            "identity.server.socket",
+            socket_ownership=ownership,
+        )
 
 
 async def _worker_live_postcondition(
@@ -9416,16 +9943,16 @@ async def _run_worker_group(
         active_phase[0] = strategy
         if strategy in phase_states:
             publish_active(strategy)
-            return
-        phase_states[strategy] = PhaseReport(
-            name=strategy,
-            requested_topology=topology,
-            observed_topology=topology,
-            status="in_progress",
-            warmup=warmup,
-            runs=runs,
-        )
-        publish_active(strategy)
+        else:
+            phase_states[strategy] = PhaseReport(
+                name=strategy,
+                requested_topology=topology,
+                observed_topology=topology,
+                status="in_progress",
+                warmup=warmup,
+                runs=runs,
+            )
+            publish_active(strategy)
         recorder.checkpoint(f"{strategy}.started")
 
     async def on_progress(
@@ -9753,6 +10280,7 @@ async def run_worker(
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
                 _process_identity_callback=recorder.record_identities,
+                _socket_ownership_callback=recorder.record_socket_ownership,
             )
         else:
             context = await setup_async(
@@ -9763,6 +10291,7 @@ async def run_worker(
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
                 _process_identity_callback=recorder.record_identities,
+                _socket_ownership_callback=recorder.record_socket_ownership,
             )
         resources_after = probe_host(ProcessReader())
         setup_duration = max(1, context.setup_duration_ns)
@@ -10353,11 +10882,20 @@ def _recover_supervised_run(
         unique[(identity.pid, identity.start_time)] = identity
     owned = tuple(unique.values())
     progress.handles.retain_many(owned)
+    errors.extend(
+        _kill_exact_tmux_socket(
+            socket_path,
+            timeout_s=grace_s,
+            socket_ownership=progress.socket_ownership,
+        )
+    )
     survivors = _wait_identity_absence(owned, timeout_s=grace_s)
     for signal_number in (signal.SIGTERM, signal.SIGKILL):
         if not survivors:
             break
         for identity in survivors:
+            if identity.role == "server":
+                continue
             progress.handles.signal(identity, signal_number)
         survivors = _wait_identity_absence(owned, timeout_s=grace_s)
     errors.extend(
@@ -10369,20 +10907,6 @@ def _recover_supervised_run(
     processes_absent = worker_absent and not any(
         process_identity_matches(identity) for identity in owned
     )
-    if socket_path.exists():
-        server_identity = next(
-            (identity for identity in owned if identity.role == "server"),
-            None,
-        )
-        errors.extend(
-            _kill_exact_tmux_socket(
-                socket_path,
-                timeout_s=grace_s,
-                server_identity=server_identity,
-            )
-        )
-    if processes_absent and socket_path.exists():
-        errors.extend(_remove_proven_stale_socket(socket_path, owned))
     socket_absent = not socket_path.exists()
     errors.extend(progress.handles.errors)
     if progress.journal_error is not None and not any(
@@ -10500,6 +11024,8 @@ class _ProgressTracker:
         Registry that binds each accepted identity delta.
     identities : tuple[ProcessIdentity, ...]
         Cumulative identities retained once for the terminal report.
+    socket_ownership : _SocketOwnership | None
+        Immutable server/socket capability accepted from progress.
     highest_sequence : int
         Last strictly increasing accepted sequence.
     offset : int
@@ -10524,6 +11050,7 @@ class _ProgressTracker:
     run_id: str
     handles: _PidfdRegistry
     identities: tuple[ProcessIdentity, ...] = ()
+    socket_ownership: _SocketOwnership | None = None
     highest_sequence: int = -1
     offset: int = 0
     remainder: str = ""
@@ -10559,7 +11086,32 @@ class _ProgressTracker:
         ValueError
             If terminal JSONL evidence is missing, torn, or malformed.
         """
+
+        def merge_socket_ownership(
+            events: tuple[ProgressEvent, ...],
+            *,
+            previous_highest: int,
+            highest: int,
+            identities: tuple[ProcessIdentity, ...],
+        ) -> _SocketOwnership | None:
+            ownership = self.socket_ownership
+            for event in events:
+                if not previous_highest < event.sequence <= highest:
+                    continue
+                observed = event.socket_ownership
+                if observed is None:
+                    continue
+                if observed.process not in identities:
+                    message = "socket ownership process is absent from progress"
+                    raise RuntimeError(message)
+                if ownership is not None and ownership != observed:
+                    message = "socket ownership changed in progress"
+                    raise RuntimeError(message)
+                ownership = observed
+            return ownership
+
         try:
+            previous_highest = self.highest_sequence
             events, offset, remainder = _read_progress_chunk(
                 self.path,
                 self.offset,
@@ -10572,6 +11124,12 @@ class _ProgressTracker:
                 highest_sequence=self.highest_sequence,
                 identities=self.identities,
             )
+            socket_ownership = merge_socket_ownership(
+                events,
+                previous_highest=previous_highest,
+                highest=highest,
+                identities=identities,
+            )
         except (RuntimeError, ValueError) as error:
             if self.journal_error is None:
                 self.journal_error = f"{type(error).__name__}: {error}"
@@ -10580,6 +11138,7 @@ class _ProgressTracker:
         self.remainder = remainder
         self.highest_sequence = highest
         self.identities = identities
+        self.socket_ownership = socket_ownership
         self.handles.retain_many(
             identity for event in events for identity in event.processes
         )
@@ -10594,6 +11153,7 @@ def _drain_finalizer_thread(
     *,
     initial_interrupt: KeyboardInterrupt | None = None,
     interrupt_state: list[KeyboardInterrupt | None] | None = None,
+    restore_handlers: cabc.Mapping[signal.Signals, t.Any] | None = None,
 ) -> tuple[_FinalizerResult, KeyboardInterrupt | None]:
     """Drain independent synchronous finalization through repeated interrupts.
 
@@ -10609,6 +11169,9 @@ def _drain_finalizer_thread(
         First interruption already translated into terminal report state.
     interrupt_state : list[KeyboardInterrupt | None] | None
         Optional single-item state shared with an interruption-aware callback.
+    restore_handlers : collections.abc.Mapping | None
+        Exact caller handlers restored inside this protected ownership scope.
+        Unspecified signals restore the handlers observed on entry.
 
     Returns
     -------
@@ -10656,6 +11219,13 @@ def _drain_finalizer_thread(
     previous_handlers = {
         signal_number: signal.getsignal(signal_number) for signal_number in blocked
     }
+    target_handlers = dict(previous_handlers)
+    if restore_handlers is not None:
+        unknown = set(restore_handlers) - set(blocked)
+        if unknown:
+            message = "finalizer restore handlers contain an unsupported signal"
+            raise ValueError(message)
+        target_handlers.update(restore_handlers)
 
     def record_signal(
         signal_number: int,
@@ -10755,10 +11325,19 @@ def _drain_finalizer_thread(
             record_interrupt(error)
 
     restore_failure: BaseException | None = None
+    while True:
+        try:
+            signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+            break
+        except KeyboardInterrupt as error:
+            record_interrupt(error)
+        except BaseException as error:  # noqa: BLE001
+            restore_failure = error
+            break
     for signal_number in reversed(installed_handlers):
         while True:
             try:
-                signal.signal(signal_number, previous_handlers[signal_number])
+                signal.signal(signal_number, target_handlers[signal_number])
                 break
             except KeyboardInterrupt as error:
                 record_interrupt(error)
@@ -10766,6 +11345,16 @@ def _drain_finalizer_thread(
                 if restore_failure is None:
                     restore_failure = error
                 break
+    while True:
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+            break
+        except KeyboardInterrupt as error:
+            record_interrupt(error)
+        except BaseException as error:  # noqa: BLE001
+            if restore_failure is None:
+                restore_failure = error
+            break
 
     interruption = interrupt_state[0]
     if not launched:
@@ -10947,6 +11536,7 @@ def _finalize_supervised_worker(
             failed_phase=(None if final_status == "completed" else failed_phase),
             error=(None if final_status == "completed" else terminal_error),
             processes=progress.identities,
+            socket_ownership=progress.socket_ownership,
             progress_path=str(progress.path),
             progress_sequence=progress.highest_sequence,
             guard_decision=(
@@ -11018,7 +11608,10 @@ def supervise_worker(
     """Launch and supervise the hidden worker with a sequence-based watchdog.
 
     The ``_test_*`` arguments are private CLI injection points used only by the
-    benchmark's subprocess recovery tests.
+    benchmark's subprocess recovery tests. Artifact ownership linearizes when
+    the sole finalizer has durably written and validated JSON and Markdown,
+    applied any already observed cutoff, and commits that result back to the
+    caller. A later signal is re-raised without rewriting committed evidence.
 
     >>> try:
     ...     supervise_worker(
@@ -11214,6 +11807,7 @@ def supervise_worker(
         terminal_error = f"{type(error).__name__}: {error}"
 
     interrupt_state = [interruption]
+    artifact_committed = [False]
 
     def finalize_once() -> RunReport:
         final_report = _finalize_supervised_worker(
@@ -11253,19 +11847,21 @@ def supervise_worker(
                 output,
                 markdown_output,
             )
+        artifact_committed[0] = True
         return final_report
 
-    try:
-        final_report, deferred_interruption = _drain_finalizer_thread(
-            finalize_once,
-            initial_interrupt=interruption,
-            interrupt_state=interrupt_state,
-        )
-        if deferred_interruption is not None:
-            raise deferred_interruption
-        return final_report
-    finally:
-        signal.signal(signal.SIGTERM, previous_sigterm_handler)
+    final_report, deferred_interruption = _drain_finalizer_thread(
+        finalize_once,
+        initial_interrupt=interruption,
+        interrupt_state=interrupt_state,
+        restore_handlers={signal.SIGTERM: previous_sigterm_handler},
+    )
+    if not artifact_committed[0]:
+        message = "supervisor finalizer returned without committing artifacts"
+        raise RuntimeError(message)
+    if deferred_interruption is not None:
+        raise deferred_interruption
+    return final_report
 
 
 def _write_text_atomic(path: pathlib.Path, text: str) -> None:
