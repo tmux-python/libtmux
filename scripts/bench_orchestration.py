@@ -2868,23 +2868,41 @@ def validate_report(report: RunReport) -> None:
         raise ValueError(message)
     if report.ramp_kind != "none" and report.status in terminal_statuses:
         terminals = [step for step in report.ramp if step.status in terminal_statuses]
-        if len(terminals) != 1 or terminals[0].status != report.status:
+        aggregate_cutoff = report.status == "cutoff" and not terminals
+        if aggregate_cutoff:
+            pending = False
+            if not report.error:
+                message = "aggregate cutoff requires an interruption reason"
+                raise ValueError(message)
+            for step in report.ramp:
+                if step.status == "completed" and not pending:
+                    continue
+                if step.status == "not_attempted" and step.reason == report.error:
+                    pending = True
+                    continue
+                message = "aggregate cutoff requires a completed prefix"
+                raise ValueError(message)
+        elif len(terminals) != 1 or terminals[0].status != report.status:
             message = "terminal report requires exactly one matching terminal attempt"
             raise ValueError(message)
-        terminal_index = report.ramp.index(terminals[0])
-        reason = terminals[0].reason
-        if (
-            reason is None
-            or any(step.status != "completed" for step in report.ramp[:terminal_index])
-            or any(
-                step.status != "not_attempted" or step.reason != reason
-                for step in report.ramp[terminal_index + 1 :]
-            )
-        ):
-            message = (
-                "invalid terminal ramp sequence: later attempts must be not_attempted"
-            )
-            raise ValueError(message)
+        else:
+            terminal_index = report.ramp.index(terminals[0])
+            reason = terminals[0].reason
+            if (
+                reason is None
+                or any(
+                    step.status != "completed" for step in report.ramp[:terminal_index]
+                )
+                or any(
+                    step.status != "not_attempted" or step.reason != reason
+                    for step in report.ramp[terminal_index + 1 :]
+                )
+            ):
+                message = (
+                    "invalid terminal ramp sequence: "
+                    "later attempts must be not_attempted"
+                )
+                raise ValueError(message)
     maximum = Topology(100, 100, 4)
     if report.maximum_completed and (
         report.status != "completed"
@@ -9208,7 +9226,7 @@ async def _run_worker_group(
     fail_after: str | None,
     active_phase: list[str],
 ) -> None:
-    """Run one deterministically interleaved family and checkpoint each call.
+    """Run one repeatable family lazily and checkpoint each accepted call.
 
     >>> async def empty_group():
     ...     try:
@@ -9235,7 +9253,7 @@ async def _run_worker_group(
     runs : int
         Timed accepted calls per cell.
     seed : int
-        Deterministic family-order seed.
+        Deterministic per-cell measurement seed.
     policy : ResourcePolicy
         Runtime guard thresholds.
     latest : dict[str, PhaseMeasurement]
@@ -9253,21 +9271,7 @@ async def _run_worker_group(
     if not strategies:
         message = "worker phase group requires strategies"
         raise ValueError(message)
-    active_phase[0] = next(iter(strategies))
     topology = context.topology
-    for name in strategies:
-        recorder.report = _replace_phase(
-            recorder.report,
-            PhaseReport(
-                name=name,
-                requested_topology=topology,
-                observed_topology=topology,
-                status="in_progress",
-                warmup=warmup,
-                runs=runs,
-            ),
-        )
-    recorder.checkpoint(f"{next(iter(strategies))}.started")
 
     async def on_progress(
         stage: str,
@@ -9304,26 +9308,42 @@ async def _run_worker_group(
             message = f"injected phase failure after {strategy}"
             raise RuntimeError(message)
 
-    result = await run_repeatable_phase(
-        strategies,
-        warmup=warmup,
-        runs=runs,
-        seed=seed,
-        snapshot_resources=lambda: probe_host(ProcessReader()),
-        live_postcondition=lambda measurement: _worker_live_postcondition(
-            context, measurement, policy
-        ),
-        progress_callback=on_progress,
-        boundary_callback=lambda strategy: active_phase.__setitem__(0, strategy),
-    )
-    if result.failure is not None:
-        phases = {phase.name: phase for phase in recorder.report.phases}
-        failed = dataclasses.replace(
-            phases[result.failure.strategy], status="failed", summary=None
+    for strategy_index, (name, strategy) in enumerate(strategies.items()):
+        active_phase[0] = name
+        recorder.report = _replace_phase(
+            recorder.report,
+            PhaseReport(
+                name=name,
+                requested_topology=topology,
+                observed_topology=topology,
+                status="in_progress",
+                warmup=warmup,
+                runs=runs,
+            ),
         )
-        recorder.report = _replace_phase(recorder.report, failed)
-        recorder.checkpoint(f"{result.failure.strategy}.failed")
-        raise PhaseExecutionError(result.failure.strategy, result.failure)
+        recorder.checkpoint(f"{name}.started")
+        result = await run_repeatable_phase(
+            {name: strategy},
+            warmup=warmup,
+            runs=runs,
+            seed=seed + strategy_index,
+            snapshot_resources=lambda: probe_host(ProcessReader()),
+            live_postcondition=lambda measurement: _worker_live_postcondition(
+                context, measurement, policy
+            ),
+            progress_callback=on_progress,
+            boundary_callback=lambda strategy_name: active_phase.__setitem__(
+                0, strategy_name
+            ),
+        )
+        if result.failure is not None:
+            phases = {phase.name: phase for phase in recorder.report.phases}
+            failed = dataclasses.replace(
+                phases[result.failure.strategy], status="failed", summary=None
+            )
+            recorder.report = _replace_phase(recorder.report, failed)
+            recorder.checkpoint(f"{result.failure.strategy}.failed")
+            raise PhaseExecutionError(result.failure.strategy, result.failure)
 
 
 def _position_target(ids: tuple[str, ...], position: str) -> str:
@@ -10437,16 +10457,37 @@ def _drain_finalizer_thread(
         name="orchestration-finalization",
     )
     interruption = initial_interrupt
-    started = False
-    while not started:
+    launch_failure: BaseException | None = None
+    blocked = frozenset({signal.SIGINT, signal.SIGTERM})
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+    try:
         try:
             thread.start()
-        except KeyboardInterrupt as error:  # noqa: PERF203
+        except KeyboardInterrupt as error:
             if interruption is None:
                 interruption = error
-            started = thread.ident is not None
-        else:
-            started = True
+        except BaseException as error:  # noqa: BLE001
+            launch_failure = error
+    finally:
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        except KeyboardInterrupt as error:
+            if interruption is None:
+                interruption = error
+        except BaseException as error:  # noqa: BLE001
+            if launch_failure is None:
+                launch_failure = error
+    try:
+        launched = thread.ident is not None or thread.is_alive()
+    except RuntimeError:
+        launched = thread.ident is not None
+    if not launched:
+        if interruption is not None:
+            raise interruption
+        if launch_failure is not None:
+            raise launch_failure
+        message = "finalization thread did not launch"
+        raise RuntimeError(message)
     while not completed.is_set():
         try:
             completed.wait(timeout=0.02)
@@ -10461,6 +10502,12 @@ def _drain_finalizer_thread(
                 interruption = error
         except RuntimeError:
             pass
+    if launch_failure is not None:
+        if interruption is not None:
+            raise interruption from launch_failure
+        if failures:
+            raise launch_failure from failures[0]
+        raise launch_failure
     if failures:
         if interruption is not None:
             raise interruption from failures[0]
@@ -11304,44 +11351,6 @@ def _finalize_ramp_aggregation(
     return terminal
 
 
-def _publish_interrupted_ramp_report(
-    report: RunReport,
-    output: pathlib.Path,
-    markdown_output: pathlib.Path,
-) -> RunReport:
-    """Publish cancellation that arrived while a completed ramp aggregated.
-
-    >>> _publish_interrupted_ramp_report.__name__
-    '_publish_interrupted_ramp_report'
-
-    Returns
-    -------
-    RunReport
-        Validated cutoff aggregate with the final attempt marked cutoff.
-    """
-    reason = "KeyboardInterrupt: ramp interrupted during aggregation"
-    steps = list(report.ramp)
-    completed_indices = tuple(
-        index for index, step in enumerate(steps) if step.status == "completed"
-    )
-    if not completed_indices:
-        return report
-    final_index = completed_indices[-1]
-    final = steps[final_index]
-    steps[final_index] = dataclasses.replace(final, status="cutoff", reason=reason)
-    interrupted = dataclasses.replace(
-        report,
-        status="cutoff",
-        maximum_completed=False,
-        ramp=tuple(steps),
-        error=reason,
-    )
-    write_json_atomic(output, interrupted)
-    validate_report(interrupted)
-    render_markdown_summary(output, markdown_output)
-    return interrupted
-
-
 def run_ramp(
     shapes: t.Sequence[Topology],
     *,
@@ -11398,17 +11407,58 @@ def run_ramp(
             include_tmux=False,
         ),
     )
-    write_json_atomic(output, report)
     child_root = output.with_name(f"{output.stem}.runs")
     steps = list(attempts)
     last_observed: Topology | None = None
     terminal_status: t.Literal["refused", "failed", "cutoff"] | None = None
     terminal_reason: str | None = None
     interruption: KeyboardInterrupt | None = None
-    for index, shape in enumerate(declared):
-        child_output = child_root / f"{index:02d}-{shape}.json"
-        child_markdown = child_output.with_suffix(".md")
-        try:
+    active_index: int | None = None
+    active_child_output: pathlib.Path | None = None
+    final_report: RunReport | None = None
+
+    def step_from_child(
+        index: int,
+        child: RunReport,
+        child_output: pathlib.Path,
+    ) -> RampStep:
+        return RampStep(
+            declared[index],
+            t.cast(
+                t.Literal["completed", "refused", "failed", "cutoff"],
+                child.status,
+            ),
+            child.error,
+            run_id=child.run_id,
+            report_path=str(child_output),
+            scratch_path=child.scratch_path,
+            socket_path=child.socket_path,
+        )
+
+    def write_checkpoint(candidate: RunReport) -> None:
+        _result, deferred = _drain_finalizer_thread(
+            lambda: write_json_atomic(output, candidate)
+        )
+        if deferred is not None:
+            raise deferred
+
+    def cancellation_reason(error: KeyboardInterrupt) -> str:
+        detail = str(error)
+        suffix = f": {detail}" if detail else ""
+        return f"KeyboardInterrupt: ramp bookkeeping interrupted{suffix}"
+
+    def mark_pending(reason: str) -> None:
+        for pending_index, step in enumerate(steps):
+            if step.status == "not_attempted":
+                steps[pending_index] = dataclasses.replace(step, reason=reason)
+
+    try:
+        write_checkpoint(report)
+        for index, shape in enumerate(declared):
+            active_index = index
+            child_output = child_root / f"{index:02d}-{shape}.json"
+            active_child_output = child_output
+            child_markdown = child_output.with_suffix(".md")
             child = run_scenario(
                 shape,
                 lane=lane,
@@ -11428,63 +11478,93 @@ def run_ramp(
                 _test_fail_after=_test_fail_after,
                 _test_extra_identity=_test_extra_identity,
             )
-        except KeyboardInterrupt as error:
-            interruption = error
-            child = load_run_report(child_output)
-        steps[index] = RampStep(
-            shape,
-            t.cast(
-                t.Literal["completed", "refused", "failed", "cutoff"],
-                child.status,
-            ),
-            child.error,
-            run_id=child.run_id,
-            report_path=str(child_output),
-            scratch_path=child.scratch_path,
-            socket_path=child.socket_path,
-        )
-        if child.status == "completed":
-            last_observed = child.observed_topology
-        else:
-            terminal_status = t.cast(
-                t.Literal["refused", "failed", "cutoff"], child.status
-            )
-            terminal_reason = child.error or child.status
-            for later in range(index + 1, len(declared)):
-                steps[later] = RampStep(
-                    declared[later], "not_attempted", terminal_reason
+            steps[index] = step_from_child(index, child, child_output)
+            if child.status == "completed":
+                last_observed = child.observed_topology
+            else:
+                terminal_status = t.cast(
+                    t.Literal["refused", "failed", "cutoff"], child.status
                 )
-            break
-        report = dataclasses.replace(
-            report,
-            observed_topology=last_observed,
-            ramp=tuple(steps),
-        )
-        write_json_atomic(output, report)
-    report, deferred_interruption = _drain_finalizer_thread(
-        lambda: _finalize_ramp_aggregation(
-            report,
-            steps,
-            last_observed=last_observed,
-            terminal_status=terminal_status,
-            terminal_reason=terminal_reason,
-            output=output,
-            markdown_output=markdown_output,
-        ),
-        initial_interrupt=interruption,
-    )
-    if deferred_interruption is not None and report.status == "completed":
-        report, deferred_interruption = _drain_finalizer_thread(
-            lambda: _publish_interrupted_ramp_report(
+                terminal_reason = child.error or child.status
+                mark_pending(terminal_reason)
+                break
+            report = dataclasses.replace(
                 report,
-                output,
-                markdown_output,
-            ),
-            initial_interrupt=deferred_interruption,
-        )
-    if deferred_interruption is not None:
-        raise deferred_interruption
-    return report
+                observed_topology=last_observed,
+                ramp=tuple(steps),
+            )
+            write_checkpoint(report)
+            active_index = None
+            active_child_output = None
+    except KeyboardInterrupt as error:
+        if interruption is None:
+            interruption = error
+        terminal_status = "cutoff"
+        terminal_reason = cancellation_reason(interruption)
+        if (
+            active_index is not None
+            and active_child_output is not None
+            and active_child_output.exists()
+        ):
+            try:
+                child = load_run_report(active_child_output)
+            except ValueError:
+                child = None
+            if child is not None and child.status in {
+                "completed",
+                "refused",
+                "failed",
+                "cutoff",
+            }:
+                steps[active_index] = step_from_child(
+                    active_index,
+                    child,
+                    active_child_output,
+                )
+                if child.status == "completed":
+                    last_observed = child.observed_topology
+                elif child.status == "cutoff":
+                    terminal_reason = child.error or terminal_reason
+        mark_pending(terminal_reason)
+    finally:
+        while final_report is None:
+            try:
+                finalize: t.Callable[[], RunReport] = functools.partial(
+                    _finalize_ramp_aggregation,
+                    report,
+                    steps,
+                    last_observed=last_observed,
+                    terminal_status=terminal_status,
+                    terminal_reason=terminal_reason,
+                    output=output,
+                    markdown_output=markdown_output,
+                )
+                final_report, deferred_interruption = _drain_finalizer_thread(
+                    finalize,
+                    initial_interrupt=interruption,
+                )
+            except KeyboardInterrupt as error:
+                if interruption is None:
+                    interruption = error
+                terminal_status = "cutoff"
+                terminal_reason = terminal_reason or cancellation_reason(interruption)
+                mark_pending(terminal_reason)
+                continue
+            assert final_report is not None
+            if deferred_interruption is not None:
+                if interruption is None:
+                    interruption = deferred_interruption
+                if final_report.status != "cutoff":
+                    terminal_status = "cutoff"
+                    terminal_reason = terminal_reason or cancellation_reason(
+                        interruption
+                    )
+                    mark_pending(terminal_reason)
+                    final_report = None
+    assert final_report is not None
+    if interruption is not None:
+        raise interruption
+    return final_report
 
 
 def parse_topology(shape: str) -> Topology:

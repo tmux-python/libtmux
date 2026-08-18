@@ -69,6 +69,15 @@ _RUNNER_REPEATABLE_PHASES = (
     "search.contents",
 )
 
+_RUNNER_PHASES = (
+    "setup",
+    "stabilization",
+    "mutation.bulk",
+    "wait.capture-poll",
+    "wait.control-stream",
+    *_RUNNER_REPEATABLE_PHASES[2:],
+)
+
 
 def _benchmark_script() -> pathlib.Path:
     """Return the real standalone benchmark entry point."""
@@ -4860,6 +4869,25 @@ def test_validator_rejects_failed_phase_that_disagrees_with_active_row(
         benchmark_module.validate_report(report)
 
 
+def test_validator_rejects_future_row_after_lazy_active_failure(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A canonical future row is invalid even when it carries no evidence."""
+    report = _failed_report_with_completed_mutation_prefix(benchmark_module)
+    future = benchmark_module.PhaseReport(
+        "wait.control-stream",
+        report.requested_topology,
+        report.requested_topology,
+        status="not_applicable",
+        warmup=report.warmup,
+        runs=report.runs,
+    )
+    report = dataclasses.replace(report, phases=(*report.phases, future))
+
+    with pytest.raises(ValueError, match="phase status prefix"):
+        benchmark_module.validate_report(report)
+
+
 def test_cli_phase_failure_uses_supervisor_cleanup_contract(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -4893,6 +4921,72 @@ def test_cli_phase_failure_uses_supervisor_cleanup_contract(
     phases = {phase["name"]: phase for phase in payload["phases"]}
     assert phases["mutation.bulk"]["status"] == "failed"
     _assert_terminal_cleanup(payload)
+
+
+@pytest.mark.parametrize(
+    "failed_phase",
+    (
+        "enumeration.windows",
+        "capture.batched",
+        "search.snapshot.windows.middle",
+    ),
+)
+def test_cli_mid_strategy_failure_has_one_active_prefix_and_no_future_rows(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    failed_phase: str,
+) -> None:
+    """A strategy failure cannot manufacture evidence for a later cell."""
+    report_path = tmp_path / f"{failed_phase}.json"
+    markdown_path = report_path.with_suffix(".md")
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--lane",
+        "subprocess",
+        "--mode",
+        "sync",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--markdown-output",
+        str(markdown_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "30",
+        "--_test-fail-after",
+        failed_phase,
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    report = benchmark_module.load_run_report(report_path)
+    phase_index = _RUNNER_PHASES.index(failed_phase)
+    assert report.status == "failed"
+    assert report.failed_phase == failed_phase
+    assert (
+        tuple(phase.name for phase in report.phases)
+        == _RUNNER_PHASES[: phase_index + 1]
+    )
+    assert all(
+        phase.status in {"completed", "not_applicable"} for phase in report.phases[:-1]
+    )
+    assert report.phases[-1].status == "failed"
+    benchmark_module.validate_report(report)
+    assert failed_phase in benchmark_module.render_markdown_summary(report_path)
+    assert markdown_path.exists()
+    assert report.cleanup.complete
+    assert report.cleanup.errors == ()
+    assert report.scratch_path is not None
+    assert report.socket_path is not None
+    assert not pathlib.Path(report.scratch_path).exists()
+    assert not pathlib.Path(report.socket_path).exists()
 
 
 def test_worker_reports_the_exact_active_stabilization_boundary(
@@ -5181,6 +5275,136 @@ def test_cli_cancellation_uses_supervisor_cleanup_contract(
     _assert_terminal_cleanup(payload)
 
 
+@pytest.mark.parametrize(
+    "start_failure", (KeyboardInterrupt("start"), RuntimeError("start"))
+)
+def test_finalizer_start_after_native_launch_executes_once_and_restores_mask(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    start_failure: BaseException,
+) -> None:
+    """A post-launch start failure must never cause a second native launch."""
+    real_thread = threading.Thread
+    callback_started = threading.Event()
+    release_callback = threading.Event()
+    invocation_count = 0
+    wrapper: t.Any = None
+    prior_mask = frozenset({signal.SIGUSR1})
+    mask_calls: list[tuple[int, frozenset[signal.Signals]]] = []
+
+    def callback() -> str:
+        nonlocal invocation_count
+        invocation_count += 1
+        callback_started.set()
+        assert release_callback.wait(timeout=10.0)
+        return "finished"
+
+    def thread_factory(*, target: t.Callable[[], None], name: str) -> t.Any:
+        nonlocal wrapper
+        delegate = real_thread(target=target, name=name)
+        start_calls = 0
+
+        def start() -> None:
+            nonlocal start_calls
+            start_calls += 1
+            if start_calls != 1:
+                pytest.fail("finalizer attempted a second native launch")
+            delegate.start()
+            raise start_failure
+
+        wrapper = types.SimpleNamespace(
+            start=start,
+            join=delegate.join,
+            is_alive=delegate.is_alive,
+            ident=None,
+            start_calls=lambda: start_calls,
+        )
+        return wrapper
+
+    def record_mask(
+        how: int,
+        signals: t.Iterable[signal.Signals],
+    ) -> frozenset[signal.Signals]:
+        mask_calls.append((how, frozenset(signals)))
+        return prior_mask
+
+    def release() -> None:
+        assert callback_started.wait(timeout=10.0)
+        release_callback.set()
+
+    monkeypatch.setattr(benchmark_module.threading, "Thread", thread_factory)
+    monkeypatch.setattr(benchmark_module.signal, "pthread_sigmask", record_mask)
+    releaser = real_thread(target=release)
+    releaser.start()
+    try:
+        if isinstance(start_failure, KeyboardInterrupt):
+            result, interruption = benchmark_module._drain_finalizer_thread(callback)
+            assert result == "finished"
+            assert interruption is start_failure
+        else:
+            with pytest.raises(RuntimeError) as raised:
+                benchmark_module._drain_finalizer_thread(callback)
+            assert raised.value is start_failure
+    finally:
+        release_callback.set()
+        releaser.join(timeout=5.0)
+
+    assert invocation_count == 1
+    assert wrapper is not None
+    assert wrapper.start_calls() == 1
+    assert not wrapper.is_alive()
+    assert mask_calls == [
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
+    ]
+
+
+def test_finalizer_drains_repeated_sigint_once_and_restores_real_mask(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Repeated SIGINT cannot duplicate work or leave a finalizer thread alive."""
+    callback_started = threading.Event()
+    release_callback = threading.Event()
+    invocation_count = 0
+    original_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGUSR1})
+    expected_mask = frozenset((*original_mask, signal.SIGUSR1))
+
+    def callback() -> int:
+        nonlocal invocation_count
+        invocation_count += 1
+        callback_started.set()
+        assert release_callback.wait(timeout=10.0)
+        return 7
+
+    def interrupt_twice() -> None:
+        assert callback_started.wait(timeout=10.0)
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.05)
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.05)
+        release_callback.set()
+
+    interrupter = threading.Thread(target=interrupt_twice)
+    interrupter.start()
+    try:
+        result, interruption = benchmark_module._drain_finalizer_thread(callback)
+        observed_mask = signal.pthread_sigmask(signal.SIG_BLOCK, ())
+    finally:
+        release_callback.set()
+        interrupter.join(timeout=5.0)
+        signal.pthread_sigmask(signal.SIG_SETMASK, original_mask)
+
+    assert result == 7
+    assert interruption is not None
+    assert invocation_count == 1
+    assert not interrupter.is_alive()
+    assert frozenset(observed_mask) == expected_mask
+    assert not any(
+        thread.name == "orchestration-finalization" and thread.is_alive()
+        for thread in threading.enumerate()
+    )
+
+
 def test_supervisor_cancellation_during_final_report_write_is_durable(
     benchmark_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -5326,6 +5550,8 @@ def test_supervisor_interrupt_before_popen_return_is_durable_and_reraised(
     assert mask_calls == [
         (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
         (signal.SIG_SETMASK, prior_mask),
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
     ]
     durable = benchmark_module.load_run_report(output)
     assert durable.status == "cutoff"
@@ -5419,6 +5645,8 @@ def test_supervisor_interrupt_during_pidfd_handoff_recovers_exact_worker(
     assert worker_absent_before_test_cleanup
     assert record_calls >= 2
     assert mask_calls == [
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
         (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
         (signal.SIG_SETMASK, prior_mask),
     ]
@@ -5672,6 +5900,268 @@ def test_cli_ramp_refusal_marks_later_shapes_not_attempted(
     assert "not_attempted" in markdown_path.read_text(encoding="utf-8")
 
 
+def _write_completed_ramp_child(
+    benchmark_module: types.ModuleType,
+    shape: t.Any,
+    output: pathlib.Path,
+    ordinal: int,
+    write: t.Callable[[pathlib.Path, t.Any], None],
+) -> t.Any:
+    """Write one complete fake child artifact while keeping aggregation real."""
+    child = benchmark_module.RunReport(
+        shape,
+        observed_topology=shape,
+        status="completed",
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        run_id=f"child-{ordinal}",
+        lane="control",
+        mode="async",
+        warmup=0,
+        runs=1,
+        scratch_path=f"scratch-{ordinal}",
+        socket_path=f"scratch-{ordinal}/tmux.sock",
+        progress_path=f"progress-{ordinal}.jsonl",
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("run",), None
+        ),
+    )
+    write(output, child)
+    return child
+
+
+def test_ramp_interrupt_before_child_finalizes_unattempted_suffix(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Pre-child interruption must still publish and validate a cutoff aggregate."""
+    interruption = KeyboardInterrupt("before child")
+    output = tmp_path / "before-child.json"
+    markdown = output.with_suffix(".md")
+
+    def interrupt_child(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        raise interruption
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", interrupt_child)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        benchmark_module.run_ramp(
+            (
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.Topology(2, 1, 1),
+            ),
+            runs=1,
+            warmup=0,
+            output=output,
+            markdown_output=markdown,
+        )
+
+    assert raised.value is interruption
+    report = benchmark_module.load_run_report(output)
+    assert report.status == "cutoff"
+    assert tuple(step.status for step in report.ramp) == (
+        "not_attempted",
+        "not_attempted",
+    )
+    assert report.error is not None
+    assert all(step.reason == report.error for step in report.ramp)
+    benchmark_module.validate_report(report)
+    assert report.cleanup.complete
+    assert markdown.exists()
+
+
+def test_ramp_interrupt_between_child_return_and_step_mutation_preserves_child(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A durable completed child survives interruption before step bookkeeping."""
+    interruption = KeyboardInterrupt("after child")
+    output = tmp_path / "after-child.json"
+    markdown = output.with_suffix(".md")
+    real_write = benchmark_module.write_json_atomic
+
+    class InterruptingChild:
+        def __init__(self, child: t.Any) -> None:
+            self.child = child
+            self.interrupted = False
+
+        @property
+        def status(self) -> str:
+            if not self.interrupted:
+                self.interrupted = True
+                raise interruption
+            return t.cast(str, self.child.status)
+
+        def __getattr__(self, name: str) -> t.Any:
+            return getattr(self.child, name)
+
+    def complete_then_interrupt(shape: t.Any, **kwargs: t.Any) -> t.Any:
+        child = _write_completed_ramp_child(
+            benchmark_module,
+            shape,
+            kwargs["output"],
+            1,
+            real_write,
+        )
+        return InterruptingChild(child)
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", complete_then_interrupt)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        benchmark_module.run_ramp(
+            (
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.Topology(2, 1, 1),
+            ),
+            runs=1,
+            warmup=0,
+            output=output,
+            markdown_output=markdown,
+        )
+
+    assert raised.value is interruption
+    report = benchmark_module.load_run_report(output)
+    assert report.status == "cutoff"
+    assert tuple(step.status for step in report.ramp) == (
+        "completed",
+        "not_attempted",
+    )
+    assert report.ramp[1].reason == report.error
+    benchmark_module.validate_report(report)
+    assert report.cleanup.complete
+    assert markdown.exists()
+
+
+def test_ramp_interrupt_during_child_checkpoint_write_preserves_completed_prefix(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Every successful-child aggregate write is cancellation-shielded."""
+    interruption = KeyboardInterrupt("child checkpoint write")
+    output = tmp_path / "child-checkpoint.json"
+    markdown = output.with_suffix(".md")
+    real_write = benchmark_module.write_json_atomic
+    child_ordinal = 0
+    interrupted = False
+
+    def complete_child(shape: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal child_ordinal
+        child_ordinal += 1
+        return _write_completed_ramp_child(
+            benchmark_module,
+            shape,
+            kwargs["output"],
+            child_ordinal,
+            real_write,
+        )
+
+    def interrupt_checkpoint(path: pathlib.Path, value: t.Any) -> None:
+        nonlocal interrupted
+        if (
+            not interrupted
+            and path == output
+            and isinstance(value, benchmark_module.RunReport)
+            and value.status == "in_progress"
+            and any(step.status == "completed" for step in value.ramp)
+        ):
+            interrupted = True
+            raise interruption
+        real_write(path, value)
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", complete_child)
+    monkeypatch.setattr(benchmark_module, "write_json_atomic", interrupt_checkpoint)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        benchmark_module.run_ramp(
+            (
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.Topology(2, 1, 1),
+            ),
+            runs=1,
+            warmup=0,
+            output=output,
+            markdown_output=markdown,
+        )
+
+    assert raised.value is interruption
+    report = benchmark_module.load_run_report(output)
+    assert report.status == "cutoff"
+    assert tuple(step.status for step in report.ramp) == (
+        "completed",
+        "not_attempted",
+    )
+    assert report.ramp[1].reason == report.error
+    benchmark_module.validate_report(report)
+    assert report.cleanup.complete
+    assert markdown.exists()
+
+
+def test_ramp_interrupt_after_last_child_preserves_every_completed_attempt(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Final-render interruption cannot relabel a completed child as cutoff."""
+    interruption = KeyboardInterrupt("before final render")
+    output = tmp_path / "before-render.json"
+    markdown = output.with_suffix(".md")
+    real_write = benchmark_module.write_json_atomic
+    real_render = benchmark_module.render_markdown_summary
+    child_ordinal = 0
+    interrupted = False
+
+    def complete_child(shape: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal child_ordinal
+        child_ordinal += 1
+        return _write_completed_ramp_child(
+            benchmark_module,
+            shape,
+            kwargs["output"],
+            child_ordinal,
+            real_write,
+        )
+
+    def interrupt_render(
+        report_path: pathlib.Path,
+        output_path: pathlib.Path | None = None,
+    ) -> str:
+        nonlocal interrupted
+        if not interrupted and report_path == output:
+            interrupted = True
+            raise interruption
+        return t.cast(str, real_render(report_path, output_path))
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", complete_child)
+    monkeypatch.setattr(benchmark_module, "render_markdown_summary", interrupt_render)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        benchmark_module.run_ramp(
+            (
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.Topology(2, 1, 1),
+            ),
+            runs=1,
+            warmup=0,
+            output=output,
+            markdown_output=markdown,
+        )
+
+    assert raised.value is interruption
+    report = benchmark_module.load_run_report(output)
+    assert report.status == "cutoff"
+    assert tuple(step.status for step in report.ramp) == ("completed", "completed")
+    benchmark_module.validate_report(report)
+    assert report.cleanup.complete
+    assert markdown.exists()
+
+
 def test_ramp_cancellation_during_aggregation_is_durable(
     benchmark_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -5757,7 +6247,7 @@ def test_ramp_cancellation_during_aggregation_is_durable(
     assert isinstance(cancellation.value, KeyboardInterrupt)
     report = benchmark_module.load_run_report(output)
     assert report.status == "cutoff"
-    assert report.ramp[-1].status == "cutoff"
+    assert tuple(step.status for step in report.ramp) == ("completed", "completed")
     assert report.cleanup.complete
     assert "cutoff" in markdown.read_text(encoding="utf-8")
 
