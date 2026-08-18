@@ -74,11 +74,15 @@ The fuzzer exposes four modes distributed round-robin by stable pane ordinal:
   configured monotonic delay, then more output.
 
 The generator accepts a seed, frame rate, duration, output directory, delayed
-match interval, and sentinel. `preview` renders the same frames interactively.
-`serve` starts paused, writes a ready marker, and begins only after the benchmark
-releases its gate. The generator records scheduled and actual sentinel times so
-the wait benchmark reports detection overhead separately from intentional
-delay.
+match interval, and sentinel prefix. `preview` renders the same frames
+interactively. `serve` starts paused, writes a ready marker, and begins only
+after the benchmark releases its gate. Each wait sample writes an atomic,
+run-scoped request with a unique request ID and sentinel. The generator appends
+that sentinel after the requested monotonic delay and atomically publishes
+request-specific scheduling and emission evidence. This permits independent
+warmup and timed wait samples without restarting the active topology, and lets
+the report separate configured delay, generator scheduling lateness, and waiter
+detection overhead.
 
 One selected pane follows a dedicated delayed-match stream. That makes the
 sentinel unique across the server for pane-content search. Every other pane
@@ -103,8 +107,12 @@ The lifecycle is:
 8. verify the process, socket, and scratch directory are gone.
 
 SIGINT, SIGTERM, phase errors, and resource cutoffs use the same cleanup path.
-The JSON report is written atomically after cleanup and includes a failed phase
-and error summary when the run does not complete.
+A small supervisor process owns the terminal report and monitors an isolated
+worker process with progress events and identity-checked process records. This
+lets the benchmark recover when a worker is cancelled or an engine call stops
+making progress. The JSON report is written atomically at startup, after each
+checkpoint, and after cleanup; it includes the failed phase and error summary
+when the run does not complete.
 
 ## Engines and execution lanes
 
@@ -233,6 +241,10 @@ A ramp stops after cleaning the current server when:
 
 The cutoff is evidence, not success. `--force-extreme` relaxes predictive
 preflight refusal but does not disable cleanup, watchdogs, or correctness checks.
+The default PID reserve is the larger of 1,024 processes and 15 percent of the
+detected cgroup limit. The default memory floor is the larger of 4 GiB and 15
+percent of detected physical memory. Missing resource probes remain explicit
+unknown values rather than being treated as zero.
 
 ## Tests and verification
 
