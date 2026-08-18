@@ -35,6 +35,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import types
 import typing as t
@@ -1556,6 +1557,8 @@ class PhaseReport:
         Untimed invocations requested for a repeatable cell.
     runs : int
         Timed invocations requested for a repeatable cell.
+    warmup_observations : tuple[PhaseObservation, ...]
+        Typed counts retained for every untimed warmup invocation.
     observations : tuple[PhaseObservation, ...]
         Typed counts corresponding one-to-one with accepted timed samples.
     """
@@ -1570,6 +1573,7 @@ class PhaseReport:
     )
     warmup: int = 0
     runs: int = 0
+    warmup_observations: tuple[PhaseObservation, ...] = ()
     observations: tuple[PhaseObservation, ...] = ()
 
     def __post_init__(self) -> None:
@@ -1763,7 +1767,7 @@ class ProgressEvent:
     monotonic_ns : int
         Worker monotonic publication time.
     processes : tuple[ProcessIdentity, ...]
-        Cumulative exact identities known at publication time.
+        Exact identities first learned at this checkpoint; never cumulative.
     schema_version : int
         Progress stream schema version.
 
@@ -2012,6 +2016,8 @@ class RunContext:
         Exact construction operation and dispatch counts.
     process_identity_callback : collections.abc.Callable | None
         Private worker hook called as owned identities become known.
+    process_handles : _PidfdRegistry
+        Worker-owned stable handles retained as identities become known.
 
     Examples
     --------
@@ -2052,7 +2058,10 @@ class RunContext:
     heartbeat_monotonic_ns: int = -1
     ambient_tmux_environment: tuple[str | None, str | None] = (None, None)
     setup_metrics: ExecutionMetrics | None = None
-    process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None
+    process_identity_callback: (
+        cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
+    ) = None
+    process_handles: _PidfdRegistry | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2472,6 +2481,9 @@ def _phase_from_json(value: object) -> PhaseReport:
         ),
         warmup=t.cast(int, row.get("warmup", 0)),
         runs=t.cast(int, row.get("runs", 0)),
+        warmup_observations=tuple(
+            _observation_from_json(item) for item in row.get("warmup_observations", [])
+        ),
         observations=tuple(
             _observation_from_json(item) for item in row.get("observations", [])
         ),
@@ -2653,13 +2665,33 @@ def validate_report(report: RunReport) -> None:
             message = "invalid guard decision kind"
             raise ValueError(message)
     terminal = {"completed", "refused", "failed", "cutoff"}
-    if report.status in terminal and not report.cleanup.complete:
+    cleanup_facts_complete = (
+        report.cleanup.complete is True
+        and report.cleanup.processes_absent is True
+        and report.cleanup.socket_absent is True
+        and report.cleanup.scratch_absent is True
+        and not report.cleanup.errors
+    )
+    if report.cleanup.complete is True and not cleanup_facts_complete:
+        message = "cleanup complete requires all absence flags and no errors"
+        raise ValueError(message)
+    if report.status in {"completed", "refused", "cutoff"} and not (
+        cleanup_facts_complete
+    ):
         message = "terminal report requires complete cleanup"
         raise ValueError(message)
     phase_statuses = {"in_progress", "completed", "failed", "not_applicable"}
     if len({phase.name for phase in report.phases}) != len(report.phases):
         message = "phase names must be unique"
         raise ValueError(message)
+    if report.status in terminal:
+        unfinished_seen = False
+        for phase in report.phases:
+            if phase.status in {"failed", "in_progress"}:
+                unfinished_seen = True
+            elif unfinished_seen and phase.status in {"completed", "not_applicable"}:
+                message = "terminal report has an invalid phase status prefix"
+                raise ValueError(message)
     for phase in report.phases:
         if phase.status not in phase_statuses:
             message = "invalid phase status"
@@ -2673,10 +2705,33 @@ def validate_report(report: RunReport) -> None:
             message = "phase warmup and runs must be nonnegative integers"
             raise ValueError(message)
         if phase.status == "not_applicable" and (
-            phase.samples or phase.summary is not None or phase.observations
+            phase.samples
+            or phase.summary is not None
+            or phase.warmup_observations
+            or phase.observations
         ):
             message = "not_applicable phase cannot carry timing evidence"
             raise ValueError(message)
+        if phase.name == "setup" and phase.status == "completed":
+            setup_sample = phase.samples[0] if len(phase.samples) == 1 else None
+            setup_observation = (
+                phase.observations[0] if len(phase.observations) == 1 else None
+            )
+            if (
+                setup_sample is None
+                or setup_observation is None
+                or setup_sample.accepted is not True
+                or setup_sample.verified is not True
+                or setup_sample.error is not None
+                or setup_sample.ordinal != 0
+                or setup_sample.strategy != "setup"
+                or setup_observation.verified is not True
+                or setup_observation.ordinal != 0
+                or setup_observation.strategy != "setup"
+                or setup_sample.duration_ns != setup_observation.duration_ns
+            ):
+                message = "completed setup requires one accepted verified observation"
+                raise ValueError(message)
         accepted: list[int] = []
         for sample in phase.samples:
             if sample.accepted and (sample.error is not None or not sample.verified):
@@ -2711,6 +2766,56 @@ def validate_report(report: RunReport) -> None:
                 or not observation.verified
             ):
                 message = "phase observation requires verified positive evidence"
+                raise ValueError(message)
+        for observation in phase.warmup_observations:
+            if (
+                type(observation.ordinal) is not int
+                or observation.ordinal < 0
+                or not observation.strategy
+                or type(observation.duration_ns) is not int
+                or observation.duration_ns <= 0
+                or not observation.verified
+            ):
+                message = "warmup observation requires verified positive evidence"
+                raise ValueError(message)
+        if (
+            phase.runs > 0
+            and phase.name not in {"setup", "stabilization"}
+            and (phase.status != "not_applicable")
+        ):
+            timed_ordinals = tuple(sample.ordinal for sample in phase.samples)
+            observation_ordinals = tuple(
+                observation.ordinal for observation in phase.observations
+            )
+            expected_timed = tuple(
+                range(phase.runs if phase.status == "completed" else len(phase.samples))
+            )
+            if (
+                timed_ordinals != expected_timed
+                or observation_ordinals != expected_timed
+                or any(sample.strategy != phase.name for sample in phase.samples)
+                or any(
+                    observation.strategy != phase.name
+                    for observation in phase.observations
+                )
+            ):
+                message = f"phase {phase.name} has invalid timed ordinals"
+                raise ValueError(message)
+            warmup_ordinals = tuple(
+                observation.ordinal for observation in phase.warmup_observations
+            )
+            expected_warmup = tuple(
+                range(
+                    phase.warmup
+                    if phase.status == "completed"
+                    else len(phase.warmup_observations)
+                )
+            )
+            if warmup_ordinals != expected_warmup or any(
+                observation.strategy != phase.name
+                for observation in phase.warmup_observations
+            ):
+                message = f"phase {phase.name} has invalid warmup ordinals"
                 raise ValueError(message)
     ramp_kinds = {"none", "canonical", "custom"}
     terminal_statuses = {"refused", "cutoff", "failed"}
@@ -2845,7 +2950,7 @@ def _validate_executable_report(report: RunReport) -> None:
     if report.ramp_kind != "none":
         message = "one executable scenario cannot also be a ramp report"
         raise ValueError(message)
-    if report.status in {"completed", "refused", "failed", "cutoff"} and (
+    if report.status in {"completed", "refused", "cutoff"} and (
         report.cleanup.processes_absent is not True
         or report.cleanup.socket_absent is not True
         or report.cleanup.scratch_absent is not True
@@ -2885,6 +2990,10 @@ def _validate_executable_report(report: RunReport) -> None:
     if not report.scratch_path or not report.socket_path or not report.progress_path:
         message = "attempted executable report requires owned resource paths"
         raise ValueError(message)
+    phase_names = tuple(phase.name for phase in report.phases)
+    if phase_names != _RUNNER_PHASES[: len(phase_names)]:
+        message = "attempted executable report phases must be a runner phase prefix"
+        raise ValueError(message)
     if report.status != "completed":
         if not report.failed_phase or not report.error:
             message = "terminal unsuccessful report requires phase and error"
@@ -2907,7 +3016,16 @@ def _validate_executable_report(report: RunReport) -> None:
         or setup.runs != 1
         or len(setup.samples) != 1
         or len(setup.observations) != 1
+        or setup.warmup_observations
         or setup.summary is not None
+        or not setup.samples[0].accepted
+        or not setup.samples[0].verified
+        or not setup.observations[0].verified
+        or setup.samples[0].ordinal != 0
+        or setup.observations[0].ordinal != 0
+        or setup.samples[0].strategy != "setup"
+        or setup.observations[0].strategy != "setup"
+        or setup.samples[0].duration_ns != setup.observations[0].duration_ns
     ):
         message = "setup must remain one unsummarized fresh-server observation"
         raise ValueError(message)
@@ -3019,7 +3137,7 @@ def _validate_executable_ramp(report: RunReport) -> None:
     ... )
     >>> _validate_executable_ramp(ramp)
     """
-    if report.status in {"completed", "refused", "failed", "cutoff"} and (
+    if report.status in {"completed", "refused", "cutoff"} and (
         report.cleanup.processes_absent is not True
         or report.cleanup.socket_absent is not True
         or report.cleanup.scratch_absent is not True
@@ -3250,6 +3368,199 @@ def process_identity_matches(identity: ProcessIdentity) -> bool:
     return _process_start_time(identity.pid) == identity.start_time
 
 
+def _pidfd_capability_error() -> str | None:
+    """Return why stable process signaling is unavailable, if applicable.
+
+    >>> error = _pidfd_capability_error()
+    >>> error is None or "pidfd" in error
+    True
+
+    Returns
+    -------
+    str | None
+        ``None`` only when Linux pidfd open and signal APIs are callable.
+    """
+    if platform.system() != "Linux":
+        return "pidfd signaling requires Linux"
+    if not callable(getattr(os, "pidfd_open", None)):
+        return "os.pidfd_open is unavailable"
+    if not callable(getattr(signal, "pidfd_send_signal", None)):
+        return "signal.pidfd_send_signal is unavailable"
+    return None
+
+
+@dataclasses.dataclass(frozen=True)
+class _PidfdHandle:
+    """One stable kernel handle bound to an exact recorded identity.
+
+    Attributes
+    ----------
+    identity : ProcessIdentity
+        Identity verified immediately before and after opening the handle.
+    descriptor : int
+        Owned pidfd closed by :class:`_PidfdRegistry`.
+
+    Examples
+    --------
+    >>> _PidfdHandle(ProcessIdentity("worker", 2, 3), 4).descriptor
+    4
+    """
+
+    identity: ProcessIdentity
+    descriptor: int
+
+
+class _PidfdRegistry:
+    """Retain and signal stable handles without check-to-signal PID races.
+
+    >>> registry = _PidfdRegistry()
+    >>> current = _record_process("self", os.getpid())
+    >>> registry.retain(current)
+    True
+    >>> registry.retained == (current,)
+    True
+    >>> registry.close()
+
+    Parameters
+    ----------
+    _start_time_reader : collections.abc.Callable | None
+        Private deterministic test seam for the two identity reads.
+    """
+
+    def __init__(
+        self,
+        *,
+        _start_time_reader: cabc.Callable[[int], int | None] | None = None,
+    ) -> None:
+        """Create an empty registry after checking platform capability.
+
+        >>> registry = _PidfdRegistry()
+        >>> registry.retained
+        ()
+        >>> registry.close()
+        """
+        capability_error = _pidfd_capability_error()
+        if capability_error is not None:
+            raise RuntimeError(capability_error)
+        self._start_time_reader = _start_time_reader or _process_start_time
+        self._handles: dict[tuple[int, int], _PidfdHandle] = {}
+        self.errors: list[str] = []
+
+    @property
+    def retained(self) -> tuple[ProcessIdentity, ...]:
+        """Return identities with live registry-owned handles.
+
+        >>> registry = _PidfdRegistry()
+        >>> registry.retained
+        ()
+        >>> registry.close()
+        """
+        return tuple(handle.identity for handle in self._handles.values())
+
+    def retain(self, identity: ProcessIdentity) -> bool:
+        """Bind one identity across pre-open and post-open start-time checks.
+
+        >>> registry = _PidfdRegistry()
+        >>> registry.retain(dataclasses.replace(
+        ...     _record_process("self", os.getpid()), start_time=-1
+        ... ))
+        False
+        >>> registry.close()
+
+        Parameters
+        ----------
+        identity : ProcessIdentity
+            Exact PID and start time learned from owned progress.
+
+        Returns
+        -------
+        bool
+            Whether a stable handle is retained for the exact identity.
+        """
+        key = (identity.pid, identity.start_time)
+        if key in self._handles:
+            return True
+        if self._start_time_reader(identity.pid) != identity.start_time:
+            return False
+        try:
+            descriptor = os.pidfd_open(identity.pid, 0)
+        except OSError as error:
+            self.errors.append(
+                f"{identity.role} pid {identity.pid} pidfd_open: "
+                f"{type(error).__name__}: {error}"
+            )
+            return False
+        if self._start_time_reader(identity.pid) != identity.start_time:
+            os.close(descriptor)
+            return False
+        self._handles[key] = _PidfdHandle(identity, descriptor)
+        return True
+
+    def retain_many(self, identities: t.Iterable[ProcessIdentity]) -> None:
+        """Attempt to retain every newly learned identity.
+
+        >>> registry = _PidfdRegistry()
+        >>> registry.retain_many(())
+        >>> registry.retained
+        ()
+        >>> registry.close()
+        """
+        for identity in identities:
+            self.retain(identity)
+
+    def signal(self, identity: ProcessIdentity, number: signal.Signals) -> bool:
+        """Signal an exact retained handle without consulting its numeric PID.
+
+        >>> registry = _PidfdRegistry()
+        >>> registry.signal(ProcessIdentity("absent", 2, 3), signal.SIGTERM)
+        False
+        >>> registry.close()
+
+        Parameters
+        ----------
+        identity : ProcessIdentity
+            Previously retained exact identity.
+        number : signal.Signals
+            Signal delivered through the stable pidfd.
+
+        Returns
+        -------
+        bool
+            Whether the kernel accepted the pidfd signal.
+        """
+        handle = self._handles.get((identity.pid, identity.start_time))
+        if handle is None:
+            return False
+        try:
+            signal.pidfd_send_signal(
+                handle.descriptor,
+                number,
+                None,
+                0,
+            )
+        except ProcessLookupError:
+            return False
+        except OSError as error:
+            self.errors.append(
+                f"{identity.role} pid {identity.pid} pidfd signal {number}: "
+                f"{type(error).__name__}: {error}"
+            )
+            return False
+        return True
+
+    def close(self) -> None:
+        """Close every retained descriptor exactly once.
+
+        >>> registry = _PidfdRegistry()
+        >>> registry.close()
+        >>> registry.close()
+        """
+        handles = tuple(self._handles.values())
+        self._handles.clear()
+        for handle in handles:
+            os.close(handle.descriptor)
+
+
 _UNIX_SOCKET_PATH_MAX_BYTES = 107
 
 
@@ -3403,44 +3714,30 @@ def _stop_owned_process(
         message = "process cleanup grace must be positive"
         raise ValueError(message)
     errors: list[str] = []
-    process.poll()
-    if process.returncode is None:
-        if process_identity_matches(identity):
-            try:
-                os.kill(identity.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            except OSError as error:
-                errors.append(
-                    f"{identity.role} pid {identity.pid} SIGTERM: "
-                    f"{type(error).__name__}: {error}"
-                )
-        else:
-            errors.append(
-                f"{identity.role} pid {identity.pid} identity changed before SIGTERM"
-            )
-        try:
-            process.wait(timeout=grace_s)
-        except subprocess.TimeoutExpired:
-            if process_identity_matches(identity):
-                try:
-                    os.kill(identity.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                except OSError as error:
-                    errors.append(
-                        f"{identity.role} pid {identity.pid} SIGKILL: "
-                        f"{type(error).__name__}: {error}"
-                    )
-            else:
-                errors.append(
-                    f"{identity.role} pid {identity.pid} identity changed "
-                    "before SIGKILL"
-                )
+    try:
+        registry = _PidfdRegistry()
+    except RuntimeError as error:
+        return CleanupReport(
+            complete=False,
+            errors=(str(error),),
+            processes_absent=not process_identity_matches(identity),
+        )
+    try:
+        registry.retain(identity)
+        process.poll()
+        if process.returncode is None:
+            registry.signal(identity, signal.SIGTERM)
             try:
                 process.wait(timeout=grace_s)
             except subprocess.TimeoutExpired:
-                errors.append(f"{identity.role} pid {identity.pid} was not reaped")
+                registry.signal(identity, signal.SIGKILL)
+                try:
+                    process.wait(timeout=grace_s)
+                except subprocess.TimeoutExpired:
+                    errors.append(f"{identity.role} pid {identity.pid} was not reaped")
+        errors.extend(registry.errors)
+    finally:
+        registry.close()
     if process_identity_matches(identity):
         errors.append(
             f"{identity.role} pid {identity.pid} with start time "
@@ -3451,6 +3748,126 @@ def _stop_owned_process(
         errors=tuple(errors),
         processes_absent=not process_identity_matches(identity),
     )
+
+
+def _kill_exact_tmux_socket(
+    socket_path: pathlib.Path,
+    *,
+    timeout_s: float,
+) -> tuple[str, ...]:
+    """Boundedly request ``kill-server`` on one exact isolated socket.
+
+    >>> _kill_exact_tmux_socket(pathlib.Path("missing.sock"), timeout_s=0.01)
+    ()
+
+    Parameters
+    ----------
+    socket_path : pathlib.Path
+        Exact isolated socket owned by one benchmark run.
+    timeout_s : float
+        Maximum wait for the helper and each stable-handle escalation.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Empty only when the socket is absent after the bounded request.
+
+    Raises
+    ------
+    ValueError
+        If the timeout is not positive.
+    """
+    if timeout_s <= 0:
+        message = "exact socket cleanup timeout must be positive"
+        raise ValueError(message)
+    if not socket_path.exists():
+        return ()
+    environment = os.environ.copy()
+    environment.pop("TMUX", None)
+    environment.pop("TMUX_PANE", None)
+    errors: list[str] = []
+    try:
+        helper = subprocess.Popen(
+            ("tmux", "-S", str(socket_path), "kill-server"),
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as error:
+        return (f"exact socket kill-server: {type(error).__name__}: {error}",)
+    try:
+        identity = _record_process("tmux-kill-server", helper.pid)
+    except RuntimeError:
+        try:
+            helper.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            errors.append("exact socket kill-server identity unavailable")
+    else:
+        registry = _PidfdRegistry()
+        try:
+            registry.retain(identity)
+            try:
+                helper.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                registry.signal(identity, signal.SIGTERM)
+                try:
+                    helper.wait(timeout=timeout_s)
+                except subprocess.TimeoutExpired:
+                    registry.signal(identity, signal.SIGKILL)
+                    try:
+                        helper.wait(timeout=timeout_s)
+                    except subprocess.TimeoutExpired:
+                        errors.append("exact socket kill-server helper remains")
+            errors.extend(registry.errors)
+        finally:
+            registry.close()
+    if helper.returncode == 0 and socket_path.exists():
+        try:
+            socket_status = socket_path.lstat()
+            if not stat.S_ISSOCK(socket_status.st_mode):
+                errors.append(f"configured socket was replaced: {socket_path}")
+            else:
+                socket_path.unlink()
+        except OSError as error:
+            errors.append(f"exact socket path removal: {type(error).__name__}: {error}")
+    return tuple(errors)
+
+
+def _remove_proven_stale_socket(
+    socket_path: pathlib.Path,
+    identities: t.Iterable[ProcessIdentity],
+) -> tuple[str, ...]:
+    """Remove a stale socket only after its recorded server is absent.
+
+    >>> _remove_proven_stale_socket(pathlib.Path("missing.sock"), ())
+    ()
+
+    Parameters
+    ----------
+    socket_path : pathlib.Path
+        Exact configured socket after a bounded ``kill-server`` attempt.
+    identities : collections.abc.Iterable[ProcessIdentity]
+        Recorded ownership evidence including the exact server identity.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Empty only when the path is absent or safely removed.
+    """
+    if not socket_path.exists():
+        return ()
+    servers = tuple(identity for identity in identities if identity.role == "server")
+    if not servers or any(process_identity_matches(identity) for identity in servers):
+        return (f"socket ownership is not proven absent: {socket_path}",)
+    try:
+        status = socket_path.lstat()
+        if not stat.S_ISSOCK(status.st_mode) or status.st_uid != os.getuid():
+            return (f"configured socket was replaced: {socket_path}",)
+        socket_path.unlink()
+    except OSError as error:
+        return (f"stale socket removal: {type(error).__name__}: {error}",)
+    return () if not socket_path.exists() else (f"socket remains: {socket_path}",)
 
 
 def _stream_name(ordinal: int, delayed_ordinal: int) -> str:
@@ -3751,6 +4168,9 @@ def start_fuzzer(
     frame_rate_hz: float = 40.0,
     duration_s: float = 300.0,
     _identity_out: list[ProcessIdentity] | None = None,
+    _identity_callback: (
+        cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
+    ) = None,
 ) -> subprocess.Popen[bytes]:
     """Start the paused Task 1 service and wait for its exact ready marker.
 
@@ -3777,6 +4197,9 @@ def start_fuzzer(
     _identity_out : list[ProcessIdentity] | None
         Internal ownership handoff populated with the identity captured at
         spawn time before this function returns.
+    _identity_callback : collections.abc.Callable | None
+        Private worker hook invoked immediately after the child identity is
+        captured and before readiness is awaited.
 
     Returns
     -------
@@ -3852,14 +4275,16 @@ def start_fuzzer(
     identity: ProcessIdentity | None = None
     try:
         identity = _record_process("fuzzer", process.pid)
+        if _identity_out is not None:
+            _identity_out.append(identity)
+        if _identity_callback is not None:
+            _identity_callback((identity,))
         _wait_for_fuzzer_ready(
             process,
             ready,
             run_id,
             timeout_s=ready_timeout_s,
         )
-        if _identity_out is not None:
-            _identity_out.append(identity)
     except BaseException as startup_error:
         if identity is None:
             start_time = _process_start_time(process.pid)
@@ -3868,23 +4293,21 @@ def start_fuzzer(
         if identity is None:
             process.poll()
             if process.returncode is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=1.0)
-                except subprocess.TimeoutExpired:
-                    cleanup_error = (
-                        f"fuzzer pid {process.pid} identity unavailable; "
-                        "child was not reaped"
-                    )
-                    cleanup_report = CleanupReport(
-                        complete=False,
-                        errors=(cleanup_error,),
-                    )
-                else:
-                    cleanup_report = CleanupReport(complete=True)
+                cleanup_error = (
+                    f"fuzzer pid {process.pid} identity unavailable; "
+                    "refused unsafe PID signaling"
+                )
+                cleanup_report = CleanupReport(
+                    complete=False,
+                    errors=(cleanup_error,),
+                    processes_absent=False,
+                )
             else:
                 process.wait()
-                cleanup_report = CleanupReport(complete=True)
+                cleanup_report = CleanupReport(
+                    complete=True,
+                    processes_absent=True,
+                )
         else:
             cleanup_report = _stop_owned_process(process, identity)
         if not cleanup_report.complete:
@@ -3903,7 +4326,9 @@ def _prepare_context(
     socket_path: pathlib.Path | None,
     run_id: str,
     delayed_ordinal: int,
-    _process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None,
+    _process_identity_callback: (
+        cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
+    ) = None,
 ) -> RunContext:
     """Create isolated host resources and an engine without starting setup timing.
 
@@ -3983,6 +4408,7 @@ def _prepare_context(
     socket_root_created = False
     fuzzer: subprocess.Popen[bytes] | None = None
     fuzzer_identity: ProcessIdentity | None = None
+    process_handles: _PidfdRegistry | None = None
     try:
         from libtmux.experimental.engines import (
             AsyncControlModeEngine,
@@ -3997,15 +4423,21 @@ def _prepare_context(
         if socket_root is not None:
             _acquire_private_directory(socket_root)
             socket_root_created = True
+        process_handles = _PidfdRegistry()
+
+        def publish_identities(delta: tuple[ProcessIdentity, ...]) -> None:
+            process_handles.retain_many(delta)
+            if _process_identity_callback is not None:
+                _process_identity_callback(delta)
+
         fuzzer_identities: list[ProcessIdentity] = []
         fuzzer = start_fuzzer(
             resolved_scratch,
             run_id,
             _identity_out=fuzzer_identities,
+            _identity_callback=publish_identities,
         )
         fuzzer_identity = _only_process_identity(fuzzer_identities)
-        if _process_identity_callback is not None:
-            _process_identity_callback(fuzzer_identity)
         server = Server(socket_path=resolved_socket, config_file=os.devnull)
         if mode is ExecutionMode.SYNC:
             engine: TmuxEngine | AsyncTmuxEngine
@@ -4058,12 +4490,16 @@ def _prepare_context(
             setup_duration_ns=0,
             processes=(fuzzer_identity,),
             ambient_tmux_environment=ambient_tmux_environment,
-            process_identity_callback=_process_identity_callback,
+            process_identity_callback=publish_identities,
+            process_handles=process_handles,
         )
     except BaseException as setup_error:
         cleanup_errors: list[str] = []
         if fuzzer is not None and fuzzer_identity is not None:
             cleanup_errors.extend(_stop_owned_process(fuzzer, fuzzer_identity).errors)
+        if process_handles is not None:
+            cleanup_errors.extend(process_handles.errors)
+            process_handles.close()
         for label, directory, acquired in (
             ("socket root", socket_root, socket_root_created),
             ("scratch", resolved_scratch, scratch_created),
@@ -4102,7 +4538,9 @@ def setup_sync(
     socket_path: pathlib.Path | None = None,
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
-    _process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None,
+    _process_identity_callback: (
+        cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
+    ) = None,
 ) -> RunContext:
     """Build and exactly verify one synchronous live topology.
 
@@ -4180,19 +4618,25 @@ def setup_sync(
     engine = t.cast("TmuxEngine", context.engine)
     keepalive = f"bench-{run_id}-keepalive"
     try:
+        bootstrap = SubprocessEngine.for_server(context.server)
+        run(
+            NewSession(
+                session_name=keepalive,
+                window_shell="exec tail -n 0 -f /dev/null",
+            ),
+            bootstrap,
+        ).raise_for_status()
+        run(
+            SetOption(server=True, option="exit-empty", value="off"),
+            bootstrap,
+        ).raise_for_status()
+        server_pid_result = run(DisplayMessage(message="#{pid}"), bootstrap)
+        server_pid_result.raise_for_status()
+        server_identity = _record_process("server", int(server_pid_result.text))
+        context.processes = (*context.processes, server_identity)
+        if context.process_identity_callback is not None:
+            context.process_identity_callback((server_identity,))
         if lane is EngineLane.CONTROL:
-            bootstrap = SubprocessEngine.for_server(context.server)
-            run(
-                NewSession(
-                    session_name=keepalive,
-                    window_shell="exec tail -n 0 -f /dev/null",
-                ),
-                bootstrap,
-            ).raise_for_status()
-            run(
-                SetOption(server=True, option="exit-empty", value="off"),
-                bootstrap,
-            ).raise_for_status()
             run(ListSessions(), engine).raise_for_status()
 
         workspaces = build_workspaces(
@@ -4225,15 +4669,8 @@ def setup_sync(
                 ),
                 engine,
             ).raise_for_status()
-            run(KillSession(target=NameRef(keepalive)), engine).raise_for_status()
+        run(KillSession(target=NameRef(keepalive)), engine).raise_for_status()
         context.setup_duration_ns = time.perf_counter_ns() - started_ns
-        server_pid_result = run(DisplayMessage(message="#{pid}"), engine)
-        server_pid_result.raise_for_status()
-        server_pid = int(server_pid_result.text)
-        server_identity = _record_process("server", server_pid)
-        context.processes = (*context.processes, server_identity)
-        if context.process_identity_callback is not None:
-            context.process_identity_callback(server_identity)
         verify_topology(context, snapshot_topology_sync(context))
     except BaseException as setup_error:
         try:
@@ -4260,7 +4697,9 @@ async def setup_async(
     socket_path: pathlib.Path | None = None,
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
-    _process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None,
+    _process_identity_callback: (
+        cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
+    ) = None,
 ) -> RunContext:
     """Build and exactly verify one asynchronous live topology.
 
@@ -4339,23 +4778,29 @@ async def setup_async(
     engine = t.cast("AsyncTmuxEngine", context.engine)
     keepalive = f"bench-{run_id}-keepalive"
     try:
+        bootstrap = AsyncSubprocessEngine.for_server(context.server)
+        (
+            await arun(
+                NewSession(
+                    session_name=keepalive,
+                    window_shell="exec tail -n 0 -f /dev/null",
+                ),
+                bootstrap,
+            )
+        ).raise_for_status()
+        (
+            await arun(
+                SetOption(server=True, option="exit-empty", value="off"),
+                bootstrap,
+            )
+        ).raise_for_status()
+        server_pid_result = await arun(DisplayMessage(message="#{pid}"), bootstrap)
+        server_pid_result.raise_for_status()
+        server_identity = _record_process("server", int(server_pid_result.text))
+        context.processes = (*context.processes, server_identity)
+        if context.process_identity_callback is not None:
+            context.process_identity_callback((server_identity,))
         if lane is EngineLane.CONTROL:
-            bootstrap = AsyncSubprocessEngine.for_server(context.server)
-            (
-                await arun(
-                    NewSession(
-                        session_name=keepalive,
-                        window_shell="exec tail -n 0 -f /dev/null",
-                    ),
-                    bootstrap,
-                )
-            ).raise_for_status()
-            (
-                await arun(
-                    SetOption(server=True, option="exit-empty", value="off"),
-                    bootstrap,
-                )
-            ).raise_for_status()
             control = t.cast(AsyncControlModeEngine, engine)
             await control.start()
             (await arun(ListSessions(), engine)).raise_for_status()
@@ -4396,17 +4841,8 @@ async def setup_async(
                 )
             ).raise_for_status()
             control.set_attach_targets([real_session_id])
-            (
-                await arun(KillSession(target=NameRef(keepalive)), engine)
-            ).raise_for_status()
+        (await arun(KillSession(target=NameRef(keepalive)), engine)).raise_for_status()
         context.setup_duration_ns = time.perf_counter_ns() - started_ns
-        server_pid_result = await arun(DisplayMessage(message="#{pid}"), engine)
-        server_pid_result.raise_for_status()
-        server_pid = int(server_pid_result.text)
-        server_identity = _record_process("server", server_pid)
-        context.processes = (*context.processes, server_identity)
-        if context.process_identity_callback is not None:
-            context.process_identity_callback(server_identity)
         verify_topology(context, await snapshot_topology_async(context))
     except BaseException as setup_error:
         try:
@@ -4644,8 +5080,7 @@ def verify_topology(
     )
     identity_callback = getattr(context, "process_identity_callback", None)
     if identity_callback is not None:
-        for identity in pane_processes:
-            identity_callback(identity)
+        identity_callback(pane_processes)
     context.topology_verified = True
     return snapshot
 
@@ -5659,6 +6094,7 @@ def wait_capture_poll_sync(
             break
         if isinstance(engine, SubprocessEngine):
             command = engine.connection.argv(*encode_direct_argv(rendered))
+            handles = _PidfdRegistry()
             try:
                 process = subprocess.Popen(
                     command,
@@ -5670,16 +6106,37 @@ def wait_capture_poll_sync(
                     start_new_session=True,
                 )
             except FileNotFoundError:
+                handles.close()
                 raise exc.TmuxCommandNotFound from None
             try:
-                stdout, stderr = process.communicate(timeout=remaining_s)
-            except subprocess.TimeoutExpired as error:
-                with contextlib.suppress(OSError):
-                    os.killpg(process.pid, signal.SIGKILL)
-                stdout, stderr = process.communicate()
-                del stdout, stderr
-                message = f"capture wait timed out for request {request.request_id}"
-                raise TimeoutError(message) from error
+                try:
+                    recorded_identity = _record_process("capture-wait", process.pid)
+                except RuntimeError:
+                    identity = None
+                else:
+                    identity = recorded_identity
+                    handles.retain(recorded_identity)
+                try:
+                    stdout, stderr = process.communicate(timeout=remaining_s)
+                except subprocess.TimeoutExpired as error:
+                    if identity is None or not handles.signal(identity, signal.SIGKILL):
+                        message = (
+                            "capture wait could not safely stop its timed-out "
+                            "subprocess"
+                        )
+                        raise RuntimeError(message) from error
+                    try:
+                        stdout, stderr = process.communicate(timeout=0.1)
+                    except subprocess.TimeoutExpired as cleanup_error:
+                        message = (
+                            "capture wait subprocess did not exit after escalation"
+                        )
+                        raise RuntimeError(message) from cleanup_error
+                    del stdout, stderr
+                    message = f"capture wait timed out for request {request.request_id}"
+                    raise TimeoutError(message) from error
+            finally:
+                handles.close()
             stdout_lines = stdout.split("\n")
             while stdout_lines and stdout_lines[-1] == "":
                 stdout_lines.pop()
@@ -7747,6 +8204,7 @@ async def run_repeatable_phase(
         [str, str, int, PhaseMeasurement, RawSample | None], object
     ]
     | None = None,
+    boundary_callback: cabc.Callable[[str], object] | None = None,
 ) -> RepeatablePhaseResult:
     """Deterministically interleave strategies and retain accepted timed rows.
 
@@ -7785,6 +8243,8 @@ async def run_repeatable_phase(
     progress_callback : collections.abc.Callable | None
         Private orchestration hook called after every accepted warmup or timed
         invocation. Timed calls receive the newly retained raw sample.
+    boundary_callback : collections.abc.Callable | None
+        Private hook called with the exact strategy before every invocation.
 
     Returns
     -------
@@ -7816,6 +8276,8 @@ async def run_repeatable_phase(
         for strategy in cycle_order:
             order.append(strategy)
             try:
+                if boundary_callback is not None:
+                    await _await_if_needed(boundary_callback(strategy))
                 resources_before = sampler()
                 produced = strategies[strategy]()
                 measurement = _validated_phase_measurement(
@@ -7938,6 +8400,10 @@ async def cleanup_run(
         message = "cleanup grace must be positive"
         raise ValueError(message)
     errors: list[str] = []
+    registry = getattr(context, "process_handles", None)
+    if registry is None:
+        registry = _PidfdRegistry()
+    registry.retain_many(context.processes)
     stop_path = context.scratch / "fuzzer" / "stop.json"
     if stop_path.parent.exists():
         try:
@@ -7962,6 +8428,8 @@ async def cleanup_run(
         context.server.kill()
     except Exception as error:  # noqa: BLE001
         errors.append(f"server kill: {type(error).__name__}: {error}")
+    if context.socket_path.exists():
+        errors.extend(_kill_exact_tmux_socket(context.socket_path, timeout_s=grace_s))
 
     survivors = await _wait_for_process_absence(
         context.processes,
@@ -7972,17 +8440,7 @@ async def cleanup_run(
         if not survivors:
             break
         for identity in survivors:
-            if not process_identity_matches(identity):
-                continue
-            try:
-                os.kill(identity.pid, signal_number)
-            except ProcessLookupError:
-                continue
-            except OSError as error:
-                errors.append(
-                    f"{identity.role} pid {identity.pid} signal "
-                    f"{signal_number}: {type(error).__name__}: {error}"
-                )
+            registry.signal(identity, signal_number)
         survivors = await _wait_for_process_absence(
             context.processes,
             timeout_s=grace_s,
@@ -7997,16 +8455,30 @@ async def cleanup_run(
         for identity in survivors
         if process_identity_matches(identity)
     )
-    try:
-        if context.scratch.exists():
-            shutil.rmtree(context.scratch)
-    except OSError as error:
-        errors.append(f"scratch removal: {type(error).__name__}: {error}")
-    try:
-        if context.socket_root is not None and context.socket_root.exists():
-            shutil.rmtree(context.socket_root)
-    except OSError as error:
-        errors.append(f"socket root removal: {type(error).__name__}: {error}")
+    processes_absent = all(
+        not process_identity_matches(identity) for identity in context.processes
+    )
+    if processes_absent and context.socket_path.exists():
+        errors.extend(
+            _remove_proven_stale_socket(context.socket_path, context.processes)
+        )
+    socket_absent = not context.socket_path.exists()
+    if processes_absent and socket_absent:
+        try:
+            if context.scratch.exists():
+                shutil.rmtree(context.scratch)
+        except OSError as error:
+            errors.append(f"scratch removal: {type(error).__name__}: {error}")
+        try:
+            if context.socket_root is not None and context.socket_root.exists():
+                shutil.rmtree(context.socket_root)
+        except OSError as error:
+            errors.append(f"socket root removal: {type(error).__name__}: {error}")
+    else:
+        if not processes_absent:
+            errors.append("owned processes remain; retained scratch evidence")
+        if not socket_absent:
+            errors.append("configured socket remains; retained scratch evidence")
     if context.socket_path.exists():
         errors.append(f"socket remains: {context.socket_path}")
     if context.scratch.exists():
@@ -8028,6 +8500,8 @@ async def cleanup_run(
             os.environ.pop(name, None)
         else:
             os.environ[name] = value
+    errors.extend(registry.errors)
+    registry.close()
     processes_absent = all(
         not process_identity_matches(identity) for identity in context.processes
     )
@@ -8036,7 +8510,7 @@ async def cleanup_run(
         context.socket_root is None or not context.socket_root.exists()
     )
     return CleanupReport(
-        complete=not errors,
+        complete=(not errors and processes_absent and socket_absent and scratch_absent),
         errors=tuple(errors),
         processes_absent=processes_absent,
         socket_absent=socket_absent,
@@ -8290,7 +8764,7 @@ def append_progress_event(path: pathlib.Path, event: ProgressEvent) -> None:
     path : pathlib.Path
         Append-only worker-to-supervisor progress stream.
     event : ProgressEvent
-        Complete event with cumulative process identities.
+        Complete event with only the identities first learned at this checkpoint.
 
     Returns
     -------
@@ -8301,18 +8775,32 @@ def append_progress_event(path: pathlib.Path, event: ProgressEvent) -> None:
     encoded = (
         json.dumps(_json_value(event), separators=(",", ":"), sort_keys=True) + "\n"
     ).encode()
-    flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+    flags = os.O_APPEND | os.O_WRONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    descriptor = os.open(path, flags, 0o600)
+    created = False
     try:
-        written = os.write(descriptor, encoded)
-        if written != len(encoded):
-            message = "short append to progress stream"
-            raise OSError(message)
+        descriptor = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+        created = True
+    except FileExistsError:
+        descriptor = os.open(path, flags)
+    try:
+        remaining = memoryview(encoded)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            if written <= 0:
+                message = "zero-byte append to progress stream"
+                raise OSError(message)
+            remaining = remaining[written:]
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+    if created:
+        parent_descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(parent_descriptor)
+        finally:
+            os.close(parent_descriptor)
 
 
 def _progress_event_from_json(value: object) -> ProgressEvent:
@@ -8364,7 +8852,7 @@ class _WorkerRecorder:
     sequence : int
         Last published sequence number.
     identities : list[ProcessIdentity]
-        Cumulative exact identities published with every event.
+        Cumulative exact identities retained for one terminal report copy.
 
     Examples
     --------
@@ -8386,7 +8874,12 @@ class _WorkerRecorder:
     sequence: int = -1
     identities: list[ProcessIdentity] = dataclasses.field(default_factory=list)
 
-    def checkpoint(self, name: str) -> None:
+    def checkpoint(
+        self,
+        name: str,
+        *,
+        identity_delta: tuple[ProcessIdentity, ...] = (),
+    ) -> None:
         """Publish an increasing event before its matching report checkpoint.
 
         >>> with tempfile.TemporaryDirectory() as directory:
@@ -8402,7 +8895,6 @@ class _WorkerRecorder:
         self.sequence += 1
         self.report = dataclasses.replace(
             self.report,
-            processes=tuple(self.identities),
             progress_sequence=self.sequence,
         )
         append_progress_event(
@@ -8412,7 +8904,7 @@ class _WorkerRecorder:
                 sequence=self.sequence,
                 checkpoint=name,
                 monotonic_ns=time.monotonic_ns(),
-                processes=tuple(self.identities),
+                processes=identity_delta,
             ),
         )
         write_json_atomic(self.checkpoint_path, self.report)
@@ -8431,11 +8923,51 @@ class _WorkerRecorder:
         >>> len(recorder.identities)
         1
         """
-        key = (identity.role, identity.pid, identity.start_time)
-        if key in {(item.role, item.pid, item.start_time) for item in self.identities}:
+        self.record_identities((identity,), checkpoint=f"identity.{identity.role}")
+
+    def record_identities(
+        self,
+        identities: t.Iterable[ProcessIdentity],
+        *,
+        checkpoint: str | None = None,
+    ) -> None:
+        """Publish one constant-count or batched identity delta exactly once.
+
+        >>> recorder = _WorkerRecorder(
+        ...     RunReport(Topology(1, 1, 1), run_id="run-7"),
+        ...     pathlib.Path("unused"), pathlib.Path("unused-progress"),
+        ... )
+        >>> recorder.identities.extend((ProcessIdentity("worker", 2, 3),))
+        >>> len(recorder.identities)
+        1
+
+        Parameters
+        ----------
+        identities : collections.abc.Iterable[ProcessIdentity]
+            Newly learned exact identities, possibly one verified pane batch.
+        checkpoint : str | None
+            Stable delta checkpoint label. When omitted, a homogeneous delta
+            uses its role and a mixed delta uses ``identities``.
+        """
+        known = {
+            (identity.role, identity.pid, identity.start_time)
+            for identity in self.identities
+        }
+        delta: list[ProcessIdentity] = []
+        for identity in identities:
+            key = (identity.role, identity.pid, identity.start_time)
+            if key in known:
+                continue
+            known.add(key)
+            delta.append(identity)
+        if not delta:
             return
-        self.identities.append(identity)
-        self.checkpoint(f"identity.{identity.role}")
+        self.identities.extend(delta)
+        if checkpoint is None:
+            roles = {identity.role for identity in delta}
+            role = roles.pop() if len(roles) == 1 else "identities"
+            checkpoint = f"identity.{role}"
+        self.checkpoint(checkpoint, identity_delta=tuple(delta))
 
 
 async def _worker_live_postcondition(
@@ -8522,6 +9054,7 @@ async def _run_worker_group(
     policy: ResourcePolicy,
     latest: dict[str, PhaseMeasurement],
     fail_after: str | None,
+    active_phase: list[str],
 ) -> None:
     """Run one deterministically interleaved family and checkpoint each call.
 
@@ -8530,7 +9063,7 @@ async def _run_worker_group(
     ...         await _run_worker_group(
     ...             t.cast(_WorkerRecorder, None), t.cast(RunContext, None), {},
     ...             warmup=0, runs=1, seed=1, policy=ResourcePolicy(), latest={},
-    ...             fail_after=None,
+    ...             fail_after=None, active_phase=["setup"],
     ...         )
     ...     except ValueError as error:
     ...         return str(error)
@@ -8557,6 +9090,8 @@ async def _run_worker_group(
         Destination retaining the latest typed result by cell.
     fail_after : str | None
         Private test-harness phase that raises after its final checkpoint.
+    active_phase : list[str]
+        Single-item mutable exact boundary owned by :func:`run_worker`.
 
     Returns
     -------
@@ -8566,6 +9101,7 @@ async def _run_worker_group(
     if not strategies:
         message = "worker phase group requires strategies"
         raise ValueError(message)
+    active_phase[0] = next(iter(strategies))
     topology = context.topology
     for name in strategies:
         recorder.report = _replace_phase(
@@ -8591,14 +9127,17 @@ async def _run_worker_group(
         latest[strategy] = measurement
         phases = {phase.name: phase for phase in recorder.report.phases}
         phase = phases[strategy]
-        if sample is not None:
+        observation = _observation_for_measurement(strategy, ordinal, measurement)
+        if stage == "warmup":
+            phase = dataclasses.replace(
+                phase,
+                warmup_observations=(*phase.warmup_observations, observation),
+            )
+        elif sample is not None:
             phase = dataclasses.replace(
                 phase,
                 samples=(*phase.samples, sample),
-                observations=(
-                    *phase.observations,
-                    _observation_for_measurement(strategy, ordinal, measurement),
-                ),
+                observations=(*phase.observations, observation),
             )
             if ordinal == runs - 1:
                 phase = _completed_phase(phase)
@@ -8623,6 +9162,7 @@ async def _run_worker_group(
             context, measurement, policy
         ),
         progress_callback=on_progress,
+        boundary_callback=lambda strategy: active_phase.__setitem__(0, strategy),
     )
     if result.failure is not None:
         phases = {phase.name: phase for phase in recorder.report.phases}
@@ -8661,6 +9201,52 @@ def _position_target(ids: tuple[str, ...], position: str) -> str:
     except KeyError as error:
         message = f"unknown search position: {position}"
         raise ValueError(message) from error
+
+
+_ShieldedResult = t.TypeVar("_ShieldedResult")
+
+
+async def _drain_task_under_repeated_cancellation(
+    task: asyncio.Task[_ShieldedResult],
+    *,
+    initial_cancellation: asyncio.CancelledError | None = None,
+) -> tuple[_ShieldedResult, asyncio.CancelledError | None]:
+    """Drain an independently owned task before re-raising first cancellation.
+
+    >>> async def example():
+    ...     task = asyncio.create_task(asyncio.sleep(0, result=7))
+    ...     result, cancellation = await _drain_task_under_repeated_cancellation(task)
+    ...     return result, cancellation
+    >>> asyncio.run(example())
+    (7, None)
+
+    Parameters
+    ----------
+    task : asyncio.Task
+        Independently owned finalization task that must reach a terminal state.
+    initial_cancellation : asyncio.CancelledError | None
+        Cancellation already caught before finalization began.
+
+    Returns
+    -------
+    tuple[typing.Any, asyncio.CancelledError | None]
+        Finalization result and the first cancellation to re-raise directly.
+
+    Raises
+    ------
+    BaseException
+        Finalization failure after the task has been drained.
+    """
+    cancellation = initial_cancellation
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as error:  # noqa: PERF203
+            if cancellation is None:
+                cancellation = error
+        except BaseException:  # noqa: BLE001
+            break
+    return task.result(), cancellation
 
 
 async def run_worker(
@@ -8795,8 +9381,10 @@ async def run_worker(
         progress_path,
         stall_after=stall_after,
     )
-    recorder.identities.append(_record_process("worker", os.getpid()))
-    recorder.checkpoint("worker.started")
+    recorder.record_identities(
+        (_record_process("worker", os.getpid()),),
+        checkpoint="worker.started",
+    )
     if extra_identity is not None:
         recorder.record_identity(extra_identity)
     context: RunContext | None = None
@@ -8805,6 +9393,8 @@ async def run_worker(
     terminal_error: str | None = None
     cleanup = CleanupReport(False)
     latest: dict[str, PhaseMeasurement] = {}
+    active_phase = ["setup"]
+    cancellation: asyncio.CancelledError | None = None
 
     def fail_if_requested(phase: str) -> None:
         if fail_after == phase:
@@ -8823,7 +9413,7 @@ async def run_worker(
                 socket_path=socket_path,
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
-                _process_identity_callback=recorder.record_identity,
+                _process_identity_callback=recorder.record_identities,
             )
         else:
             context = await setup_async(
@@ -8833,7 +9423,7 @@ async def run_worker(
                 socket_path=socket_path,
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
-                _process_identity_callback=recorder.record_identity,
+                _process_identity_callback=recorder.record_identities,
             )
         resources_after = probe_host(ProcessReader())
         setup_duration = max(1, context.setup_duration_ns)
@@ -8876,6 +9466,7 @@ async def run_worker(
         recorder.checkpoint("setup")
         fail_if_requested("setup")
 
+        active_phase[0] = "stabilization"
         stabilization_started = time.perf_counter_ns()
         release_activity_gate(context)
         if mode is ExecutionMode.SYNC:
@@ -8933,6 +9524,7 @@ async def run_worker(
             policy=policy,
             latest=latest,
             fail_after=fail_after,
+            active_phase=active_phase,
         )
 
         wait_counter = 0
@@ -8979,8 +9571,10 @@ async def run_worker(
             policy=policy,
             latest=latest,
             fail_after=fail_after,
+            active_phase=active_phase,
         )
         if not control_applicable:
+            active_phase[0] = "wait.control-stream"
             recorder.report = _replace_phase(
                 recorder.report,
                 PhaseReport(
@@ -9021,6 +9615,7 @@ async def run_worker(
             policy=policy,
             latest=latest,
             fail_after=fail_after,
+            active_phase=active_phase,
         )
 
         capture_strategies: dict[str, cabc.Callable[[], object]] = {}
@@ -9048,10 +9643,12 @@ async def run_worker(
             policy=policy,
             latest=latest,
             fail_after=fail_after,
+            active_phase=active_phase,
         )
 
         from libtmux._internal.query_list import QueryList
 
+        active_phase[0] = "search.classic.sessions.first"
         snapshot = (
             snapshot_topology_sync(context)
             if mode is ExecutionMode.SYNC
@@ -9113,8 +9710,10 @@ async def run_worker(
             policy=policy,
             latest=latest,
             fail_after=fail_after,
+            active_phase=active_phase,
         )
 
+        active_phase[0] = "verification"
         final_snapshot = (
             snapshot_topology_sync(context)
             if mode is ExecutionMode.SYNC
@@ -9124,6 +9723,7 @@ async def run_worker(
         recorder.checkpoint("verification")
         fail_if_requested("verification")
     except asyncio.CancelledError as error:
+        cancellation = error
         terminal_status = "cutoff"
         failed_phase = "cancellation"
         terminal_error = f"CancelledError: {error}"
@@ -9140,61 +9740,74 @@ async def run_worker(
         terminal_error = str(error)
     except BaseException as error:  # noqa: BLE001
         terminal_status = "failed"
-        failed_phase = failed_phase or "setup"
+        failed_phase = failed_phase or active_phase[0]
         terminal_error = f"{type(error).__name__}: {error}"
     finally:
-        if context is not None:
-            try:
-                cleanup = await cleanup_run(context)
-            except BaseException as error:  # noqa: BLE001
-                cleanup = CleanupReport(
-                    False,
-                    (f"cleanup raised {type(error).__name__}: {error}",),
-                    processes_absent=False,
-                    socket_absent=not socket_path.exists(),
-                    scratch_absent=not scratch.exists(),
+
+        async def finalize_worker() -> None:
+            nonlocal cleanup, terminal_status, failed_phase, terminal_error
+            if context is not None:
+                try:
+                    cleanup = await cleanup_run(context)
+                except BaseException as error:  # noqa: BLE001
+                    cleanup = CleanupReport(
+                        False,
+                        (f"cleanup raised {type(error).__name__}: {error}",),
+                        processes_absent=False,
+                        socket_absent=not socket_path.exists(),
+                        scratch_absent=not scratch.exists(),
+                    )
+            else:
+                owned = tuple(
+                    identity
+                    for identity in recorder.identities
+                    if identity.role != "worker" and identity is not extra_identity
                 )
-        else:
-            owned = tuple(
-                identity
-                for identity in recorder.identities
-                if identity.role != "worker" and identity is not extra_identity
-            )
-            cleanup = CleanupReport(
-                complete=(
-                    all(not process_identity_matches(identity) for identity in owned)
-                    and not socket_path.exists()
-                    and not scratch.exists()
-                ),
-                errors=(),
-                processes_absent=all(
+                processes_absent = all(
                     not process_identity_matches(identity) for identity in owned
+                )
+                socket_absent = not socket_path.exists()
+                scratch_absent = not scratch.exists()
+                cleanup = CleanupReport(
+                    complete=(processes_absent and socket_absent and scratch_absent),
+                    errors=(),
+                    processes_absent=processes_absent,
+                    socket_absent=socket_absent,
+                    scratch_absent=scratch_absent,
+                )
+            if not cleanup.complete:
+                terminal_status = "failed"
+                failed_phase = failed_phase or "cleanup"
+                cleanup_detail = "; ".join(cleanup.errors) or "cleanup incomplete"
+                terminal_error = (
+                    f"{terminal_error}; {cleanup_detail}"
+                    if terminal_error
+                    else cleanup_detail
+                )
+            recorder.report = dataclasses.replace(
+                recorder.report,
+                status=terminal_status,
+                cleanup=cleanup,
+                maximum_completed=(
+                    terminal_status == "completed"
+                    and topology == Topology(100, 100, 4)
+                    and recorder.report.observed_topology == topology
                 ),
-                socket_absent=not socket_path.exists(),
-                scratch_absent=not scratch.exists(),
+                failed_phase=failed_phase,
+                error=terminal_error,
             )
-        if not cleanup.complete:
-            terminal_status = "failed"
-            failed_phase = failed_phase or "cleanup"
-            cleanup_detail = "; ".join(cleanup.errors) or "cleanup incomplete"
-            terminal_error = (
-                f"{terminal_error}; {cleanup_detail}"
-                if terminal_error
-                else cleanup_detail
-            )
-        recorder.report = dataclasses.replace(
-            recorder.report,
-            status=terminal_status,
-            cleanup=cleanup,
-            maximum_completed=(
-                terminal_status == "completed"
-                and topology == Topology(100, 100, 4)
-                and recorder.report.observed_topology == topology
-            ),
-            failed_phase=failed_phase,
-            error=terminal_error,
+            recorder.checkpoint("cleanup")
+
+        finalization = asyncio.create_task(
+            finalize_worker(),
+            name="orchestration-worker-finalization",
         )
-        recorder.checkpoint("cleanup")
+        _result, deferred_cancellation = await _drain_task_under_repeated_cancellation(
+            finalization,
+            initial_cancellation=cancellation,
+        )
+        if deferred_cancellation is not None:
+            raise deferred_cancellation
     return recorder.report
 
 
@@ -9202,6 +9815,8 @@ def _read_progress_chunk(
     path: pathlib.Path,
     offset: int,
     remainder: str,
+    *,
+    terminal: bool = False,
 ) -> tuple[tuple[ProgressEvent, ...], int, str]:
     """Read only newly appended complete JSONL records.
 
@@ -9220,6 +9835,8 @@ def _read_progress_chunk(
         Previously consumed byte offset.
     remainder : str
         Incomplete decoded line retained from the prior read.
+    terminal : bool
+        Whether the producer has exited and any incomplete tail is corruption.
 
     Returns
     -------
@@ -9231,14 +9848,24 @@ def _read_progress_chunk(
             stream.seek(offset)
             chunk = stream.read()
             new_offset = stream.tell()
-    except FileNotFoundError:
+    except FileNotFoundError as error:
+        if terminal:
+            message = "progress journal is missing at terminal drain"
+            raise ValueError(message) from error
         return (), offset, remainder
     combined = remainder + chunk
     pieces = combined.split("\n")
     trailing = pieces.pop()
-    events = tuple(
-        _progress_event_from_json(json.loads(line)) for line in pieces if line
-    )
+    if terminal and trailing:
+        message = "progress journal has a torn terminal record"
+        raise ValueError(message)
+    try:
+        events = tuple(
+            _progress_event_from_json(json.loads(line)) for line in pieces if line
+        )
+    except (json.JSONDecodeError, TypeError, ValueError) as error:
+        message = "progress journal contains an invalid event"
+        raise ValueError(message) from error
     return events, new_offset, trailing
 
 
@@ -9263,27 +9890,6 @@ def _wait_identity_absence(
         if not survivors or time.monotonic() >= deadline:
             return survivors
         time.sleep(0.02)
-
-
-def _signal_worker_group(
-    worker: subprocess.Popen[bytes],
-    identity: ProcessIdentity,
-    signal_number: signal.Signals,
-) -> None:
-    """Signal an isolated worker group only while its leader identity matches.
-
-    >>> finished = subprocess.Popen((sys.executable, "-c", "pass"))
-    >>> finished.wait(timeout=1)
-    0
-    >>> _signal_worker_group(
-    ...     finished, ProcessIdentity("worker", finished.pid, -1), signal.SIGTERM
-    ... )
-    """
-    worker.poll()
-    if worker.returncode is not None or not process_identity_matches(identity):
-        return
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(identity.pid, signal_number)
 
 
 def _remove_supervised_scratch(path: pathlib.Path) -> tuple[str, ...]:
@@ -9312,7 +9918,7 @@ def _remove_supervised_scratch(path: pathlib.Path) -> tuple[str, ...]:
 def _recover_supervised_run(
     worker: subprocess.Popen[bytes],
     worker_identity: ProcessIdentity,
-    identities: tuple[ProcessIdentity, ...],
+    progress: _ProgressTracker,
     *,
     scratch: pathlib.Path,
     socket_path: pathlib.Path,
@@ -9324,11 +9930,19 @@ def _recover_supervised_run(
     >>> finished.wait(timeout=1)
     0
     >>> with tempfile.TemporaryDirectory() as directory:
-    ...     scratch = pathlib.Path(directory) / "absent"
-    ...     report = _recover_supervised_run(
-    ...         finished, ProcessIdentity("worker", finished.pid, -1), (),
-    ...         scratch=scratch, socket_path=scratch / "sock", grace_s=0.01,
+    ...     root = pathlib.Path(directory)
+    ...     journal = root / "progress.jsonl"
+    ...     identity = ProcessIdentity("worker", finished.pid, -1)
+    ...     append_progress_event(
+    ...         journal, ProgressEvent("run-7", 0, "worker.started", 1)
     ...     )
+    ...     registry = _PidfdRegistry()
+    ...     progress = _ProgressTracker(journal, "run-7", registry)
+    ...     report = _recover_supervised_run(
+    ...         finished, identity, progress, scratch=root / "absent",
+    ...         socket_path=root / "absent" / "sock", grace_s=0.01,
+    ...     )
+    ...     registry.close()
     ...     report.complete
     True
 
@@ -9338,8 +9952,8 @@ def _recover_supervised_run(
         Direct child launched in its own session.
     worker_identity : ProcessIdentity
         Exact group-leader identity captured immediately after spawn.
-    identities : tuple[ProcessIdentity, ...]
-        Cumulative progress identities, possibly including already absent PIDs.
+    progress : _ProgressTracker
+        Live journal state and stable handles for newly learned identities.
     scratch : pathlib.Path
         Exact private worker directory.
     socket_path : pathlib.Path
@@ -9356,35 +9970,43 @@ def _recover_supervised_run(
         message = "supervisor cleanup grace must be positive"
         raise ValueError(message)
     errors: list[str] = []
-    _signal_worker_group(worker, worker_identity, signal.SIGTERM)
-    try:
-        worker.wait(timeout=grace_s)
-    except subprocess.TimeoutExpired:
-        _signal_worker_group(worker, worker_identity, signal.SIGKILL)
+    progress.handles.retain(worker_identity)
+
+    def drain(*, terminal: bool = False) -> bool:
         try:
-            worker.wait(timeout=grace_s)
-        except subprocess.TimeoutExpired:
-            errors.append("worker process group did not exit")
+            return progress.drain(terminal=terminal)
+        except (RuntimeError, ValueError) as error:
+            detail = f"progress journal: {type(error).__name__}: {error}"
+            if detail not in errors:
+                errors.append(detail)
+            return False
+
+    def wait_worker() -> bool:
+        deadline = time.monotonic() + grace_s
+        while worker.poll() is None and time.monotonic() < deadline:
+            drain()
+            time.sleep(0.02)
+        drain()
+        return worker.poll() is not None
+
+    drain()
+    progress.handles.signal(worker_identity, signal.SIGTERM)
+    if not wait_worker():
+        progress.handles.signal(worker_identity, signal.SIGKILL)
+        if not wait_worker():
+            errors.append("worker process did not exit")
+    drain(terminal=worker.poll() is not None)
     unique: dict[tuple[int, int], ProcessIdentity] = {}
-    for identity in (worker_identity, *identities):
+    for identity in (worker_identity, *progress.identities):
         unique[(identity.pid, identity.start_time)] = identity
     owned = tuple(unique.values())
+    progress.handles.retain_many(owned)
     survivors = _wait_identity_absence(owned, timeout_s=grace_s)
     for signal_number in (signal.SIGTERM, signal.SIGKILL):
         if not survivors:
             break
         for identity in survivors:
-            if not process_identity_matches(identity):
-                continue
-            try:
-                os.kill(identity.pid, signal_number)
-            except ProcessLookupError:
-                continue
-            except OSError as error:
-                errors.append(
-                    f"{identity.role} pid {identity.pid} signal {signal_number}: "
-                    f"{type(error).__name__}: {error}"
-                )
+            progress.handles.signal(identity, signal_number)
         survivors = _wait_identity_absence(owned, timeout_s=grace_s)
     errors.extend(
         f"{identity.role} pid {identity.pid} with start time "
@@ -9392,9 +10014,19 @@ def _recover_supervised_run(
         for identity in survivors
         if process_identity_matches(identity)
     )
-    errors.extend(_remove_supervised_scratch(scratch))
     processes_absent = not any(process_identity_matches(identity) for identity in owned)
+    if socket_path.exists():
+        errors.extend(_kill_exact_tmux_socket(socket_path, timeout_s=grace_s))
+    if processes_absent and socket_path.exists():
+        errors.extend(_remove_proven_stale_socket(socket_path, owned))
     socket_absent = not socket_path.exists()
+    errors.extend(progress.handles.errors)
+    if progress.journal_error is not None and not any(
+        progress.journal_error in error for error in errors
+    ):
+        errors.append(f"progress journal: {progress.journal_error}")
+    if not errors and processes_absent and socket_absent:
+        errors.extend(_remove_supervised_scratch(scratch))
     scratch_absent = not scratch.exists()
     if not socket_absent:
         errors.append(f"socket remains: {socket_path}")
@@ -9478,10 +10110,372 @@ def _accept_progress_events(
         _validate_progress_run_id(event, run_id)
         if event.sequence <= highest_sequence:
             continue
+        if event.sequence != highest_sequence + 1:
+            message = (
+                "progress journal sequence gap: expected "
+                f"{highest_sequence + 1}, observed {event.sequence}"
+            )
+            raise RuntimeError(message)
         highest_sequence = event.sequence
         identities = _merge_identities(identities, event.processes)
         advanced = True
     return highest_sequence, identities, advanced
+
+
+@dataclasses.dataclass
+class _ProgressTracker:
+    """Incrementally merge one journal while retaining newly learned pidfds.
+
+    Attributes
+    ----------
+    path : pathlib.Path
+        Append-only progress journal.
+    run_id : str
+        Exact producer identity accepted from every event.
+    handles : _PidfdRegistry
+        Registry that binds each accepted identity delta.
+    identities : tuple[ProcessIdentity, ...]
+        Cumulative identities retained once for the terminal report.
+    highest_sequence : int
+        Last strictly increasing accepted sequence.
+    offset : int
+        Consumed journal byte offset.
+    remainder : str
+        Incomplete active tail retained between reads.
+    journal_error : str | None
+        First corruption detected while draining.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     root = pathlib.Path(directory)
+    ...     registry = _PidfdRegistry()
+    ...     tracker = _ProgressTracker(root / "missing", "run-7", registry)
+    ...     tracker.drain()
+    ...     registry.close()
+    False
+    """
+
+    path: pathlib.Path
+    run_id: str
+    handles: _PidfdRegistry
+    identities: tuple[ProcessIdentity, ...] = ()
+    highest_sequence: int = -1
+    offset: int = 0
+    remainder: str = ""
+    journal_error: str | None = None
+
+    def drain(self, *, terminal: bool = False) -> bool:
+        """Accept new complete records and bind every accepted identity delta.
+
+        >>> with tempfile.TemporaryDirectory() as directory:
+        ...     root = pathlib.Path(directory)
+        ...     path = root / "progress.jsonl"
+        ...     append_progress_event(path, ProgressEvent("run-7", 0, "start", 1))
+        ...     registry = _PidfdRegistry()
+        ...     tracker = _ProgressTracker(path, "run-7", registry)
+        ...     tracker.drain(terminal=True)
+        ...     registry.close()
+        True
+
+        Parameters
+        ----------
+        terminal : bool
+            Whether a missing journal or nonempty final tail is corruption.
+
+        Returns
+        -------
+        bool
+            Whether the highest accepted sequence increased.
+
+        Raises
+        ------
+        RuntimeError
+            If event ownership or sequence continuity is invalid.
+        ValueError
+            If terminal JSONL evidence is missing, torn, or malformed.
+        """
+        try:
+            events, offset, remainder = _read_progress_chunk(
+                self.path,
+                self.offset,
+                self.remainder,
+                terminal=terminal,
+            )
+            highest, identities, advanced = _accept_progress_events(
+                events,
+                run_id=self.run_id,
+                highest_sequence=self.highest_sequence,
+                identities=self.identities,
+            )
+        except (RuntimeError, ValueError) as error:
+            if self.journal_error is None:
+                self.journal_error = f"{type(error).__name__}: {error}"
+            raise
+        self.offset = offset
+        self.remainder = remainder
+        self.highest_sequence = highest
+        self.identities = identities
+        self.handles.retain_many(
+            identity for event in events for identity in event.processes
+        )
+        return advanced
+
+
+_FinalizerResult = t.TypeVar("_FinalizerResult")
+
+
+def _drain_finalizer_thread(
+    callback: cabc.Callable[[], _FinalizerResult],
+    *,
+    initial_interrupt: KeyboardInterrupt | None = None,
+) -> tuple[_FinalizerResult, KeyboardInterrupt | None]:
+    """Drain independent synchronous finalization through repeated interrupts.
+
+    >>> result, interruption = _drain_finalizer_thread(lambda: 7)
+    >>> result, interruption is None
+    (7, True)
+
+    Parameters
+    ----------
+    callback : collections.abc.Callable
+        Recovery, report, or ramp finalization that must run to completion.
+    initial_interrupt : KeyboardInterrupt | None
+        First interruption already translated into terminal report state.
+
+    Returns
+    -------
+    tuple[typing.Any, KeyboardInterrupt | None]
+        Finalization result and the first observed interruption.
+
+    Raises
+    ------
+    BaseException
+        Callback failure after its independently owned thread terminates.
+    """
+    results: list[_FinalizerResult] = []
+    failures: list[BaseException] = []
+    completed = threading.Event()
+
+    def run() -> None:
+        try:
+            results.append(callback())
+        except BaseException as error:  # noqa: BLE001
+            failures.append(error)
+        finally:
+            completed.set()
+
+    thread = threading.Thread(
+        target=run,
+        name="orchestration-finalization",
+    )
+    thread.start()
+    interruption = initial_interrupt
+    while not completed.is_set():
+        try:
+            completed.wait(timeout=0.02)
+        except KeyboardInterrupt as error:  # noqa: PERF203
+            if interruption is None:
+                interruption = error
+    while thread.is_alive():
+        try:
+            thread.join(timeout=0.02)
+        except KeyboardInterrupt as error:  # noqa: PERF203
+            if interruption is None:
+                interruption = error
+        except RuntimeError:
+            pass
+    if failures:
+        if interruption is not None:
+            raise interruption from failures[0]
+        raise failures[0]
+    return results[0], interruption
+
+
+def _finalize_supervised_worker(
+    worker: subprocess.Popen[bytes],
+    worker_identity: ProcessIdentity,
+    progress: _ProgressTracker,
+    *,
+    topology: Topology,
+    lane: EngineLane,
+    mode: ExecutionMode,
+    runs: int,
+    warmup: int,
+    seed: int,
+    run_id: str,
+    scratch: pathlib.Path,
+    socket_path: pathlib.Path,
+    output: pathlib.Path,
+    markdown_output: pathlib.Path,
+    checkpoint_path: pathlib.Path,
+    admission_path: pathlib.Path,
+    guard_decision: GuardDecision,
+    original_guard_decision: GuardDecision,
+    cleanup_grace_s: float,
+    supervisor_status: t.Literal["failed", "cutoff"] | None,
+    failed_phase: str | None,
+    terminal_error: str | None,
+) -> RunReport:
+    """Recover, terminally drain, validate, and render one supervised worker.
+
+    >>> _finalize_supervised_worker.__name__
+    '_finalize_supervised_worker'
+
+    Returns
+    -------
+    RunReport
+        Durable supervisor-owned terminal artifact.
+    """
+    try:
+        if supervisor_status is not None:
+            cleanup = _recover_supervised_run(
+                worker,
+                worker_identity,
+                progress,
+                scratch=scratch,
+                socket_path=socket_path,
+                grace_s=cleanup_grace_s,
+            )
+        else:
+            worker.wait()
+            try:
+                progress.drain(terminal=True)
+            except (RuntimeError, ValueError) as error:
+                supervisor_status = "failed"
+                failed_phase = "supervisor"
+                terminal_error = f"{type(error).__name__}: {error}"
+            if supervisor_status is not None:
+                cleanup = _recover_supervised_run(
+                    worker,
+                    worker_identity,
+                    progress,
+                    scratch=scratch,
+                    socket_path=socket_path,
+                    grace_s=cleanup_grace_s,
+                )
+            else:
+                processes_absent = not any(
+                    process_identity_matches(item) for item in progress.identities
+                )
+                socket_absent = not socket_path.exists()
+                scratch_absent = not scratch.exists()
+                cleanup = CleanupReport(
+                    complete=(
+                        processes_absent
+                        and socket_absent
+                        and scratch_absent
+                        and not progress.handles.errors
+                    ),
+                    errors=tuple(progress.handles.errors),
+                    processes_absent=processes_absent,
+                    socket_absent=socket_absent,
+                    scratch_absent=scratch_absent,
+                )
+            if not cleanup.complete:
+                cleanup = _recover_supervised_run(
+                    worker,
+                    worker_identity,
+                    progress,
+                    scratch=scratch,
+                    socket_path=socket_path,
+                    grace_s=cleanup_grace_s,
+                )
+
+        try:
+            candidate = load_run_report(checkpoint_path)
+        except (OSError, ValueError):
+            candidate = RunReport(
+                topology,
+                status="in_progress",
+                cleanup=CleanupReport(False),
+                guard_decision=guard_decision,
+                original_guard_decision=original_guard_decision,
+                run_id=run_id,
+                lane=lane.value,
+                mode=mode.value,
+                warmup=warmup,
+                runs=runs,
+                scratch_path=str(scratch),
+                socket_path=str(socket_path),
+                progress_path=str(progress.path),
+                environment=_collect_environment(
+                    seed=seed, command_line=("run", "--shape", str(topology))
+                ),
+            )
+        if supervisor_status is None:
+            if worker.returncode == 0 and candidate.status == "completed":
+                final_status: t.Literal["completed", "failed", "cutoff"] = "completed"
+            elif candidate.status == "cutoff":
+                final_status = "cutoff"
+            else:
+                final_status = "failed"
+            if final_status != "completed":
+                failed_phase = candidate.failed_phase or "worker"
+                terminal_error = candidate.error or f"worker exited {worker.returncode}"
+        else:
+            final_status = supervisor_status
+        if not cleanup.complete:
+            final_status = "failed"
+            failed_phase = "cleanup"
+            detail = "; ".join(cleanup.errors) or "cleanup verification failed"
+            terminal_error = f"{terminal_error}; {detail}" if terminal_error else detail
+        final_report = dataclasses.replace(
+            candidate,
+            status=final_status,
+            cleanup=cleanup,
+            maximum_completed=(
+                final_status == "completed"
+                and topology == Topology(100, 100, 4)
+                and candidate.observed_topology == topology
+            ),
+            failed_phase=(None if final_status == "completed" else failed_phase),
+            error=(None if final_status == "completed" else terminal_error),
+            processes=progress.identities,
+            progress_path=str(progress.path),
+            progress_sequence=progress.highest_sequence,
+            guard_decision=(
+                candidate.guard_decision
+                if candidate.guard_decision is not None
+                else guard_decision
+            ),
+            original_guard_decision=original_guard_decision,
+        )
+        write_json_atomic(output, final_report)
+        validate_report(final_report)
+        render_markdown_summary(output, markdown_output)
+        admission_path.unlink(missing_ok=True)
+        return final_report
+    finally:
+        progress.handles.close()
+
+
+def _publish_interrupted_supervisor_report(
+    report: RunReport,
+    output: pathlib.Path,
+    markdown_output: pathlib.Path,
+) -> RunReport:
+    """Replace a post-work completion with durable cancellation evidence.
+
+    >>> _publish_interrupted_supervisor_report.__name__
+    '_publish_interrupted_supervisor_report'
+
+    Returns
+    -------
+    RunReport
+        Validated cutoff report with the already verified cleanup evidence.
+    """
+    interrupted = dataclasses.replace(
+        report,
+        status="cutoff",
+        maximum_completed=False,
+        failed_phase="cancellation",
+        error="KeyboardInterrupt: supervisor interrupted during finalization",
+    )
+    write_json_atomic(output, interrupted)
+    validate_report(interrupted)
+    render_markdown_summary(output, markdown_output)
+    return interrupted
 
 
 def supervise_worker(
@@ -9620,25 +10614,22 @@ def supervise_worker(
         start_new_session=True,
     )
     worker_identity = _record_process("worker", worker.pid)
-    identities: tuple[ProcessIdentity, ...] = (worker_identity,)
-    highest_sequence = -1
-    offset = 0
-    remainder = ""
+    handles = _PidfdRegistry()
+    handles.retain(worker_identity)
+    progress = _ProgressTracker(
+        progress_path,
+        run_id,
+        handles,
+        identities=(worker_identity,),
+    )
     deadline = time.monotonic() + watchdog_s
     supervisor_status: t.Literal["failed", "cutoff"] | None = None
     failed_phase: str | None = None
     terminal_error: str | None = None
+    interruption: KeyboardInterrupt | None = None
     try:
         while worker.poll() is None:
-            events, offset, remainder = _read_progress_chunk(
-                progress_path, offset, remainder
-            )
-            highest_sequence, identities, advanced = _accept_progress_events(
-                events,
-                run_id=run_id,
-                highest_sequence=highest_sequence,
-                identities=identities,
-            )
+            advanced = progress.drain()
             if advanced:
                 deadline = time.monotonic() + watchdog_s
             if time.monotonic() >= deadline:
@@ -9647,7 +10638,8 @@ def supervise_worker(
                 terminal_error = f"progress watchdog expired after {watchdog_s} seconds"
                 break
             time.sleep(0.02)
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as error:
+        interruption = error
         supervisor_status = "cutoff"
         failed_phase = "cancellation"
         terminal_error = "KeyboardInterrupt: supervisor interrupted"
@@ -9656,111 +10648,42 @@ def supervise_worker(
         failed_phase = "supervisor"
         terminal_error = f"{type(error).__name__}: {error}"
 
-    if supervisor_status is not None:
-        cleanup = _recover_supervised_run(
+    final_report, _interruption = _drain_finalizer_thread(
+        lambda: _finalize_supervised_worker(
             worker,
             worker_identity,
-            identities,
+            progress,
+            topology=topology,
+            lane=lane,
+            mode=mode,
+            runs=runs,
+            warmup=warmup,
+            seed=seed,
+            run_id=run_id,
             scratch=scratch,
             socket_path=socket_path,
-            grace_s=cleanup_grace_s,
-        )
-    else:
-        worker.wait()
-        events, offset, remainder = _read_progress_chunk(
-            progress_path, offset, remainder
-        )
-        highest_sequence, identities, _advanced = _accept_progress_events(
-            events,
-            run_id=run_id,
-            highest_sequence=highest_sequence,
-            identities=identities,
-        )
-        cleanup = CleanupReport(
-            complete=(
-                not any(process_identity_matches(item) for item in identities)
-                and not socket_path.exists()
-                and not scratch.exists()
-            ),
-            processes_absent=not any(
-                process_identity_matches(item) for item in identities
-            ),
-            socket_absent=not socket_path.exists(),
-            scratch_absent=not scratch.exists(),
-        )
-        if not cleanup.complete:
-            cleanup = _recover_supervised_run(
-                worker,
-                worker_identity,
-                identities,
-                scratch=scratch,
-                socket_path=socket_path,
-                grace_s=cleanup_grace_s,
-            )
-
-    try:
-        candidate = load_run_report(checkpoint_path)
-    except (OSError, ValueError):
-        candidate = RunReport(
-            topology,
-            status="in_progress",
-            cleanup=CleanupReport(False),
+            output=output,
+            markdown_output=markdown_output,
+            checkpoint_path=checkpoint_path,
+            admission_path=admission_path,
             guard_decision=guard_decision,
             original_guard_decision=original_guard_decision,
-            run_id=run_id,
-            lane=lane.value,
-            mode=mode.value,
-            warmup=warmup,
-            runs=runs,
-            scratch_path=str(scratch),
-            socket_path=str(socket_path),
-            progress_path=str(progress_path),
-            environment=_collect_environment(
-                seed=seed, command_line=("run", "--shape", str(topology))
-            ),
-        )
-    if supervisor_status is None:
-        if worker.returncode == 0 and candidate.status == "completed":
-            final_status: t.Literal["completed", "failed", "cutoff"] = "completed"
-        elif candidate.status == "cutoff":
-            final_status = "cutoff"
-        else:
-            final_status = "failed"
-        if final_status != "completed":
-            failed_phase = candidate.failed_phase or "worker"
-            terminal_error = candidate.error or f"worker exited {worker.returncode}"
-    else:
-        final_status = supervisor_status
-    if not cleanup.complete:
-        final_status = "failed"
-        failed_phase = "cleanup"
-        detail = "; ".join(cleanup.errors) or "cleanup verification failed"
-        terminal_error = f"{terminal_error}; {detail}" if terminal_error else detail
-    final_report = dataclasses.replace(
-        candidate,
-        status=final_status,
-        cleanup=cleanup,
-        maximum_completed=(
-            final_status == "completed"
-            and topology == Topology(100, 100, 4)
-            and candidate.observed_topology == topology
+            cleanup_grace_s=cleanup_grace_s,
+            supervisor_status=supervisor_status,
+            failed_phase=failed_phase,
+            terminal_error=terminal_error,
         ),
-        failed_phase=(None if final_status == "completed" else failed_phase),
-        error=(None if final_status == "completed" else terminal_error),
-        processes=identities,
-        progress_path=str(progress_path),
-        progress_sequence=highest_sequence,
-        guard_decision=(
-            candidate.guard_decision
-            if candidate.guard_decision is not None
-            else guard_decision
-        ),
-        original_guard_decision=original_guard_decision,
+        initial_interrupt=interruption,
     )
-    write_json_atomic(output, final_report)
-    validate_report(final_report)
-    render_markdown_summary(output, markdown_output)
-    admission_path.unlink(missing_ok=True)
+    if _interruption is not None and final_report.status == "completed":
+        final_report, _interruption = _drain_finalizer_thread(
+            lambda: _publish_interrupted_supervisor_report(
+                final_report,
+                output,
+                markdown_output,
+            ),
+            initial_interrupt=_interruption,
+        )
     return final_report
 
 
@@ -10015,6 +10938,17 @@ def run_scenario(
     snapshot = host_snapshot or probe_host(ProcessReader())
     original = predict_resources(topology, snapshot, policy)
     decision = _forced_decision(original, force_extreme)
+    capability_error = _pidfd_capability_error()
+    if decision.allowed and capability_error is not None:
+        decision = GuardDecision(
+            False,
+            "predictive_refusal",
+            "pidfd_capability",
+            None,
+            None,
+            False,
+            snapshot,
+        )
     run_id = f"r{uuid.uuid4().hex[:10]}"
     markdown_output = markdown_output or output.with_suffix(".md")
     if not decision.allowed:
@@ -10027,7 +10961,7 @@ def run_scenario(
                 socket_absent=True,
                 scratch_absent=True,
             ),
-            guard_decision=original,
+            guard_decision=decision,
             original_guard_decision=original,
             run_id=run_id,
             lane=lane.value,
@@ -10035,7 +10969,11 @@ def run_scenario(
             warmup=warmup,
             runs=runs,
             failed_phase="preflight",
-            error=f"predictive refusal: {original.rule or 'unknown'}",
+            error=(
+                capability_error
+                if capability_error is not None and original.allowed
+                else f"predictive refusal: {original.rule or 'unknown'}"
+            ),
         )
         write_json_atomic(output, report)
         validate_report(report)
@@ -10065,6 +11003,92 @@ def run_scenario(
         _test_fail_after=_test_fail_after,
         _test_extra_identity=_test_extra_identity,
     )
+
+
+def _finalize_ramp_aggregation(
+    report: RunReport,
+    steps: t.Sequence[RampStep],
+    *,
+    last_observed: Topology | None,
+    terminal_status: t.Literal["refused", "failed", "cutoff"] | None,
+    terminal_reason: str | None,
+    output: pathlib.Path,
+    markdown_output: pathlib.Path,
+) -> RunReport:
+    """Validate child cleanup and durably publish one terminal ramp aggregate.
+
+    >>> _finalize_ramp_aggregation.__name__
+    '_finalize_ramp_aggregation'
+
+    Returns
+    -------
+    RunReport
+        Validated aggregate retaining every declared step.
+    """
+    cleanup_complete = all(
+        step.status == "not_attempted"
+        or load_run_report(pathlib.Path(t.cast(str, step.report_path))).cleanup.complete
+        for step in steps
+    )
+    cleanup = CleanupReport(
+        cleanup_complete,
+        processes_absent=cleanup_complete,
+        socket_absent=cleanup_complete,
+        scratch_absent=cleanup_complete,
+    )
+    final_status: t.Literal["completed", "refused", "failed", "cutoff"] = (
+        terminal_status or "completed"
+    )
+    terminal = dataclasses.replace(
+        report,
+        status=final_status,
+        observed_topology=last_observed,
+        cleanup=cleanup,
+        ramp=tuple(steps),
+        error=terminal_reason,
+    )
+    write_json_atomic(output, terminal)
+    validate_report(terminal)
+    render_markdown_summary(output, markdown_output)
+    return terminal
+
+
+def _publish_interrupted_ramp_report(
+    report: RunReport,
+    output: pathlib.Path,
+    markdown_output: pathlib.Path,
+) -> RunReport:
+    """Publish cancellation that arrived while a completed ramp aggregated.
+
+    >>> _publish_interrupted_ramp_report.__name__
+    '_publish_interrupted_ramp_report'
+
+    Returns
+    -------
+    RunReport
+        Validated cutoff aggregate with the final attempt marked cutoff.
+    """
+    reason = "KeyboardInterrupt: ramp interrupted during aggregation"
+    steps = list(report.ramp)
+    completed_indices = tuple(
+        index for index, step in enumerate(steps) if step.status == "completed"
+    )
+    if not completed_indices:
+        return report
+    final_index = completed_indices[-1]
+    final = steps[final_index]
+    steps[final_index] = dataclasses.replace(final, status="cutoff", reason=reason)
+    interrupted = dataclasses.replace(
+        report,
+        status="cutoff",
+        maximum_completed=False,
+        ramp=tuple(steps),
+        error=reason,
+    )
+    write_json_atomic(output, interrupted)
+    validate_report(interrupted)
+    render_markdown_summary(output, markdown_output)
+    return interrupted
 
 
 def run_ramp(
@@ -10181,31 +11205,26 @@ def run_ramp(
             ramp=tuple(steps),
         )
         write_json_atomic(output, report)
-    cleanup_complete = all(
-        step.status == "not_attempted"
-        or load_run_report(pathlib.Path(t.cast(str, step.report_path))).cleanup.complete
-        for step in steps
+    report, interruption = _drain_finalizer_thread(
+        lambda: _finalize_ramp_aggregation(
+            report,
+            steps,
+            last_observed=last_observed,
+            terminal_status=terminal_status,
+            terminal_reason=terminal_reason,
+            output=output,
+            markdown_output=markdown_output,
+        )
     )
-    cleanup = CleanupReport(
-        cleanup_complete,
-        processes_absent=cleanup_complete,
-        socket_absent=cleanup_complete,
-        scratch_absent=cleanup_complete,
-    )
-    final_status: t.Literal["completed", "refused", "failed", "cutoff"] = (
-        terminal_status or "completed"
-    )
-    report = dataclasses.replace(
-        report,
-        status=final_status,
-        observed_topology=last_observed,
-        cleanup=cleanup,
-        ramp=tuple(steps),
-        error=terminal_reason,
-    )
-    write_json_atomic(output, report)
-    validate_report(report)
-    render_markdown_summary(output, markdown_output)
+    if interruption is not None and report.status == "completed":
+        report, _interruption = _drain_finalizer_thread(
+            lambda: _publish_interrupted_ramp_report(
+                report,
+                output,
+                markdown_output,
+            ),
+            initial_interrupt=interruption,
+        )
     return report
 
 
