@@ -564,3 +564,114 @@ def test_validate_report_rejects_invalid_runtime_ramp_kind(
     )
     with pytest.raises(ValueError, match="ramp_kind"):
         benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_invalid_runtime_report_status(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Deserialized lifecycle state must remain inside the report vocabulary."""
+    report = dataclasses.replace(completed_report(benchmark_module), status="invalid")
+
+    with pytest.raises(ValueError, match="status"):
+        benchmark_module.validate_report(report)
+
+
+@pytest.mark.parametrize("field", ("guard_decision", "original_guard_decision"))
+def test_validate_report_rejects_invalid_runtime_guard_kind(
+    benchmark_module: types.ModuleType, field: str
+) -> None:
+    """Deserialized guard evidence must remain inside its Literal vocabulary."""
+    invalid_guard = benchmark_module.GuardDecision(
+        True,
+        "invalid",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    report = dataclasses.replace(
+        completed_report(benchmark_module), **{field: invalid_guard}
+    )
+
+    with pytest.raises(ValueError, match="guard decision kind"):
+        benchmark_module.validate_report(report)
+
+
+@pytest.mark.parametrize("status", ("refused", "failed", "cutoff"))
+def test_validate_report_accepts_exact_terminal_ramp_sequence(
+    benchmark_module: types.ModuleType, status: str
+) -> None:
+    """Each terminal ramp state has one matching stop and one shared reason."""
+    shapes = tuple(benchmark_module.Topology(1, 1, panes) for panes in (1, 2, 3))
+    reason = f"{status}_reason"
+    report = dataclasses.replace(
+        completed_report(benchmark_module),
+        status=status,
+        maximum_completed=False,
+        ramp_kind="custom",
+        requested_shapes=shapes,
+        ramp=(
+            benchmark_module.RampStep(shapes[0], "completed"),
+            benchmark_module.RampStep(shapes[1], status, reason),
+            benchmark_module.RampStep(shapes[2], "not_attempted", reason),
+        ),
+    )
+
+    benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_invalid_runtime_attempt_status(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Deserialized attempt state must remain inside the ramp vocabulary."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    report = dataclasses.replace(
+        completed_report(benchmark_module),
+        maximum_completed=False,
+        ramp_kind="custom",
+        requested_shapes=(shape,),
+        ramp=(benchmark_module.RampStep(shape, "invalid"),),
+    )
+
+    with pytest.raises(ValueError, match="attempt status"):
+        benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_none_ramp_kind_with_shapes(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Single-run evidence cannot smuggle in an undeclared ramp sequence."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    report = dataclasses.replace(
+        completed_report(benchmark_module),
+        maximum_completed=False,
+        requested_shapes=(shape,),
+        ramp=(benchmark_module.RampStep(shape, "completed"),),
+    )
+
+    with pytest.raises(ValueError, match="none ramp kind"):
+        benchmark_module.validate_report(report)
+
+
+@pytest.mark.parametrize("duplicate", (False, True))
+def test_validate_report_rejects_invalid_custom_shape_declaration(
+    benchmark_module: types.ModuleType, duplicate: bool
+) -> None:
+    """A custom ramp must declare at least one shape and cannot repeat one."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    requested_shapes = (shape, shape) if duplicate else ()
+    ramp = tuple(
+        benchmark_module.RampStep(requested, "completed")
+        for requested in requested_shapes
+    )
+    report = dataclasses.replace(
+        completed_report(benchmark_module),
+        maximum_completed=False,
+        ramp_kind="custom",
+        requested_shapes=requested_shapes,
+        ramp=ramp,
+    )
+
+    with pytest.raises(ValueError, match="custom ramp kind"):
+        benchmark_module.validate_report(report)
