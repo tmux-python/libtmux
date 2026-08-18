@@ -17,10 +17,13 @@ import collections.abc as cabc
 import contextlib
 import dataclasses
 import enum
+import hashlib
+import inspect
 import json
 import math
 import os
 import pathlib
+import random
 import resource
 import shlex
 import shutil
@@ -43,6 +46,8 @@ if t.TYPE_CHECKING:
         SessionSnapshot,
         WindowSnapshot,
     )
+    from libtmux.experimental.ops.operation import Operation
+    from libtmux.experimental.ops.plan import LazyPlan
     from libtmux.experimental.workspace import WorkspaceSet
     from libtmux.server import Server
 
@@ -862,12 +867,314 @@ class RawSample:
         Failure detail for a rejected sample.
     verified : bool
         Whether the phase's correctness check accepted this timing.
+    strategy : str | None
+        Strategy that produced the accepted sample.
+    ordinal : int | None
+        Zero-based timed ordinal within that strategy.
+    resources_before : HostSnapshot | None
+        Resource observation immediately before execution.
+    resources_after : HostSnapshot | None
+        Resource observation after typed and live validation.
+
+    Examples
+    --------
+    >>> RawSample(7, True, verified=True, strategy="serial").duration_ns
+    7
     """
 
     duration_ns: int | None
     accepted: bool
     error: str | None = None
     verified: bool = False
+    strategy: str | None = None
+    ordinal: int | None = None
+    resources_before: HostSnapshot | None = None
+    resources_after: HostSnapshot | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class ExecutionMetrics:
+    """Logical request and transport work for one phase measurement.
+
+    Attributes
+    ----------
+    operations : int
+        Typed operations in the phase's measured plan or cell.
+    planner_steps : int
+        Planner steps used to dispatch those operations.
+    engine_batches : int
+        Engine dispatch calls made for the measured operations.
+    tmux_requests : int
+        Individually attributable tmux requests.
+    process_starts : int
+        Subprocess transport starts, one per request; zero for control mode.
+
+    Examples
+    --------
+    >>> ExecutionMetrics(12, 1, 1, 12, 0).tmux_requests
+    12
+    """
+
+    operations: int
+    planner_steps: int
+    engine_batches: int
+    tmux_requests: int
+    process_starts: int
+
+
+@dataclasses.dataclass(frozen=True)
+class MutationResult:
+    """Verified and restored bulk mutation measurement.
+
+    Attributes
+    ----------
+    duration_ns : int
+        Mutation plan duration excluding verification and restoration.
+    metrics : ExecutionMetrics
+        Logical operation, planning, request, and transport counts.
+    session_id : str
+        Concrete session ID selected by maximum window cardinality.
+    window_ids : tuple[str, ...]
+        Concrete window IDs renamed by the plan.
+    pane_ids : tuple[str, ...]
+        Concrete pane IDs titled by the plan.
+    generation : str
+        Exact generation option value set during verification.
+    verified : bool
+        Whether all mutated live values matched the plan.
+    restored : bool
+        Whether canonical names, titles, and option state were restored.
+    activity_before_epoch : int
+        Fuzzer heartbeat epoch before the mutation.
+    activity_after_epoch : int
+        Later heartbeat epoch observed after restoration.
+
+    Examples
+    --------
+    >>> result = MutationResult(
+    ...     5, ExecutionMetrics(3, 1, 1, 3, 0), "$1", ("@2",), ("%3",),
+    ...     "7", True, True, 4, 5,
+    ... )
+    >>> result.restored and result.activity_after_epoch > result.activity_before_epoch
+    True
+    """
+
+    duration_ns: int
+    metrics: ExecutionMetrics
+    session_id: str
+    window_ids: tuple[str, ...]
+    pane_ids: tuple[str, ...]
+    generation: str
+    verified: bool
+    restored: bool
+    activity_before_epoch: int
+    activity_after_epoch: int
+
+
+EnumerationKind: t.TypeAlias = t.Literal["sessions", "windows", "panes"]
+
+
+@dataclasses.dataclass(frozen=True)
+class EnumerationResult:
+    """One exact typed hierarchy enumeration.
+
+    Attributes
+    ----------
+    duration_ns : int
+        Time spent executing and parsing the typed list operation.
+    metrics : ExecutionMetrics
+        One-operation dispatch counts for this list level.
+    kind : {"sessions", "windows", "panes"}
+        Hierarchy level enumerated.
+    row_count : int
+        Exact number of typed rows returned.
+    ids : tuple[str, ...]
+        Concrete IDs in verified stable order.
+    id_checksum : str
+        SHA-256 over NUL-separated concrete IDs.
+    verified : bool
+        Whether row count, IDs, and checksum match the live run context.
+
+    Examples
+    --------
+    >>> EnumerationResult(
+    ...     3, ExecutionMetrics(1, 1, 1, 1, 0), "sessions", 1,
+    ...     ("$0",), "digest", True,
+    ... ).row_count
+    1
+    """
+
+    duration_ns: int
+    metrics: ExecutionMetrics
+    kind: EnumerationKind
+    row_count: int
+    ids: tuple[str, ...]
+    id_checksum: str
+    verified: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class PaneCapture:
+    """Retained typed capture lines for one concrete pane.
+
+    Attributes
+    ----------
+    pane_id : str
+        Concrete pane ID captured.
+    lines : tuple[str, ...]
+        Typed capture lines in display order.
+
+    Examples
+    --------
+    >>> PaneCapture("%1", ("line",)).lines
+    ('line',)
+    """
+
+    pane_id: str
+    lines: tuple[str, ...]
+
+
+CaptureStrategy: t.TypeAlias = t.Literal["serial", "batched"]
+
+
+@dataclasses.dataclass(frozen=True)
+class CaptureResult:
+    """All-pane capture measurement retaining content for later search.
+
+    Attributes
+    ----------
+    duration_ns : int
+        Time spent executing the identical capture operation graph.
+    metrics : ExecutionMetrics
+        Planner and transport counts for the selected strategy.
+    strategy : {"serial", "batched"}
+        Planner policy used for the operation graph.
+    operations : tuple[Operation, ...]
+        Exact immutable capture operations used by the planner.
+    captures : tuple[PaneCapture, ...]
+        Typed content associated with each concrete pane ID.
+    line_count : int
+        Total typed lines returned across panes.
+    byte_count : int
+        Total UTF-8 bytes in those lines, excluding removed delimiters.
+    epoch : int
+        Current activity epoch found in every pane.
+    verified : bool
+        Whether every capture succeeded and contained the current marker.
+
+    Examples
+    --------
+    >>> CaptureResult(
+    ...     2, ExecutionMetrics(1, 1, 1, 1, 0), "batched", (),
+    ...     (PaneCapture("%1", ("x",)),), 1, 1, 4, True,
+    ... ).byte_count
+    1
+    """
+
+    duration_ns: int
+    metrics: ExecutionMetrics
+    strategy: CaptureStrategy
+    operations: tuple[Operation[t.Any], ...]
+    captures: tuple[PaneCapture, ...]
+    line_count: int
+    byte_count: int
+    epoch: int
+    verified: bool
+
+
+SearchFamily: t.TypeAlias = t.Literal[
+    "server-side", "snapshot", "end-to-end", "contents"
+]
+
+
+@dataclasses.dataclass(frozen=True)
+class SearchResult:
+    """One semantically explicit metadata or retained-content search.
+
+    Attributes
+    ----------
+    duration_ns : int
+        Time spent in the named search family only.
+    family : {"server-side", "snapshot", "end-to-end", "contents"}
+        Search source and timing boundary.
+    kind : {"sessions", "windows", "panes"}
+        Object kind scanned or returned.
+    scanned_count : int
+        Candidate rows or panes scanned.
+    target : str
+        Exact concrete ID required from the result.
+    matched_ids : tuple[str, ...]
+        Exact concrete IDs returned by the search.
+    token : str | None
+        Exact retained content token, only for content search.
+    verified : bool
+        Whether exactly the requested ID or token matched.
+
+    Examples
+    --------
+    >>> SearchResult(4, "snapshot", "panes", 2, "%1", ("%1",), verified=True).verified
+    True
+    """
+
+    duration_ns: int
+    family: SearchFamily
+    kind: EnumerationKind
+    scanned_count: int
+    target: str
+    matched_ids: tuple[str, ...]
+    token: str | None = None
+    verified: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
+class RepeatablePhaseFailure:
+    """Failure metadata that terminates deterministic phase execution.
+
+    Attributes
+    ----------
+    stage : {"warmup", "timed"}
+        Whether failure happened before or during timed sampling.
+    strategy : str
+        Strategy whose callable or postcondition failed.
+    ordinal : int
+        Zero-based ordinal within the stage.
+    error : str
+        Exception type and message without a fabricated duration.
+
+    Examples
+    --------
+    >>> RepeatablePhaseFailure("timed", "serial", 2, "RuntimeError: failed").ordinal
+    2
+    """
+
+    stage: t.Literal["warmup", "timed"]
+    strategy: str
+    ordinal: int
+    error: str
+
+
+@dataclasses.dataclass(frozen=True)
+class RepeatablePhaseResult:
+    """Accepted samples, deterministic call order, and terminal failure.
+
+    Attributes
+    ----------
+    samples : tuple[RawSample, ...]
+        Accepted timed rows only; warmups and failures never appear.
+    order : tuple[str, ...]
+        Strategy names in actual warmup-then-timed invocation order.
+    failure : RepeatablePhaseFailure | None
+        First failure metadata, or ``None`` when every invocation passed.
+
+    Examples
+    --------
+    >>> RepeatablePhaseResult((), ("serial",), None).failure is None
+    True
+    """
+
+    samples: tuple[RawSample, ...]
+    order: tuple[str, ...]
+    failure: RepeatablePhaseFailure | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -3451,6 +3758,1739 @@ async def verify_activity_async(
         await asyncio.sleep(poll_interval_s)
     context.activity_pane_ids = context.pane_ids
     return context.activity_epoch
+
+
+_GENERATION_OPTION = "@libtmux_bench_generation"
+
+
+def _phase_metrics(
+    context: RunContext,
+    *,
+    operations: int,
+    planner_steps: int,
+) -> ExecutionMetrics:
+    """Derive comparable logical and transport counts for one measured cell.
+
+    >>> context = types.SimpleNamespace(lane=EngineLane.SUBPROCESS)
+    >>> _phase_metrics(context, operations=4, planner_steps=1).process_starts
+    4
+
+    Parameters
+    ----------
+    context : RunContext
+        Live run whose transport determines modeled process starts.
+    operations : int
+        Individually attributable tmux requests.
+    planner_steps : int
+        Engine dispatch groups selected by the planner.
+
+    Returns
+    -------
+    ExecutionMetrics
+        Separate operation, planning, request, and process-start quantities.
+    """
+    return ExecutionMetrics(
+        operations=operations,
+        planner_steps=planner_steps,
+        engine_batches=planner_steps,
+        tmux_requests=operations,
+        process_starts=(operations if context.lane is EngineLane.SUBPROCESS else 0),
+    )
+
+
+def _require_active_phase_context(
+    context: RunContext,
+    mode: ExecutionMode,
+) -> None:
+    """Reject phase work before exact topology and activity verification.
+
+    >>> inactive = types.SimpleNamespace(
+    ...     mode=ExecutionMode.SYNC, topology_verified=False,
+    ...     activity_epoch=None, activity_marker=None,
+    ... )
+    >>> try:
+    ...     _require_active_phase_context(inactive, ExecutionMode.SYNC)
+    ... except RuntimeError as error:
+    ...     print(error)
+    measured phases require verified active topology
+
+    Parameters
+    ----------
+    context : RunContext
+        Candidate live run context.
+    mode : ExecutionMode
+        Required synchronous or asynchronous execution mode.
+
+    Raises
+    ------
+    ValueError
+        If the context belongs to the other execution mode.
+    RuntimeError
+        If topology or activity stabilization has not completed.
+    """
+    if context.mode is not mode:
+        message = f"{mode.value} phase requires a {mode.value} run context"
+        raise ValueError(message)
+    if (
+        not context.topology_verified
+        or context.activity_epoch is None
+        or context.activity_marker is None
+    ):
+        message = "measured phases require verified active topology"
+        raise RuntimeError(message)
+
+
+def _current_activity_epoch(context: RunContext) -> int:
+    """Return and retain an active, non-regressing fuzzer heartbeat epoch.
+
+    >>> context = types.SimpleNamespace(fuzzer=types.SimpleNamespace(poll=lambda: 1))
+    >>> try:
+    ...     _current_activity_epoch(context)
+    ... except RuntimeError as error:
+    ...     print(error)
+    fuzzer exited during measured phase
+
+    Parameters
+    ----------
+    context : RunContext
+        Active run whose heartbeat is authoritative.
+
+    Returns
+    -------
+    int
+        Current active heartbeat epoch.
+
+    Raises
+    ------
+    RuntimeError
+        If the fuzzer exited, heartbeat is inactive, or its epoch regressed.
+    """
+    if context.fuzzer.poll() is not None:
+        message = "fuzzer exited during measured phase"
+        raise RuntimeError(message)
+    state, epoch = _heartbeat_epoch(context)
+    if state != "active" or epoch is None:
+        message = "fuzzer heartbeat is not active during measured phase"
+        raise RuntimeError(message)
+    if epoch < context.heartbeat_epoch:
+        message = "fuzzer heartbeat epoch moved backwards"
+        raise RuntimeError(message)
+    context.heartbeat_epoch = epoch
+    return epoch
+
+
+def _wait_activity_advance_sync(
+    context: RunContext,
+    baseline: int,
+    *,
+    timeout_s: float = 2.0,
+) -> int:
+    """Wait until the live fuzzer heartbeat advances past ``baseline``.
+
+    >>> try:
+    ...     _wait_activity_advance_sync(types.SimpleNamespace(), 0, timeout_s=0)
+    ... except ValueError as error:
+    ...     print(error)
+    activity advance timeout must be positive
+
+    Parameters
+    ----------
+    context : RunContext
+        Active synchronous run.
+    baseline : int
+        Epoch that the fuzzer must surpass.
+    timeout_s : float
+        Maximum monotonic wait.
+
+    Returns
+    -------
+    int
+        First observed later epoch.
+
+    Raises
+    ------
+    ValueError
+        If ``timeout_s`` is not positive.
+    TimeoutError
+        If activity does not advance before the deadline.
+    """
+    if timeout_s <= 0:
+        message = "activity advance timeout must be positive"
+        raise ValueError(message)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        epoch = _current_activity_epoch(context)
+        if epoch > baseline:
+            return epoch
+        time.sleep(0.005)
+    message = f"activity did not advance past epoch {baseline}"
+    raise TimeoutError(message)
+
+
+async def _wait_activity_advance_async(
+    context: RunContext,
+    baseline: int,
+    *,
+    timeout_s: float = 2.0,
+) -> int:
+    """Asynchronously wait for a later active heartbeat epoch.
+
+    >>> async def invalid_wait():
+    ...     try:
+    ...         await _wait_activity_advance_async(
+    ...             types.SimpleNamespace(), 0, timeout_s=0
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_wait())
+    'activity advance timeout must be positive'
+
+    Parameters
+    ----------
+    context : RunContext
+        Active asynchronous run.
+    baseline : int
+        Epoch that the fuzzer must surpass.
+    timeout_s : float
+        Maximum event-loop wait.
+
+    Returns
+    -------
+    int
+        First observed later epoch.
+
+    Raises
+    ------
+    ValueError
+        If ``timeout_s`` is not positive.
+    TimeoutError
+        If activity does not advance before the deadline.
+    """
+    if timeout_s <= 0:
+        message = "activity advance timeout must be positive"
+        raise ValueError(message)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while loop.time() < deadline:
+        epoch = _current_activity_epoch(context)
+        if epoch > baseline:
+            return epoch
+        await asyncio.sleep(0.005)
+    message = f"activity did not advance past epoch {baseline}"
+    raise TimeoutError(message)
+
+
+def _mutation_targets(
+    context: RunContext,
+    snapshot: TopologySnapshot,
+) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    """Select one largest session and its stable concrete descendants.
+
+    >>> from libtmux.experimental.models import SessionSnapshot
+    >>> context = types.SimpleNamespace(
+    ...     session_ids=("$0", "$1"), window_ids=(), pane_ids=()
+    ... )
+    >>> snapshot = TopologySnapshot(
+    ...     (SessionSnapshot(session_id="$0"), SessionSnapshot(session_id="$1")),
+    ...     (), (),
+    ... )
+    >>> _mutation_targets(context, snapshot)
+    ('$0', (), ())
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified stable ID order.
+    snapshot : TopologySnapshot
+        Current typed hierarchy ownership rows.
+
+    Returns
+    -------
+    tuple[str, tuple[str, ...], tuple[str, ...]]
+        Session ID, owned window IDs, and owned pane IDs in stable order.
+    """
+    window_counts = dict.fromkeys(context.session_ids, 0)
+    for window in snapshot.windows:
+        if window.session_id in window_counts:
+            window_counts[window.session_id] += 1
+    session_id = max(context.session_ids, key=window_counts.__getitem__)
+    window_id_set = {
+        window.window_id
+        for window in snapshot.windows
+        if window.session_id == session_id
+    }
+    window_ids = tuple(
+        window_id for window_id in context.window_ids if window_id in window_id_set
+    )
+    pane_id_set = {
+        pane.pane_id for pane in snapshot.panes if pane.window_id in window_id_set
+    }
+    pane_ids = tuple(pane_id for pane_id in context.pane_ids if pane_id in pane_id_set)
+    return session_id, window_ids, pane_ids
+
+
+def _build_mutation_plans(
+    context: RunContext,
+    *,
+    generation: str,
+    session_id: str,
+    window_ids: tuple[str, ...],
+    pane_ids: tuple[str, ...],
+) -> tuple[LazyPlan, LazyPlan, dict[str, str], dict[str, str]]:
+    """Build the shared mutation graph and its untimed restoration graph.
+
+    >>> context = types.SimpleNamespace(
+    ...     run_id="run-7", window_bindings=(("canonical", "@1", "$0"),)
+    ... )
+    >>> mutation, restoration, names, titles = _build_mutation_plans(
+    ...     context, generation="3", session_id="$0", window_ids=("@1",),
+    ...     pane_ids=("%2",),
+    ... )
+    >>> len(mutation), len(restoration), names["@1"], titles["%2"]
+    (3, 3, 'canonical-g3', 'bench-run-7-g3-p000')
+
+    Parameters
+    ----------
+    context : RunContext
+        Run whose canonical window bindings and identity are authoritative.
+    generation : str
+        Exact user-option value and mutation suffix.
+    session_id : str
+        Concrete target session.
+    window_ids : tuple[str, ...]
+        Concrete windows to rename.
+    pane_ids : tuple[str, ...]
+        Concrete panes to title.
+
+    Returns
+    -------
+    tuple[LazyPlan, LazyPlan, dict[str, str], dict[str, str]]
+        Mutation, restoration, expected mutated names, and expected titles.
+    """
+    from libtmux.experimental.ops import (
+        LazyPlan,
+        PaneId,
+        RenameWindow,
+        SelectPane,
+        SessionId,
+        SetOption,
+        WindowId,
+    )
+
+    canonical_names = {
+        window_id: name for name, window_id, _session_id in context.window_bindings
+    }
+    mutated_names = {
+        window_id: f"{canonical_names[window_id]}-g{generation}"
+        for window_id in window_ids
+    }
+    titles = {
+        pane_id: f"bench-{context.run_id}-g{generation}-p{ordinal:03d}"
+        for ordinal, pane_id in enumerate(pane_ids)
+    }
+    mutation = LazyPlan()
+    mutation.add(
+        SetOption(
+            target=SessionId(session_id),
+            option=_GENERATION_OPTION,
+            value=generation,
+        )
+    )
+    for window_id in window_ids:
+        mutation.add(
+            RenameWindow(
+                target=WindowId(window_id),
+                name=mutated_names[window_id],
+            )
+        )
+    for pane_id in pane_ids:
+        mutation.add(SelectPane(target=PaneId(pane_id), title=titles[pane_id]))
+
+    restoration = LazyPlan()
+    restoration.add(
+        SetOption(
+            target=SessionId(session_id),
+            option=_GENERATION_OPTION,
+            unset=True,
+        )
+    )
+    for window_id in window_ids:
+        restoration.add(
+            RenameWindow(
+                target=WindowId(window_id),
+                name=canonical_names[window_id],
+            )
+        )
+    for pane_id in pane_ids:
+        restoration.add(SelectPane(target=PaneId(pane_id), title=""))
+    return mutation, restoration, mutated_names, titles
+
+
+def _verify_mutation_state(
+    snapshot: TopologySnapshot,
+    *,
+    generation: str,
+    options: cabc.Mapping[str, str],
+    mutated_names: cabc.Mapping[str, str],
+    titles: cabc.Mapping[str, str],
+) -> None:
+    """Require every generation, window-name, and pane-title mutation.
+
+    >>> from libtmux.experimental.models import PaneSnapshot, WindowSnapshot
+    >>> snapshot = TopologySnapshot(
+    ...     (), (WindowSnapshot(window_id="@1", name="renamed"),),
+    ...     (PaneSnapshot(pane_id="%1", title="t", fields={"pane_title": "t"}),),
+    ... )
+    >>> _verify_mutation_state(
+    ...     snapshot, generation="4", options={_GENERATION_OPTION: "4"},
+    ...     mutated_names={"@1": "renamed"}, titles={"%1": "t"},
+    ... )
+
+    Parameters
+    ----------
+    snapshot : TopologySnapshot
+        Typed live state read after the timed plan.
+    generation : str
+        Exact expected generation option value.
+    options : collections.abc.Mapping[str, str]
+        Typed ``ShowOptions`` mapping for the selected session.
+    mutated_names : collections.abc.Mapping[str, str]
+        Expected window names keyed by concrete ID.
+    titles : collections.abc.Mapping[str, str]
+        Expected pane titles keyed by concrete ID.
+
+    Raises
+    ------
+    RuntimeError
+        If any mutation is absent or partial.
+    """
+    if options.get(_GENERATION_OPTION) != generation:
+        message = "generation option did not match the mutation"
+        raise RuntimeError(message)
+    observed_names = {window.window_id: window.name for window in snapshot.windows}
+    if any(observed_names.get(key) != value for key, value in mutated_names.items()):
+        message = "window rename verification failed"
+        raise RuntimeError(message)
+    observed_titles = {
+        pane.pane_id: pane.fields.get("pane_title", pane.title)
+        for pane in snapshot.panes
+    }
+    if any(observed_titles.get(key) != value for key, value in titles.items()):
+        message = "pane title verification failed"
+        raise RuntimeError(message)
+
+
+def _verify_restored_state(
+    context: RunContext,
+    snapshot: TopologySnapshot,
+    *,
+    options: cabc.Mapping[str, str],
+    window_ids: tuple[str, ...],
+    pane_ids: tuple[str, ...],
+) -> None:
+    """Require canonical names, cleared titles, and an absent generation option.
+
+    >>> from libtmux.experimental.models import PaneSnapshot, WindowSnapshot
+    >>> context = types.SimpleNamespace(
+    ...     window_bindings=(("canonical", "@1", "$0"),)
+    ... )
+    >>> snapshot = TopologySnapshot(
+    ...     (), (WindowSnapshot(window_id="@1", name="canonical"),),
+    ...     (PaneSnapshot(pane_id="%1", fields={"pane_title": ""}),),
+    ... )
+    >>> _verify_restored_state(
+    ...     context, snapshot, options={}, window_ids=("@1",),
+    ...     pane_ids=("%1",),
+    ... )
+
+    Parameters
+    ----------
+    context : RunContext
+        Run containing canonical window bindings.
+    snapshot : TopologySnapshot
+        Typed live state after the restoration plan.
+    options : collections.abc.Mapping[str, str]
+        Typed options after unsetting the generation marker.
+    window_ids : tuple[str, ...]
+        Windows that must have canonical names.
+    pane_ids : tuple[str, ...]
+        Panes whose explicit titles must be absent or empty.
+
+    Raises
+    ------
+    RuntimeError
+        If restoration is absent or partial.
+    """
+    if _GENERATION_OPTION in options:
+        message = "generation option remained after restoration"
+        raise RuntimeError(message)
+    canonical_names = {
+        window_id: name for name, window_id, _session_id in context.window_bindings
+    }
+    observed_names = {window.window_id: window.name for window in snapshot.windows}
+    if any(
+        observed_names.get(window_id) != canonical_names[window_id]
+        for window_id in window_ids
+    ):
+        message = "canonical window restoration failed"
+        raise RuntimeError(message)
+    observed_titles = {
+        pane.pane_id: pane.fields.get("pane_title", pane.title)
+        for pane in snapshot.panes
+    }
+    title_mismatches = {
+        pane_id: observed_titles.get(pane_id)
+        for pane_id in pane_ids
+        if observed_titles.get(pane_id) not in {None, ""}
+    }
+    if title_mismatches:
+        message = f"pane title restoration failed: {title_mismatches!r}"
+        raise RuntimeError(message)
+
+
+def mutate_sync(context: RunContext, *, generation: int | str) -> MutationResult:
+    """Mutate one largest session through a batched plan, verify, and restore.
+
+    >>> try:
+    ...     mutate_sync(types.SimpleNamespace(mode=ExecutionMode.ASYNC), generation=1)
+    ... except ValueError as error:
+    ...     print(error)
+    sync phase requires a sync run context
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified active synchronous topology.
+    generation : int | str
+        Exact nonempty marker value for this mutation iteration.
+
+    Returns
+    -------
+    MutationResult
+        Timed plan duration plus verified restoration and activity evidence.
+
+    Raises
+    ------
+    ValueError
+        If context mode or generation is invalid.
+    RuntimeError
+        If mutation, restoration, or live activity verification fails.
+    """
+    from libtmux.experimental.ops import BatchingPlanner, SessionId, ShowOptions, run
+
+    _require_active_phase_context(context, ExecutionMode.SYNC)
+    generation_text = str(generation)
+    if not generation_text:
+        message = "mutation generation must be nonempty"
+        raise ValueError(message)
+    engine = t.cast("TmuxEngine", context.engine)
+    initial = snapshot_topology_sync(context)
+    session_id, window_ids, pane_ids = _mutation_targets(context, initial)
+    mutation, restoration, mutated_names, titles = _build_mutation_plans(
+        context,
+        generation=generation_text,
+        session_id=session_id,
+        window_ids=window_ids,
+        pane_ids=pane_ids,
+    )
+    planner = BatchingPlanner()
+    baseline = _current_activity_epoch(context)
+    verified = False
+    restored = False
+    duration_ns = 0
+    try:
+        started_ns = time.perf_counter_ns()
+        mutation_result = mutation.execute(engine, planner=planner)
+        duration_ns = time.perf_counter_ns() - started_ns
+        mutation_result.raise_for_status()
+        mutated_snapshot = snapshot_topology_sync(context)
+        option_result = run(
+            ShowOptions(target=SessionId(session_id)), engine
+        ).raise_for_status()
+        _verify_mutation_state(
+            mutated_snapshot,
+            generation=generation_text,
+            options=option_result.options,
+            mutated_names=mutated_names,
+            titles=titles,
+        )
+        verified = True
+    finally:
+        restoration.execute(engine, planner=planner).raise_for_status()
+        restored_snapshot = snapshot_topology_sync(context)
+        restored_options = run(
+            ShowOptions(target=SessionId(session_id)), engine
+        ).raise_for_status()
+        _verify_restored_state(
+            context,
+            restored_snapshot,
+            options=restored_options.options,
+            window_ids=window_ids,
+            pane_ids=pane_ids,
+        )
+        restored = True
+    activity_after = _wait_activity_advance_sync(context, baseline)
+    steps = len(mutation.explain(planner))
+    return MutationResult(
+        duration_ns=duration_ns,
+        metrics=_phase_metrics(context, operations=len(mutation), planner_steps=steps),
+        session_id=session_id,
+        window_ids=window_ids,
+        pane_ids=pane_ids,
+        generation=generation_text,
+        verified=verified,
+        restored=restored,
+        activity_before_epoch=baseline,
+        activity_after_epoch=activity_after,
+    )
+
+
+async def mutate_async(
+    context: RunContext,
+    *,
+    generation: int | str,
+) -> MutationResult:
+    """Async sibling of :func:`mutate_sync` over the identical operation graph.
+
+    >>> async def invalid_mutation():
+    ...     try:
+    ...         await mutate_async(
+    ...             types.SimpleNamespace(mode=ExecutionMode.SYNC), generation=1
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_mutation())
+    'async phase requires a async run context'
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified active asynchronous topology.
+    generation : int | str
+        Exact nonempty marker value for this mutation iteration.
+
+    Returns
+    -------
+    MutationResult
+        Timed plan duration plus verified restoration and activity evidence.
+
+    Raises
+    ------
+    ValueError
+        If context mode or generation is invalid.
+    RuntimeError
+        If mutation, restoration, or live activity verification fails.
+    """
+    from libtmux.experimental.ops import BatchingPlanner, SessionId, ShowOptions, arun
+
+    _require_active_phase_context(context, ExecutionMode.ASYNC)
+    generation_text = str(generation)
+    if not generation_text:
+        message = "mutation generation must be nonempty"
+        raise ValueError(message)
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    initial = await snapshot_topology_async(context)
+    session_id, window_ids, pane_ids = _mutation_targets(context, initial)
+    mutation, restoration, mutated_names, titles = _build_mutation_plans(
+        context,
+        generation=generation_text,
+        session_id=session_id,
+        window_ids=window_ids,
+        pane_ids=pane_ids,
+    )
+    planner = BatchingPlanner()
+    baseline = _current_activity_epoch(context)
+    verified = False
+    restored = False
+    duration_ns = 0
+    try:
+        started_ns = time.perf_counter_ns()
+        mutation_result = await mutation.aexecute(engine, planner=planner)
+        duration_ns = time.perf_counter_ns() - started_ns
+        mutation_result.raise_for_status()
+        mutated_snapshot = await snapshot_topology_async(context)
+        option_result = (
+            await arun(ShowOptions(target=SessionId(session_id)), engine)
+        ).raise_for_status()
+        _verify_mutation_state(
+            mutated_snapshot,
+            generation=generation_text,
+            options=option_result.options,
+            mutated_names=mutated_names,
+            titles=titles,
+        )
+        verified = True
+    finally:
+        (await restoration.aexecute(engine, planner=planner)).raise_for_status()
+        restored_snapshot = await snapshot_topology_async(context)
+        restored_options = (
+            await arun(ShowOptions(target=SessionId(session_id)), engine)
+        ).raise_for_status()
+        _verify_restored_state(
+            context,
+            restored_snapshot,
+            options=restored_options.options,
+            window_ids=window_ids,
+            pane_ids=pane_ids,
+        )
+        restored = True
+    activity_after = await _wait_activity_advance_async(context, baseline)
+    steps = len(mutation.explain(planner))
+    return MutationResult(
+        duration_ns=duration_ns,
+        metrics=_phase_metrics(context, operations=len(mutation), planner_steps=steps),
+        session_id=session_id,
+        window_ids=window_ids,
+        pane_ids=pane_ids,
+        generation=generation_text,
+        verified=verified,
+        restored=restored,
+        activity_before_epoch=baseline,
+        activity_after_epoch=activity_after,
+    )
+
+
+def _id_checksum(ids: tuple[str, ...]) -> str:
+    """Return SHA-256 over an unambiguous ordered concrete-ID encoding.
+
+    >>> len(_id_checksum(("$0", "$1")))
+    64
+
+    Parameters
+    ----------
+    ids : tuple[str, ...]
+        Stable concrete IDs in accepted hierarchy order.
+
+    Returns
+    -------
+    str
+        Lower-case hexadecimal SHA-256 digest over NUL-separated IDs.
+    """
+    return hashlib.sha256("\0".join(ids).encode()).hexdigest()
+
+
+def _enumeration_expected(
+    context: RunContext,
+    kind: EnumerationKind,
+) -> tuple[str, ...]:
+    """Return the verified ID tuple for one hierarchy level.
+
+    >>> context = types.SimpleNamespace(
+    ...     session_ids=("$0",), window_ids=("@0",), pane_ids=("%0",)
+    ... )
+    >>> _enumeration_expected(context, "windows")
+    ('@0',)
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified topology context.
+    kind : {"sessions", "windows", "panes"}
+        Hierarchy level requested.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Stable concrete IDs captured during topology verification.
+
+    Raises
+    ------
+    ValueError
+        If ``kind`` is outside the closed hierarchy vocabulary.
+    """
+    if kind == "sessions":
+        return context.session_ids
+    if kind == "windows":
+        return context.window_ids
+    if kind == "panes":
+        return context.pane_ids
+    message = f"unknown enumeration kind: {kind}"
+    raise ValueError(message)
+
+
+def _enumeration_operation(kind: EnumerationKind) -> object:
+    """Build the one typed list operation for a hierarchy level.
+
+    >>> _enumeration_operation("panes").kind
+    'list_panes'
+
+    Parameters
+    ----------
+    kind : {"sessions", "windows", "panes"}
+        Hierarchy level requested.
+
+    Returns
+    -------
+    object
+        ``ListSessions``, ``ListWindows``, or ``ListPanes`` operation.
+    """
+    from libtmux.experimental.ops import ListPanes, ListSessions, ListWindows
+
+    if kind == "sessions":
+        return ListSessions()
+    if kind == "windows":
+        return ListWindows(all_windows=True)
+    return ListPanes(all_panes=True)
+
+
+def _enumeration_ids(result: t.Any, kind: EnumerationKind) -> tuple[str, ...]:
+    """Extract concrete IDs from a successful typed list result.
+
+    >>> from libtmux.experimental.ops import ListSessions
+    >>> result = ListSessions().build_result(returncode=0, stdout=())
+    >>> _enumeration_ids(result, "sessions")
+    ()
+
+    Parameters
+    ----------
+    result : object
+        Successful specialized typed operation result.
+    kind : {"sessions", "windows", "panes"}
+        Hierarchy level represented by ``result``.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Concrete IDs in the result's stable row order.
+    """
+    if kind == "sessions":
+        return tuple(row.session_id for row in result.sessions)
+    if kind == "windows":
+        return tuple(row.window_id for row in result.windows)
+    return tuple(row.pane_id for row in result.panes)
+
+
+def _accepted_enumeration(
+    context: RunContext,
+    kind: EnumerationKind,
+    ids: tuple[str, ...],
+    duration_ns: int,
+) -> EnumerationResult:
+    """Validate exact row identity before constructing an enumeration sample.
+
+    >>> context = types.SimpleNamespace(
+    ...     lane=EngineLane.CONTROL, session_ids=("$0",),
+    ...     window_ids=(), pane_ids=(),
+    ... )
+    >>> _accepted_enumeration(context, "sessions", ("$0",), 4).verified
+    True
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified concrete ID authority.
+    kind : {"sessions", "windows", "panes"}
+        Enumerated hierarchy level.
+    ids : tuple[str, ...]
+        IDs returned by the typed list operation.
+    duration_ns : int
+        Measured typed execution duration.
+
+    Returns
+    -------
+    EnumerationResult
+        Accepted exact rows and stable checksum.
+
+    Raises
+    ------
+    RuntimeError
+        If row count, stable order, or checksum differs from verified topology.
+    """
+    expected = _enumeration_expected(context, kind)
+    observed_checksum = _id_checksum(ids)
+    expected_checksum = _id_checksum(expected)
+    if len(ids) != len(expected):
+        message = f"{kind} enumeration row count mismatch"
+        raise RuntimeError(message)
+    if ids != expected or observed_checksum != expected_checksum:
+        message = f"{kind} enumeration stable ID checksum mismatch"
+        raise RuntimeError(message)
+    return EnumerationResult(
+        duration_ns=duration_ns,
+        metrics=_phase_metrics(context, operations=1, planner_steps=1),
+        kind=kind,
+        row_count=len(ids),
+        ids=ids,
+        id_checksum=observed_checksum,
+        verified=True,
+    )
+
+
+def enumerate_sync(
+    context: RunContext,
+    *,
+    kind: EnumerationKind,
+) -> EnumerationResult:
+    """Execute and validate one synchronous typed hierarchy list operation.
+
+    >>> try:
+    ...     enumerate_sync(
+    ...         types.SimpleNamespace(mode=ExecutionMode.ASYNC), kind="panes"
+    ...     )
+    ... except ValueError as error:
+    ...     print(error)
+    sync phase requires a sync run context
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified active synchronous topology.
+    kind : {"sessions", "windows", "panes"}
+        One hierarchy cell to enumerate.
+
+    Returns
+    -------
+    EnumerationResult
+        Exact row count, concrete IDs, checksum, and timing.
+    """
+    from libtmux.experimental.ops import run
+
+    _require_active_phase_context(context, ExecutionMode.SYNC)
+    _enumeration_expected(context, kind)
+    engine = t.cast("TmuxEngine", context.engine)
+    operation = t.cast("Operation[t.Any]", _enumeration_operation(kind))
+    started_ns = time.perf_counter_ns()
+    result = run(operation, engine)
+    duration_ns = time.perf_counter_ns() - started_ns
+    result.raise_for_status()
+    return _accepted_enumeration(
+        context,
+        kind,
+        _enumeration_ids(result, kind),
+        duration_ns,
+    )
+
+
+async def enumerate_async(
+    context: RunContext,
+    *,
+    kind: EnumerationKind,
+) -> EnumerationResult:
+    """Execute and validate one asynchronous typed hierarchy list operation.
+
+    >>> async def invalid_enumeration():
+    ...     try:
+    ...         await enumerate_async(
+    ...             types.SimpleNamespace(mode=ExecutionMode.SYNC), kind="panes"
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_enumeration())
+    'async phase requires a async run context'
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified active asynchronous topology.
+    kind : {"sessions", "windows", "panes"}
+        One hierarchy cell to enumerate.
+
+    Returns
+    -------
+    EnumerationResult
+        Exact row count, concrete IDs, checksum, and timing.
+    """
+    from libtmux.experimental.ops import arun
+
+    _require_active_phase_context(context, ExecutionMode.ASYNC)
+    _enumeration_expected(context, kind)
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    operation = t.cast("Operation[t.Any]", _enumeration_operation(kind))
+    started_ns = time.perf_counter_ns()
+    result = await arun(operation, engine)
+    duration_ns = time.perf_counter_ns() - started_ns
+    result.raise_for_status()
+    return _accepted_enumeration(
+        context,
+        kind,
+        _enumeration_ids(result, kind),
+        duration_ns,
+    )
+
+
+def _capture_plan(context: RunContext) -> LazyPlan:
+    """Build the transport-independent all-pane capture operation graph.
+
+    >>> context = types.SimpleNamespace(pane_ids=("%1", "%2"))
+    >>> [operation.target.value for operation in _capture_plan(context).operations]
+    ['%1', '%2']
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified stable pane ID authority.
+
+    Returns
+    -------
+    LazyPlan
+        One bounded ``CapturePane`` operation per concrete pane.
+    """
+    from libtmux.experimental.ops import CapturePane, LazyPlan, PaneId
+
+    plan = LazyPlan()
+    for pane_id in context.pane_ids:
+        plan.add(CapturePane(target=PaneId(pane_id), start=-5000))
+    return plan
+
+
+def _capture_planner(strategy: CaptureStrategy) -> object:
+    """Return the planner policy named by one capture strategy.
+
+    >>> type(_capture_planner("serial")).__name__
+    'SequentialPlanner'
+    >>> type(_capture_planner("batched")).__name__
+    'BatchingPlanner'
+
+    Parameters
+    ----------
+    strategy : {"serial", "batched"}
+        Planner policy name.
+
+    Returns
+    -------
+    object
+        ``SequentialPlanner`` or ``BatchingPlanner``.
+
+    Raises
+    ------
+    ValueError
+        If ``strategy`` is outside the closed vocabulary.
+    """
+    from libtmux.experimental.ops import BatchingPlanner, SequentialPlanner
+
+    if strategy == "serial":
+        return SequentialPlanner()
+    if strategy == "batched":
+        return BatchingPlanner()
+    message = f"unknown capture strategy: {strategy}"
+    raise ValueError(message)
+
+
+def _accepted_capture(
+    context: RunContext,
+    plan: LazyPlan,
+    plan_result: t.Any,
+    strategy: CaptureStrategy,
+    duration_ns: int,
+) -> CaptureResult:
+    """Validate typed current-epoch captures before returning measurement data.
+
+    >>> from libtmux.experimental.ops import CapturePane, LazyPlan, PaneId
+    >>> plan = LazyPlan()
+    >>> _ = plan.add(CapturePane(target=PaneId("%1")))
+    >>> raw = CapturePane(target=PaneId("%1")).build_result(
+    ...     returncode=0, stdout=("epoch",)
+    ... )
+    >>> context = types.SimpleNamespace(
+    ...     pane_ids=("%1",), activity_marker="epoch", activity_epoch=2,
+    ...     lane=EngineLane.CONTROL,
+    ... )
+    >>> _accepted_capture(
+    ...     context, plan, types.SimpleNamespace(results=(raw,)), "serial", 4
+    ... ).line_count
+    1
+
+    Parameters
+    ----------
+    context : RunContext
+        Active run containing exact pane IDs and current activity marker.
+    plan : LazyPlan
+        Identical operation graph used for either planner.
+    plan_result : object
+        Successful ``PlanResult`` with specialized capture results.
+    strategy : {"serial", "batched"}
+        Planner strategy used for dispatch.
+    duration_ns : int
+        Measured graph execution duration.
+
+    Returns
+    -------
+    CaptureResult
+        Retained lines, totals, counts, and epoch verification.
+
+    Raises
+    ------
+    RuntimeError
+        If a result is not a typed capture, is empty, or lacks current epoch.
+    """
+    from libtmux.experimental.ops import BatchingPlanner, CapturePaneResult
+
+    captures: list[PaneCapture] = []
+    results = tuple(plan_result.results)
+    if len(results) != len(context.pane_ids):
+        message = "capture result count did not match stable pane IDs"
+        raise RuntimeError(message)
+    for pane_id, result in zip(context.pane_ids, results, strict=True):
+        if not isinstance(result, CapturePaneResult):
+            message = f"capture for {pane_id} did not return typed lines"
+            raise TypeError(message)
+        result.raise_for_status()
+        if not result.lines:
+            message = f"capture for {pane_id} returned no lines"
+            raise RuntimeError(message)
+        marker = t.cast(str, context.activity_marker)
+        if marker not in "\n".join(result.lines):
+            message = f"capture for {pane_id} lacks current activity epoch"
+            raise RuntimeError(message)
+        captures.append(PaneCapture(pane_id, result.lines))
+    line_count = sum(len(capture.lines) for capture in captures)
+    byte_count = sum(
+        len(line.encode("utf-8")) for capture in captures for line in capture.lines
+    )
+    if line_count <= 0 or byte_count <= 0:
+        message = "all-pane capture produced no typed content"
+        raise RuntimeError(message)
+    planner_steps = (
+        len(plan.explain(BatchingPlanner())) if strategy == "batched" else len(plan)
+    )
+    return CaptureResult(
+        duration_ns=duration_ns,
+        metrics=_phase_metrics(
+            context,
+            operations=len(plan),
+            planner_steps=planner_steps,
+        ),
+        strategy=strategy,
+        operations=plan.operations,
+        captures=tuple(captures),
+        line_count=line_count,
+        byte_count=byte_count,
+        epoch=t.cast(int, context.activity_epoch),
+        verified=True,
+    )
+
+
+def capture_all_sync(
+    context: RunContext,
+    *,
+    strategy: CaptureStrategy,
+) -> CaptureResult:
+    """Capture every pane synchronously with serial or batched planning.
+
+    >>> try:
+    ...     capture_all_sync(
+    ...         types.SimpleNamespace(mode=ExecutionMode.ASYNC), strategy="serial"
+    ...     )
+    ... except ValueError as error:
+    ...     print(error)
+    sync phase requires a sync run context
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified active synchronous topology.
+    strategy : {"serial", "batched"}
+        Planner policy; operation graph remains identical.
+
+    Returns
+    -------
+    CaptureResult
+        Retained typed lines and exact work counts.
+    """
+    from libtmux.experimental.ops import Planner
+
+    _require_active_phase_context(context, ExecutionMode.SYNC)
+    plan = _capture_plan(context)
+    planner = t.cast("Planner", _capture_planner(strategy))
+    engine = t.cast("TmuxEngine", context.engine)
+    started_ns = time.perf_counter_ns()
+    result = plan.execute(engine, planner=planner)
+    duration_ns = time.perf_counter_ns() - started_ns
+    result.raise_for_status()
+    return _accepted_capture(context, plan, result, strategy, duration_ns)
+
+
+async def capture_all_async(
+    context: RunContext,
+    *,
+    strategy: CaptureStrategy,
+) -> CaptureResult:
+    """Capture every pane asynchronously over the same operation graph.
+
+    >>> async def invalid_capture():
+    ...     try:
+    ...         await capture_all_async(
+    ...             types.SimpleNamespace(mode=ExecutionMode.SYNC), strategy="serial"
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_capture())
+    'async phase requires a async run context'
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified active asynchronous topology.
+    strategy : {"serial", "batched"}
+        Planner policy; operation graph remains identical.
+
+    Returns
+    -------
+    CaptureResult
+        Retained typed lines and exact work counts.
+    """
+    from libtmux.experimental.ops import Planner
+
+    _require_active_phase_context(context, ExecutionMode.ASYNC)
+    plan = _capture_plan(context)
+    planner = t.cast("Planner", _capture_planner(strategy))
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    started_ns = time.perf_counter_ns()
+    result = await plan.aexecute(engine, planner=planner)
+    duration_ns = time.perf_counter_ns() - started_ns
+    result.raise_for_status()
+    return _accepted_capture(context, plan, result, strategy, duration_ns)
+
+
+def _search_ids(context: RunContext, kind: EnumerationKind) -> tuple[str, ...]:
+    """Return stable concrete IDs for one metadata search kind.
+
+    >>> context = types.SimpleNamespace(
+    ...     session_ids=("$0",), window_ids=("@0",), pane_ids=("%0",)
+    ... )
+    >>> _search_ids(context, "panes")
+    ('%0',)
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified topology ID authority.
+    kind : {"sessions", "windows", "panes"}
+        Search object kind.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Stable candidate IDs.
+    """
+    return _enumeration_expected(context, kind)
+
+
+def _row_id(row: object, kind: EnumerationKind) -> str:
+    """Read the concrete ID attribute shared by snapshot and classic rows.
+
+    >>> _row_id(types.SimpleNamespace(window_id="@2"), "windows")
+    '@2'
+
+    Parameters
+    ----------
+    row : object
+        Typed snapshot or classic ORM object.
+    kind : {"sessions", "windows", "panes"}
+        Object kind controlling the concrete ID attribute.
+
+    Returns
+    -------
+    str
+        Concrete object ID.
+    """
+    attribute = {
+        "sessions": "session_id",
+        "windows": "window_id",
+        "panes": "pane_id",
+    }[kind]
+    value = getattr(row, attribute)
+    if not isinstance(value, str):
+        message = f"{kind} row has no concrete ID"
+        raise TypeError(message)
+    return value
+
+
+def _search_result(
+    *,
+    family: SearchFamily,
+    kind: EnumerationKind,
+    scanned_count: int,
+    target: str,
+    matches: cabc.Iterable[object],
+    duration_ns: int,
+    token: str | None = None,
+) -> SearchResult:
+    """Accept only one exact metadata or content search match.
+
+    >>> _search_result(
+    ...     family="snapshot", kind="sessions", scanned_count=2, target="$1",
+    ...     matches=(types.SimpleNamespace(session_id="$1"),), duration_ns=3,
+    ... ).matched_ids
+    ('$1',)
+
+    Parameters
+    ----------
+    family : {"server-side", "snapshot", "end-to-end", "contents"}
+        Explicit search timing boundary.
+    kind : {"sessions", "windows", "panes"}
+        Result object kind.
+    scanned_count : int
+        Candidate cardinality scanned.
+    target : str
+        Exact concrete ID required.
+    matches : collections.abc.Iterable[object]
+        Snapshot or classic rows returned by the search.
+    duration_ns : int
+        Search-only duration.
+    token : str | None
+        Exact content token for retained capture search.
+
+    Returns
+    -------
+    SearchResult
+        Verified exact match and scan cardinality.
+
+    Raises
+    ------
+    RuntimeError
+        If the search did not return exactly the requested ID.
+    """
+    matched_ids = tuple(_row_id(row, kind) for row in matches)
+    if matched_ids != (target,):
+        message = f"{family} {kind} search expected {(target,)!r}, got {matched_ids!r}"
+        raise RuntimeError(message)
+    return SearchResult(
+        duration_ns=duration_ns,
+        family=family,
+        kind=kind,
+        scanned_count=scanned_count,
+        target=target,
+        matched_ids=matched_ids,
+        token=token,
+        verified=True,
+    )
+
+
+def search_server_side(
+    context: RunContext,
+    *,
+    kind: EnumerationKind,
+    target: str,
+) -> SearchResult:
+    """Use classic tmux ``-f`` filtering for one exact concrete metadata ID.
+
+    >>> try:
+    ...     search_server_side(
+    ...         types.SimpleNamespace(session_ids=("$0",), window_ids=(), pane_ids=()),
+    ...         kind="sessions", target="$9",
+    ...     )
+    ... except ValueError as error:
+    ...     print(error)
+    target '$9' is not a verified sessions ID
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified isolated server and stable IDs.
+    kind : {"sessions", "windows", "panes"}
+        Classic server-side search level.
+    target : str
+        Exact concrete ID included in the tmux format filter.
+
+    Returns
+    -------
+    SearchResult
+        One exact match, full candidate cardinality, and search duration.
+    """
+    candidates = _search_ids(context, kind)
+    if target not in candidates:
+        message = f"target {target!r} is not a verified {kind} ID"
+        raise ValueError(message)
+    format_name = {
+        "sessions": "session_id",
+        "windows": "window_id",
+        "panes": "pane_id",
+    }[kind]
+    filter_expression = f"#{{==:#{{{format_name}}},{target}}}"
+    search = {
+        "sessions": context.server.search_sessions,
+        "windows": context.server.search_windows,
+        "panes": context.server.search_panes,
+    }[kind]
+    started_ns = time.perf_counter_ns()
+    matches = t.cast(cabc.Iterable[object], search(filter=filter_expression))
+    duration_ns = time.perf_counter_ns() - started_ns
+    return _search_result(
+        family="server-side",
+        kind=kind,
+        scanned_count=len(candidates),
+        target=target,
+        matches=matches,
+        duration_ns=duration_ns,
+    )
+
+
+def search_snapshot(
+    rows: object,
+    *,
+    kind: EnumerationKind,
+    target: str,
+) -> SearchResult:
+    """Time only ``QueryList.filter`` over caller-prematerialized snapshot rows.
+
+    >>> from libtmux._internal.query_list import QueryList
+    >>> from libtmux.experimental.models import SessionSnapshot
+    >>> rows = QueryList([SessionSnapshot(session_id="$0")])
+    >>> search_snapshot(rows, kind="sessions", target="$0").scanned_count
+    1
+
+    Parameters
+    ----------
+    rows : object
+        Prematerialized :class:`~libtmux._internal.query_list.QueryList`.
+    kind : {"sessions", "windows", "panes"}
+        Snapshot object kind.
+    target : str
+        Exact concrete ID required.
+
+    Returns
+    -------
+    SearchResult
+        In-memory filter timing and exact scan cardinality.
+
+    Raises
+    ------
+    TypeError
+        If ``rows`` is not already a ``QueryList``.
+    """
+    from libtmux._internal.query_list import QueryList
+
+    if not isinstance(rows, QueryList):
+        message = "snapshot search requires a prematerialized QueryList"
+        raise TypeError(message)
+    field = {
+        "sessions": "session_id",
+        "windows": "window_id",
+        "panes": "pane_id",
+    }[kind]
+    started_ns = time.perf_counter_ns()
+    matches = rows.filter(**{field: target})
+    duration_ns = time.perf_counter_ns() - started_ns
+    return _search_result(
+        family="snapshot",
+        kind=kind,
+        scanned_count=len(rows),
+        target=target,
+        matches=matches,
+        duration_ns=duration_ns,
+    )
+
+
+def search_end_to_end(
+    context: RunContext,
+    *,
+    kind: EnumerationKind,
+    target: str,
+) -> SearchResult:
+    """Time classic list materialization plus Python ``QueryList`` filtering.
+
+    >>> context = types.SimpleNamespace(session_ids=("$0",), window_ids=(), pane_ids=())
+    >>> try:
+    ...     search_end_to_end(context, kind="sessions", target="$9")
+    ... except ValueError as error:
+    ...     print(error)
+    target '$9' is not a verified sessions ID
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified isolated classic server and stable IDs.
+    kind : {"sessions", "windows", "panes"}
+        Object kind to list and filter.
+    target : str
+        Exact concrete ID required.
+
+    Returns
+    -------
+    SearchResult
+        End-to-end materialization and Python-filter timing.
+    """
+    candidates = _search_ids(context, kind)
+    if target not in candidates:
+        message = f"target {target!r} is not a verified {kind} ID"
+        raise ValueError(message)
+    field = {
+        "sessions": "session_id",
+        "windows": "window_id",
+        "panes": "pane_id",
+    }[kind]
+    started_ns = time.perf_counter_ns()
+    rows = getattr(context.server, kind)
+    matches = rows.filter(**{field: target})
+    duration_ns = time.perf_counter_ns() - started_ns
+    return _search_result(
+        family="end-to-end",
+        kind=kind,
+        scanned_count=len(rows),
+        target=target,
+        matches=matches,
+        duration_ns=duration_ns,
+    )
+
+
+def search_contents(
+    captures: CaptureResult,
+    *,
+    token: str,
+    expected_pane_id: str | None,
+) -> SearchResult:
+    """Search retained typed capture lines for one exact sentinel token.
+
+    >>> captures = CaptureResult(
+    ...     1, ExecutionMetrics(1, 1, 1, 1, 0), "serial", (),
+    ...     (PaneCapture("%1", ("token",)), PaneCapture("%2", ("other",))),
+    ...     2, 10, 1, True,
+    ... )
+    >>> search_contents(
+    ...     captures, token="token", expected_pane_id="%1"
+    ... ).matched_ids
+    ('%1',)
+
+    Parameters
+    ----------
+    captures : CaptureResult
+        Prematerialized typed pane lines; no tmux I/O occurs here.
+    token : str
+        Exact sentinel line to match.
+    expected_pane_id : str | None
+        Concrete delayed-pane ID required as the sole match.
+
+    Returns
+    -------
+    SearchResult
+        Retained-content scan timing and exact token/ID evidence.
+
+    Raises
+    ------
+    ValueError
+        If token or expected pane ID is absent.
+    RuntimeError
+        If zero or multiple captures contain the exact sentinel line.
+    """
+    if not token:
+        message = "content search token must be nonempty"
+        raise ValueError(message)
+    if expected_pane_id is None:
+        message = "content search requires a concrete expected pane ID"
+        raise ValueError(message)
+    started_ns = time.perf_counter_ns()
+    matches = tuple(capture for capture in captures.captures if token in capture.lines)
+    duration_ns = time.perf_counter_ns() - started_ns
+    return _search_result(
+        family="contents",
+        kind="panes",
+        scanned_count=len(captures.captures),
+        target=expected_pane_id,
+        matches=matches,
+        duration_ns=duration_ns,
+        token=token,
+    )
+
+
+PhaseMeasurement: t.TypeAlias = (
+    MutationResult | EnumerationResult | CaptureResult | SearchResult
+)
+
+
+def _validated_phase_measurement(value: object) -> PhaseMeasurement:
+    """Require a typed successful measurement with positive integer timing.
+
+    >>> result = SearchResult(
+    ...     3, "snapshot", "sessions", 1, "$0", ("$0",), verified=True
+    ... )
+    >>> _validated_phase_measurement(result) is result
+    True
+
+    Parameters
+    ----------
+    value : object
+        Strategy callable result.
+
+    Returns
+    -------
+    MutationResult | EnumerationResult | CaptureResult | SearchResult
+        Valid typed measurement.
+
+    Raises
+    ------
+    TypeError
+        If the callable returned another type or non-integer duration.
+    RuntimeError
+        If typed verification was false or duration was nonpositive.
+    """
+    accepted_types = (
+        MutationResult,
+        EnumerationResult,
+        CaptureResult,
+        SearchResult,
+    )
+    if not isinstance(value, accepted_types):
+        message = "phase callable did not return a typed measurement"
+        raise TypeError(message)
+    if type(value.duration_ns) is not int:
+        message = "phase duration must be integer nanoseconds"
+        raise TypeError(message)
+    if value.duration_ns <= 0:
+        message = "phase duration must be positive"
+        raise RuntimeError(message)
+    if not value.verified:
+        message = "phase typed result was not verified"
+        raise RuntimeError(message)
+    return value
+
+
+async def _await_if_needed(value: object) -> object:
+    """Await an awaitable strategy value and pass synchronous values through.
+
+    >>> asyncio.run(_await_if_needed(4))
+    4
+    >>> asyncio.run(_await_if_needed(asyncio.sleep(0, result=5)))
+    5
+
+    Parameters
+    ----------
+    value : object
+        Immediate value or awaitable.
+
+    Returns
+    -------
+    object
+        Resolved value.
+    """
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+def _require_live_postcondition(value: object) -> None:
+    """Require an exact true live postcondition result.
+
+    >>> _require_live_postcondition(True)
+    >>> try:
+    ...     _require_live_postcondition(False)
+    ... except RuntimeError as error:
+    ...     print(error)
+    live postcondition rejected the phase result
+
+    Parameters
+    ----------
+    value : object
+        Resolved live-postcondition return value.
+
+    Raises
+    ------
+    RuntimeError
+        If the postcondition did not return exactly ``True``.
+    """
+    if value is not True:
+        message = "live postcondition rejected the phase result"
+        raise RuntimeError(message)
+
+
+async def run_repeatable_phase(
+    strategies: cabc.Mapping[str, cabc.Callable[[], object]],
+    *,
+    warmup: int,
+    runs: int,
+    seed: int,
+    snapshot_resources: cabc.Callable[[], HostSnapshot] | None = None,
+    live_postcondition: cabc.Callable[[PhaseMeasurement], object] | None = None,
+) -> RepeatablePhaseResult:
+    """Deterministically interleave strategies and retain accepted timed rows.
+
+    The seed shuffles one base strategy order. Each subsequent warmup or timed
+    ordinal rotates that base order by one, giving a deterministic round robin.
+    Resource observations bracket every invocation. A typed result and its live
+    postcondition must pass before a timed :class:`RawSample` is appended.
+
+    >>> async def example():
+    ...     def measured():
+    ...         return SearchResult(
+    ...             3, "snapshot", "sessions", 1, "$0", ("$0",), verified=True
+    ...         )
+    ...     return await run_repeatable_phase(
+    ...         {"one": measured}, warmup=0, runs=1, seed=2,
+    ...         snapshot_resources=lambda: HostSnapshot(),
+    ...     )
+    >>> len(asyncio.run(example()).samples)
+    1
+
+    Parameters
+    ----------
+    strategies : collections.abc.Mapping[str, collections.abc.Callable]
+        Nonempty named sync or async phase callables.
+    warmup : int
+        Untimed invocation count per strategy.
+    runs : int
+        Timed accepted invocation count requested per strategy.
+    seed : int
+        Deterministic base-order shuffle seed.
+    snapshot_resources : collections.abc.Callable[[], HostSnapshot] | None
+        Injectable resource sampler; defaults to the live process/cgroup probe.
+    live_postcondition : collections.abc.Callable | None
+        Optional sync or async check run after typed validation; defaults true.
+
+    Returns
+    -------
+    RepeatablePhaseResult
+        Accepted rows, invocation order, and first failure metadata if any.
+
+    Raises
+    ------
+    ValueError
+        If strategies are empty, names are invalid, or counts are invalid.
+    """
+    if not strategies or any(not name for name in strategies):
+        message = "repeatable phase requires nonempty named strategies"
+        raise ValueError(message)
+    if warmup < 0 or runs <= 0:
+        message = "warmup must be nonnegative and runs must be positive"
+        raise ValueError(message)
+    sampler = snapshot_resources or (lambda: probe_host(ProcessReader()))
+    base_order = list(strategies)
+    random.Random(seed).shuffle(base_order)
+    samples: list[RawSample] = []
+    order: list[str] = []
+    total_cycles = warmup + runs
+    for cycle in range(total_cycles):
+        stage: t.Literal["warmup", "timed"] = "warmup" if cycle < warmup else "timed"
+        ordinal = cycle if stage == "warmup" else cycle - warmup
+        rotation = cycle % len(base_order)
+        cycle_order = (*base_order[rotation:], *base_order[:rotation])
+        for strategy in cycle_order:
+            order.append(strategy)
+            try:
+                resources_before = sampler()
+                produced = strategies[strategy]()
+                measurement = _validated_phase_measurement(
+                    await _await_if_needed(produced)
+                )
+                resources_after = sampler()
+                if live_postcondition is not None:
+                    postcondition = await _await_if_needed(
+                        live_postcondition(measurement)
+                    )
+                    _require_live_postcondition(postcondition)
+                if stage == "timed":
+                    samples.append(
+                        RawSample(
+                            duration_ns=measurement.duration_ns,
+                            accepted=True,
+                            verified=True,
+                            strategy=strategy,
+                            ordinal=ordinal,
+                            resources_before=resources_before,
+                            resources_after=resources_after,
+                        )
+                    )
+            except Exception as error:  # noqa: BLE001
+                return RepeatablePhaseResult(
+                    samples=tuple(samples),
+                    order=tuple(order),
+                    failure=RepeatablePhaseFailure(
+                        stage=stage,
+                        strategy=strategy,
+                        ordinal=ordinal,
+                        error=f"{type(error).__name__}: {error}",
+                    ),
+                )
+    return RepeatablePhaseResult(tuple(samples), tuple(order))
 
 
 async def _wait_for_process_absence(
