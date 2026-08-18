@@ -53,6 +53,10 @@ if t.TYPE_CHECKING:
     from libtmux.server import Server
 
 
+_SENTINEL_DELAY_S = 0.05
+_SENTINEL_DELAY_NS = 50_000_000
+
+
 class EngineLane(str, enum.Enum):
     """Transport family used for one live benchmark server.
 
@@ -948,6 +952,123 @@ class HeartbeatObservation:
 
 
 @dataclasses.dataclass(frozen=True)
+class SentinelRequest:
+    """One unique delayed-stream request published by the benchmark.
+
+    Attributes
+    ----------
+    request_id : str
+        Run-local canonical marker identity.
+    token : str
+        Exact canonical sentinel text expected from the delayed pane.
+    requested_monotonic_ns : int
+        Monotonic timestamp captured immediately before atomic publication.
+    configured_delay_ns : int
+        Fuzzer delay added to the request timestamp.
+
+    Examples
+    --------
+    >>> SentinelRequest("sample-1", "token", 7, 5).configured_delay_ns
+    5
+    """
+
+    request_id: str
+    token: str
+    requested_monotonic_ns: int
+    configured_delay_ns: int
+
+
+WaitStrategy: t.TypeAlias = t.Literal["capture-poll", "control-stream"]
+
+
+@dataclasses.dataclass(frozen=True)
+class WaitResult:
+    """Verified delayed-sentinel detection and generator timing evidence.
+
+    Attributes
+    ----------
+    strategy : {"capture-poll", "control-stream"}
+        Observation mechanism used for this request.
+    request_id : str
+        Exact run-local request identity.
+    token : str
+        Exact canonical sentinel matched in the selected pane.
+    pane_id : str
+        Concrete delayed pane ID observed by the waiter.
+    configured_delay_ns : int
+        Fuzzer delay applied after request publication.
+    requested_monotonic_ns : int
+        Benchmark timestamp immediately before atomic request publication.
+    scheduled_monotonic_ns : int
+        Requested timestamp plus the configured delay.
+    emitted_monotonic_ns : int
+        Fuzzer timestamp immediately before the durable stream append.
+    detected_monotonic_ns : int
+        Benchmark timestamp when the exact sentinel bytes were detected.
+    scheduling_lateness_ns : int
+        Emitted timestamp minus scheduled timestamp.
+    detection_overhead_ns : int
+        Detected timestamp minus emitted timestamp.
+    poll_count : int
+        Typed capture requests issued by capture polling.
+    frame_count : int
+        Matching-pane control output frames consumed by stream waiting.
+    timeout_s : float
+        Configured monotonic wait deadline in seconds.
+    timed_out : bool
+        Whether the returned result represents a timeout; successful waits are false.
+    dropped_notification_delta : int
+        Control-engine notification drops observed during this request.
+    verified : bool
+        Whether exact token, evidence, timing, pane, and drop checks passed.
+
+    Examples
+    --------
+    >>> result = WaitResult(
+    ...     "capture-poll", "sample-1", "token", "%1", 5, 7, 12, 14, 17,
+    ...     2, 3, 1, 0, 1.0, False, 0, True,
+    ... )
+    >>> result.duration_ns
+    3
+    """
+
+    strategy: WaitStrategy
+    request_id: str
+    token: str
+    pane_id: str
+    configured_delay_ns: int
+    requested_monotonic_ns: int
+    scheduled_monotonic_ns: int
+    emitted_monotonic_ns: int
+    detected_monotonic_ns: int
+    scheduling_lateness_ns: int
+    detection_overhead_ns: int
+    poll_count: int
+    frame_count: int
+    timeout_s: float
+    timed_out: bool
+    dropped_notification_delta: int
+    verified: bool
+
+    @property
+    def duration_ns(self) -> int:
+        """Return waiter overhead with the deliberate delay excluded.
+
+        >>> WaitResult(
+        ...     "control-stream", "r", "t", "%1", 5, 7, 12, 14, 18,
+        ...     2, 4, 0, 1, 1.0, False, 0, True,
+        ... ).duration_ns
+        4
+
+        Returns
+        -------
+        int
+            Detection timestamp minus actual emission timestamp.
+        """
+        return self.detection_overhead_ns
+
+
+@dataclasses.dataclass(frozen=True)
 class MutationResult:
     """Verified and restored bulk mutation measurement.
 
@@ -1551,6 +1672,8 @@ class RunContext:
         Precreated activity streams in mode order.
     delayed_ordinal : int
         Global pane ordinal assigned the delayed-match stream.
+    sentinel_delay_ns : int
+        Configured fuzzer delay for every request-scoped sentinel.
     expected_session_names : tuple[str, ...]
         Exact declared session names.
     expected_window_names : tuple[str, ...]
@@ -1607,6 +1730,7 @@ class RunContext:
     fuzzer: subprocess.Popen[bytes]
     streams: tuple[pathlib.Path, ...]
     delayed_ordinal: int
+    sentinel_delay_ns: int
     expected_session_names: tuple[str, ...]
     expected_window_names: tuple[str, ...]
     expected_window_parents: tuple[tuple[str, str], ...]
@@ -2693,7 +2817,7 @@ def start_fuzzer(
             "--duration",
             str(duration_s),
             "--delayed-match-after",
-            "0.05",
+            str(_SENTINEL_DELAY_S),
             "--sentinel-prefix",
             "READY",
             "--heartbeat-interval",
@@ -2891,6 +3015,7 @@ def _prepare_context(
             fuzzer=fuzzer,
             streams=streams,
             delayed_ordinal=delayed_ordinal,
+            sentinel_delay_ns=_SENTINEL_DELAY_NS,
             expected_session_names=tuple(
                 _session_name(run_id, index) for index in range(topology.sessions)
             ),
@@ -4067,6 +4192,728 @@ async def _wait_activity_advance_async(
         await asyncio.sleep(0.005)
     message = f"activity did not advance past epoch {baseline.epoch}"
     raise TimeoutError(message)
+
+
+def request_sentinel(
+    context: RunContext,
+    *,
+    request_id: str,
+    value: str = "READY",
+) -> SentinelRequest:
+    """Atomically publish one unique request for the active delayed stream.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     scratch = pathlib.Path(temporary)
+    ...     (scratch / "fuzzer" / "requests").mkdir(parents=True)
+    ...     (scratch / "fuzzer" / "sentinels").mkdir()
+    ...     context = types.SimpleNamespace(
+    ...         run_id="run-7", scratch=scratch, sentinel_delay_ns=5,
+    ...         delayed_pane_id="%1", fuzzer=types.SimpleNamespace(poll=lambda: None),
+    ...     )
+    ...     request = request_sentinel(context, request_id="sample-1", value="GO")
+    ...     request.request_id, request.token.endswith("value=GO")
+    ('sample-1', True)
+
+    Parameters
+    ----------
+    context : RunContext
+        Active topology whose fuzzer owns the request directory.
+    request_id : str
+        Unique ASCII identifier containing only letters, digits, hyphens, or
+        underscores.
+    value : str
+        Nonempty single-line value embedded in the canonical sentinel.
+
+    Returns
+    -------
+    SentinelRequest
+        Exact request identity, token, publication time, and configured delay.
+
+    Raises
+    ------
+    ValueError
+        If request identity, value, delay, or delayed pane is invalid.
+    FileExistsError
+        If the request or its evidence path already exists.
+    RuntimeError
+        If the fuzzer has exited.
+    OSError
+        If atomic marker publication fails.
+    """
+    if (
+        not request_id
+        or len(request_id) > 128
+        or any(
+            not (character.isascii() and (character.isalnum() or character in "-_"))
+            for character in request_id
+        )
+    ):
+        message = (
+            "request_id must contain 1-128 ASCII letters, digits, hyphens, "
+            "or underscores"
+        )
+        raise ValueError(message)
+    if not isinstance(value, str) or not value or "\n" in value or "\r" in value:
+        message = "sentinel value must be a nonempty single line"
+        raise ValueError(message)
+    delay_ns = context.sentinel_delay_ns
+    if type(delay_ns) is not int or delay_ns < 0:
+        message = "sentinel delay must be a nonnegative integer nanosecond value"
+        raise ValueError(message)
+    if not isinstance(context.delayed_pane_id, str) or not context.delayed_pane_id:
+        message = "wait requires a verified delayed pane ID"
+        raise ValueError(message)
+    if context.fuzzer.poll() is not None:
+        message = "fuzzer exited before sentinel request"
+        raise RuntimeError(message)
+    requests = context.scratch / "fuzzer" / "requests"
+    sentinels = context.scratch / "fuzzer" / "sentinels"
+    request_path = requests / f"{request_id}.json"
+    evidence_path = sentinels / f"{request_id}.json"
+    if request_path.exists() or evidence_path.exists():
+        message = f"sentinel request already exists: {request_id}"
+        raise FileExistsError(message)
+    token = f"LIBTMUX_SENTINEL run={context.run_id} request={request_id} value={value}"
+    requested_ns = time.monotonic_ns()
+    write_json_atomic(
+        request_path,
+        {
+            "schema_version": 1,
+            "run_id": context.run_id,
+            "request_id": request_id,
+            "requested_monotonic_ns": requested_ns,
+            "value": value,
+        },
+    )
+    return SentinelRequest(request_id, token, requested_ns, delay_ns)
+
+
+def _validated_sentinel_evidence(
+    context: RunContext,
+    request: SentinelRequest,
+    marker: cabc.Mapping[str, t.Any],
+) -> tuple[int, int, int]:
+    r"""Validate exact request evidence and return its derived timing fields.
+
+    Examples
+    --------
+    >>> token = "LIBTMUX_SENTINEL run=run-7 request=sample-1 value=GO"
+    >>> request = SentinelRequest("sample-1", token, 7, 5)
+    >>> marker = {
+    ...     "schema_version": 1, "run_id": "run-7", "request_id": "sample-1",
+    ...     "requested_monotonic_ns": 7, "configured_delay_ns": 5,
+    ...     "scheduled_monotonic_ns": 12, "emitted_monotonic_ns": 14,
+    ...     "scheduling_lateness_ns": 2, "sentinel": token,
+    ...     "sentinel_sha256": hashlib.sha256(f"{token}\n".encode()).hexdigest(),
+    ... }
+    >>> _validated_sentinel_evidence(
+    ...     types.SimpleNamespace(run_id="run-7"), request, marker
+    ... )
+    (12, 14, 2)
+
+    Parameters
+    ----------
+    context : RunContext
+        Run identity required in the marker.
+    request : SentinelRequest
+        Exact request whose stream token was detected.
+    marker : collections.abc.Mapping[str, typing.Any]
+        Parsed atomic schema-v1 evidence.
+
+    Returns
+    -------
+    tuple[int, int, int]
+        Scheduled timestamp, emitted timestamp, and scheduling lateness.
+
+    Raises
+    ------
+    RuntimeError
+        If identity, token, hash, integer types, or timing arithmetic differs.
+    """
+    integer_fields = (
+        "requested_monotonic_ns",
+        "configured_delay_ns",
+        "scheduled_monotonic_ns",
+        "emitted_monotonic_ns",
+        "scheduling_lateness_ns",
+    )
+    if (
+        type(marker.get("schema_version")) is not int
+        or marker.get("schema_version") != 1
+        or marker.get("run_id") != context.run_id
+        or marker.get("request_id") != request.request_id
+        or marker.get("sentinel") != request.token
+        or any(
+            type(marker.get(field)) is not int or marker[field] < 0
+            for field in integer_fields
+        )
+    ):
+        message = "sentinel evidence does not match request"
+        raise RuntimeError(message)
+    requested_ns = t.cast(int, marker["requested_monotonic_ns"])
+    configured_delay_ns = t.cast(int, marker["configured_delay_ns"])
+    scheduled_ns = t.cast(int, marker["scheduled_monotonic_ns"])
+    emitted_ns = t.cast(int, marker["emitted_monotonic_ns"])
+    scheduling_lateness_ns = t.cast(int, marker["scheduling_lateness_ns"])
+    expected_hash = hashlib.sha256(f"{request.token}\n".encode()).hexdigest()
+    if (
+        requested_ns != request.requested_monotonic_ns
+        or configured_delay_ns != request.configured_delay_ns
+        or scheduled_ns != requested_ns + configured_delay_ns
+        or emitted_ns < scheduled_ns
+        or scheduling_lateness_ns != emitted_ns - scheduled_ns
+        or marker.get("sentinel_sha256") != expected_hash
+    ):
+        message = "sentinel evidence does not match request"
+        raise RuntimeError(message)
+    return scheduled_ns, emitted_ns, scheduling_lateness_ns
+
+
+def _read_sentinel_evidence(
+    context: RunContext,
+    request: SentinelRequest,
+) -> cabc.Mapping[str, t.Any] | None:
+    """Read absent evidence as ``None`` and reject every completed mismatch.
+
+    >>> _read_sentinel_evidence(
+    ...     types.SimpleNamespace(scratch=pathlib.Path("missing"), run_id="run-7"),
+    ...     SentinelRequest("sample-1", "token", 7, 5),
+    ... ) is None
+    True
+
+    Parameters
+    ----------
+    context : RunContext
+        Run whose evidence directory is authoritative.
+    request : SentinelRequest
+        Exact request already detected in pane output.
+
+    Returns
+    -------
+    collections.abc.Mapping[str, typing.Any] | None
+        Valid matching evidence, or ``None`` before its atomic publication.
+
+    Raises
+    ------
+    RuntimeError
+        If a published file is malformed or does not match the request.
+    TypeError
+        If a published JSON value is not a mapping.
+    """
+    path = context.scratch / "fuzzer" / "sentinels" / f"{request.request_id}.json"
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (json.JSONDecodeError, OSError) as error:
+        message = "sentinel evidence is not a complete JSON marker"
+        raise RuntimeError(message) from error
+    if not isinstance(parsed, dict):
+        message = "sentinel evidence is not a mapping"
+        raise TypeError(message)
+    marker = t.cast(dict[str, t.Any], parsed)
+    _validated_sentinel_evidence(context, request, marker)
+    return marker
+
+
+def _completed_wait_result(
+    context: RunContext,
+    request: SentinelRequest,
+    evidence: cabc.Mapping[str, t.Any],
+    *,
+    strategy: WaitStrategy,
+    detected_monotonic_ns: int,
+    poll_count: int,
+    frame_count: int,
+    timeout_s: float,
+    dropped_notification_delta: int,
+) -> WaitResult:
+    r"""Combine exact evidence with detection facts and reject invalid samples.
+
+    Examples
+    --------
+    >>> token = "LIBTMUX_SENTINEL run=run-7 request=sample-1 value=GO"
+    >>> request = SentinelRequest("sample-1", token, 7, 5)
+    >>> evidence = {
+    ...     "schema_version": 1, "run_id": "run-7", "request_id": "sample-1",
+    ...     "requested_monotonic_ns": 7, "configured_delay_ns": 5,
+    ...     "scheduled_monotonic_ns": 12, "emitted_monotonic_ns": 14,
+    ...     "scheduling_lateness_ns": 2, "sentinel": token,
+    ...     "sentinel_sha256": hashlib.sha256(f"{token}\n".encode()).hexdigest(),
+    ... }
+    >>> result = _completed_wait_result(
+    ...     types.SimpleNamespace(run_id="run-7", delayed_pane_id="%1"),
+    ...     request, evidence, strategy="capture-poll", detected_monotonic_ns=17,
+    ...     poll_count=1, frame_count=0, timeout_s=1.0,
+    ...     dropped_notification_delta=0,
+    ... )
+    >>> result.detection_overhead_ns
+    3
+
+    Parameters
+    ----------
+    context : RunContext
+        Run containing the concrete delayed pane ID.
+    request : SentinelRequest
+        Request whose exact token was detected.
+    evidence : collections.abc.Mapping[str, typing.Any]
+        Matching schema-v1 fuzzer evidence.
+    strategy : {"capture-poll", "control-stream"}
+        Detection mechanism used.
+    detected_monotonic_ns : int
+        Local exact-match timestamp.
+    poll_count : int
+        Typed capture operations issued.
+    frame_count : int
+        Matching-pane output notifications consumed.
+    timeout_s : float
+        Configured monotonic timeout.
+    dropped_notification_delta : int
+        Engine drop-counter change during the wait.
+
+    Returns
+    -------
+    WaitResult
+        Verified timing and request evidence.
+
+    Raises
+    ------
+    RuntimeError
+        If timing, counters, pane identity, or notification integrity is invalid.
+    """
+    scheduled_ns, emitted_ns, scheduling_lateness_ns = _validated_sentinel_evidence(
+        context, request, evidence
+    )
+    if detected_monotonic_ns < emitted_ns:
+        message = "sentinel detection predates fuzzer emission"
+        raise RuntimeError(message)
+    if dropped_notification_delta != 0:
+        message = f"control stream dropped {dropped_notification_delta} notification(s)"
+        raise RuntimeError(message)
+    if strategy == "capture-poll":
+        valid_counts = poll_count > 0 and frame_count == 0
+    else:
+        valid_counts = poll_count == 0 and frame_count > 0
+    if not valid_counts:
+        message = "wait counters do not match the selected strategy"
+        raise RuntimeError(message)
+    pane_id = context.delayed_pane_id
+    if not isinstance(pane_id, str) or not pane_id:
+        message = "wait lacks a concrete delayed pane ID"
+        raise RuntimeError(message)
+    return WaitResult(
+        strategy=strategy,
+        request_id=request.request_id,
+        token=request.token,
+        pane_id=pane_id,
+        configured_delay_ns=request.configured_delay_ns,
+        requested_monotonic_ns=request.requested_monotonic_ns,
+        scheduled_monotonic_ns=scheduled_ns,
+        emitted_monotonic_ns=emitted_ns,
+        detected_monotonic_ns=detected_monotonic_ns,
+        scheduling_lateness_ns=scheduling_lateness_ns,
+        detection_overhead_ns=detected_monotonic_ns - emitted_ns,
+        poll_count=poll_count,
+        frame_count=frame_count,
+        timeout_s=float(timeout_s),
+        timed_out=False,
+        dropped_notification_delta=dropped_notification_delta,
+        verified=True,
+    )
+
+
+def wait_capture_poll_sync(
+    context: RunContext,
+    *,
+    request_id: str,
+    value: str = "READY",
+    timeout_s: float = 3.0,
+    poll_interval_s: float = 0.01,
+) -> WaitResult:
+    """Request and detect one exact sentinel through typed sync captures.
+
+    Examples
+    --------
+    >>> try:
+    ...     wait_capture_poll_sync(types.SimpleNamespace(mode=ExecutionMode.ASYNC),
+    ...                            request_id="sample-1")
+    ... except ValueError as error:
+    ...     print(error)
+    sync capture wait requires a synchronous run context
+
+    Parameters
+    ----------
+    context : RunContext
+        Active synchronous topology with one verified delayed pane.
+    request_id : str
+        Unique request identity.
+    value : str
+        Unique request value embedded in the exact token.
+    timeout_s : float
+        Overall monotonic timeout including configured fuzzer delay.
+    poll_interval_s : float
+        Maximum sleep between typed capture operations.
+
+    Returns
+    -------
+    WaitResult
+        Exact detection and matching fuzzer timing evidence.
+
+    Raises
+    ------
+    ValueError
+        If mode, timeout, cadence, or request data is invalid.
+    TimeoutError
+        If exact detection or matching evidence misses the deadline.
+    RuntimeError
+        If the fuzzer exits or matching evidence is invalid.
+    ~libtmux.experimental.ops.exc.TmuxCommandError
+        If a typed capture fails.
+    """
+    from libtmux.experimental.ops import CapturePane, PaneId, run
+
+    if context.mode is not ExecutionMode.SYNC:
+        message = "sync capture wait requires a synchronous run context"
+        raise ValueError(message)
+    if timeout_s <= 0 or poll_interval_s <= 0:
+        message = "capture wait timeout and cadence must be positive"
+        raise ValueError(message)
+    engine = t.cast("TmuxEngine", context.engine)
+    pane_id = context.delayed_pane_id
+    if not isinstance(pane_id, str) or not pane_id:
+        message = "capture wait requires a concrete delayed pane ID"
+        raise ValueError(message)
+    request = request_sentinel(context, request_id=request_id, value=value)
+    deadline_ns = request.requested_monotonic_ns + int(timeout_s * 1_000_000_000)
+    operation = CapturePane(target=PaneId(pane_id), start=-5000, join_wrapped=True)
+    needle = f"{request.token}\n".encode()
+    poll_count = 0
+    detected_ns: int | None = None
+    while time.monotonic_ns() < deadline_ns:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited during capture wait"
+            raise RuntimeError(message)
+        result = run(operation, engine).raise_for_status()
+        poll_count += 1
+        captured = ("\n".join(result.lines) + "\n").encode()
+        observed_ns = time.monotonic_ns()
+        if needle in captured and observed_ns <= deadline_ns:
+            detected_ns = observed_ns
+            break
+        remaining_ns = deadline_ns - time.monotonic_ns()
+        if remaining_ns > 0:
+            time.sleep(min(poll_interval_s, remaining_ns / 1_000_000_000))
+    if detected_ns is None:
+        message = f"capture wait timed out for request {request.request_id}"
+        raise TimeoutError(message)
+    evidence = _read_sentinel_evidence(context, request)
+    while evidence is None and time.monotonic_ns() < deadline_ns:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited before sentinel evidence"
+            raise RuntimeError(message)
+        time.sleep(0.001)
+        evidence = _read_sentinel_evidence(context, request)
+    if evidence is None:
+        message = f"sentinel evidence timed out for request {request.request_id}"
+        raise TimeoutError(message)
+    return _completed_wait_result(
+        context,
+        request,
+        evidence,
+        strategy="capture-poll",
+        detected_monotonic_ns=detected_ns,
+        poll_count=poll_count,
+        frame_count=0,
+        timeout_s=timeout_s,
+        dropped_notification_delta=0,
+    )
+
+
+async def wait_capture_poll_async(
+    context: RunContext,
+    *,
+    request_id: str,
+    value: str = "READY",
+    timeout_s: float = 3.0,
+    poll_interval_s: float = 0.01,
+) -> WaitResult:
+    """Request and detect one exact sentinel through typed async captures.
+
+    Examples
+    --------
+    >>> async def invalid_wait():
+    ...     try:
+    ...         await wait_capture_poll_async(
+    ...             types.SimpleNamespace(mode=ExecutionMode.SYNC),
+    ...             request_id="sample-1",
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_wait())
+    'async capture wait requires an asynchronous run context'
+
+    Parameters
+    ----------
+    context : RunContext
+        Active asynchronous topology with one verified delayed pane.
+    request_id : str
+        Unique request identity.
+    value : str
+        Unique request value embedded in the exact token.
+    timeout_s : float
+        Overall monotonic timeout including configured fuzzer delay.
+    poll_interval_s : float
+        Maximum event-loop sleep between typed capture operations.
+
+    Returns
+    -------
+    WaitResult
+        Exact detection and matching fuzzer timing evidence.
+
+    Raises
+    ------
+    ValueError
+        If mode, timeout, cadence, or request data is invalid.
+    TimeoutError
+        If exact detection or matching evidence misses the deadline.
+    RuntimeError
+        If the fuzzer exits or matching evidence is invalid.
+    ~libtmux.experimental.ops.exc.TmuxCommandError
+        If a typed capture fails.
+    """
+    from libtmux.experimental.ops import CapturePane, PaneId, arun
+
+    if context.mode is not ExecutionMode.ASYNC:
+        message = "async capture wait requires an asynchronous run context"
+        raise ValueError(message)
+    if timeout_s <= 0 or poll_interval_s <= 0:
+        message = "capture wait timeout and cadence must be positive"
+        raise ValueError(message)
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    pane_id = context.delayed_pane_id
+    if not isinstance(pane_id, str) or not pane_id:
+        message = "capture wait requires a concrete delayed pane ID"
+        raise ValueError(message)
+    request = request_sentinel(context, request_id=request_id, value=value)
+    deadline_ns = request.requested_monotonic_ns + int(timeout_s * 1_000_000_000)
+    operation = CapturePane(target=PaneId(pane_id), start=-5000, join_wrapped=True)
+    needle = f"{request.token}\n".encode()
+    poll_count = 0
+    detected_ns: int | None = None
+    while time.monotonic_ns() < deadline_ns:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited during capture wait"
+            raise RuntimeError(message)
+        result = (await arun(operation, engine)).raise_for_status()
+        poll_count += 1
+        captured = ("\n".join(result.lines) + "\n").encode()
+        observed_ns = time.monotonic_ns()
+        if needle in captured and observed_ns <= deadline_ns:
+            detected_ns = observed_ns
+            break
+        remaining_ns = deadline_ns - time.monotonic_ns()
+        if remaining_ns > 0:
+            await asyncio.sleep(min(poll_interval_s, remaining_ns / 1_000_000_000))
+    if detected_ns is None:
+        message = f"capture wait timed out for request {request.request_id}"
+        raise TimeoutError(message)
+    evidence = _read_sentinel_evidence(context, request)
+    while evidence is None and time.monotonic_ns() < deadline_ns:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited before sentinel evidence"
+            raise RuntimeError(message)
+        await asyncio.sleep(0.001)
+        evidence = _read_sentinel_evidence(context, request)
+    if evidence is None:
+        message = f"sentinel evidence timed out for request {request.request_id}"
+        raise TimeoutError(message)
+    return _completed_wait_result(
+        context,
+        request,
+        evidence,
+        strategy="capture-poll",
+        detected_monotonic_ns=detected_ns,
+        poll_count=poll_count,
+        frame_count=0,
+        timeout_s=timeout_s,
+        dropped_notification_delta=0,
+    )
+
+
+async def wait_control_stream(
+    context: RunContext,
+    *,
+    request_id: str,
+    value: str = "READY",
+    timeout_s: float = 3.0,
+) -> WaitResult:
+    """Detect one exact sentinel in decoded async control output.
+
+    The subscription is advanced before request publication. Only decoded
+    ``%output`` and ``%extended-output`` bytes for the concrete delayed pane
+    participate in matching. A suffix of at most ``len(token) - 1`` bytes
+    carries a possible partial match across notification boundaries.
+
+    Examples
+    --------
+    >>> async def invalid_wait():
+    ...     try:
+    ...         await wait_control_stream(
+    ...             types.SimpleNamespace(
+    ...                 mode=ExecutionMode.SYNC, lane=EngineLane.CONTROL
+    ...             ),
+    ...             request_id="sample-1",
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_wait())
+    'control stream wait requires an asynchronous context'
+
+    Parameters
+    ----------
+    context : RunContext
+        Active asynchronous control-mode topology.
+    request_id : str
+        Unique request identity.
+    value : str
+        Unique request value embedded in the exact token.
+    timeout_s : float
+        Overall monotonic timeout including configured fuzzer delay.
+
+    Returns
+    -------
+    WaitResult
+        Exact decoded detection and matching fuzzer timing evidence.
+
+    Raises
+    ------
+    ValueError
+        If mode, lane, timeout, or request data is invalid.
+    TypeError
+        If the context engine is not :class:`AsyncControlModeEngine`.
+    TimeoutError
+        If exact detection or matching evidence misses the deadline.
+    RuntimeError
+        If the stream ends, the fuzzer exits, evidence differs, or output drops.
+    """
+    from libtmux.experimental.engines.async_control_mode import (
+        AsyncControlModeEngine,
+    )
+
+    if context.mode is not ExecutionMode.ASYNC:
+        message = "control stream wait requires an asynchronous context"
+        raise ValueError(message)
+    if context.lane is not EngineLane.CONTROL:
+        message = "control stream wait requires the control engine lane"
+        raise ValueError(message)
+    if timeout_s <= 0:
+        message = "control stream wait timeout must be positive"
+        raise ValueError(message)
+    if not isinstance(context.engine, AsyncControlModeEngine):
+        message = "control stream wait requires AsyncControlModeEngine"
+        raise TypeError(message)
+    pane_id = context.delayed_pane_id
+    if not isinstance(pane_id, str) or not pane_id:
+        message = "control stream wait requires a concrete delayed pane ID"
+        raise ValueError(message)
+    engine = context.engine
+    dropped_before = engine.dropped_notifications
+    subscription = t.cast(t.AsyncGenerator[t.Any, None], engine.subscribe())
+    next_notification: asyncio.Task[t.Any] | None = asyncio.create_task(
+        anext(subscription),
+        name=f"bench-control-wait-{request_id}",
+    )
+    request: SentinelRequest | None = None
+    evidence: cabc.Mapping[str, t.Any] | None = None
+    detected_ns: int | None = None
+    frame_count = 0
+    try:
+        await asyncio.sleep(0)
+        assert next_notification is not None
+        if next_notification.done() and not next_notification.cancelled():
+            failure = next_notification.exception()
+            if failure is not None:
+                message = "control notification stream ended before request"
+                raise RuntimeError(message) from failure
+        request = request_sentinel(context, request_id=request_id, value=value)
+        deadline_ns = request.requested_monotonic_ns + int(timeout_s * 1_000_000_000)
+        needle = request.token.encode()
+        suffix = b""
+        suffix_limit = max(0, len(needle) - 1)
+        while time.monotonic_ns() < deadline_ns:
+            if context.fuzzer.poll() is not None:
+                message = "fuzzer exited during control stream wait"
+                raise RuntimeError(message)
+            remaining_s = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+            if remaining_s <= 0:
+                break
+            assert next_notification is not None
+            try:
+                notification = await asyncio.wait_for(
+                    next_notification,
+                    timeout=remaining_s,
+                )
+            except asyncio.TimeoutError:
+                next_notification = None
+                break
+            except StopAsyncIteration as error:
+                next_notification = None
+                message = "control notification stream ended during wait"
+                raise RuntimeError(message) from error
+            next_notification = None
+            if (
+                notification.kind in {"output", "extended-output"}
+                and notification.pane_id == pane_id
+                and notification.payload is not None
+            ):
+                frame_count += 1
+                combined = suffix + notification.payload
+                observed_ns = time.monotonic_ns()
+                if needle in combined and observed_ns <= deadline_ns:
+                    detected_ns = observed_ns
+                    break
+                suffix = combined[-suffix_limit:] if suffix_limit else b""
+            next_notification = asyncio.create_task(
+                anext(subscription),
+                name=f"bench-control-wait-{request_id}",
+            )
+        if detected_ns is None:
+            message = f"control stream wait timed out for request {request.request_id}"
+            raise TimeoutError(message)
+        evidence = _read_sentinel_evidence(context, request)
+        while evidence is None and time.monotonic_ns() < deadline_ns:
+            if context.fuzzer.poll() is not None:
+                message = "fuzzer exited before sentinel evidence"
+                raise RuntimeError(message)
+            await asyncio.sleep(0.001)
+            evidence = _read_sentinel_evidence(context, request)
+        if evidence is None:
+            message = f"sentinel evidence timed out for request {request.request_id}"
+            raise TimeoutError(message)
+    finally:
+        if next_notification is not None:
+            if not next_notification.done():
+                next_notification.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await next_notification
+        await subscription.aclose()
+    assert request is not None
+    assert evidence is not None
+    assert detected_ns is not None
+    dropped_delta = engine.dropped_notifications - dropped_before
+    return _completed_wait_result(
+        context,
+        request,
+        evidence,
+        strategy="control-stream",
+        detected_monotonic_ns=detected_ns,
+        poll_count=0,
+        frame_count=frame_count,
+        timeout_s=timeout_s,
+        dropped_notification_delta=dropped_delta,
+    )
 
 
 def _mutation_targets(
@@ -5656,7 +6503,7 @@ def search_contents(
 
 
 PhaseMeasurement: t.TypeAlias = (
-    MutationResult | EnumerationResult | CaptureResult | SearchResult
+    MutationResult | EnumerationResult | CaptureResult | SearchResult | WaitResult
 )
 
 
@@ -5676,7 +6523,7 @@ def _validated_phase_measurement(value: object) -> PhaseMeasurement:
 
     Returns
     -------
-    MutationResult | EnumerationResult | CaptureResult | SearchResult
+    MutationResult | EnumerationResult | CaptureResult | SearchResult | WaitResult
         Valid typed measurement.
 
     Raises
@@ -5691,6 +6538,7 @@ def _validated_phase_measurement(value: object) -> PhaseMeasurement:
         EnumerationResult,
         CaptureResult,
         SearchResult,
+        WaitResult,
     )
     if not isinstance(value, accepted_types):
         message = "phase callable did not return a typed measurement"

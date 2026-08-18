@@ -1992,6 +1992,483 @@ def test_capture_rejects_unattributed_typed_results(
         )
 
 
+def _wait_result_invariants(
+    benchmark_module: types.ModuleType,
+    context: t.Any,
+    result: t.Any,
+    *,
+    request_id: str,
+    value: str,
+    strategy: str,
+) -> None:
+    """Assert independently recomputable wait timing and identity evidence."""
+    assert isinstance(result, benchmark_module.WaitResult)
+    assert result.strategy == strategy
+    assert result.request_id == request_id
+    assert result.token == (
+        f"LIBTMUX_SENTINEL run={context.run_id} request={request_id} value={value}"
+    )
+    assert result.pane_id == context.delayed_pane_id
+    assert result.configured_delay_ns == 50_000_000
+    assert result.scheduled_monotonic_ns == (
+        result.requested_monotonic_ns + result.configured_delay_ns
+    )
+    assert result.emitted_monotonic_ns >= result.scheduled_monotonic_ns
+    assert result.scheduling_lateness_ns == (
+        result.emitted_monotonic_ns - result.scheduled_monotonic_ns
+    )
+    assert result.scheduling_lateness_ns >= 0
+    assert result.detected_monotonic_ns >= result.emitted_monotonic_ns
+    assert result.detection_overhead_ns == (
+        result.detected_monotonic_ns - result.emitted_monotonic_ns
+    )
+    assert result.detection_overhead_ns >= 0
+    assert result.duration_ns == result.detection_overhead_ns
+    assert result.timeout_s == 2.0
+    assert result.timed_out is False
+    assert result.dropped_notification_delta == 0
+    assert result.verified
+    if strategy == "capture-poll":
+        assert result.poll_count > 0
+        assert result.frame_count == 0
+    else:
+        assert result.poll_count == 0
+        assert result.frame_count > 0
+
+
+def _ordinary_delayed_frame_follows_wait(context: t.Any, result: t.Any) -> bool:
+    """Wait until the delayed pane shows ordinary scrolling after a sentinel."""
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        captured = context.server.cmd(
+            "capture-pane",
+            "-t",
+            result.pane_id,
+            "-p",
+            "-J",
+            "-S",
+            "-5000",
+        )
+        if captured.returncode != 0:
+            return False
+        lines = captured.stdout
+        try:
+            sentinel_index = lines.index(result.token)
+        except ValueError:
+            time.sleep(0.005)
+            continue
+        if any(
+            line.startswith("[delayed-match epoch=")
+            for line in lines[sentinel_index + 1 :]
+        ):
+            return True
+        time.sleep(0.005)
+    return False
+
+
+def _assert_wait_tokens_only_reach_delayed_pane(
+    context: t.Any,
+    results: list[t.Any],
+) -> None:
+    """Require every exact request token only in the selected delayed pane."""
+    for pane_id in context.pane_ids:
+        captured = context.server.cmd(
+            "capture-pane",
+            "-t",
+            pane_id,
+            "-p",
+            "-J",
+            "-S",
+            "-5000",
+        )
+        assert captured.returncode == 0, captured.stderr
+        matched = tuple(
+            result.request_id for result in results if result.token in captured.stdout
+        )
+        if pane_id == context.delayed_pane_id:
+            assert matched == tuple(result.request_id for result in results)
+        else:
+            assert matched == ()
+
+
+def test_control_wait_matches_split_target_bytes_and_closes_subscription(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real engine object isolates deterministic chunk and close semantics."""
+    from libtmux.experimental.engines.async_control_mode import (
+        AsyncControlModeEngine,
+        ControlNotification,
+    )
+
+    fuzzer_root = tmp_path / "fuzzer"
+    (fuzzer_root / "requests").mkdir(parents=True)
+    (fuzzer_root / "sentinels").mkdir()
+    engine = AsyncControlModeEngine()
+    events: list[str] = []
+    context = types.SimpleNamespace(
+        mode=benchmark_module.ExecutionMode.ASYNC,
+        lane=benchmark_module.EngineLane.CONTROL,
+        engine=engine,
+        delayed_pane_id="%7",
+        run_id="split-run",
+        scratch=tmp_path,
+        sentinel_delay_ns=0,
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+    )
+
+    async def notifications() -> t.AsyncIterator[ControlNotification]:
+        request_path = fuzzer_root / "requests" / "split-request.json"
+        events.append("subscribed")
+        assert not request_path.exists()
+        try:
+            while not request_path.exists():
+                await asyncio.sleep(0)
+            events.append("requested")
+            marker = json.loads(request_path.read_text(encoding="utf-8"))
+            token = "LIBTMUX_SENTINEL run=split-run request=split-request value=RIGHT"
+            requested_ns = marker["requested_monotonic_ns"]
+            emitted_ns = time.monotonic_ns()
+            benchmark_module.write_json_atomic(
+                fuzzer_root / "sentinels" / "split-request.json",
+                {
+                    "schema_version": 1,
+                    "run_id": "split-run",
+                    "request_id": "split-request",
+                    "requested_monotonic_ns": requested_ns,
+                    "configured_delay_ns": 0,
+                    "scheduled_monotonic_ns": requested_ns,
+                    "emitted_monotonic_ns": emitted_ns,
+                    "scheduling_lateness_ns": emitted_ns - requested_ns,
+                    "sentinel": token,
+                    "sentinel_sha256": hashlib.sha256(
+                        f"{token}\n".encode()
+                    ).hexdigest(),
+                },
+            )
+            yield ControlNotification(
+                "output", (), "", pane_id="%8", payload=token.encode()
+            )
+            yield ControlNotification(
+                "output",
+                (),
+                "",
+                pane_id="%7",
+                payload=b"LIBTMUX_SENTINEL run=split-run request=stale value=WRONG",
+            )
+            split = len(token) // 2
+            yield ControlNotification(
+                "extended-output",
+                (),
+                "",
+                pane_id="%7",
+                payload=token.encode()[:split],
+            )
+            yield ControlNotification(
+                "output",
+                (),
+                "",
+                pane_id="%7",
+                payload=token.encode()[split:],
+            )
+        finally:
+            events.append("closed")
+
+    monkeypatch.setattr(engine, "subscribe", notifications)
+
+    result = asyncio.run(
+        benchmark_module.wait_control_stream(
+            context,
+            request_id="split-request",
+            value="RIGHT",
+            timeout_s=1.0,
+        )
+    )
+
+    assert result.request_id == "split-request"
+    assert result.frame_count == 3
+    assert result.dropped_notification_delta == 0
+    assert events == ["subscribed", "requested", "closed"]
+
+
+def test_control_wait_rejects_drop_delta_and_still_closes_subscription(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deterministic overflow double proves drops invalidate and close a wait."""
+    from libtmux.experimental.engines.async_control_mode import (
+        AsyncControlModeEngine,
+        ControlNotification,
+    )
+
+    fuzzer_root = tmp_path / "fuzzer"
+    (fuzzer_root / "requests").mkdir(parents=True)
+    (fuzzer_root / "sentinels").mkdir()
+    engine = AsyncControlModeEngine()
+    closed = False
+    context = types.SimpleNamespace(
+        mode=benchmark_module.ExecutionMode.ASYNC,
+        lane=benchmark_module.EngineLane.CONTROL,
+        engine=engine,
+        delayed_pane_id="%7",
+        run_id="drop-run",
+        scratch=tmp_path,
+        sentinel_delay_ns=0,
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+    )
+
+    async def notifications() -> t.AsyncIterator[ControlNotification]:
+        nonlocal closed
+        request_path = fuzzer_root / "requests" / "drop-request.json"
+        try:
+            while not request_path.exists():
+                await asyncio.sleep(0)
+            marker = json.loads(request_path.read_text(encoding="utf-8"))
+            token = "LIBTMUX_SENTINEL run=drop-run request=drop-request value=RIGHT"
+            requested_ns = marker["requested_monotonic_ns"]
+            emitted_ns = time.monotonic_ns()
+            benchmark_module.write_json_atomic(
+                fuzzer_root / "sentinels" / "drop-request.json",
+                {
+                    "schema_version": 1,
+                    "run_id": "drop-run",
+                    "request_id": "drop-request",
+                    "requested_monotonic_ns": requested_ns,
+                    "configured_delay_ns": 0,
+                    "scheduled_monotonic_ns": requested_ns,
+                    "emitted_monotonic_ns": emitted_ns,
+                    "scheduling_lateness_ns": emitted_ns - requested_ns,
+                    "sentinel": token,
+                    "sentinel_sha256": hashlib.sha256(
+                        f"{token}\n".encode()
+                    ).hexdigest(),
+                },
+            )
+            engine._dropped_notifications += 1
+            yield ControlNotification(
+                "output", (), "", pane_id="%7", payload=token.encode()
+            )
+        finally:
+            closed = True
+
+    monkeypatch.setattr(engine, "subscribe", notifications)
+
+    with pytest.raises(RuntimeError, match="dropped 1 notification"):
+        asyncio.run(
+            benchmark_module.wait_control_stream(
+                context,
+                request_id="drop-request",
+                value="RIGHT",
+                timeout_s=1.0,
+            )
+        )
+
+    assert closed
+
+
+@pytest.mark.parametrize(
+    ("field", "wrong_value"),
+    (
+        ("run_id", "stale-run"),
+        ("request_id", "stale-request"),
+        ("requested_monotonic_ns", 8),
+        ("sentinel", "LIBTMUX_SENTINEL run=run-7 request=old value=WRONG"),
+        ("sentinel_sha256", "0" * 64),
+    ),
+)
+def test_wait_evidence_rejects_wrong_or_stale_request_identity(
+    benchmark_module: types.ModuleType,
+    field: str,
+    wrong_value: object,
+) -> None:
+    """Evidence from another request or token cannot validate a detection."""
+    token = "LIBTMUX_SENTINEL run=run-7 request=request-1 value=RIGHT"
+    request = benchmark_module.SentinelRequest(
+        request_id="request-1",
+        token=token,
+        requested_monotonic_ns=7,
+        configured_delay_ns=5,
+    )
+    marker = {
+        "schema_version": 1,
+        "run_id": "run-7",
+        "request_id": "request-1",
+        "requested_monotonic_ns": 7,
+        "configured_delay_ns": 5,
+        "scheduled_monotonic_ns": 12,
+        "emitted_monotonic_ns": 14,
+        "scheduling_lateness_ns": 2,
+        "sentinel": token,
+        "sentinel_sha256": hashlib.sha256(f"{token}\n".encode()).hexdigest(),
+    }
+    marker[field] = wrong_value
+
+    with pytest.raises(RuntimeError, match="does not match request"):
+        benchmark_module._validated_sentinel_evidence(
+            types.SimpleNamespace(run_id="run-7"), request, marker
+        )
+
+
+def test_repeated_wait_capture_poll_sync_uses_one_active_topology(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Five sync polls must match fresh requests without restarting resources."""
+    context = benchmark_module.setup_sync(
+        benchmark_module.Topology(1, 2, 2),
+        benchmark_module.EngineLane.SUBPROCESS,
+        tmp_path / "repeated-wait-sync",
+        run_id="wait-sync",
+        delayed_ordinal=2,
+    )
+    cleanup = None
+    observed: list[t.Any] = []
+    identities_before = context.processes
+    request_ids = iter(f"sync-{ordinal}" for ordinal in range(5))
+
+    def measured() -> t.Any:
+        request_id = next(request_ids)
+        value = f"TOKEN-{request_id}"
+        result = benchmark_module.wait_capture_poll_sync(
+            context,
+            request_id=request_id,
+            value=value,
+            timeout_s=2.0,
+            poll_interval_s=0.005,
+        )
+        _wait_result_invariants(
+            benchmark_module,
+            context,
+            result,
+            request_id=request_id,
+            value=value,
+            strategy="capture-poll",
+        )
+        observed.append(result)
+        return result
+
+    try:
+        benchmark_module.release_activity_gate(context)
+        benchmark_module.verify_activity_sync(context)
+        repeated = asyncio.run(
+            benchmark_module.run_repeatable_phase(
+                {"capture-poll": measured},
+                warmup=2,
+                runs=3,
+                seed=11,
+                live_postcondition=lambda result: _ordinary_delayed_frame_follows_wait(
+                    context, result
+                ),
+                snapshot_resources=lambda: benchmark_module.HostSnapshot(),
+            )
+        )
+        _assert_wait_tokens_only_reach_delayed_pane(context, observed)
+        assert repeated.failure is None
+        assert len(repeated.samples) == 3
+        assert len(observed) == 5
+        assert len({result.request_id for result in observed}) == 5
+        assert len({result.token for result in observed}) == 5
+        assert context.fuzzer.pid == identities_before[0].pid
+        assert context.processes == identities_before
+        assert len(tuple((context.scratch / "fuzzer" / "requests").glob("*.json"))) == 5
+    finally:
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+    assert cleanup.complete, cleanup.errors
+
+
+@pytest.mark.parametrize(
+    ("lane_name", "strategy"),
+    (("subprocess", "capture-poll"), ("control", "control-stream")),
+)
+def test_repeated_wait_async_strategies_use_one_active_topology(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    lane_name: str,
+    strategy: str,
+) -> None:
+    """Async polling and streaming each keep one active topology for five waits."""
+    context = cleanup = repeated = None
+    observed: list[t.Any] = []
+
+    async def exercise() -> None:
+        """Keep the async engine, waits, and cleanup on one event loop."""
+        nonlocal context, cleanup, repeated
+        context = await benchmark_module.setup_async(
+            benchmark_module.Topology(1, 2, 2),
+            benchmark_module.EngineLane(lane_name),
+            tmp_path / f"repeated-wait-{lane_name}",
+            run_id=f"wait-{lane_name}",
+            delayed_ordinal=2,
+        )
+        identities_before = context.processes
+        request_ids = iter(f"{strategy}-{ordinal}" for ordinal in range(5))
+
+        async def measured() -> t.Any:
+            request_id = next(request_ids)
+            value = f"TOKEN-{request_id}"
+            if strategy == "capture-poll":
+                result = await benchmark_module.wait_capture_poll_async(
+                    context,
+                    request_id=request_id,
+                    value=value,
+                    timeout_s=2.0,
+                    poll_interval_s=0.005,
+                )
+            else:
+                result = await benchmark_module.wait_control_stream(
+                    context,
+                    request_id=request_id,
+                    value=value,
+                    timeout_s=2.0,
+                )
+            _wait_result_invariants(
+                benchmark_module,
+                context,
+                result,
+                request_id=request_id,
+                value=value,
+                strategy=strategy,
+            )
+            observed.append(result)
+            return result
+
+        try:
+            benchmark_module.release_activity_gate(context)
+            await benchmark_module.verify_activity_async(context)
+            repeated = await benchmark_module.run_repeatable_phase(
+                {strategy: measured},
+                warmup=2,
+                runs=3,
+                seed=11,
+                live_postcondition=lambda result: _ordinary_delayed_frame_follows_wait(
+                    context, result
+                ),
+                snapshot_resources=lambda: benchmark_module.HostSnapshot(),
+            )
+            _assert_wait_tokens_only_reach_delayed_pane(context, observed)
+            assert context.fuzzer.pid == identities_before[0].pid
+            assert context.processes == identities_before
+            assert (
+                len(tuple((context.scratch / "fuzzer" / "requests").glob("*.json")))
+                == 5
+            )
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    asyncio.run(exercise())
+
+    assert repeated is not None
+    assert repeated.failure is None
+    assert len(repeated.samples) == 3
+    assert len(observed) == 5
+    assert len({result.request_id for result in observed}) == 5
+    assert len({result.token for result in observed}) == 5
+    assert cleanup is not None
+    assert cleanup.complete, cleanup.errors
+
+
 def _request_content_sentinel(
     benchmark_module: types.ModuleType,
     context: t.Any,
