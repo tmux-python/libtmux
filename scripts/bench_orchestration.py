@@ -649,6 +649,8 @@ class RunReport:
         Ordered ramp outcomes, if this is a ramp run.
     requested_shapes : tuple[Topology, ...]
         Exact selected ramp sequence, including valid custom smoke ramps.
+    ramp_kind : {"none", "canonical", "custom"}
+        Whether this record is a single run, canonical ramp, or declared custom ramp.
     guard_decision : GuardDecision | None
         Effective decision after an optional predictive override.
     original_guard_decision : GuardDecision | None
@@ -667,6 +669,7 @@ class RunReport:
     maximum_completed: bool = False
     ramp: tuple[RampStep, ...] = ()
     requested_shapes: tuple[Topology, ...] = ()
+    ramp_kind: t.Literal["none", "canonical", "custom"] = "none"
     guard_decision: GuardDecision | None = None
     original_guard_decision: GuardDecision | None = None
     schema_version: int = 1
@@ -785,7 +788,19 @@ def validate_report(report: RunReport) -> None:
         ):
             message = "phase summary must match accepted samples"
             raise ValueError(message)
-    if len(report.ramp) != len(report.requested_shapes):
+    if report.ramp_kind == "none" and (report.ramp or report.requested_shapes):
+        message = "none ramp kind must not carry attempts or requested shapes"
+        raise ValueError(message)
+    if report.ramp_kind == "canonical" and report.requested_shapes != canonical_ramp():
+        message = "canonical ramp kind requires canonical requested shapes"
+        raise ValueError(message)
+    if report.ramp_kind == "custom" and (
+        not report.requested_shapes
+        or len(set(report.requested_shapes)) != len(report.requested_shapes)
+    ):
+        message = "custom ramp kind requires nonempty unique requested shapes"
+        raise ValueError(message)
+    if report.ramp_kind != "none" and len(report.ramp) != len(report.requested_shapes):
         message = "ramp attempts must match requested shapes cardinality"
         raise ValueError(message)
     terminal_seen = False
