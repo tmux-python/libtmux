@@ -48,6 +48,7 @@ if t.TYPE_CHECKING:
     )
     from libtmux.experimental.ops.operation import Operation
     from libtmux.experimental.ops.plan import LazyPlan
+    from libtmux.experimental.ops.planner import Planner
     from libtmux.experimental.workspace import WorkspaceSet
     from libtmux.server import Server
 
@@ -923,6 +924,30 @@ class ExecutionMetrics:
 
 
 @dataclasses.dataclass(frozen=True)
+class HeartbeatObservation:
+    """One run-scoped fuzzer heartbeat observed by the benchmark.
+
+    Attributes
+    ----------
+    epoch : int
+        Active fuzzer epoch published in the atomic heartbeat marker.
+    published_monotonic_ns : int
+        Fuzzer monotonic timestamp stored with that epoch.
+    observed_monotonic_ns : int
+        Benchmark monotonic timestamp immediately after reading the marker.
+
+    Examples
+    --------
+    >>> HeartbeatObservation(4, 10, 12).epoch
+    4
+    """
+
+    epoch: int
+    published_monotonic_ns: int
+    observed_monotonic_ns: int
+
+
+@dataclasses.dataclass(frozen=True)
 class MutationResult:
     """Verified and restored bulk mutation measurement.
 
@@ -944,18 +969,21 @@ class MutationResult:
         Whether all mutated live values matched the plan.
     restored : bool
         Whether canonical names, titles, and option state were restored.
-    activity_before_epoch : int
-        Fuzzer heartbeat epoch before the mutation.
-    activity_after_epoch : int
-        Later heartbeat epoch observed after restoration.
+    restoration_verified_monotonic_ns : int
+        Local timestamp taken after restored-state verification.
+    activity_baseline : HeartbeatObservation
+        Fresh heartbeat read only after restoration verification.
+    activity_after : HeartbeatObservation
+        Strictly later heartbeat proving continued activity.
 
     Examples
     --------
     >>> result = MutationResult(
     ...     5, ExecutionMetrics(3, 1, 1, 3, 0), "$1", ("@2",), ("%3",),
-    ...     "7", True, True, 4, 5,
+    ...     "7", True, True, 9, HeartbeatObservation(4, 8, 10),
+    ...     HeartbeatObservation(5, 11, 12),
     ... )
-    >>> result.restored and result.activity_after_epoch > result.activity_before_epoch
+    >>> result.restored and result.activity_after.epoch > result.activity_baseline.epoch
     True
     """
 
@@ -967,8 +995,9 @@ class MutationResult:
     generation: str
     verified: bool
     restored: bool
-    activity_before_epoch: int
-    activity_after_epoch: int
+    restoration_verified_monotonic_ns: int
+    activity_baseline: HeartbeatObservation
+    activity_after: HeartbeatObservation
 
 
 EnumerationKind: t.TypeAlias = t.Literal["sessions", "windows", "panes"]
@@ -1082,9 +1111,7 @@ class CaptureResult:
     verified: bool
 
 
-SearchFamily: t.TypeAlias = t.Literal[
-    "server-side", "snapshot", "end-to-end", "contents"
-]
+SearchFamily: t.TypeAlias = t.Literal["classic", "snapshot", "end-to-end", "contents"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1095,7 +1122,7 @@ class SearchResult:
     ----------
     duration_ns : int
         Time spent in the named search family only.
-    family : {"server-side", "snapshot", "end-to-end", "contents"}
+    family : {"classic", "snapshot", "end-to-end", "contents"}
         Search source and timing boundary.
     kind : {"sessions", "windows", "panes"}
         Object kind scanned or returned.
@@ -1556,6 +1583,8 @@ class RunContext:
         Panes that captured the released marker.
     heartbeat_epoch : int
         Last monotonic fuzzer heartbeat epoch observed.
+    heartbeat_monotonic_ns : int
+        Last fuzzer monotonic publication timestamp observed.
     ambient_tmux_environment : tuple[str | None, str | None]
         Original ``TMUX`` and ``TMUX_PANE`` values restored after cleanup.
 
@@ -1594,6 +1623,7 @@ class RunContext:
     activity_marker: str | None = None
     activity_pane_ids: tuple[str, ...] = ()
     heartbeat_epoch: int = -1
+    heartbeat_monotonic_ns: int = -1
     ambient_tmux_environment: tuple[str | None, str | None] = (None, None)
 
 
@@ -3840,12 +3870,16 @@ def _require_active_phase_context(
         raise RuntimeError(message)
 
 
-def _current_activity_epoch(context: RunContext) -> int:
-    """Return and retain an active, non-regressing fuzzer heartbeat epoch.
+def _current_activity_heartbeat(
+    context: RunContext,
+    *,
+    max_age_s: float,
+) -> HeartbeatObservation:
+    """Read one fresh active heartbeat with epoch and monotonic timestamps.
 
     >>> context = types.SimpleNamespace(fuzzer=types.SimpleNamespace(poll=lambda: 1))
     >>> try:
-    ...     _current_activity_epoch(context)
+    ...     _current_activity_heartbeat(context, max_age_s=1)
     ... except RuntimeError as error:
     ...     print(error)
     fuzzer exited during measured phase
@@ -3854,37 +3888,73 @@ def _current_activity_epoch(context: RunContext) -> int:
     ----------
     context : RunContext
         Active run whose heartbeat is authoritative.
+    max_age_s : float
+        Maximum permitted age of the fuzzer publication timestamp.
 
     Returns
     -------
-    int
-        Current active heartbeat epoch.
+    HeartbeatObservation
+        Current active epoch with publication and local observation times.
 
     Raises
     ------
     RuntimeError
-        If the fuzzer exited, heartbeat is inactive, or its epoch regressed.
+        If the fuzzer exited, heartbeat is inactive, stale, or regressed.
+    ValueError
+        If ``max_age_s`` is not positive.
     """
+    if max_age_s <= 0:
+        message = "heartbeat maximum age must be positive"
+        raise ValueError(message)
     if context.fuzzer.poll() is not None:
         message = "fuzzer exited during measured phase"
         raise RuntimeError(message)
-    state, epoch = _heartbeat_epoch(context)
-    if state != "active" or epoch is None:
+    marker = _read_run_marker(
+        context.scratch / "fuzzer" / "heartbeat.json", context.run_id
+    )
+    if marker is None or marker.get("state") != "active":
         message = "fuzzer heartbeat is not active during measured phase"
+        raise RuntimeError(message)
+    epoch = marker.get("epoch")
+    published_monotonic_ns = marker.get("monotonic_ns")
+    if (
+        type(epoch) is not int
+        or epoch < 0
+        or type(published_monotonic_ns) is not int
+        or published_monotonic_ns < 0
+    ):
+        message = "fuzzer heartbeat has invalid activity evidence"
+        raise RuntimeError(message)
+    observed_monotonic_ns = time.monotonic_ns()
+    age_ns = observed_monotonic_ns - published_monotonic_ns
+    if age_ns < 0:
+        message = "fuzzer heartbeat publication is in the future"
+        raise RuntimeError(message)
+    if age_ns > int(max_age_s * 1_000_000_000):
+        message = "fuzzer heartbeat is stale during measured phase"
         raise RuntimeError(message)
     if epoch < context.heartbeat_epoch:
         message = "fuzzer heartbeat epoch moved backwards"
         raise RuntimeError(message)
+    previous_monotonic_ns = getattr(context, "heartbeat_monotonic_ns", -1)
+    if published_monotonic_ns < previous_monotonic_ns:
+        message = "fuzzer heartbeat timestamp moved backwards"
+        raise RuntimeError(message)
     context.heartbeat_epoch = epoch
-    return epoch
+    context.heartbeat_monotonic_ns = published_monotonic_ns
+    return HeartbeatObservation(
+        epoch=epoch,
+        published_monotonic_ns=published_monotonic_ns,
+        observed_monotonic_ns=observed_monotonic_ns,
+    )
 
 
 def _wait_activity_advance_sync(
     context: RunContext,
-    baseline: int,
+    baseline: HeartbeatObservation,
     *,
     timeout_s: float = 2.0,
-) -> int:
+) -> HeartbeatObservation:
     """Wait until the live fuzzer heartbeat advances past ``baseline``.
 
     >>> try:
@@ -3897,15 +3967,15 @@ def _wait_activity_advance_sync(
     ----------
     context : RunContext
         Active synchronous run.
-    baseline : int
-        Epoch that the fuzzer must surpass.
+    baseline : HeartbeatObservation
+        Post-restoration heartbeat that the fuzzer must surpass.
     timeout_s : float
         Maximum monotonic wait.
 
     Returns
     -------
-    int
-        First observed later epoch.
+    HeartbeatObservation
+        First observation with a later epoch and publication timestamp.
 
     Raises
     ------
@@ -3917,22 +3987,32 @@ def _wait_activity_advance_sync(
     if timeout_s <= 0:
         message = "activity advance timeout must be positive"
         raise ValueError(message)
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        epoch = _current_activity_epoch(context)
-        if epoch > baseline:
-            return epoch
+    deadline_ns = time.monotonic_ns() + int(timeout_s * 1_000_000_000)
+    maximum_age_s = (
+        timeout_s
+        + (baseline.observed_monotonic_ns - baseline.published_monotonic_ns)
+        / 1_000_000_000
+    )
+    while time.monotonic_ns() < deadline_ns:
+        heartbeat = _current_activity_heartbeat(context, max_age_s=maximum_age_s)
+        if (
+            heartbeat.epoch > baseline.epoch
+            and heartbeat.published_monotonic_ns > baseline.published_monotonic_ns
+            and heartbeat.observed_monotonic_ns > baseline.observed_monotonic_ns
+            and heartbeat.observed_monotonic_ns <= deadline_ns
+        ):
+            return heartbeat
         time.sleep(0.005)
-    message = f"activity did not advance past epoch {baseline}"
+    message = f"activity did not advance past epoch {baseline.epoch}"
     raise TimeoutError(message)
 
 
 async def _wait_activity_advance_async(
     context: RunContext,
-    baseline: int,
+    baseline: HeartbeatObservation,
     *,
     timeout_s: float = 2.0,
-) -> int:
+) -> HeartbeatObservation:
     """Asynchronously wait for a later active heartbeat epoch.
 
     >>> async def invalid_wait():
@@ -3949,15 +4029,15 @@ async def _wait_activity_advance_async(
     ----------
     context : RunContext
         Active asynchronous run.
-    baseline : int
-        Epoch that the fuzzer must surpass.
+    baseline : HeartbeatObservation
+        Post-restoration heartbeat that the fuzzer must surpass.
     timeout_s : float
         Maximum event-loop wait.
 
     Returns
     -------
-    int
-        First observed later epoch.
+    HeartbeatObservation
+        First observation with a later epoch and publication timestamp.
 
     Raises
     ------
@@ -3969,14 +4049,23 @@ async def _wait_activity_advance_async(
     if timeout_s <= 0:
         message = "activity advance timeout must be positive"
         raise ValueError(message)
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout_s
-    while loop.time() < deadline:
-        epoch = _current_activity_epoch(context)
-        if epoch > baseline:
-            return epoch
+    deadline_ns = time.monotonic_ns() + int(timeout_s * 1_000_000_000)
+    maximum_age_s = (
+        timeout_s
+        + (baseline.observed_monotonic_ns - baseline.published_monotonic_ns)
+        / 1_000_000_000
+    )
+    while time.monotonic_ns() < deadline_ns:
+        heartbeat = _current_activity_heartbeat(context, max_age_s=maximum_age_s)
+        if (
+            heartbeat.epoch > baseline.epoch
+            and heartbeat.published_monotonic_ns > baseline.published_monotonic_ns
+            and heartbeat.observed_monotonic_ns > baseline.observed_monotonic_ns
+            and heartbeat.observed_monotonic_ns <= deadline_ns
+        ):
+            return heartbeat
         await asyncio.sleep(0.005)
-    message = f"activity did not advance past epoch {baseline}"
+    message = f"activity did not advance past epoch {baseline.epoch}"
     raise TimeoutError(message)
 
 
@@ -4294,9 +4383,9 @@ def mutate_sync(context: RunContext, *, generation: int | str) -> MutationResult
         pane_ids=pane_ids,
     )
     planner = BatchingPlanner()
-    baseline = _current_activity_epoch(context)
     verified = False
     restored = False
+    restoration_verified_monotonic_ns = 0
     duration_ns = 0
     try:
         started_ns = time.perf_counter_ns()
@@ -4329,7 +4418,9 @@ def mutate_sync(context: RunContext, *, generation: int | str) -> MutationResult
             pane_ids=pane_ids,
         )
         restored = True
-    activity_after = _wait_activity_advance_sync(context, baseline)
+        restoration_verified_monotonic_ns = time.monotonic_ns()
+    activity_baseline = _current_activity_heartbeat(context, max_age_s=2.0)
+    activity_after = _wait_activity_advance_sync(context, activity_baseline)
     steps = len(mutation.explain(planner))
     return MutationResult(
         duration_ns=duration_ns,
@@ -4340,9 +4431,81 @@ def mutate_sync(context: RunContext, *, generation: int | str) -> MutationResult
         generation=generation_text,
         verified=verified,
         restored=restored,
-        activity_before_epoch=baseline,
-        activity_after_epoch=activity_after,
+        restoration_verified_monotonic_ns=restoration_verified_monotonic_ns,
+        activity_baseline=activity_baseline,
+        activity_after=activity_after,
     )
+
+
+async def _restore_mutation_async(
+    context: RunContext,
+    restoration: LazyPlan,
+    planner: Planner,
+    *,
+    session_id: str,
+    window_ids: tuple[str, ...],
+    pane_ids: tuple[str, ...],
+) -> int:
+    """Execute and verify async restoration within one owned task.
+
+    >>> async def invalid_restoration():
+    ...     try:
+    ...         await _restore_mutation_async(
+    ...             types.SimpleNamespace(mode=ExecutionMode.SYNC),
+    ...             t.cast("LazyPlan", None), t.cast("Planner", None),
+    ...             session_id="$0", window_ids=(), pane_ids=(),
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_restoration())
+    'async restoration requires an async run context'
+
+    Parameters
+    ----------
+    context : RunContext
+        Async live run containing canonical topology bindings.
+    restoration : LazyPlan
+        Fully constructed canonical-name, option, and title restoration graph.
+    planner : Planner
+        Planner used by the corresponding mutation graph.
+    session_id : str
+        Concrete session whose generation option must be absent afterward.
+    window_ids : tuple[str, ...]
+        Mutated windows that must regain canonical names.
+    pane_ids : tuple[str, ...]
+        Mutated panes whose explicit titles must be cleared.
+
+    Returns
+    -------
+    int
+        Local monotonic timestamp taken after restored-state verification.
+
+    Raises
+    ------
+    ValueError
+        If the context is not asynchronous.
+    RuntimeError
+        If restoration execution or typed live verification fails.
+    """
+    from libtmux.experimental.ops import SessionId, ShowOptions, arun
+
+    if context.mode is not ExecutionMode.ASYNC:
+        message = "async restoration requires an async run context"
+        raise ValueError(message)
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    (await restoration.aexecute(engine, planner=planner)).raise_for_status()
+    restored_snapshot = await snapshot_topology_async(context)
+    restored_options = (
+        await arun(ShowOptions(target=SessionId(session_id)), engine)
+    ).raise_for_status()
+    _verify_restored_state(
+        context,
+        restored_snapshot,
+        options=restored_options.options,
+        window_ids=window_ids,
+        pane_ids=pane_ids,
+    )
+    return time.monotonic_ns()
 
 
 async def mutate_async(
@@ -4399,10 +4562,10 @@ async def mutate_async(
         pane_ids=pane_ids,
     )
     planner = BatchingPlanner()
-    baseline = _current_activity_epoch(context)
     verified = False
     restored = False
     duration_ns = 0
+    primary_error: BaseException | None = None
     try:
         started_ns = time.perf_counter_ns()
         mutation_result = await mutation.aexecute(engine, planner=planner)
@@ -4420,21 +4583,43 @@ async def mutate_async(
             titles=titles,
         )
         verified = True
-    finally:
-        (await restoration.aexecute(engine, planner=planner)).raise_for_status()
-        restored_snapshot = await snapshot_topology_async(context)
-        restored_options = (
-            await arun(ShowOptions(target=SessionId(session_id)), engine)
-        ).raise_for_status()
-        _verify_restored_state(
+    except BaseException as error:  # noqa: BLE001
+        primary_error = error
+
+    restoration_task = asyncio.create_task(
+        _restore_mutation_async(
             context,
-            restored_snapshot,
-            options=restored_options.options,
+            restoration,
+            planner,
+            session_id=session_id,
             window_ids=window_ids,
             pane_ids=pane_ids,
-        )
-        restored = True
-    activity_after = await _wait_activity_advance_async(context, baseline)
+        ),
+        name="libtmux-mutation-restoration",
+    )
+    while not restoration_task.done():
+        try:
+            await asyncio.shield(restoration_task)
+        except asyncio.CancelledError as cancellation:  # noqa: PERF203
+            if not restoration_task.cancelled() and primary_error is None:
+                primary_error = cancellation
+        except BaseException:  # noqa: BLE001
+            break
+    restoration_error: BaseException | None = None
+    restoration_verified_monotonic_ns = 0
+    try:
+        restoration_verified_monotonic_ns = restoration_task.result()
+    except BaseException as error:  # noqa: BLE001
+        restoration_error = error
+    if restoration_error is not None:
+        if primary_error is not None:
+            raise primary_error from restoration_error
+        raise restoration_error
+    restored = True
+    if primary_error is not None:
+        raise primary_error
+    activity_baseline = _current_activity_heartbeat(context, max_age_s=2.0)
+    activity_after = await _wait_activity_advance_async(context, activity_baseline)
     steps = len(mutation.explain(planner))
     return MutationResult(
         duration_ns=duration_ns,
@@ -4445,8 +4630,9 @@ async def mutate_async(
         generation=generation_text,
         verified=verified,
         restored=restored,
-        activity_before_epoch=baseline,
-        activity_after_epoch=activity_after,
+        restoration_verified_monotonic_ns=restoration_verified_monotonic_ns,
+        activity_baseline=activity_baseline,
+        activity_after=activity_after,
     )
 
 
@@ -4766,6 +4952,161 @@ def _capture_planner(strategy: CaptureStrategy) -> object:
     raise ValueError(message)
 
 
+def _activity_frame_epochs(lines: tuple[str, ...]) -> tuple[int, ...]:
+    """Extract fuzzer frame epochs from retained pane lines.
+
+    >>> _activity_frame_epochs(("[editor epoch=3] x", "other"))
+    (3,)
+
+    Parameters
+    ----------
+    lines : tuple[str, ...]
+        Captured pane lines in display order.
+
+    Returns
+    -------
+    tuple[int, ...]
+        Nonnegative epochs from complete bracketed fuzzer frame prefixes.
+    """
+    epochs: list[int] = []
+    for line in lines:
+        prefix, separator, remainder = line.partition(" epoch=")
+        epoch_text, closing, _tail = remainder.partition("]")
+        if prefix.startswith("[") and separator and closing and epoch_text.isdigit():
+            epochs.append(int(epoch_text))
+    return tuple(epochs)
+
+
+def _streams_reached_epoch(context: RunContext, epoch: int) -> bool:
+    r"""Return whether every source stream has emitted ``epoch`` or newer.
+
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     stream = pathlib.Path(temporary) / "stream.log"
+    ...     _ = stream.write_text("[editor epoch=3] x\n", encoding="utf-8")
+    ...     _streams_reached_epoch(types.SimpleNamespace(streams=(stream,)), 3)
+    True
+
+    Parameters
+    ----------
+    context : RunContext
+        Active run owning the source streams.
+    epoch : int
+        Exact observed heartbeat epoch required in every stream.
+
+    Returns
+    -------
+    bool
+        Whether every stream contains an epoch greater than or equal to target.
+    """
+    for stream in context.streams:
+        try:
+            lines = tuple(stream.read_text(encoding="utf-8").splitlines())
+        except OSError:
+            return False
+        if max(_activity_frame_epochs(lines), default=-1) < epoch:
+            return False
+    return True
+
+
+def _wait_stream_epoch_sync(
+    context: RunContext,
+    epoch: int,
+    *,
+    timeout_s: float = 2.0,
+) -> None:
+    """Wait outside capture timing until every source emitted ``epoch``.
+
+    >>> try:
+    ...     _wait_stream_epoch_sync(types.SimpleNamespace(), 1, timeout_s=0)
+    ... except ValueError as error:
+    ...     print(error)
+    stream epoch timeout must be positive
+
+    Parameters
+    ----------
+    context : RunContext
+        Active run owning the source streams and fuzzer.
+    epoch : int
+        Exact observed heartbeat epoch required before capture.
+    timeout_s : float
+        Maximum monotonic wait outside the measured capture cell.
+
+    Raises
+    ------
+    ValueError
+        If ``timeout_s`` is not positive.
+    RuntimeError
+        If the fuzzer exits before source readiness.
+    TimeoutError
+        If a source stream does not reach the epoch in time.
+    """
+    if timeout_s <= 0:
+        message = "stream epoch timeout must be positive"
+        raise ValueError(message)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited before current capture epoch"
+            raise RuntimeError(message)
+        if _streams_reached_epoch(context, epoch):
+            return
+        time.sleep(0.005)
+    message = f"source streams did not reach capture epoch {epoch}"
+    raise TimeoutError(message)
+
+
+async def _wait_stream_epoch_async(
+    context: RunContext,
+    epoch: int,
+    *,
+    timeout_s: float = 2.0,
+) -> None:
+    """Asynchronously wait outside timing for the observed source epoch.
+
+    >>> async def invalid_stream_wait():
+    ...     try:
+    ...         await _wait_stream_epoch_async(
+    ...             types.SimpleNamespace(), 1, timeout_s=0
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_stream_wait())
+    'stream epoch timeout must be positive'
+
+    Parameters
+    ----------
+    context : RunContext
+        Active run owning the source streams and fuzzer.
+    epoch : int
+        Exact observed heartbeat epoch required before capture.
+    timeout_s : float
+        Maximum event-loop wait outside the measured capture cell.
+
+    Raises
+    ------
+    ValueError
+        If ``timeout_s`` is not positive.
+    RuntimeError
+        If the fuzzer exits before source readiness.
+    TimeoutError
+        If a source stream does not reach the epoch in time.
+    """
+    if timeout_s <= 0:
+        message = "stream epoch timeout must be positive"
+        raise ValueError(message)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while loop.time() < deadline:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited before current capture epoch"
+            raise RuntimeError(message)
+        if _streams_reached_epoch(context, epoch):
+            return
+        await asyncio.sleep(0.005)
+    message = f"source streams did not reach capture epoch {epoch}"
+    raise TimeoutError(message)
+
+
 def _accepted_capture(
     context: RunContext,
     plan: LazyPlan,
@@ -4777,18 +5118,19 @@ def _accepted_capture(
 
     >>> from libtmux.experimental.ops import CapturePane, LazyPlan, PaneId
     >>> plan = LazyPlan()
-    >>> _ = plan.add(CapturePane(target=PaneId("%1")))
-    >>> raw = CapturePane(target=PaneId("%1")).build_result(
-    ...     returncode=0, stdout=("epoch",)
+    >>> operation = CapturePane(target=PaneId("%1"))
+    >>> _ = plan.add(operation)
+    >>> raw = operation.build_result(
+    ...     returncode=0, stdout=("epoch", "[editor epoch=2] current")
     ... )
     >>> context = types.SimpleNamespace(
     ...     pane_ids=("%1",), activity_marker="epoch", activity_epoch=2,
-    ...     lane=EngineLane.CONTROL,
+    ...     heartbeat_epoch=2, lane=EngineLane.CONTROL,
     ... )
     >>> _accepted_capture(
     ...     context, plan, types.SimpleNamespace(results=(raw,)), "serial", 4
     ... ).line_count
-    1
+    2
 
     Parameters
     ----------
@@ -4811,14 +5153,41 @@ def _accepted_capture(
     Raises
     ------
     RuntimeError
-        If a result is not a typed capture, is empty, or lacks current epoch.
+        If result attribution, cardinality, content, or current epoch is invalid.
     """
-    from libtmux.experimental.ops import BatchingPlanner, CapturePaneResult
+    from libtmux.experimental.ops import (
+        BatchingPlanner,
+        CapturePane,
+        CapturePaneResult,
+        PaneId,
+    )
 
     captures: list[PaneCapture] = []
     results = tuple(plan_result.results)
-    if len(results) != len(context.pane_ids):
+    operations = tuple(plan.operations)
+    if len(operations) != len(context.pane_ids) or len(results) != len(operations):
         message = "capture result count did not match stable pane IDs"
+        raise RuntimeError(message)
+    expected_targets = tuple(
+        operation.target.value
+        if isinstance(operation, CapturePane) and isinstance(operation.target, PaneId)
+        else None
+        for operation in operations
+    )
+    result_targets = tuple(
+        result.operation.target.value
+        if isinstance(result, CapturePaneResult)
+        and isinstance(result.operation, CapturePane)
+        and isinstance(result.operation.target, PaneId)
+        else None
+        for result in results
+    )
+    if expected_targets != context.pane_ids or result_targets != context.pane_ids:
+        message = "capture result target order did not match stable pane IDs"
+        raise RuntimeError(message)
+    current_epoch = context.heartbeat_epoch
+    if type(current_epoch) is not int or current_epoch < 0:
+        message = "capture has no observed current heartbeat epoch"
         raise RuntimeError(message)
     for pane_id, result in zip(context.pane_ids, results, strict=True):
         if not isinstance(result, CapturePaneResult):
@@ -4830,6 +5199,9 @@ def _accepted_capture(
             raise RuntimeError(message)
         marker = t.cast(str, context.activity_marker)
         if marker not in "\n".join(result.lines):
+            message = f"capture for {pane_id} lacks its run-scoped activity marker"
+            raise RuntimeError(message)
+        if max(_activity_frame_epochs(result.lines), default=-1) < current_epoch:
             message = f"capture for {pane_id} lacks current activity epoch"
             raise RuntimeError(message)
         captures.append(PaneCapture(pane_id, result.lines))
@@ -4855,7 +5227,7 @@ def _accepted_capture(
         captures=tuple(captures),
         line_count=line_count,
         byte_count=byte_count,
-        epoch=t.cast(int, context.activity_epoch),
+        epoch=current_epoch,
         verified=True,
     )
 
@@ -4887,12 +5259,12 @@ def capture_all_sync(
     CaptureResult
         Retained typed lines and exact work counts.
     """
-    from libtmux.experimental.ops import Planner
-
     _require_active_phase_context(context, ExecutionMode.SYNC)
     plan = _capture_plan(context)
     planner = t.cast("Planner", _capture_planner(strategy))
     engine = t.cast("TmuxEngine", context.engine)
+    heartbeat = _current_activity_heartbeat(context, max_age_s=2.0)
+    _wait_stream_epoch_sync(context, heartbeat.epoch)
     started_ns = time.perf_counter_ns()
     result = plan.execute(engine, planner=planner)
     duration_ns = time.perf_counter_ns() - started_ns
@@ -4929,12 +5301,12 @@ async def capture_all_async(
     CaptureResult
         Retained typed lines and exact work counts.
     """
-    from libtmux.experimental.ops import Planner
-
     _require_active_phase_context(context, ExecutionMode.ASYNC)
     plan = _capture_plan(context)
     planner = t.cast("Planner", _capture_planner(strategy))
     engine = t.cast("AsyncTmuxEngine", context.engine)
+    heartbeat = _current_activity_heartbeat(context, max_age_s=2.0)
+    await _wait_stream_epoch_async(context, heartbeat.epoch)
     started_ns = time.perf_counter_ns()
     result = await plan.aexecute(engine, planner=planner)
     duration_ns = time.perf_counter_ns() - started_ns
@@ -5016,7 +5388,7 @@ def _search_result(
 
     Parameters
     ----------
-    family : {"server-side", "snapshot", "end-to-end", "contents"}
+    family : {"classic", "snapshot", "end-to-end", "contents"}
         Explicit search timing boundary.
     kind : {"sessions", "windows", "panes"}
         Result object kind.
@@ -5107,7 +5479,7 @@ def search_server_side(
     matches = t.cast(cabc.Iterable[object], search(filter=filter_expression))
     duration_ns = time.perf_counter_ns() - started_ns
     return _search_result(
-        family="server-side",
+        family="classic",
         kind=kind,
         scanned_count=len(candidates),
         target=target,
@@ -5389,8 +5761,8 @@ async def run_repeatable_phase(
     warmup: int,
     runs: int,
     seed: int,
+    live_postcondition: cabc.Callable[[PhaseMeasurement], object],
     snapshot_resources: cabc.Callable[[], HostSnapshot] | None = None,
-    live_postcondition: cabc.Callable[[PhaseMeasurement], object] | None = None,
 ) -> RepeatablePhaseResult:
     """Deterministically interleave strategies and retain accepted timed rows.
 
@@ -5406,6 +5778,7 @@ async def run_repeatable_phase(
     ...         )
     ...     return await run_repeatable_phase(
     ...         {"one": measured}, warmup=0, runs=1, seed=2,
+    ...         live_postcondition=lambda measurement: measurement.verified,
     ...         snapshot_resources=lambda: HostSnapshot(),
     ...     )
     >>> len(asyncio.run(example()).samples)
@@ -5421,10 +5794,10 @@ async def run_repeatable_phase(
         Timed accepted invocation count requested per strategy.
     seed : int
         Deterministic base-order shuffle seed.
+    live_postcondition : collections.abc.Callable
+        Required independent sync or async live check run after typed validation.
     snapshot_resources : collections.abc.Callable[[], HostSnapshot] | None
         Injectable resource sampler; defaults to the live process/cgroup probe.
-    live_postcondition : collections.abc.Callable | None
-        Optional sync or async check run after typed validation; defaults true.
 
     Returns
     -------
@@ -5461,12 +5834,9 @@ async def run_repeatable_phase(
                 measurement = _validated_phase_measurement(
                     await _await_if_needed(produced)
                 )
+                postcondition = await _await_if_needed(live_postcondition(measurement))
+                _require_live_postcondition(postcondition)
                 resources_after = sampler()
-                if live_postcondition is not None:
-                    postcondition = await _await_if_needed(
-                        live_postcondition(measurement)
-                    )
-                    _require_live_postcondition(postcondition)
                 if stage == "timed":
                     samples.append(
                         RawSample(

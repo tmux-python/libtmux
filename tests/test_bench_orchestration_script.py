@@ -1483,6 +1483,88 @@ def _checksum_ids(ids: tuple[str, ...]) -> str:
     return hashlib.sha256("\0".join(ids).encode()).hexdigest()
 
 
+def _capture_frame_epochs(lines: tuple[str, ...]) -> tuple[int, ...]:
+    """Parse literal fuzzer frame epochs without benchmark implementation help."""
+    epochs: list[int] = []
+    for line in lines:
+        prefix, separator, remainder = line.partition(" epoch=")
+        epoch_text, closing, _tail = remainder.partition("]")
+        if prefix.startswith("[") and separator and closing and epoch_text.isdigit():
+            epochs.append(int(epoch_text))
+    return tuple(epochs)
+
+
+@pytest.mark.parametrize("mode_name", ("sync", "async"))
+def test_activity_advance_rejects_stalled_heartbeat_in_both_modes(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    mode_name: str,
+) -> None:
+    """A fixed live marker must not satisfy post-restoration freshness."""
+    heartbeat = tmp_path / "fuzzer" / "heartbeat.json"
+    heartbeat.parent.mkdir()
+    benchmark_module.write_json_atomic(
+        heartbeat,
+        {
+            "schema_version": 1,
+            "run_id": "stalled-run",
+            "state": "active",
+            "epoch": 41,
+            "monotonic_ns": time.monotonic_ns(),
+        },
+    )
+    context = types.SimpleNamespace(
+        scratch=tmp_path,
+        run_id="stalled-run",
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        heartbeat_epoch=40,
+        heartbeat_monotonic_ns=-1,
+    )
+    baseline = benchmark_module._current_activity_heartbeat(context, max_age_s=1.0)
+
+    if mode_name == "async":
+        with pytest.raises(TimeoutError, match="did not advance"):
+            asyncio.run(
+                benchmark_module._wait_activity_advance_async(
+                    context, baseline, timeout_s=0.02
+                )
+            )
+    else:
+        with pytest.raises(TimeoutError, match="did not advance"):
+            benchmark_module._wait_activity_advance_sync(
+                context, baseline, timeout_s=0.02
+            )
+
+
+def test_current_activity_heartbeat_rejects_stale_publication(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An old active marker must not prove that the fuzzer is still moving."""
+    heartbeat = tmp_path / "fuzzer" / "heartbeat.json"
+    heartbeat.parent.mkdir()
+    benchmark_module.write_json_atomic(
+        heartbeat,
+        {
+            "schema_version": 1,
+            "run_id": "stale-run",
+            "state": "active",
+            "epoch": 99,
+            "monotonic_ns": time.monotonic_ns() - 1_000_000_000,
+        },
+    )
+    context = types.SimpleNamespace(
+        scratch=tmp_path,
+        run_id="stale-run",
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        heartbeat_epoch=1,
+        heartbeat_monotonic_ns=-1,
+    )
+
+    with pytest.raises(RuntimeError, match="stale"):
+        benchmark_module._current_activity_heartbeat(context, max_age_s=0.01)
+
+
 @pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
 def test_live_mutation_phase_restores_stable_targets_and_keeps_activity_advancing(
     benchmark_module: types.ModuleType,
@@ -1550,7 +1632,16 @@ def test_live_mutation_phase_restores_stable_targets_and_keeps_activity_advancin
     )
     assert result.verified
     assert result.restored
-    assert result.activity_after_epoch > result.activity_before_epoch
+    assert result.activity_baseline.epoch < result.activity_after.epoch
+    assert (
+        result.activity_baseline.published_monotonic_ns
+        < result.activity_after.published_monotonic_ns
+    )
+    assert (
+        result.restoration_verified_monotonic_ns
+        <= result.activity_baseline.observed_monotonic_ns
+        < result.activity_after.observed_monotonic_ns
+    )
     assert tuple(session.name for session in restored.sessions) == (
         context.expected_session_names
     )
@@ -1565,6 +1656,125 @@ def test_live_mutation_phase_restores_stable_targets_and_keeps_activity_advancin
         for pane_id in result.pane_ids
     )
     assert cleanup.complete, cleanup.errors
+
+
+@pytest.mark.parametrize("lane_name", ("subprocess", "control"))
+def test_async_mutation_shields_restoration_through_repeated_cancellation(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lane_name: str,
+) -> None:
+    """Cancellation must wait for real restoration and retain its first cause.
+
+    The benchmark has no public restoration boundary, so this test wraps only
+    ``LazyPlan.aexecute`` to pause its second real plan dispatch. The actual
+    async engine, mutation plan, restoration plan, snapshots, and cleanup stay
+    live.
+    """
+    from libtmux.experimental.ops import LazyPlan, SessionId, ShowOptions, arun
+
+    topology = benchmark_module.Topology(2, 3, 2)
+    lane = benchmark_module.EngineLane(lane_name)
+    scratch = tmp_path / f"cancel-restoration-{lane_name}"
+    original_aexecute = LazyPlan.aexecute
+    plan_calls = 0
+    restoration_started: asyncio.Event
+    release_restoration: asyncio.Event
+
+    async def gated_aexecute(
+        plan: t.Any,
+        engine: t.Any,
+        *,
+        version: str | None = None,
+        planner: t.Any = None,
+        on_step: t.Any = None,
+    ) -> t.Any:
+        nonlocal plan_calls
+        plan_calls += 1
+        if plan_calls == 2:
+            restoration_started.set()
+            await release_restoration.wait()
+            await original_aexecute(
+                plan,
+                engine,
+                version=version,
+                planner=planner,
+                on_step=on_step,
+            )
+            message = "restoration evidence failure"
+            raise RuntimeError(message)
+        return await original_aexecute(
+            plan,
+            engine,
+            version=version,
+            planner=planner,
+            on_step=on_step,
+        )
+
+    async def exercise() -> None:
+        nonlocal plan_calls, restoration_started, release_restoration
+        restoration_started = asyncio.Event()
+        release_restoration = asyncio.Event()
+        context = await benchmark_module.setup_async(
+            topology,
+            lane,
+            scratch,
+            run_id=f"cancel-restoration-{lane_name}",
+            delayed_ordinal=7,
+        )
+        cleanup = None
+        try:
+            benchmark_module.release_activity_gate(context)
+            await benchmark_module.verify_activity_async(context)
+            plan_calls = 0
+            monkeypatch.setattr(LazyPlan, "aexecute", gated_aexecute)
+            mutation = asyncio.create_task(
+                benchmark_module.mutate_async(context, generation=19),
+                name="mutation-under-cancellation",
+            )
+            await asyncio.wait_for(restoration_started.wait(), timeout=5.0)
+            mutation.cancel("original cancellation")
+            await asyncio.sleep(0)
+            mutation.cancel("repeated cancellation")
+            release_restoration.set()
+            with pytest.raises(asyncio.CancelledError) as cancelled:
+                await mutation
+            assert cancelled.value.args == ("original cancellation",)
+            assert isinstance(cancelled.value.__cause__, RuntimeError)
+            assert str(cancelled.value.__cause__) == "restoration evidence failure"
+
+            restored = await benchmark_module.snapshot_topology_async(context)
+            option_result = (
+                await arun(
+                    ShowOptions(target=SessionId(context.session_ids[0])),
+                    context.engine,
+                )
+            ).raise_for_status()
+            assert "@libtmux_bench_generation" not in option_result.options
+            assert {window.name for window in restored.windows} == set(
+                context.expected_window_names
+            )
+            restored_window_ids = {
+                window.window_id
+                for window in restored.windows
+                if window.session_id == context.session_ids[0]
+            }
+            assert all(
+                pane.fields.get("pane_title") in {None, ""}
+                for pane in restored.panes
+                if pane.window_id in restored_window_ids
+            )
+            assert not any(
+                task.get_name() == "libtmux-mutation-restoration" and not task.done()
+                for task in asyncio.all_tasks()
+            )
+        finally:
+            release_restoration.set()
+            cleanup = await benchmark_module.cleanup_run(context)
+        assert cleanup.complete, cleanup.errors
+
+    asyncio.run(exercise())
 
 
 @pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
@@ -1668,12 +1878,20 @@ def test_live_capture_phase_uses_identical_graphs_with_distinct_planners(
         try:
             benchmark_module.release_activity_gate(context)
             await benchmark_module.verify_activity_async(context)
+            heartbeat = json.loads(
+                (scratch / "fuzzer" / "heartbeat.json").read_text(encoding="utf-8")
+            )
             serial = await benchmark_module.capture_all_async(
                 context, strategy="serial"
+            )
+            assert serial.epoch >= heartbeat["epoch"]
+            heartbeat = json.loads(
+                (scratch / "fuzzer" / "heartbeat.json").read_text(encoding="utf-8")
             )
             batched = await benchmark_module.capture_all_async(
                 context, strategy="batched"
             )
+            assert batched.epoch >= heartbeat["epoch"]
         finally:
             cleanup = await benchmark_module.cleanup_run(context)
 
@@ -1690,8 +1908,16 @@ def test_live_capture_phase_uses_identical_graphs_with_distinct_planners(
         try:
             benchmark_module.release_activity_gate(context)
             benchmark_module.verify_activity_sync(context)
+            heartbeat = json.loads(
+                (scratch / "fuzzer" / "heartbeat.json").read_text(encoding="utf-8")
+            )
             serial = benchmark_module.capture_all_sync(context, strategy="serial")
+            assert serial.epoch >= heartbeat["epoch"]
+            heartbeat = json.loads(
+                (scratch / "fuzzer" / "heartbeat.json").read_text(encoding="utf-8")
+            )
             batched = benchmark_module.capture_all_sync(context, strategy="batched")
+            assert batched.epoch >= heartbeat["epoch"]
         finally:
             cleanup = asyncio.run(benchmark_module.cleanup_run(context))
 
@@ -1705,7 +1931,11 @@ def test_live_capture_phase_uses_identical_graphs_with_distinct_planners(
         assert result.duration_ns > 0
         assert result.line_count >= 12
         assert result.byte_count > 0
-        assert result.epoch == context.activity_epoch
+        assert result.epoch >= context.activity_epoch
+        assert all(
+            max(_capture_frame_epochs(capture.lines), default=-1) >= result.epoch
+            for capture in result.captures
+        )
         assert result.metrics.operations == 12
         assert result.metrics.tmux_requests == 12
         assert result.metrics.process_starts == (
@@ -1721,105 +1951,284 @@ def test_live_capture_phase_uses_identical_graphs_with_distinct_planners(
     assert cleanup.complete, cleanup.errors
 
 
+@pytest.mark.parametrize(
+    "result_targets",
+    (("%2", "%1"), ("%1", "%1"), ("%1", "%9")),
+    ids=("reordered", "duplicate", "wrong"),
+)
+def test_capture_rejects_unattributed_typed_results(
+    benchmark_module: types.ModuleType,
+    result_targets: tuple[str, str],
+) -> None:
+    """Typed lines from reordered, duplicate, or wrong targets are invalid."""
+    from libtmux.experimental.ops import CapturePane, PaneId
+
+    context = types.SimpleNamespace(
+        pane_ids=("%1", "%2"),
+        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        activity_epoch=1,
+        heartbeat_epoch=8,
+        lane=benchmark_module.EngineLane.CONTROL,
+    )
+    plan = benchmark_module._capture_plan(context)
+    results = tuple(
+        CapturePane(target=PaneId(pane_id)).build_result(
+            returncode=0,
+            stdout=(
+                context.activity_marker,
+                "[editor epoch=8] current",
+            ),
+        )
+        for pane_id in result_targets
+    )
+
+    with pytest.raises(RuntimeError, match="target"):
+        benchmark_module._accepted_capture(
+            context,
+            plan,
+            types.SimpleNamespace(results=results),
+            "batched",
+            5,
+        )
+
+
+def _request_content_sentinel(
+    benchmark_module: types.ModuleType,
+    context: t.Any,
+    request_id: str,
+) -> str:
+    """Request one Task 1 sentinel and wait outside content-search timing."""
+    requested_ns = time.monotonic_ns()
+    benchmark_module.write_json_atomic(
+        context.scratch / "fuzzer" / "requests" / f"{request_id}.json",
+        {
+            "schema_version": 1,
+            "run_id": context.run_id,
+            "request_id": request_id,
+            "requested_monotonic_ns": requested_ns,
+            "value": "CONTENT-ONLY",
+        },
+    )
+    evidence_path = context.scratch / "fuzzer" / "sentinels" / f"{request_id}.json"
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        try:
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            time.sleep(0.01)
+            continue
+        assert evidence["run_id"] == context.run_id
+        assert evidence["request_id"] == request_id
+        assert evidence["requested_monotonic_ns"] == requested_ns
+        return t.cast(str, evidence["sentinel"])
+    message = "Task 1 sentinel evidence did not arrive"
+    raise AssertionError(message)
+
+
+@pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
+@pytest.mark.parametrize(
+    ("target_position", "delayed_ordinal"),
+    (("first", 0), ("middle", 6), ("last", 11)),
+)
 def test_live_search_phase_keeps_server_snapshot_end_to_end_and_content_distinct(
     benchmark_module: types.ModuleType,
     tmp_path: pathlib.Path,
+    lane_name: str,
+    mode_name: str,
+    target_position: str,
+    delayed_ordinal: int,
 ) -> None:
-    """Each search family must scan its declared source and return one target."""
+    """Every applicable family must find explicit targets in every live lane."""
     topology = benchmark_module.Topology(2, 3, 2)
-    scratch = tmp_path / "search"
-    context = benchmark_module.setup_sync(
-        topology,
-        benchmark_module.EngineLane.SUBPROCESS,
-        scratch,
-        run_id="search-phase",
-        delayed_ordinal=7,
-    )
-    cleanup = None
-    try:
-        benchmark_module.release_activity_gate(context)
-        benchmark_module.verify_activity_sync(context)
-        snapshot = benchmark_module.snapshot_topology_sync(context)
+    lane = benchmark_module.EngineLane(lane_name)
+    run_id = f"s-{lane_name[0]}-{mode_name[0]}-{target_position[0]}"
+    scratch = tmp_path / f"search-{lane_name}-{mode_name}-{target_position}"
+    context: t.Any = None
+    cleanup: t.Any = None
+    observed: dict[tuple[str, str, str], tuple[int, tuple[str, ...]]] = {}
+
+    def exercise_metadata(snapshot: t.Any) -> None:
+        """Run classic, pre-materialized, and end-to-end metadata families."""
         ids_by_kind = {
             "sessions": context.session_ids,
             "windows": context.window_ids,
             "panes": context.pane_ids,
         }
+        rows_by_kind = {
+            "sessions": QueryList(snapshot.sessions),
+            "windows": QueryList(snapshot.windows),
+            "panes": QueryList(snapshot.panes),
+        }
+        indexes = {"first": 0, "middle": None, "last": -1}
         for kind, ids in ids_by_kind.items():
-            for target in (ids[0], ids[len(ids) // 2], ids[-1]):
-                result = benchmark_module.search_server_side(
+            for position, configured_index in indexes.items():
+                index = len(ids) // 2 if configured_index is None else configured_index
+                target = ids[index]
+                classic = benchmark_module.search_server_side(
                     context, kind=kind, target=target
                 )
-                assert result.family == "server-side"
-                assert result.matched_ids == (target,)
-                assert result.scanned_count == len(ids)
-                assert result.verified
+                snapshot_only = benchmark_module.search_snapshot(
+                    rows_by_kind[kind], kind=kind, target=target
+                )
+                end_to_end = benchmark_module.search_end_to_end(
+                    context, kind=kind, target=target
+                )
+                assert classic.family == "classic"
+                assert snapshot_only.family == "snapshot"
+                assert end_to_end.family == "end-to-end"
+                for family, result in (
+                    ("classic", classic),
+                    ("snapshot", snapshot_only),
+                    ("end-to-end", end_to_end),
+                ):
+                    assert result.target == target
+                    assert result.matched_ids == (target,)
+                    assert result.verified
+                    observed[family, kind, position] = (
+                        result.scanned_count,
+                        result.matched_ids,
+                    )
 
-        snapshot_rows = QueryList(snapshot.sessions)
-        snapshot_result = benchmark_module.search_snapshot(
-            snapshot_rows,
-            kind="sessions",
-            target=context.session_ids[1],
-        )
-        end_to_end_result = benchmark_module.search_end_to_end(
-            context,
-            kind="windows",
-            target=context.window_ids[3],
+    def assert_explicit_expectations() -> None:
+        """Compare named family/target cells with hand-derived cardinalities."""
+        expected_counts = {"sessions": 2, "windows": 6, "panes": 12}
+        for family in ("classic", "snapshot", "end-to-end"):
+            for kind, expected_count in expected_counts.items():
+                ids = {
+                    "sessions": context.session_ids,
+                    "windows": context.window_ids,
+                    "panes": context.pane_ids,
+                }[kind]
+                for position, target in (
+                    ("first", ids[0]),
+                    ("middle", ids[len(ids) // 2]),
+                    ("last", ids[-1]),
+                ):
+                    assert observed[family, kind, position] == (
+                        expected_count,
+                        (target,),
+                    )
+        assert observed["contents", "panes", target_position] == (
+            12,
+            (context.pane_ids[delayed_ordinal],),
         )
 
-        request_id = "content-search"
-        requested_ns = time.monotonic_ns()
-        benchmark_module.write_json_atomic(
-            scratch / "fuzzer" / "requests" / f"{request_id}.json",
-            {
-                "schema_version": 1,
-                "run_id": context.run_id,
-                "request_id": request_id,
-                "requested_monotonic_ns": requested_ns,
-                "value": "CONTENT-ONLY",
-            },
+    async def exercise_async() -> None:
+        """Keep typed async capture and final topology proof on one loop."""
+        nonlocal context, cleanup
+        context = await benchmark_module.setup_async(
+            topology,
+            lane,
+            scratch,
+            run_id=run_id,
+            delayed_ordinal=delayed_ordinal,
         )
-        evidence_path = scratch / "fuzzer" / "sentinels" / f"{request_id}.json"
-        deadline = time.monotonic() + 2.0
-        evidence = None
-        while time.monotonic() < deadline:
-            try:
-                evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
-            except (FileNotFoundError, json.JSONDecodeError):
+        try:
+            benchmark_module.release_activity_gate(context)
+            await benchmark_module.verify_activity_async(context)
+            snapshot = await benchmark_module.snapshot_topology_async(context)
+            exercise_metadata(snapshot)
+            sentinel = _request_content_sentinel(
+                benchmark_module, context, f"content-{target_position}"
+            )
+            deadline = time.monotonic() + 3.0
+            captures = None
+            while time.monotonic() < deadline:
+                candidate = await benchmark_module.capture_all_async(
+                    context, strategy="batched"
+                )
+                if any(sentinel in capture.lines for capture in candidate.captures):
+                    captures = candidate
+                    break
+                await asyncio.sleep(0.01)
+            assert captures is not None
+            content = benchmark_module.search_contents(
+                captures,
+                token=sentinel,
+                expected_pane_id=context.pane_ids[delayed_ordinal],
+            )
+            observed["contents", "panes", target_position] = (
+                content.scanned_count,
+                content.matched_ids,
+            )
+            final_snapshot = await benchmark_module.snapshot_topology_async(context)
+            assert tuple(row.session_id for row in final_snapshot.sessions) == (
+                context.session_ids
+            )
+            assert tuple(row.window_id for row in final_snapshot.windows) == (
+                context.window_ids
+            )
+            assert (
+                tuple(row.pane_id for row in final_snapshot.panes) == context.pane_ids
+            )
+            assert (
+                benchmark_module._current_activity_heartbeat(
+                    context, max_age_s=2.0
+                ).epoch
+                >= captures.epoch
+            )
+            assert_explicit_expectations()
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    if mode_name == "async":
+        asyncio.run(exercise_async())
+    else:
+        context = benchmark_module.setup_sync(
+            topology,
+            lane,
+            scratch,
+            run_id=run_id,
+            delayed_ordinal=delayed_ordinal,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            benchmark_module.verify_activity_sync(context)
+            snapshot = benchmark_module.snapshot_topology_sync(context)
+            exercise_metadata(snapshot)
+            sentinel = _request_content_sentinel(
+                benchmark_module, context, f"content-{target_position}"
+            )
+            deadline = time.monotonic() + 3.0
+            captures = None
+            while time.monotonic() < deadline:
+                candidate = benchmark_module.capture_all_sync(
+                    context, strategy="batched"
+                )
+                if any(sentinel in capture.lines for capture in candidate.captures):
+                    captures = candidate
+                    break
                 time.sleep(0.01)
-                continue
-            break
-        assert evidence is not None
-        sentinel = evidence["sentinel"]
-
-        captures = None
-        while time.monotonic() < deadline:
-            candidate = benchmark_module.capture_all_sync(context, strategy="batched")
-            if any(sentinel in capture.lines for capture in candidate.captures):
-                captures = candidate
-                break
-            time.sleep(0.01)
-        assert captures is not None
-        content_result = benchmark_module.search_contents(
-            captures,
-            token=sentinel,
-            expected_pane_id=context.delayed_pane_id,
-        )
-
-        assert snapshot_result.family == "snapshot"
-        assert snapshot_result.matched_ids == (context.session_ids[1],)
-        assert end_to_end_result.family == "end-to-end"
-        assert end_to_end_result.matched_ids == (context.window_ids[3],)
-        assert content_result.family == "contents"
-        assert content_result.matched_ids == (context.delayed_pane_id,)
-        assert content_result.token == sentinel
-        assert {
-            snapshot_result.scanned_count,
-            end_to_end_result.scanned_count,
-            content_result.scanned_count,
-        } == {2, 6, 12}
-    finally:
-        cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+            assert captures is not None
+            content = benchmark_module.search_contents(
+                captures,
+                token=sentinel,
+                expected_pane_id=context.pane_ids[delayed_ordinal],
+            )
+            observed["contents", "panes", target_position] = (
+                content.scanned_count,
+                content.matched_ids,
+            )
+            final_snapshot = benchmark_module.snapshot_topology_sync(context)
+            assert tuple(row.session_id for row in final_snapshot.sessions) == (
+                context.session_ids
+            )
+            assert tuple(row.window_id for row in final_snapshot.windows) == (
+                context.window_ids
+            )
+            assert (
+                tuple(row.pane_id for row in final_snapshot.panes) == context.pane_ids
+            )
+            assert (
+                benchmark_module._current_activity_heartbeat(
+                    context, max_age_s=2.0
+                ).epoch
+                >= captures.epoch
+            )
+            assert_explicit_expectations()
+        finally:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+    assert cleanup is not None
     assert cleanup.complete, cleanup.errors
 
 
@@ -1873,6 +2282,66 @@ def test_run_repeatable_phase_interleaves_and_accepts_only_verified_samples(
     assert all(sample.resources_after is not None for sample in result.samples)
 
 
+def test_run_repeatable_phase_requires_live_postcondition_at_call_time(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Omitting independent live validation must not create a coroutine."""
+    with pytest.raises(TypeError, match="live_postcondition"):
+        benchmark_module.run_repeatable_phase(
+            {"only": lambda: None},
+            warmup=0,
+            runs=1,
+            seed=1,
+        )
+
+
+@pytest.mark.parametrize("postcondition_kind", ("false", "exception"))
+def test_run_repeatable_phase_rejects_postcondition_before_after_snapshot(
+    benchmark_module: types.ModuleType,
+    postcondition_kind: str,
+) -> None:
+    """A false or failing live check must retain no sample or after snapshot."""
+    snapshot_calls = 0
+
+    def snapshot_resources() -> t.Any:
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return benchmark_module.HostSnapshot(pids_current=snapshot_calls)
+
+    def measured() -> t.Any:
+        return benchmark_module.SearchResult(
+            duration_ns=19,
+            family="snapshot",
+            kind="sessions",
+            scanned_count=2,
+            target="$1",
+            matched_ids=("$1",),
+            verified=True,
+        )
+
+    def live_postcondition(_measurement: t.Any) -> bool:
+        if postcondition_kind == "exception":
+            message = "independent live check failed"
+            raise RuntimeError(message)
+        return False
+
+    result = asyncio.run(
+        benchmark_module.run_repeatable_phase(
+            {"only": measured},
+            warmup=0,
+            runs=1,
+            seed=1,
+            snapshot_resources=snapshot_resources,
+            live_postcondition=live_postcondition,
+        )
+    )
+
+    assert result.samples == ()
+    assert result.failure is not None
+    assert result.failure.strategy == "only"
+    assert snapshot_calls == 1
+
+
 def test_run_repeatable_phase_stops_without_appending_failed_duration(
     benchmark_module: types.ModuleType,
 ) -> None:
@@ -1902,6 +2371,7 @@ def test_run_repeatable_phase_stops_without_appending_failed_duration(
             runs=3,
             seed=3,
             snapshot_resources=lambda: benchmark_module.HostSnapshot(),
+            live_postcondition=lambda _measurement: True,
         )
     )
 
