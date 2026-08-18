@@ -359,7 +359,12 @@ def completed_report(benchmark_module: types.ModuleType) -> t.Any:
         requested_topology=topology,
         observed_topology=topology,
         phases=(phase,),
-        cleanup=benchmark_module.CleanupReport(complete=True),
+        cleanup=benchmark_module.CleanupReport(
+            complete=True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
         maximum_completed=True,
     )
 
@@ -528,11 +533,11 @@ def test_validate_report_rejects_summary_with_failed_sample(
         )
 
 
-@pytest.mark.parametrize("status", ("refused", "failed", "cutoff"))
+@pytest.mark.parametrize("status", ("refused", "cutoff"))
 def test_validate_report_requires_cleanup_for_terminal_status(
     benchmark_module: types.ModuleType, status: str
 ) -> None:
-    """Terminal evidence is invalid if it leaves benchmark-owned state behind."""
+    """Successful refusal or cutoff cleanup cannot leave owned state behind."""
     report = dataclasses.replace(
         completed_report(benchmark_module),
         status=status,
@@ -1011,6 +1016,174 @@ def test_owned_process_cleanup_kills_sigterm_ignoring_child(
         process.wait(timeout=2.0)
 
 
+def test_pidfd_registry_signals_only_the_retained_real_child(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A retained pidfd must terminate its exact child without a PID lookup."""
+    assert benchmark_module._pidfd_capability_error() is None
+    target = subprocess.Popen(
+        (sys.executable, "-c", "import time; time.sleep(60)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    unrelated = subprocess.Popen(
+        (sys.executable, "-c", "import time; time.sleep(60)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    registry = benchmark_module._PidfdRegistry()
+    try:
+        identity = benchmark_module._record_process("target", target.pid)
+        assert registry.retain(identity)
+        assert registry.signal(identity, signal.SIGTERM)
+        assert target.wait(timeout=2.0) == -signal.SIGTERM
+        assert unrelated.poll() is None
+    finally:
+        registry.close()
+        if target.poll() is None:
+            target.kill()
+        target.wait(timeout=2.0)
+        if unrelated.poll() is None:
+            unrelated.terminate()
+        unrelated.wait(timeout=2.0)
+
+
+def test_pidfd_registry_rejects_reuse_between_open_checks(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A PID reused between precheck/open/postcheck must never be signaled."""
+    child = subprocess.Popen(
+        (sys.executable, "-c", "import time; time.sleep(60)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    identity = benchmark_module._record_process("target", child.pid)
+    observed = iter((identity.start_time, identity.start_time + 1))
+    registry = benchmark_module._PidfdRegistry(
+        _start_time_reader=lambda _pid: next(observed),
+    )
+    try:
+        assert not registry.retain(identity)
+        assert not registry.signal(identity, signal.SIGKILL)
+        assert child.poll() is None
+        assert registry.retained == ()
+    finally:
+        registry.close()
+        child.terminate()
+        child.wait(timeout=2.0)
+
+
+def test_pidfd_registry_rejects_an_already_mismatched_identity(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """An unrelated process at a recorded PID must remain untouched."""
+    child = subprocess.Popen(
+        (sys.executable, "-c", "import time; time.sleep(60)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    current = benchmark_module._record_process("unrelated", child.pid)
+    stale = dataclasses.replace(current, start_time=current.start_time + 1)
+    registry = benchmark_module._PidfdRegistry()
+    try:
+        assert not registry.retain(stale)
+        assert not registry.signal(stale, signal.SIGKILL)
+        assert child.poll() is None
+    finally:
+        registry.close()
+        child.terminate()
+        child.wait(timeout=2.0)
+
+
+def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Fallback cleanup must address one socket and preserve another daemon."""
+    target = tmp_path / "target.sock"
+    unrelated = tmp_path / "unrelated.sock"
+    for socket_path in (target, unrelated):
+        created = subprocess.run(
+            (
+                "tmux",
+                "-S",
+                str(socket_path),
+                "new-session",
+                "-d",
+                "-s",
+                "keepalive",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert created.returncode == 0, created.stderr
+    try:
+        errors = benchmark_module._kill_exact_tmux_socket(target, timeout_s=1.0)
+
+        assert errors == ()
+        assert not target.exists()
+        still_alive = subprocess.run(
+            ("tmux", "-S", str(unrelated), "list-sessions"),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert still_alive.returncode == 0, still_alive.stderr
+    finally:
+        subprocess.run(
+            ("tmux", "-S", str(unrelated), "kill-server"),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+
+def test_run_scenario_refuses_when_pidfds_are_unavailable(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Unsupported hosts must fail closed before the hidden worker is spawned."""
+    monkeypatch.setattr(
+        benchmark_module,
+        "_pidfd_capability_error",
+        lambda: "pidfd signaling unavailable",
+    )
+
+    def reject_spawn(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        pytest.fail("unsupported pidfd host spawned a worker")
+
+    monkeypatch.setattr(benchmark_module.subprocess, "Popen", reject_spawn)
+    output = tmp_path / "unsupported.json"
+    report = benchmark_module.run_scenario(
+        benchmark_module.Topology(1, 1, 1),
+        runs=1,
+        warmup=0,
+        output=output,
+        host_snapshot=benchmark_module.HostSnapshot(
+            available_memory_bytes=16 * 1024**3,
+            pids_current=1,
+            pids_max=100_000,
+            nofile_soft_limit=65_536,
+        ),
+        policy=benchmark_module.ResourcePolicy(
+            pid_reserve=1,
+            memory_floor_bytes=1,
+        ),
+    )
+
+    assert report.status == "refused"
+    assert report.failed_phase == "preflight"
+    assert report.error == "pidfd signaling unavailable"
+    assert report.cleanup.complete
+    assert output.exists()
+
+
 def test_start_fuzzer_reaps_child_after_readiness_timeout(
     benchmark_module: types.ModuleType,
     tmp_path: pathlib.Path,
@@ -1032,6 +1205,36 @@ def test_start_fuzzer_reaps_child_after_readiness_timeout(
         text=True,
     ).stdout
     assert run_id not in processes
+
+
+def test_start_fuzzer_publishes_identity_before_readiness_wait(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A startup stall cannot hide the already spawned fuzzer from recovery."""
+    published: list[t.Any] = []
+
+    def stop_at_readiness(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        assert [identity.role for identity in published] == ["fuzzer"]
+        message = "injected readiness stop"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(
+        benchmark_module,
+        "_wait_for_fuzzer_ready",
+        stop_at_readiness,
+    )
+
+    with pytest.raises(RuntimeError, match="injected readiness stop"):
+        benchmark_module.start_fuzzer(
+            tmp_path,
+            "early-fuzzer",
+            _identity_callback=lambda delta: published.extend(delta),
+        )
+
+    assert len(published) == 1
+    assert not benchmark_module.process_identity_matches(published[0])
 
 
 def test_prepare_context_keeps_start_fuzzer_identity_for_partial_cleanup(
@@ -1089,6 +1292,57 @@ def test_prepare_context_keeps_start_fuzzer_identity_for_partial_cleanup(
                 fuzzer_identities[0],
             )
             assert report.complete, report.errors
+
+
+def test_setup_publishes_early_constant_deltas_and_one_pane_batch(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Server recovery identity must precede build and panes must publish once."""
+    topology = benchmark_module.Topology(1, 2, 2)
+    scratch = tmp_path / "identity-deltas"
+    socket_path = scratch / "tmux.sock"
+    deltas: list[tuple[t.Any, ...]] = []
+    context = cleanup = None
+
+    def publish(delta: tuple[t.Any, ...]) -> None:
+        deltas.append(delta)
+        if tuple(identity.role for identity in delta) == ("server",):
+            listed = subprocess.run(
+                (
+                    "tmux",
+                    "-S",
+                    str(socket_path),
+                    "list-sessions",
+                    "-F",
+                    "#{session_name}",
+                ),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            assert listed.stdout.splitlines() == ["bench-identity-deltas-keepalive"]
+
+    try:
+        context = benchmark_module.setup_sync(
+            topology,
+            benchmark_module.EngineLane.SUBPROCESS,
+            scratch,
+            socket_path=socket_path,
+            run_id="identity-deltas",
+            delayed_ordinal=1,
+            _process_identity_callback=publish,
+        )
+    finally:
+        if context is not None:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+
+    assert cleanup is not None and cleanup.complete, getattr(cleanup, "errors", ())
+    assert [tuple(identity.role for identity in delta) for delta in deltas] == [
+        ("fuzzer",),
+        ("server",),
+        ("pane", "pane", "pane", "pane"),
+    ]
 
 
 @pytest.mark.parametrize("mode_name", ("sync", "async"))
@@ -1220,7 +1474,7 @@ def test_private_directory_acquisition_rolls_back_post_mkdir_failure(
         **kwargs: t.Any,
     ) -> os.stat_result:
         nonlocal injected
-        if path == target and not injected:
+        if path == target and os.path.lexists(path) and not injected:
             injected = True
             message = f"injected {target_kind} stat failure"
             raise OSError(message)
@@ -1847,9 +2101,15 @@ def test_async_mutation_shields_restoration_through_repeated_cancellation(
             release_restoration.set()
             with pytest.raises(asyncio.CancelledError) as cancelled:
                 await mutation
-            assert cancelled.value.args == ("original cancellation",)
-            assert isinstance(cancelled.value.__cause__, RuntimeError)
-            assert str(cancelled.value.__cause__) == "restoration evidence failure"
+            expected_args = (
+                () if sys.version_info[:2] == (3, 10) else ("original cancellation",)
+            )
+            assert cancelled.value.args == expected_args
+            if sys.version_info[:2] == (3, 10):
+                assert cancelled.value.__cause__ is None
+            else:
+                assert isinstance(cancelled.value.__cause__, RuntimeError)
+                assert str(cancelled.value.__cause__) == "restoration evidence failure"
 
             restored = await benchmark_module.snapshot_topology_async(context)
             option_result = (
@@ -2382,6 +2642,11 @@ def test_sync_subprocess_capture_timeout_kills_and_reaps_exact_child(
 
     executable, pid_path = _blocking_tmux_binary(tmp_path)
     monkeypatch.setenv("BLOCKING_TMUX_PID", str(pid_path))
+    monkeypatch.setattr(
+        benchmark_module.os,
+        "killpg",
+        lambda *_args: pytest.fail("capture timeout used an unstable process group"),
+    )
     engine = SubprocessEngine(tmux_bin=executable)
     context = _isolated_wait_context(
         benchmark_module,
@@ -2603,7 +2868,8 @@ def test_control_wait_external_cancellation_preserves_payload_and_unregisters(
         with pytest.raises(asyncio.CancelledError) as captured:
             await waiter
         await asyncio.sleep(0)
-        assert captured.value.args == ("caller-stop",)
+        expected_args = () if sys.version_info[:2] == (3, 10) else ("caller-stop",)
+        assert captured.value.args == expected_args
         assert engine._subscribers == set()
         names = tuple(
             task.get_name()
@@ -3480,6 +3746,7 @@ def test_cli_run_executes_every_phase_and_writes_validated_artifacts(
         assert phase["status"] == "completed"
         assert phase["warmup"] == 1
         assert phase["runs"] == 2
+        assert [row["ordinal"] for row in phase["warmup_observations"]] == [0]
         assert len(phase["samples"]) == 2
         assert phase["summary"]["count"] == 2
         assert len(phase["observations"]) == 2
@@ -3728,6 +3995,562 @@ def test_worker_progress_precedes_matching_report_checkpoint(
     assert calls == ["progress", "checkpoint"]
 
 
+def test_progress_append_retries_short_writes_and_syncs_new_parent(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A short kernel append must not leave a torn identity record."""
+    path = tmp_path / "journal" / "progress.jsonl"
+    real_write = os.write
+    real_fsync = os.fsync
+    write_sizes: list[int] = []
+    sync_kinds: list[str] = []
+
+    def short_write(descriptor: int, payload: bytes | bytearray | memoryview) -> int:
+        chunk = bytes(payload[:7])
+        write_sizes.append(len(chunk))
+        return real_write(descriptor, chunk)
+
+    def tracked_fsync(descriptor: int) -> None:
+        mode = os.fstat(descriptor).st_mode
+        sync_kinds.append("directory" if stat.S_ISDIR(mode) else "file")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(benchmark_module.os, "write", short_write)
+    monkeypatch.setattr(benchmark_module.os, "fsync", tracked_fsync)
+    event = benchmark_module.ProgressEvent(
+        "run-7",
+        0,
+        "identity.fuzzer",
+        1,
+        (benchmark_module.ProcessIdentity("fuzzer", 42, 100),),
+    )
+
+    benchmark_module.append_progress_event(path, event)
+
+    first = json.loads(path.read_text(encoding="utf-8"))
+    assert first["checkpoint"] == "identity.fuzzer"
+    assert len(write_sizes) > 1
+    assert sync_kinds == ["file", "directory"]
+
+    benchmark_module.append_progress_event(
+        path,
+        benchmark_module.ProgressEvent("run-7", 1, "setup", 2),
+    )
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+    assert sync_kinds == ["file", "directory", "file"]
+
+
+@pytest.mark.parametrize(
+    "tail",
+    (
+        '{"schema_version":1',
+        '{"schema_version":1}\n',
+    ),
+)
+def test_terminal_progress_drain_rejects_torn_or_corrupt_tail(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    tail: str,
+) -> None:
+    """Terminal recovery cannot silently discard malformed identity evidence."""
+    path = tmp_path / "progress.jsonl"
+    path.write_text(tail, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="progress journal"):
+        benchmark_module._read_progress_chunk(path, 0, "", terminal=True)
+
+
+def test_progress_sequence_gap_is_journal_corruption(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Losing one identity delta must not look like valid later progress."""
+    events = (
+        benchmark_module.ProgressEvent("run-7", 0, "worker.started", 1),
+        benchmark_module.ProgressEvent("run-7", 2, "setup", 2),
+    )
+
+    with pytest.raises(RuntimeError, match="sequence gap"):
+        benchmark_module._accept_progress_events(
+            events,
+            run_id="run-7",
+            highest_sequence=-1,
+            identities=(),
+        )
+
+
+def test_recovery_drains_and_stops_identity_published_during_grace(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Recovery must merge a late identity instead of freezing its first read."""
+    scratch = tmp_path / "late-identity"
+    scratch.mkdir(mode=0o700)
+    progress = scratch / "progress.jsonl"
+    worker = subprocess.Popen(
+        (
+            sys.executable,
+            "-c",
+            (
+                "import signal,time; "
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                "print('ready', flush=True); time.sleep(60)"
+            ),
+        ),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert worker.stdout is not None
+    assert worker.stdout.readline() == "ready\n"
+    worker_identity = benchmark_module._record_process("worker", worker.pid)
+    benchmark_module.append_progress_event(
+        progress,
+        benchmark_module.ProgressEvent(
+            "run-7", 0, "worker.started", 1, (worker_identity,)
+        ),
+    )
+    registry = benchmark_module._PidfdRegistry()
+    registry.retain(worker_identity)
+    tracker = benchmark_module._ProgressTracker(
+        progress,
+        "run-7",
+        registry,
+        identities=(worker_identity,),
+    )
+    assert tracker.drain()
+    late_identities: list[t.Any] = []
+
+    def publish_late_identity() -> None:
+        time.sleep(0.05)
+        late = subprocess.Popen(
+            (
+                sys.executable,
+                "-c",
+                (
+                    "import signal,time; "
+                    "signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+                ),
+            ),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        identity = benchmark_module._record_process("fuzzer", late.pid)
+        late_identities.append(identity)
+        benchmark_module.append_progress_event(
+            progress,
+            benchmark_module.ProgressEvent(
+                "run-7", 1, "identity.fuzzer", 2, (identity,)
+            ),
+        )
+        late.wait(timeout=5.0)
+
+    publisher = threading.Thread(target=publish_late_identity)
+    publisher.start()
+    try:
+        cleanup = benchmark_module._recover_supervised_run(
+            worker,
+            worker_identity,
+            tracker,
+            scratch=scratch,
+            socket_path=scratch / "tmux.sock",
+            grace_s=0.15,
+        )
+    finally:
+        publisher.join(timeout=5.0)
+        registry.close()
+        if worker.poll() is None:
+            worker.kill()
+        worker.wait(timeout=2.0)
+
+    assert not publisher.is_alive()
+    assert len(late_identities) == 1
+    assert late_identities[0] in tracker.identities
+    assert cleanup.complete, cleanup.errors
+    assert not scratch.exists()
+
+
+@pytest.mark.parametrize("journal_state", ("missing", "torn"))
+def test_recovery_retains_evidence_when_terminal_journal_is_incomplete(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    journal_state: str,
+) -> None:
+    """Missing or torn terminal ownership evidence must make cleanup incomplete."""
+    scratch = tmp_path / journal_state
+    scratch.mkdir(mode=0o700)
+    progress = scratch / "progress.jsonl"
+    if journal_state == "torn":
+        progress.write_text('{"schema_version":1', encoding="utf-8")
+    worker = subprocess.Popen((sys.executable, "-c", "import time; time.sleep(1)"))
+    worker_identity = benchmark_module._record_process("worker", worker.pid)
+    worker.terminate()
+    worker.wait(timeout=2.0)
+    registry = benchmark_module._PidfdRegistry()
+    tracker = benchmark_module._ProgressTracker(
+        progress,
+        "run-7",
+        registry,
+        identities=(worker_identity,),
+    )
+    try:
+        cleanup = benchmark_module._recover_supervised_run(
+            worker,
+            worker_identity,
+            tracker,
+            scratch=scratch,
+            socket_path=scratch / "tmux.sock",
+            grace_s=0.05,
+        )
+    finally:
+        registry.close()
+
+    assert not cleanup.complete
+    assert any("progress journal" in error for error in cleanup.errors)
+    assert scratch.exists()
+
+
+def test_progress_identity_deltas_scale_linearly(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Checkpoint count must not multiply a large identity set on disk."""
+    events: list[t.Any] = []
+    reports: list[dict[str, t.Any]] = []
+    monkeypatch.setattr(
+        benchmark_module,
+        "append_progress_event",
+        lambda _path, event: events.append(event),
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "write_json_atomic",
+        lambda _path, report: reports.append(
+            t.cast(dict[str, t.Any], benchmark_module._json_value(report))
+        ),
+    )
+    recorder = benchmark_module._WorkerRecorder(
+        benchmark_module.RunReport(benchmark_module.Topology(1, 1, 1), run_id="run-7"),
+        tmp_path / "checkpoint.json",
+        tmp_path / "progress.jsonl",
+    )
+    identities = tuple(
+        benchmark_module.ProcessIdentity("pane", 100_000 + ordinal, ordinal + 1)
+        for ordinal in range(40_000)
+    )
+
+    recorder.record_identities(identities, checkpoint="identity.panes")
+    for ordinal in range(100):
+        recorder.checkpoint(f"timed.{ordinal}")
+
+    assert len(events) == 101
+    assert sum(len(event.processes) for event in events) == 40_000
+    assert len(events[0].processes) == 40_000
+    assert all(event.processes == () for event in events[1:])
+    assert all(report["processes"] == [] for report in reports)
+
+
+@pytest.mark.parametrize(
+    "cleanup",
+    (
+        {"complete": True, "errors": ("socket remains",), "flags": (True, True, True)},
+        {"complete": True, "errors": (), "flags": (False, True, True)},
+        {"complete": True, "errors": (), "flags": (True, False, True)},
+        {"complete": True, "errors": (), "flags": (True, True, False)},
+    ),
+)
+def test_validator_rejects_false_cleanup_success(
+    benchmark_module: types.ModuleType,
+    cleanup: dict[str, t.Any],
+) -> None:
+    """A success bit cannot override errors or any surviving resource class."""
+    processes_absent, socket_absent, scratch_absent = cleanup["flags"]
+    report = benchmark_module.RunReport(
+        benchmark_module.Topology(1, 1, 1),
+        status="failed",
+        cleanup=benchmark_module.CleanupReport(
+            cleanup["complete"],
+            cleanup["errors"],
+            processes_absent=processes_absent,
+            socket_absent=socket_absent,
+            scratch_absent=scratch_absent,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="cleanup"):
+        benchmark_module.validate_report(report)
+
+
+def test_validator_accepts_explicit_terminal_cleanup_failure_evidence(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A failed cleanup must remain publishable without claiming completion."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    report = benchmark_module.RunReport(
+        topology,
+        status="failed",
+        cleanup=benchmark_module.CleanupReport(
+            False,
+            ("socket remains",),
+            processes_absent=True,
+            socket_absent=False,
+            scratch_absent=False,
+        ),
+        run_id="run-7",
+        lane="control",
+        mode="async",
+        warmup=0,
+        runs=1,
+        failed_phase="cleanup",
+        error="socket remains",
+        scratch_path="scratch",
+        socket_path="scratch/tmux.sock",
+        progress_path="progress.jsonl",
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("run",), None
+        ),
+    )
+
+    benchmark_module.validate_report(report)
+
+
+def test_validator_rejects_nonprefix_terminal_phase_graph(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A failed run cannot invent a later phase after omitting stabilization."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    setup_sample = benchmark_module.RawSample(
+        1,
+        True,
+        verified=True,
+        strategy="setup",
+        ordinal=0,
+    )
+    report = benchmark_module.RunReport(
+        topology,
+        observed_topology=topology,
+        status="failed",
+        phases=(
+            benchmark_module.PhaseReport(
+                "setup",
+                topology,
+                topology,
+                samples=(setup_sample,),
+                status="completed",
+                runs=1,
+                observations=(benchmark_module.PhaseObservation(0, "setup", 1),),
+            ),
+            benchmark_module.PhaseReport(
+                "mutation.bulk",
+                topology,
+                topology,
+                status="failed",
+                runs=1,
+            ),
+        ),
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        run_id="run-7",
+        lane="subprocess",
+        mode="sync",
+        warmup=0,
+        runs=1,
+        failed_phase="mutation.bulk",
+        error="injected failure",
+        scratch_path="scratch",
+        socket_path="scratch/socket",
+        progress_path="progress.jsonl",
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("run",), None
+        ),
+    )
+
+    with pytest.raises(ValueError, match="phase prefix"):
+        benchmark_module.validate_report(report)
+
+
+def test_validator_rejects_completed_phase_after_failed_prefix(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """No later completed row may follow the first failed phase boundary."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    report = benchmark_module.RunReport(
+        topology,
+        status="failed",
+        phases=(
+            benchmark_module.PhaseReport("setup", topology, topology, status="failed"),
+            benchmark_module.PhaseReport(
+                "stabilization", topology, topology, status="completed"
+            ),
+        ),
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="phase status prefix"):
+        benchmark_module.validate_report(report)
+
+
+def test_validator_requires_accepted_verified_setup_observation(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A completed setup row cannot claim success with rejected raw evidence."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    report = benchmark_module.RunReport(
+        topology,
+        observed_topology=topology,
+        status="completed",
+        phases=(
+            benchmark_module.PhaseReport(
+                "setup",
+                topology,
+                topology,
+                samples=(
+                    benchmark_module.RawSample(
+                        1,
+                        False,
+                        error="not verified",
+                        strategy="setup",
+                        ordinal=0,
+                    ),
+                ),
+                status="completed",
+                runs=1,
+                observations=(
+                    benchmark_module.PhaseObservation(
+                        0,
+                        "setup",
+                        1,
+                        verified=False,
+                    ),
+                ),
+            ),
+        ),
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+    )
+
+    with pytest.raises(ValueError, match=r"setup.*accepted.*verified"):
+        benchmark_module.validate_report(report)
+
+
+def test_validator_rejects_duplicate_timed_ordinals(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Duplicate timed rows cannot satisfy a declared two-run cell."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    samples = tuple(
+        benchmark_module.RawSample(
+            duration,
+            True,
+            verified=True,
+            strategy="mutation.bulk",
+            ordinal=0,
+        )
+        for duration in (10, 20)
+    )
+    observations = tuple(
+        benchmark_module.PhaseObservation(
+            0,
+            "mutation.bulk",
+            duration,
+        )
+        for duration in (10, 20)
+    )
+    report = benchmark_module.RunReport(
+        topology,
+        status="in_progress",
+        phases=(
+            benchmark_module.PhaseReport(
+                "mutation.bulk",
+                topology,
+                topology,
+                samples=samples,
+                summary={
+                    "count": 2,
+                    "min_ns": 10,
+                    "mean_ns": 15,
+                    "median_ns": 15.0,
+                    "p90_ns": 20,
+                    "p95_ns": 20,
+                    "p99_ns": 20,
+                    "max_ns": 20,
+                },
+                status="completed",
+                warmup=0,
+                runs=2,
+                observations=observations,
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="timed ordinals"):
+        benchmark_module.validate_report(report)
+
+
+def test_validator_requires_exact_warmup_observation_ordinals(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A completed cell must retain every unique declared warmup ordinal."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    phase = benchmark_module.PhaseReport(
+        "mutation.bulk",
+        topology,
+        topology,
+        samples=(
+            benchmark_module.RawSample(
+                10,
+                True,
+                verified=True,
+                strategy="mutation.bulk",
+                ordinal=0,
+            ),
+        ),
+        summary={
+            "count": 1,
+            "min_ns": 10,
+            "mean_ns": 10,
+            "median_ns": 10,
+            "p90_ns": 10,
+            "p95_ns": 10,
+            "p99_ns": 10,
+            "max_ns": 10,
+        },
+        status="completed",
+        warmup=2,
+        runs=1,
+        warmup_observations=(
+            benchmark_module.PhaseObservation(0, "mutation.bulk", 5),
+            benchmark_module.PhaseObservation(0, "mutation.bulk", 6),
+        ),
+        observations=(benchmark_module.PhaseObservation(0, "mutation.bulk", 10),),
+    )
+    report = benchmark_module.RunReport(
+        topology,
+        status="in_progress",
+        phases=(phase,),
+    )
+
+    with pytest.raises(ValueError, match="warmup ordinals"):
+        benchmark_module.validate_report(report)
+
+
 def test_cli_phase_failure_uses_supervisor_cleanup_contract(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -3761,6 +4584,199 @@ def test_cli_phase_failure_uses_supervisor_cleanup_contract(
     phases = {phase["name"]: phase for phase in payload["phases"]}
     assert phases["mutation.bulk"]["status"] == "failed"
     _assert_terminal_cleanup(payload)
+
+
+def test_worker_reports_the_exact_active_stabilization_boundary(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An unexpected lifecycle error must not be mislabeled as setup."""
+    context = types.SimpleNamespace(
+        setup_duration_ns=1,
+        setup_metrics=None,
+        activity_pane_ids=(),
+    )
+
+    async def fake_setup(*_args: t.Any, **_kwargs: t.Any) -> t.Any:
+        return context
+
+    async def fake_cleanup(_context: t.Any) -> t.Any:
+        return benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        )
+
+    def fail_stabilization(_context: t.Any) -> t.NoReturn:
+        message = "injected stabilization boundary failure"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(benchmark_module, "setup_async", fake_setup)
+    monkeypatch.setattr(benchmark_module, "cleanup_run", fake_cleanup)
+    monkeypatch.setattr(benchmark_module, "release_activity_gate", fail_stabilization)
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+
+    report = asyncio.run(
+        benchmark_module.run_worker(
+            benchmark_module.Topology(1, 1, 1),
+            lane=benchmark_module.EngineLane.SUBPROCESS,
+            mode=benchmark_module.ExecutionMode.ASYNC,
+            runs=1,
+            warmup=0,
+            seed=11,
+            run_id="active-stabilization",
+            scratch=tmp_path / "scratch",
+            socket_path=tmp_path / "scratch" / "tmux.sock",
+            checkpoint_path=tmp_path / "checkpoint.json",
+            progress_path=tmp_path / "progress.jsonl",
+            guard_decision=decision,
+            original_guard_decision=decision,
+            policy=benchmark_module.ResourcePolicy(),
+        )
+    )
+
+    assert report.status == "failed"
+    assert report.failed_phase == "stabilization"
+    assert "injected stabilization boundary failure" in t.cast(str, report.error)
+
+
+def test_cli_worker_reports_exact_not_applicable_control_boundary(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A non-applicable wait boundary cannot inherit the prior phase label."""
+    report_path = tmp_path / "not-applicable-failure.json"
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--lane",
+        "subprocess",
+        "--mode",
+        "async",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "30",
+        "--_test-fail-after",
+        "wait.control-stream",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["failed_phase"] == "wait.control-stream"
+    _assert_terminal_cleanup(payload)
+
+
+def test_worker_drains_cleanup_through_repeated_cancellation(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Repeated cancellation must wait for durable cleanup and preserve payload."""
+
+    async def exercise() -> None:
+        activity_started = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
+        context = types.SimpleNamespace(
+            setup_duration_ns=1,
+            setup_metrics=None,
+            activity_pane_ids=(),
+        )
+
+        async def fake_setup(*_args: t.Any, **_kwargs: t.Any) -> t.Any:
+            return context
+
+        async def block_activity(_context: t.Any) -> t.NoReturn:
+            activity_started.set()
+            await asyncio.Event().wait()
+            message = "unreachable"
+            raise AssertionError(message)
+
+        async def delayed_cleanup(_context: t.Any) -> t.Any:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            return benchmark_module.CleanupReport(
+                True,
+                processes_absent=True,
+                socket_absent=True,
+                scratch_absent=True,
+            )
+
+        monkeypatch.setattr(benchmark_module, "setup_async", fake_setup)
+        monkeypatch.setattr(benchmark_module, "release_activity_gate", lambda _ctx: 1)
+        monkeypatch.setattr(benchmark_module, "verify_activity_async", block_activity)
+        monkeypatch.setattr(benchmark_module, "cleanup_run", delayed_cleanup)
+        decision = benchmark_module.GuardDecision(
+            True,
+            "ok",
+            None,
+            None,
+            None,
+            False,
+            benchmark_module.HostSnapshot(),
+        )
+        checkpoint = tmp_path / "cancel-checkpoint.json"
+        task = asyncio.create_task(
+            benchmark_module.run_worker(
+                benchmark_module.Topology(1, 1, 1),
+                lane=benchmark_module.EngineLane.SUBPROCESS,
+                mode=benchmark_module.ExecutionMode.ASYNC,
+                runs=1,
+                warmup=0,
+                seed=11,
+                run_id="worker-cancellation",
+                scratch=tmp_path / "scratch",
+                socket_path=tmp_path / "scratch" / "tmux.sock",
+                checkpoint_path=checkpoint,
+                progress_path=tmp_path / "cancel-progress.jsonl",
+                guard_decision=decision,
+                original_guard_decision=decision,
+                policy=benchmark_module.ResourcePolicy(),
+            ),
+            name="worker-cancellation-test",
+        )
+        await activity_started.wait()
+        task.cancel("original cancellation")
+        await cleanup_started.wait()
+        task.cancel("repeated cancellation")
+        await asyncio.sleep(0)
+        assert not task.done()
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError) as cancelled:
+            await task
+        assert isinstance(cancelled.value, asyncio.CancelledError)
+        report = benchmark_module.load_run_report(checkpoint)
+        assert report.status == "cutoff"
+        assert report.failed_phase == "cancellation"
+        assert "original cancellation" in t.cast(str, report.error)
+        assert report.cleanup.complete
+        assert not [
+            pending
+            for pending in asyncio.all_tasks()
+            if pending is not asyncio.current_task() and not pending.done()
+        ]
+
+    asyncio.run(exercise())
 
 
 def test_cli_runtime_cutoff_is_not_relaxed_by_force_extreme(
@@ -3839,6 +4855,9 @@ def test_cli_cancellation_uses_supervisor_cleanup_contract(
             pytest.fail("worker never reached the injected setup stall")
         assert process.poll() is None
         process.send_signal(signal.SIGINT)
+        time.sleep(0.05)
+        if process.poll() is None:
+            process.send_signal(signal.SIGINT)
         stdout, stderr = process.communicate(timeout=20)
     finally:
         if process.poll() is None:
@@ -3851,6 +4870,83 @@ def test_cli_cancellation_uses_supervisor_cleanup_contract(
     assert payload["failed_phase"] == "cancellation"
     assert "supervisor interrupted" in payload["error"]
     _assert_terminal_cleanup(payload)
+
+
+def test_supervisor_cancellation_during_final_report_write_is_durable(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An interrupt during the atomic terminal write must be reported afterward."""
+    report_path = tmp_path / "final-write.json"
+    markdown_path = tmp_path / "final-write.md"
+    entered_write = threading.Event()
+    release_write = threading.Event()
+    real_write = benchmark_module.write_json_atomic
+
+    def delayed_terminal_write(path: pathlib.Path, value: t.Any) -> None:
+        if (
+            path == report_path
+            and isinstance(value, benchmark_module.RunReport)
+            and value.status == "completed"
+        ):
+            entered_write.set()
+            assert release_write.wait(timeout=20.0)
+        real_write(path, value)
+
+    monkeypatch.setattr(
+        benchmark_module,
+        "write_json_atomic",
+        delayed_terminal_write,
+    )
+
+    def interrupt_final_write() -> None:
+        assert entered_write.wait(timeout=30.0)
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.05)
+        release_write.set()
+
+    interrupter = threading.Thread(target=interrupt_final_write)
+    interrupter.start()
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    try:
+        report = benchmark_module.supervise_worker(
+            benchmark_module.Topology(1, 1, 1),
+            lane=benchmark_module.EngineLane.SUBPROCESS,
+            mode=benchmark_module.ExecutionMode.SYNC,
+            runs=1,
+            warmup=0,
+            seed=11,
+            run_id="cancel-final-write",
+            scratch=tmp_path / "scratch",
+            socket_path=tmp_path / "scratch" / "tmux.sock",
+            output=report_path,
+            markdown_output=markdown_path,
+            guard_decision=decision,
+            original_guard_decision=decision,
+            policy=benchmark_module.ResourcePolicy(),
+            watchdog_s=30.0,
+            cleanup_grace_s=0.3,
+        )
+    finally:
+        release_write.set()
+        interrupter.join(timeout=5.0)
+
+    assert not interrupter.is_alive()
+    assert report.status == "cutoff"
+    assert report.failed_phase == "cancellation"
+    assert report.cleanup.complete
+    durable = benchmark_module.load_run_report(report_path)
+    assert durable == report
+    assert "cutoff" in markdown_path.read_text(encoding="utf-8")
 
 
 def test_cli_process_identity_mismatch_never_signals_unrelated_pid(
@@ -3972,6 +5068,96 @@ def test_cli_ramp_refusal_marks_later_shapes_not_attempted(
     assert payload["cleanup"]["complete"] is True
     assert not (tmp_path / "scratch").exists()
     assert "not_attempted" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_ramp_cancellation_during_aggregation_is_durable(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Aggregation interrupted after child cleanup must publish a terminal ramp."""
+    output = tmp_path / "ramp-cancel.json"
+    markdown = tmp_path / "ramp-cancel.md"
+    entered_write = threading.Event()
+    release_write = threading.Event()
+    real_write = benchmark_module.write_json_atomic
+    next_run = 0
+
+    def fake_run_scenario(shape: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal next_run
+        next_run += 1
+        child = benchmark_module.RunReport(
+            shape,
+            observed_topology=shape,
+            status="completed",
+            cleanup=benchmark_module.CleanupReport(
+                True,
+                processes_absent=True,
+                socket_absent=True,
+                scratch_absent=True,
+            ),
+            run_id=f"child-{next_run}",
+            lane="control",
+            mode="async",
+            warmup=0,
+            runs=1,
+            scratch_path=f"scratch-{next_run}",
+            socket_path=f"scratch-{next_run}/tmux.sock",
+            progress_path=f"progress-{next_run}.jsonl",
+            environment=benchmark_module.EnvironmentReport(
+                "3.10", None, 1, 11, ("run",), None
+            ),
+        )
+        real_write(kwargs["output"], child)
+        return child
+
+    def delayed_aggregate_write(path: pathlib.Path, value: t.Any) -> None:
+        if (
+            path == output
+            and isinstance(value, benchmark_module.RunReport)
+            and value.status == "completed"
+        ):
+            entered_write.set()
+            assert release_write.wait(timeout=10.0)
+        real_write(path, value)
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", fake_run_scenario)
+    monkeypatch.setattr(
+        benchmark_module,
+        "write_json_atomic",
+        delayed_aggregate_write,
+    )
+
+    def interrupt_aggregation() -> None:
+        assert entered_write.wait(timeout=10.0)
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.05)
+        release_write.set()
+
+    interrupter = threading.Thread(target=interrupt_aggregation)
+    interrupter.start()
+    report = None
+    try:
+        report = benchmark_module.run_ramp(
+            (
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.Topology(2, 1, 1),
+            ),
+            runs=1,
+            warmup=0,
+            output=output,
+            markdown_output=markdown,
+        )
+    finally:
+        release_write.set()
+        interrupter.join(timeout=5.0)
+
+    assert report is not None
+    assert report.status == "cutoff"
+    assert report.ramp[-1].status == "cutoff"
+    assert report.cleanup.complete
+    assert benchmark_module.load_run_report(output) == report
+    assert "cutoff" in markdown.read_text(encoding="utf-8")
 
 
 def test_cli_ramp_predictive_refusal_never_executes_tmux_binary(
