@@ -17,12 +17,14 @@ import collections.abc as cabc
 import contextlib
 import dataclasses
 import enum
+import functools
 import hashlib
 import inspect
 import json
 import math
 import os
 import pathlib
+import platform
 import random
 import resource
 import shlex
@@ -66,6 +68,31 @@ _WAIT_FRAME_RATE_MAX_HZ = 40.0
 # history rows retain 120 ordinary delayed frames plus the 422-byte sentinel
 # with ample wrapping headroom in the required active 1x2x2 topology.
 _WAIT_CAPTURE_HISTORY_LINES = 5_000
+_SEARCH_POSITIONS = ("first", "middle", "last")
+_ENUMERATION_KINDS = ("sessions", "windows", "panes")
+_SEARCH_FAMILIES = ("classic", "snapshot", "end-to-end")
+_RUNNER_REPEATABLE_PHASES = (
+    "mutation.bulk",
+    "wait.capture-poll",
+    *tuple(f"enumeration.{kind}" for kind in _ENUMERATION_KINDS),
+    "capture.serial",
+    "capture.batched",
+    *tuple(
+        f"search.{family}.{kind}.{position}"
+        for family in _SEARCH_FAMILIES
+        for kind in _ENUMERATION_KINDS
+        for position in _SEARCH_POSITIONS
+    ),
+    "search.contents",
+)
+_RUNNER_PHASES = (
+    "setup",
+    "stabilization",
+    "mutation.bulk",
+    "wait.capture-poll",
+    "wait.control-stream",
+    *_RUNNER_REPEATABLE_PHASES[2:],
+)
 
 
 def _is_terminal_safe_component(value: object) -> bool:
@@ -1433,6 +1460,81 @@ class RepeatablePhaseResult:
 
 
 @dataclasses.dataclass(frozen=True)
+class PhaseObservation:
+    """Recomputable correctness and work counts for one accepted timing.
+
+    Attributes
+    ----------
+    ordinal : int
+        Zero-based timed sample ordinal within the cell.
+    strategy : str
+        Stable cell name that produced the observation.
+    duration_ns : int
+        Raw integer timing associated with this observation.
+    metrics : ExecutionMetrics | None
+        Typed operation and transport counts when the cell contacts tmux.
+    row_count : int | None
+        Exact hierarchy rows returned by enumeration.
+    byte_count : int | None
+        UTF-8 bytes retained by an all-pane capture.
+    line_count : int | None
+        Typed lines retained by an all-pane capture.
+    poll_count : int | None
+        Capture requests issued by a delayed-output wait.
+    frame_count : int | None
+        Matching control notifications consumed by a delayed-output wait.
+    dropped_notification_delta : int | None
+        Control notification drops observed during a delayed-output wait.
+    configured_delay_ns : int | None
+        Intentional fuzzer delay excluded from waiter overhead.
+    scheduling_lateness_ns : int | None
+        Fuzzer emission lateness beyond its requested schedule.
+    detection_overhead_ns : int | None
+        Waiter detection time after actual fuzzer emission.
+    scanned_count : int | None
+        Candidate cardinality scanned by a search.
+    matched_count : int | None
+        Exact accepted match cardinality for a search.
+    target : str | None
+        Concrete search target or delayed pane identifier.
+    session_count : int | None
+        Sessions verified or mutated by this observation.
+    window_count : int | None
+        Windows verified or mutated by this observation.
+    pane_count : int | None
+        Panes verified, mutated, or captured by this observation.
+    verified : bool
+        Whether typed and live checks accepted the observation.
+
+    Examples
+    --------
+    >>> PhaseObservation(0, "enumeration.sessions", 7, row_count=1).row_count
+    1
+    """
+
+    ordinal: int
+    strategy: str
+    duration_ns: int
+    metrics: ExecutionMetrics | None = None
+    row_count: int | None = None
+    byte_count: int | None = None
+    line_count: int | None = None
+    poll_count: int | None = None
+    frame_count: int | None = None
+    dropped_notification_delta: int | None = None
+    configured_delay_ns: int | None = None
+    scheduling_lateness_ns: int | None = None
+    detection_overhead_ns: int | None = None
+    scanned_count: int | None = None
+    matched_count: int | None = None
+    target: str | None = None
+    session_count: int | None = None
+    window_count: int | None = None
+    pane_count: int | None = None
+    verified: bool = True
+
+
+@dataclasses.dataclass(frozen=True)
 class PhaseReport:
     """Raw and summarized evidence for one named benchmark cell.
 
@@ -1448,6 +1550,14 @@ class PhaseReport:
         Timed results, including explicitly rejected rows.
     summary : collections.abc.Mapping[str, int | float] | None
         Statistics recomputed from accepted rows only.
+    status : {"in_progress", "completed", "failed", "not_applicable"}
+        Lifecycle or applicability state of this benchmark cell.
+    warmup : int
+        Untimed invocations requested for a repeatable cell.
+    runs : int
+        Timed invocations requested for a repeatable cell.
+    observations : tuple[PhaseObservation, ...]
+        Typed counts corresponding one-to-one with accepted timed samples.
     """
 
     name: str
@@ -1455,6 +1565,12 @@ class PhaseReport:
     observed_topology: Topology | None
     samples: tuple[RawSample, ...] = ()
     summary: cabc.Mapping[str, int | float] | None = None
+    status: t.Literal["in_progress", "completed", "failed", "not_applicable"] = (
+        "completed"
+    )
+    warmup: int = 0
+    runs: int = 0
+    observations: tuple[PhaseObservation, ...] = ()
 
     def __post_init__(self) -> None:
         """Freeze a copied summary so callers cannot alter recorded evidence.
@@ -1481,10 +1597,19 @@ class CleanupReport:
         Whether process, socket, and scratch cleanup verification passed.
     errors : tuple[str, ...]
         Cleanup verification failures.
+    processes_absent : bool | None
+        Whether every recorded PID/start-time identity was absent.
+    socket_absent : bool | None
+        Whether the exact isolated socket path was absent.
+    scratch_absent : bool | None
+        Whether the exact private scratch directory was absent.
     """
 
     complete: bool
     errors: tuple[str, ...] = ()
+    processes_absent: bool | None = None
+    socket_absent: bool | None = None
+    scratch_absent: bool | None = None
 
 
 class SetupCleanupError(RuntimeError):
@@ -1621,6 +1746,72 @@ class ProcessIdentity:
     role: str
     pid: int
     start_time: int
+
+
+@dataclasses.dataclass(frozen=True)
+class ProgressEvent:
+    """One append-only worker checkpoint observed by the supervisor.
+
+    Attributes
+    ----------
+    run_id : str
+        Exact run identity shared with the checkpoint report.
+    sequence : int
+        Strictly increasing worker-local progress sequence.
+    checkpoint : str
+        Stable lifecycle or phase checkpoint name.
+    monotonic_ns : int
+        Worker monotonic publication time.
+    processes : tuple[ProcessIdentity, ...]
+        Cumulative exact identities known at publication time.
+    schema_version : int
+        Progress stream schema version.
+
+    Examples
+    --------
+    >>> ProgressEvent("run-7", 2, "setup", 10).sequence
+    2
+    """
+
+    run_id: str
+    sequence: int
+    checkpoint: str
+    monotonic_ns: int
+    processes: tuple[ProcessIdentity, ...] = ()
+    schema_version: int = 1
+
+
+@dataclasses.dataclass(frozen=True)
+class EnvironmentReport:
+    """Descriptive local environment attached to one benchmark artifact.
+
+    Attributes
+    ----------
+    python_version : str
+        Running Python implementation version.
+    tmux_version : str | None
+        ``tmux -V`` output when the executable was available.
+    cpu_count : int | None
+        Logical CPU count exposed to Python.
+    seed : int
+        Deterministic phase-order seed.
+    command_line : tuple[str, ...]
+        Exact worker-independent public invocation arguments.
+    git_revision : str | None
+        Current checkout revision when Git could resolve it.
+
+    Examples
+    --------
+    >>> EnvironmentReport("3.10", "tmux 3.4", 4, 11, ("run",), "abc").seed
+    11
+    """
+
+    python_version: str
+    tmux_version: str | None
+    cpu_count: int | None
+    seed: int
+    command_line: tuple[str, ...]
+    git_revision: str | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1817,6 +2008,10 @@ class RunContext:
         Last fuzzer monotonic publication timestamp observed.
     ambient_tmux_environment : tuple[str | None, str | None]
         Original ``TMUX`` and ``TMUX_PANE`` values restored after cleanup.
+    setup_metrics : ExecutionMetrics | None
+        Exact construction operation and dispatch counts.
+    process_identity_callback : collections.abc.Callable | None
+        Private worker hook called as owned identities become known.
 
     Examples
     --------
@@ -1856,6 +2051,8 @@ class RunContext:
     heartbeat_epoch: int = -1
     heartbeat_monotonic_ns: int = -1
     ambient_tmux_environment: tuple[str | None, str | None] = (None, None)
+    setup_metrics: ExecutionMetrics | None = None
+    process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1870,11 +2067,23 @@ class RampStep:
         Terminal result for the step.
     reason : str | None
         Required reason for an unattempted shape after a terminal step.
+    run_id : str | None
+        Fresh run identity for an attempted shape.
+    report_path : str | None
+        Per-shape validated JSON artifact.
+    scratch_path : str | None
+        Fresh private scratch path, absent after cleanup.
+    socket_path : str | None
+        Fresh isolated socket path, absent after cleanup.
     """
 
     shape: Topology
     status: t.Literal["completed", "refused", "failed", "cutoff", "not_attempted"]
     reason: str | None = None
+    run_id: str | None = None
+    report_path: str | None = None
+    scratch_path: str | None = None
+    socket_path: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1907,6 +2116,32 @@ class RunReport:
         Decision before an optional predictive override.
     schema_version : int
         Stable artifact schema version.
+    run_id : str | None
+        Fresh terminal-safe identity for an executable scenario.
+    lane : {"subprocess", "control"} | None
+        Selected transport lane for a single executable scenario.
+    mode : {"sync", "async"} | None
+        Selected dispatch mode for a single executable scenario.
+    warmup : int | None
+        Untimed invocation count per repeatable cell.
+    runs : int | None
+        Timed invocation count per repeatable cell.
+    failed_phase : str | None
+        Phase or boundary that produced a terminal non-success status.
+    error : str | None
+        Concise terminal reason retained by the supervisor.
+    processes : tuple[ProcessIdentity, ...]
+        Exact worker, fuzzer, server, and pane identities observed by progress.
+    scratch_path : str | None
+        Exact private run path whose absence cleanup verified.
+    socket_path : str | None
+        Exact isolated socket path whose absence cleanup verified.
+    progress_path : str | None
+        Append-only JSONL progress artifact owned by the supervisor.
+    progress_sequence : int
+        Highest worker sequence incorporated into this checkpoint.
+    environment : EnvironmentReport | None
+        Descriptive local environment; never a causal performance claim.
     """
 
     requested_topology: Topology
@@ -1923,6 +2158,19 @@ class RunReport:
     guard_decision: GuardDecision | None = None
     original_guard_decision: GuardDecision | None = None
     schema_version: int = 1
+    run_id: str | None = None
+    lane: t.Literal["subprocess", "control"] | None = None
+    mode: t.Literal["sync", "async"] | None = None
+    warmup: int | None = None
+    runs: int | None = None
+    failed_phase: str | None = None
+    error: str | None = None
+    processes: tuple[ProcessIdentity, ...] = ()
+    scratch_path: str | None = None
+    socket_path: str | None = None
+    progress_path: str | None = None
+    progress_sequence: int = -1
+    environment: EnvironmentReport | None = None
 
 
 def _json_value(value: object) -> object:
@@ -2017,6 +2265,365 @@ def write_json_atomic(
         raise
 
 
+def _json_mapping(value: object, label: str) -> dict[str, t.Any]:
+    """Return one string-keyed JSON mapping or reject the artifact.
+
+    >>> _json_mapping({"value": 1}, "example")["value"]
+    1
+
+    Parameters
+    ----------
+    value : object
+        Parsed JSON value.
+    label : str
+        Human-readable field name used in errors.
+
+    Returns
+    -------
+    dict[str, typing.Any]
+        Mapping copied from the parsed artifact.
+
+    Raises
+    ------
+    ValueError
+        If the value is not a mapping with string keys.
+    """
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
+        message = f"{label} must be a JSON object"
+        raise ValueError(message)
+    return t.cast(dict[str, t.Any], value)
+
+
+def _topology_from_json(value: object) -> Topology:
+    """Decode one exact topology mapping.
+
+    >>> _topology_from_json(
+    ...     {"sessions": 1, "windows_per_session": 2, "panes_per_window": 3}
+    ... )
+    Topology(sessions=1, windows_per_session=2, panes_per_window=3)
+    """
+    row = _json_mapping(value, "topology")
+    try:
+        topology = Topology(
+            sessions=row["sessions"],
+            windows_per_session=row["windows_per_session"],
+            panes_per_window=row["panes_per_window"],
+        )
+    except KeyError as error:
+        message = f"topology lacks {error.args[0]}"
+        raise ValueError(message) from error
+    if any(
+        type(dimension) is not int or dimension <= 0
+        for dimension in (
+            topology.sessions,
+            topology.windows_per_session,
+            topology.panes_per_window,
+        )
+    ):
+        message = "topology dimensions must be positive integers"
+        raise ValueError(message)
+    return topology
+
+
+def _host_snapshot_from_json(value: object | None) -> HostSnapshot | None:
+    """Decode an optional host-resource snapshot.
+
+    >>> _host_snapshot_from_json(None) is None
+    True
+    """
+    if value is None:
+        return None
+    row = _json_mapping(value, "host snapshot")
+    return HostSnapshot(
+        available_memory_bytes=row.get("available_memory_bytes"),
+        physical_memory_bytes=row.get("physical_memory_bytes"),
+        memory_current_bytes=row.get("memory_current_bytes"),
+        memory_max_bytes=row.get("memory_max_bytes"),
+        pids_current=row.get("pids_current"),
+        pids_max=row.get("pids_max"),
+        nofile_soft_limit=row.get("nofile_soft_limit"),
+        nofile_hard_limit=row.get("nofile_hard_limit"),
+        memory_pressure_some_avg10=row.get("memory_pressure_some_avg10"),
+        source_errors=_json_mapping(row.get("source_errors", {}), "source errors"),
+    )
+
+
+def _guard_from_json(value: object | None) -> GuardDecision | None:
+    """Decode an optional guard decision.
+
+    >>> _guard_from_json(None) is None
+    True
+    """
+    if value is None:
+        return None
+    row = _json_mapping(value, "guard decision")
+    snapshot = _host_snapshot_from_json(row.get("snapshot"))
+    if snapshot is None:
+        message = "guard decision requires a host snapshot"
+        raise ValueError(message)
+    return GuardDecision(
+        allowed=t.cast(bool, row.get("allowed")),
+        kind=t.cast(
+            t.Literal["ok", "predictive_refusal", "runtime_cutoff"],
+            row.get("kind"),
+        ),
+        rule=t.cast(str | None, row.get("rule")),
+        observed=t.cast(int | None, row.get("observed")),
+        limit=t.cast(int | None, row.get("limit")),
+        forceable=t.cast(bool, row.get("forceable")),
+        snapshot=snapshot,
+    )
+
+
+def _metrics_from_json(value: object | None) -> ExecutionMetrics | None:
+    """Decode optional operation and transport counts.
+
+    >>> _metrics_from_json(None) is None
+    True
+    """
+    if value is None:
+        return None
+    row = _json_mapping(value, "execution metrics")
+    return ExecutionMetrics(
+        operations=t.cast(int, row.get("operations")),
+        planner_steps=t.cast(int, row.get("planner_steps")),
+        engine_batches=t.cast(int, row.get("engine_batches")),
+        tmux_requests=t.cast(int, row.get("tmux_requests")),
+        process_starts=t.cast(int, row.get("process_starts")),
+    )
+
+
+def _sample_from_json(value: object) -> RawSample:
+    """Decode one raw timing sample.
+
+    >>> _sample_from_json({"duration_ns": 3, "accepted": True}).duration_ns
+    3
+    """
+    row = _json_mapping(value, "raw sample")
+    return RawSample(
+        duration_ns=t.cast(int | None, row.get("duration_ns")),
+        accepted=t.cast(bool, row.get("accepted")),
+        error=t.cast(str | None, row.get("error")),
+        verified=t.cast(bool, row.get("verified", False)),
+        strategy=t.cast(str | None, row.get("strategy")),
+        ordinal=t.cast(int | None, row.get("ordinal")),
+        resources_before=_host_snapshot_from_json(row.get("resources_before")),
+        resources_after=_host_snapshot_from_json(row.get("resources_after")),
+    )
+
+
+def _observation_from_json(value: object) -> PhaseObservation:
+    """Decode one typed phase observation.
+
+    >>> _observation_from_json(
+    ...     {"ordinal": 0, "strategy": "x", "duration_ns": 2}
+    ... ).strategy
+    'x'
+    """
+    row = _json_mapping(value, "phase observation")
+    return PhaseObservation(
+        ordinal=t.cast(int, row.get("ordinal")),
+        strategy=t.cast(str, row.get("strategy")),
+        duration_ns=t.cast(int, row.get("duration_ns")),
+        metrics=_metrics_from_json(row.get("metrics")),
+        row_count=row.get("row_count"),
+        byte_count=row.get("byte_count"),
+        line_count=row.get("line_count"),
+        poll_count=row.get("poll_count"),
+        frame_count=row.get("frame_count"),
+        dropped_notification_delta=row.get("dropped_notification_delta"),
+        configured_delay_ns=row.get("configured_delay_ns"),
+        scheduling_lateness_ns=row.get("scheduling_lateness_ns"),
+        detection_overhead_ns=row.get("detection_overhead_ns"),
+        scanned_count=row.get("scanned_count"),
+        matched_count=row.get("matched_count"),
+        target=row.get("target"),
+        session_count=row.get("session_count"),
+        window_count=row.get("window_count"),
+        pane_count=row.get("pane_count"),
+        verified=t.cast(bool, row.get("verified", False)),
+    )
+
+
+def _phase_from_json(value: object) -> PhaseReport:
+    """Decode one phase report and its raw observations.
+
+    >>> _phase_from_json({
+    ...     "name": "stabilization",
+    ...     "requested_topology": {
+    ...         "sessions": 1, "windows_per_session": 1, "panes_per_window": 1
+    ...     },
+    ...     "observed_topology": None,
+    ... }).name
+    'stabilization'
+    """
+    row = _json_mapping(value, "phase")
+    observed = row.get("observed_topology")
+    summary = row.get("summary")
+    return PhaseReport(
+        name=t.cast(str, row.get("name")),
+        requested_topology=_topology_from_json(row.get("requested_topology")),
+        observed_topology=(None if observed is None else _topology_from_json(observed)),
+        samples=tuple(_sample_from_json(item) for item in row.get("samples", [])),
+        summary=(None if summary is None else _json_mapping(summary, "phase summary")),
+        status=t.cast(
+            t.Literal["in_progress", "completed", "failed", "not_applicable"],
+            row.get("status", "completed"),
+        ),
+        warmup=t.cast(int, row.get("warmup", 0)),
+        runs=t.cast(int, row.get("runs", 0)),
+        observations=tuple(
+            _observation_from_json(item) for item in row.get("observations", [])
+        ),
+    )
+
+
+def _cleanup_from_json(value: object) -> CleanupReport:
+    """Decode exact cleanup evidence.
+
+    >>> _cleanup_from_json({"complete": True, "errors": []}).complete
+    True
+    """
+    row = _json_mapping(value, "cleanup")
+    return CleanupReport(
+        complete=t.cast(bool, row.get("complete")),
+        errors=tuple(t.cast(t.Iterable[str], row.get("errors", []))),
+        processes_absent=t.cast(bool | None, row.get("processes_absent")),
+        socket_absent=t.cast(bool | None, row.get("socket_absent")),
+        scratch_absent=t.cast(bool | None, row.get("scratch_absent")),
+    )
+
+
+def _identity_from_json(value: object) -> ProcessIdentity:
+    """Decode one PID/start-time identity.
+
+    >>> _identity_from_json({"role": "worker", "pid": 2, "start_time": 3}).pid
+    2
+    """
+    row = _json_mapping(value, "process identity")
+    return ProcessIdentity(
+        t.cast(str, row.get("role")),
+        t.cast(int, row.get("pid")),
+        t.cast(int, row.get("start_time")),
+    )
+
+
+def _environment_from_json(value: object | None) -> EnvironmentReport | None:
+    """Decode optional descriptive environment evidence.
+
+    >>> _environment_from_json(None) is None
+    True
+    """
+    if value is None:
+        return None
+    row = _json_mapping(value, "environment")
+    return EnvironmentReport(
+        python_version=t.cast(str, row.get("python_version")),
+        tmux_version=t.cast(str | None, row.get("tmux_version")),
+        cpu_count=t.cast(int | None, row.get("cpu_count")),
+        seed=t.cast(int, row.get("seed")),
+        command_line=tuple(t.cast(t.Iterable[str], row.get("command_line", []))),
+        git_revision=t.cast(str | None, row.get("git_revision")),
+    )
+
+
+def run_report_from_json(value: object) -> RunReport:
+    """Decode a JSON-native report into immutable typed evidence.
+
+    >>> report = run_report_from_json({
+    ...     "requested_topology": {
+    ...         "sessions": 1, "windows_per_session": 1, "panes_per_window": 1
+    ...     },
+    ...     "cleanup": {"complete": False, "errors": []},
+    ... })
+    >>> report.status
+    'in_progress'
+
+    Parameters
+    ----------
+    value : object
+        Parsed JSON report object.
+
+    Returns
+    -------
+    RunReport
+        Immutable artifact suitable for :func:`validate_report`.
+    """
+    row = _json_mapping(value, "run report")
+    observed = row.get("observed_topology")
+    ramp_rows = []
+    for item in row.get("ramp", []):
+        ramp_row = _json_mapping(item, "ramp step")
+        ramp_rows.append(
+            RampStep(
+                shape=_topology_from_json(ramp_row.get("shape")),
+                status=t.cast(
+                    t.Literal[
+                        "completed",
+                        "refused",
+                        "failed",
+                        "cutoff",
+                        "not_attempted",
+                    ],
+                    ramp_row.get("status"),
+                ),
+                reason=ramp_row.get("reason"),
+                run_id=ramp_row.get("run_id"),
+                report_path=ramp_row.get("report_path"),
+                scratch_path=ramp_row.get("scratch_path"),
+                socket_path=ramp_row.get("socket_path"),
+            )
+        )
+    return RunReport(
+        requested_topology=_topology_from_json(row.get("requested_topology")),
+        observed_topology=(None if observed is None else _topology_from_json(observed)),
+        status=row.get("status", "in_progress"),
+        phases=tuple(_phase_from_json(item) for item in row.get("phases", [])),
+        cleanup=_cleanup_from_json(
+            row.get("cleanup", {"complete": False, "errors": []})
+        ),
+        maximum_completed=row.get("maximum_completed", False),
+        ramp=tuple(ramp_rows),
+        requested_shapes=tuple(
+            _topology_from_json(item) for item in row.get("requested_shapes", [])
+        ),
+        ramp_kind=row.get("ramp_kind", "none"),
+        guard_decision=_guard_from_json(row.get("guard_decision")),
+        original_guard_decision=_guard_from_json(row.get("original_guard_decision")),
+        schema_version=row.get("schema_version", 1),
+        run_id=row.get("run_id"),
+        lane=row.get("lane"),
+        mode=row.get("mode"),
+        warmup=row.get("warmup"),
+        runs=row.get("runs"),
+        failed_phase=row.get("failed_phase"),
+        error=row.get("error"),
+        processes=tuple(_identity_from_json(item) for item in row.get("processes", [])),
+        scratch_path=row.get("scratch_path"),
+        socket_path=row.get("socket_path"),
+        progress_path=row.get("progress_path"),
+        progress_sequence=row.get("progress_sequence", -1),
+        environment=_environment_from_json(row.get("environment")),
+    )
+
+
+def load_run_report(path: pathlib.Path) -> RunReport:
+    """Load one complete JSON report without accepting partial bytes.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     path = pathlib.Path(directory) / "report.json"
+    ...     write_json_atomic(path, RunReport(Topology(1, 1, 1)))
+    ...     load_run_report(path).requested_topology.panes
+    1
+    """
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        message = f"report is not complete JSON: {path}"
+        raise ValueError(message) from error
+    return run_report_from_json(value)
+
+
 def validate_report(report: RunReport) -> None:
     """Reject internally inconsistent benchmark evidence.
 
@@ -2049,7 +2656,27 @@ def validate_report(report: RunReport) -> None:
     if report.status in terminal and not report.cleanup.complete:
         message = "terminal report requires complete cleanup"
         raise ValueError(message)
+    phase_statuses = {"in_progress", "completed", "failed", "not_applicable"}
+    if len({phase.name for phase in report.phases}) != len(report.phases):
+        message = "phase names must be unique"
+        raise ValueError(message)
     for phase in report.phases:
+        if phase.status not in phase_statuses:
+            message = "invalid phase status"
+            raise ValueError(message)
+        if (
+            type(phase.warmup) is not int
+            or phase.warmup < 0
+            or type(phase.runs) is not int
+            or phase.runs < 0
+        ):
+            message = "phase warmup and runs must be nonnegative integers"
+            raise ValueError(message)
+        if phase.status == "not_applicable" and (
+            phase.samples or phase.summary is not None or phase.observations
+        ):
+            message = "not_applicable phase cannot carry timing evidence"
+            raise ValueError(message)
         accepted: list[int] = []
         for sample in phase.samples:
             if sample.accepted and (sample.error is not None or not sample.verified):
@@ -2074,6 +2701,17 @@ def validate_report(report: RunReport) -> None:
         ):
             message = "phase summary must match accepted samples"
             raise ValueError(message)
+        for observation in phase.observations:
+            if (
+                type(observation.ordinal) is not int
+                or observation.ordinal < 0
+                or not observation.strategy
+                or type(observation.duration_ns) is not int
+                or observation.duration_ns <= 0
+                or not observation.verified
+            ):
+                message = "phase observation requires verified positive evidence"
+                raise ValueError(message)
     ramp_kinds = {"none", "canonical", "custom"}
     terminal_statuses = {"refused", "cutoff", "failed"}
     attempt_statuses = {"completed", "not_attempted", *terminal_statuses}
@@ -2150,6 +2788,262 @@ def validate_report(report: RunReport) -> None:
     ):
         message = "maximum_completed requires exact requested and observed 100x100x4"
         raise ValueError(message)
+    if report.run_id is not None:
+        _validate_executable_report(report)
+    if report.ramp_kind != "none" and report.environment is not None:
+        _validate_executable_ramp(report)
+
+
+def _validate_executable_report(report: RunReport) -> None:
+    """Validate the stronger contract for a supervisor-owned scenario.
+
+    >>> refused = RunReport(
+    ...     Topology(1, 1, 1), status="refused", cleanup=CleanupReport(
+    ...         True, processes_absent=True, socket_absent=True,
+    ...         scratch_absent=True,
+    ...     ), run_id="run-7", lane="control", mode="async", warmup=0,
+    ...     runs=1, failed_phase="preflight", error="predictive refusal",
+    ...     guard_decision=GuardDecision(
+    ...         False, "predictive_refusal", "pid_reserve", 2, 1, True,
+    ...         HostSnapshot(),
+    ...     ),
+    ... )
+    >>> _validate_executable_report(refused)
+
+    Parameters
+    ----------
+    report : RunReport
+        Single-scenario report carrying a non-null run identity.
+
+    Returns
+    -------
+    None
+        After exact metadata, phase, count, and cleanup checks pass.
+
+    Raises
+    ------
+    ValueError
+        If executable evidence is incomplete or contradictory.
+    """
+    if not _is_terminal_safe_component(report.run_id):
+        message = "executable report requires a terminal-safe run_id"
+        raise ValueError(message)
+    if report.lane not in {lane.value for lane in EngineLane}:
+        message = "executable report requires a valid lane"
+        raise ValueError(message)
+    if report.mode not in {mode.value for mode in ExecutionMode}:
+        message = "executable report requires a valid mode"
+        raise ValueError(message)
+    if (
+        type(report.warmup) is not int
+        or report.warmup < 0
+        or type(report.runs) is not int
+        or report.runs <= 0
+    ):
+        message = "executable report requires nonnegative warmup and positive runs"
+        raise ValueError(message)
+    if report.ramp_kind != "none":
+        message = "one executable scenario cannot also be a ramp report"
+        raise ValueError(message)
+    if report.status in {"completed", "refused", "failed", "cutoff"} and (
+        report.cleanup.processes_absent is not True
+        or report.cleanup.socket_absent is not True
+        or report.cleanup.scratch_absent is not True
+    ):
+        message = "terminal executable report requires exact cleanup evidence"
+        raise ValueError(message)
+    for identity in report.processes:
+        if (
+            not identity.role
+            or type(identity.pid) is not int
+            or identity.pid <= 0
+            or type(identity.start_time) is not int
+            or identity.start_time <= 0
+        ):
+            message = "executable report has an invalid process identity"
+            raise ValueError(message)
+    if report.status == "refused":
+        if (
+            report.failed_phase != "preflight"
+            or not report.error
+            or report.observed_topology is not None
+            or report.phases
+            or report.processes
+            or report.scratch_path is not None
+            or report.socket_path is not None
+            or report.progress_path is not None
+            or report.guard_decision is None
+            or report.guard_decision.kind != "predictive_refusal"
+            or report.guard_decision.allowed
+        ):
+            message = "refused executable report contains live-run evidence"
+            raise ValueError(message)
+        return
+    if report.environment is None:
+        message = "attempted executable report requires environment evidence"
+        raise ValueError(message)
+    if not report.scratch_path or not report.socket_path or not report.progress_path:
+        message = "attempted executable report requires owned resource paths"
+        raise ValueError(message)
+    if report.status != "completed":
+        if not report.failed_phase or not report.error:
+            message = "terminal unsuccessful report requires phase and error"
+            raise ValueError(message)
+        return
+    if report.failed_phase is not None or report.error is not None:
+        message = "completed report cannot carry a terminal failure"
+        raise ValueError(message)
+    if report.observed_topology != report.requested_topology:
+        message = "completed report requires exact observed topology"
+        raise ValueError(message)
+    if tuple(phase.name for phase in report.phases) != _RUNNER_PHASES:
+        message = "completed report has an incomplete phase graph"
+        raise ValueError(message)
+    phases = {phase.name: phase for phase in report.phases}
+    setup = phases["setup"]
+    if (
+        setup.status != "completed"
+        or setup.warmup != 0
+        or setup.runs != 1
+        or len(setup.samples) != 1
+        or len(setup.observations) != 1
+        or setup.summary is not None
+    ):
+        message = "setup must remain one unsummarized fresh-server observation"
+        raise ValueError(message)
+    stabilization = phases["stabilization"]
+    if (
+        stabilization.status != "completed"
+        or stabilization.samples
+        or stabilization.summary is not None
+        or len(stabilization.observations) != 1
+        or stabilization.observations[0].pane_count != report.requested_topology.panes
+    ):
+        message = "stabilization requires one exact untimed topology observation"
+        raise ValueError(message)
+    control_applicable = (
+        report.lane == EngineLane.CONTROL.value
+        and report.mode == ExecutionMode.ASYNC.value
+    )
+    control_phase = phases["wait.control-stream"]
+    if not control_applicable:
+        if control_phase.status != "not_applicable":
+            message = "control-stream must be not_applicable outside async control"
+            raise ValueError(message)
+    elif control_phase.status != "completed":
+        message = "async control report requires control-stream evidence"
+        raise ValueError(message)
+    repeatable_names = (*_RUNNER_REPEATABLE_PHASES,)
+    if control_applicable:
+        repeatable_names = (
+            *repeatable_names[:2],
+            "wait.control-stream",
+            *repeatable_names[2:],
+        )
+    for name in repeatable_names:
+        phase = phases[name]
+        if (
+            phase.status != "completed"
+            or phase.warmup != report.warmup
+            or phase.runs != report.runs
+            or len(phase.samples) != report.runs
+            or len(phase.observations) != report.runs
+            or phase.summary is None
+            or phase.summary.get("count") != report.runs
+        ):
+            message = f"repeatable phase {name} has incomplete raw evidence"
+            raise ValueError(message)
+        samples_by_ordinal = {sample.ordinal: sample for sample in phase.samples}
+        for observation in phase.observations:
+            sample = samples_by_ordinal.get(observation.ordinal)
+            if (
+                sample is None
+                or sample.strategy != name
+                or sample.duration_ns != observation.duration_ns
+                or not sample.accepted
+                or not sample.verified
+            ):
+                message = f"phase {name} observation does not match raw sample"
+                raise ValueError(message)
+    topology = report.requested_topology
+    for kind, expected in (
+        ("sessions", topology.sessions),
+        ("windows", topology.windows),
+        ("panes", topology.panes),
+    ):
+        if any(
+            observation.row_count != expected
+            for observation in phases[f"enumeration.{kind}"].observations
+        ):
+            message = f"enumeration.{kind} row count differs from topology"
+            raise ValueError(message)
+    for strategy in ("serial", "batched"):
+        if any(
+            observation.pane_count != topology.panes
+            or observation.line_count is None
+            or observation.line_count <= 0
+            or observation.byte_count is None
+            or observation.byte_count <= 0
+            for observation in phases[f"capture.{strategy}"].observations
+        ):
+            message = f"capture.{strategy} count evidence is incomplete"
+            raise ValueError(message)
+    for phase in report.phases:
+        if (
+            phase.name.startswith("search.")
+            and phase.status == "completed"
+            and any(
+                observation.matched_count != 1
+                or observation.scanned_count is None
+                or observation.scanned_count <= 0
+                for observation in phase.observations
+            )
+        ):
+            message = f"{phase.name} search count evidence is incomplete"
+            raise ValueError(message)
+
+
+def _validate_executable_ramp(report: RunReport) -> None:
+    """Require fresh per-shape identities and paths in a rendered ramp.
+
+    >>> shape = Topology(1, 1, 1)
+    >>> ramp = RunReport(
+    ...     shape, status="completed", cleanup=CleanupReport(
+    ...         True, processes_absent=True, socket_absent=True,
+    ...         scratch_absent=True,
+    ...     ), ramp_kind="custom", requested_shapes=(shape,),
+    ...     ramp=(RampStep(shape, "completed", run_id="run-1",
+    ...                    report_path="one.json", scratch_path="one",
+    ...                    socket_path="one/sock"),),
+    ...     environment=EnvironmentReport("3.10", None, 1, 11, ("ramp",), None),
+    ... )
+    >>> _validate_executable_ramp(ramp)
+    """
+    if report.status in {"completed", "refused", "failed", "cutoff"} and (
+        report.cleanup.processes_absent is not True
+        or report.cleanup.socket_absent is not True
+        or report.cleanup.scratch_absent is not True
+    ):
+        message = "terminal ramp requires exact cleanup evidence"
+        raise ValueError(message)
+    if (
+        not report.requested_shapes
+        or report.requested_topology != report.requested_shapes[-1]
+    ):
+        message = "ramp requested topology must remain the declared final shape"
+        raise ValueError(message)
+    attempted = [step for step in report.ramp if step.status != "not_attempted"]
+    for attribute in ("run_id", "report_path"):
+        values = [getattr(step, attribute) for step in attempted]
+        if any(not value for value in values) or len(set(values)) != len(values):
+            message = f"ramp attempts require fresh unique {attribute} values"
+            raise ValueError(message)
+    resource_attempts = [step for step in attempted if step.status != "refused"]
+    for attribute in ("scratch_path", "socket_path"):
+        values = [getattr(step, attribute) for step in resource_attempts]
+        if any(not value for value in values) or len(set(values)) != len(values):
+            message = f"ramp attempts require fresh unique {attribute} values"
+            raise ValueError(message)
 
 
 def _forced_decision(decision: GuardDecision, force_extreme: bool) -> GuardDecision:
@@ -2552,7 +3446,11 @@ def _stop_owned_process(
             f"{identity.role} pid {identity.pid} with start time "
             f"{identity.start_time} remains"
         )
-    return CleanupReport(complete=not errors, errors=tuple(errors))
+    return CleanupReport(
+        complete=not errors,
+        errors=tuple(errors),
+        processes_absent=not process_identity_matches(identity),
+    )
 
 
 def _stream_name(ordinal: int, delayed_ordinal: int) -> str:
@@ -3005,6 +3903,7 @@ def _prepare_context(
     socket_path: pathlib.Path | None,
     run_id: str,
     delayed_ordinal: int,
+    _process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None,
 ) -> RunContext:
     """Create isolated host resources and an engine without starting setup timing.
 
@@ -3034,6 +3933,8 @@ def _prepare_context(
         Safe identifier used in markers and tmux names.
     delayed_ordinal : int
         Unique pane assigned the delayed stream.
+    _process_identity_callback : collections.abc.Callable | None
+        Private worker hook invoked as exact process identities become known.
 
     Returns
     -------
@@ -3103,6 +4004,8 @@ def _prepare_context(
             _identity_out=fuzzer_identities,
         )
         fuzzer_identity = _only_process_identity(fuzzer_identities)
+        if _process_identity_callback is not None:
+            _process_identity_callback(fuzzer_identity)
         server = Server(socket_path=resolved_socket, config_file=os.devnull)
         if mode is ExecutionMode.SYNC:
             engine: TmuxEngine | AsyncTmuxEngine
@@ -3155,6 +4058,7 @@ def _prepare_context(
             setup_duration_ns=0,
             processes=(fuzzer_identity,),
             ambient_tmux_environment=ambient_tmux_environment,
+            process_identity_callback=_process_identity_callback,
         )
     except BaseException as setup_error:
         cleanup_errors: list[str] = []
@@ -3198,6 +4102,7 @@ def setup_sync(
     socket_path: pathlib.Path | None = None,
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
+    _process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None,
 ) -> RunContext:
     """Build and exactly verify one synchronous live topology.
 
@@ -3230,6 +4135,8 @@ def setup_sync(
         Marker and topology identity.
     delayed_ordinal : int
         Unique pane assigned the delayed stream.
+    _process_identity_callback : collections.abc.Callable | None
+        Private worker hook invoked as exact process identities become known.
 
     Returns
     -------
@@ -3248,6 +4155,7 @@ def setup_sync(
     from libtmux.experimental.engines import SubprocessEngine
     from libtmux.experimental.ops import (
         BatchingPlanner,
+        BoundedPlanner,
         DisplayMessage,
         KillSession,
         ListClients,
@@ -3267,6 +4175,7 @@ def setup_sync(
         socket_path=socket_path,
         run_id=run_id,
         delayed_ordinal=delayed_ordinal,
+        _process_identity_callback=_process_identity_callback,
     )
     engine = t.cast("TmuxEngine", context.engine)
     keepalive = f"bench-{run_id}-keepalive"
@@ -3292,6 +4201,15 @@ def setup_sync(
             run_id,
             delayed_ordinal=delayed_ordinal,
         )
+        compiled = workspaces.compile()
+        setup_planner = BoundedPlanner(
+            BatchingPlanner(), frozenset(compiled.host_after)
+        )
+        context.setup_metrics = _phase_metrics(
+            context,
+            operations=len(compiled.plan),
+            planner_steps=len(compiled.plan.explain(setup_planner)),
+        )
         started_ns = time.perf_counter_ns()
         build_result = workspaces.build(
             engine,
@@ -3312,7 +4230,10 @@ def setup_sync(
         server_pid_result = run(DisplayMessage(message="#{pid}"), engine)
         server_pid_result.raise_for_status()
         server_pid = int(server_pid_result.text)
-        context.processes = (*context.processes, _record_process("server", server_pid))
+        server_identity = _record_process("server", server_pid)
+        context.processes = (*context.processes, server_identity)
+        if context.process_identity_callback is not None:
+            context.process_identity_callback(server_identity)
         verify_topology(context, snapshot_topology_sync(context))
     except BaseException as setup_error:
         try:
@@ -3339,6 +4260,7 @@ async def setup_async(
     socket_path: pathlib.Path | None = None,
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
+    _process_identity_callback: cabc.Callable[[ProcessIdentity], None] | None = None,
 ) -> RunContext:
     """Build and exactly verify one asynchronous live topology.
 
@@ -3369,6 +4291,8 @@ async def setup_async(
         Marker and topology identity.
     delayed_ordinal : int
         Unique pane assigned the delayed stream.
+    _process_identity_callback : collections.abc.Callable | None
+        Private worker hook invoked as exact process identities become known.
 
     Returns
     -------
@@ -3390,6 +4314,7 @@ async def setup_async(
     )
     from libtmux.experimental.ops import (
         BatchingPlanner,
+        BoundedPlanner,
         DisplayMessage,
         KillSession,
         ListClients,
@@ -3409,6 +4334,7 @@ async def setup_async(
         socket_path=socket_path,
         run_id=run_id,
         delayed_ordinal=delayed_ordinal,
+        _process_identity_callback=_process_identity_callback,
     )
     engine = t.cast("AsyncTmuxEngine", context.engine)
     keepalive = f"bench-{run_id}-keepalive"
@@ -3440,6 +4366,15 @@ async def setup_async(
             run_id,
             delayed_ordinal=delayed_ordinal,
         )
+        compiled = workspaces.compile()
+        setup_planner = BoundedPlanner(
+            BatchingPlanner(), frozenset(compiled.host_after)
+        )
+        context.setup_metrics = _phase_metrics(
+            context,
+            operations=len(compiled.plan),
+            planner_steps=len(compiled.plan.explain(setup_planner)),
+        )
         started_ns = time.perf_counter_ns()
         build_result = (
             await workspaces.abuild(
@@ -3468,7 +4403,10 @@ async def setup_async(
         server_pid_result = await arun(DisplayMessage(message="#{pid}"), engine)
         server_pid_result.raise_for_status()
         server_pid = int(server_pid_result.text)
-        context.processes = (*context.processes, _record_process("server", server_pid))
+        server_identity = _record_process("server", server_pid)
+        context.processes = (*context.processes, server_identity)
+        if context.process_identity_callback is not None:
+            context.process_identity_callback(server_identity)
         verify_topology(context, await snapshot_topology_async(context))
     except BaseException as setup_error:
         try:
@@ -3704,6 +4642,10 @@ def verify_topology(
         *(process for process in context.processes if process.role != "pane"),
         *pane_processes,
     )
+    identity_callback = getattr(context, "process_identity_callback", None)
+    if identity_callback is not None:
+        for identity in pane_processes:
+            identity_callback(identity)
     context.topology_verified = True
     return snapshot
 
@@ -6801,6 +7743,10 @@ async def run_repeatable_phase(
     seed: int,
     live_postcondition: cabc.Callable[[PhaseMeasurement], object],
     snapshot_resources: cabc.Callable[[], HostSnapshot] | None = None,
+    progress_callback: cabc.Callable[
+        [str, str, int, PhaseMeasurement, RawSample | None], object
+    ]
+    | None = None,
 ) -> RepeatablePhaseResult:
     """Deterministically interleave strategies and retain accepted timed rows.
 
@@ -6836,6 +7782,9 @@ async def run_repeatable_phase(
         Required independent sync or async live check run after typed validation.
     snapshot_resources : collections.abc.Callable[[], HostSnapshot] | None
         Injectable resource sampler; defaults to the live process/cgroup probe.
+    progress_callback : collections.abc.Callable | None
+        Private orchestration hook called after every accepted warmup or timed
+        invocation. Timed calls receive the newly retained raw sample.
 
     Returns
     -------
@@ -6875,18 +7824,30 @@ async def run_repeatable_phase(
                 postcondition = await _await_if_needed(live_postcondition(measurement))
                 _require_live_postcondition(postcondition)
                 resources_after = sampler()
+                raw_sample: RawSample | None = None
                 if stage == "timed":
-                    samples.append(
-                        RawSample(
-                            duration_ns=measurement.duration_ns,
-                            accepted=True,
-                            verified=True,
-                            strategy=strategy,
-                            ordinal=ordinal,
-                            resources_before=resources_before,
-                            resources_after=resources_after,
+                    raw_sample = RawSample(
+                        duration_ns=measurement.duration_ns,
+                        accepted=True,
+                        verified=True,
+                        strategy=strategy,
+                        ordinal=ordinal,
+                        resources_before=resources_before,
+                        resources_after=resources_after,
+                    )
+                    samples.append(raw_sample)
+                if progress_callback is not None:
+                    await _await_if_needed(
+                        progress_callback(
+                            stage,
+                            strategy,
+                            ordinal,
+                            measurement,
+                            raw_sample,
                         )
                     )
+            except RuntimeCutoffError:
+                raise
             except Exception as error:  # noqa: BLE001
                 return RepeatablePhaseResult(
                     samples=tuple(samples),
@@ -7067,7 +8028,2185 @@ async def cleanup_run(
             os.environ.pop(name, None)
         else:
             os.environ[name] = value
-    return CleanupReport(complete=not errors, errors=tuple(errors))
+    processes_absent = all(
+        not process_identity_matches(identity) for identity in context.processes
+    )
+    socket_absent = not context.socket_path.exists()
+    scratch_absent = not context.scratch.exists() and (
+        context.socket_root is None or not context.socket_root.exists()
+    )
+    return CleanupReport(
+        complete=not errors,
+        errors=tuple(errors),
+        processes_absent=processes_absent,
+        socket_absent=socket_absent,
+        scratch_absent=scratch_absent,
+    )
+
+
+class RuntimeCutoffError(RuntimeError):
+    """A non-forceable live resource guard stopped the current run.
+
+    Attributes
+    ----------
+    decision : GuardDecision
+        Exact runtime guard observation that caused the cutoff.
+
+    Examples
+    --------
+    >>> decision = GuardDecision(
+    ...     False, "runtime_cutoff", "watchdog", None, None, False,
+    ...     HostSnapshot(),
+    ... )
+    >>> RuntimeCutoffError(decision).decision.rule
+    'watchdog'
+    """
+
+    def __init__(self, decision: GuardDecision) -> None:
+        """Retain one non-forceable runtime decision.
+
+        >>> decision = GuardDecision(
+        ...     False, "runtime_cutoff", "memory_floor", 1, 2, False,
+        ...     HostSnapshot(),
+        ... )
+        >>> str(RuntimeCutoffError(decision))
+        'runtime cutoff: memory_floor'
+        """
+        self.decision = decision
+        super().__init__(f"runtime cutoff: {decision.rule or 'unknown'}")
+
+
+class PhaseExecutionError(RuntimeError):
+    """A repeatable phase failed before producing all requested samples.
+
+    Attributes
+    ----------
+    phase : str
+        Exact cell that failed.
+    failure : RepeatablePhaseFailure
+        Stage, ordinal, and original error metadata.
+
+    Examples
+    --------
+    >>> failure = RepeatablePhaseFailure("timed", "cell", 1, "RuntimeError: no")
+    >>> PhaseExecutionError("cell", failure).phase
+    'cell'
+    """
+
+    def __init__(self, phase: str, failure: RepeatablePhaseFailure) -> None:
+        """Retain one typed repeatable failure.
+
+        >>> failure = RepeatablePhaseFailure("warmup", "cell", 0, "ValueError: x")
+        >>> str(PhaseExecutionError("cell", failure))
+        'cell warmup 0 failed: ValueError: x'
+        """
+        self.phase = phase
+        self.failure = failure
+        super().__init__(
+            f"{phase} {failure.stage} {failure.ordinal} failed: {failure.error}"
+        )
+
+
+def _collect_environment(
+    *,
+    seed: int,
+    command_line: t.Sequence[str],
+    include_tmux: bool = True,
+) -> EnvironmentReport:
+    """Collect descriptive version and checkout facts without contacting a server.
+
+    >>> environment = _collect_environment(seed=11, command_line=("run",))
+    >>> environment.seed, environment.command_line
+    (11, ('run',))
+
+    Parameters
+    ----------
+    seed : int
+        Deterministic phase-order seed.
+    command_line : collections.abc.Sequence[str]
+        Public command arguments represented by the artifact.
+    include_tmux : bool
+        Whether admission has occurred and invoking ``tmux -V`` is permitted.
+
+    Returns
+    -------
+    EnvironmentReport
+        Local descriptive evidence with unavailable values retained as ``None``.
+    """
+    tmux_version: str | None = None
+    git_revision: str | None = None
+    if include_tmux:
+        try:
+            completed = subprocess.run(
+                ("tmux", "-V"),
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+            )
+            if completed.returncode == 0:
+                tmux_version = completed.stdout.strip() or None
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    try:
+        completed = subprocess.run(
+            ("git", "rev-parse", "HEAD"),
+            cwd=pathlib.Path(__file__).parents[1],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        if completed.returncode == 0:
+            git_revision = completed.stdout.strip() or None
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return EnvironmentReport(
+        python_version=platform.python_version(),
+        tmux_version=tmux_version,
+        cpu_count=os.cpu_count(),
+        seed=seed,
+        command_line=tuple(command_line),
+        git_revision=git_revision,
+    )
+
+
+def _observation_for_measurement(
+    strategy: str,
+    ordinal: int,
+    measurement: PhaseMeasurement,
+) -> PhaseObservation:
+    """Project one accepted typed measurement into stable JSON evidence.
+
+    >>> measurement = EnumerationResult(
+    ...     7, ExecutionMetrics(1, 1, 1, 1, 0), "sessions", 2,
+    ...     ("$0", "$1"), "digest", True,
+    ... )
+    >>> _observation_for_measurement("enumeration.sessions", 0, measurement).row_count
+    2
+
+    Parameters
+    ----------
+    strategy : str
+        Stable full phase name.
+    ordinal : int
+        Zero-based timed ordinal.
+    measurement : PhaseMeasurement
+        Verified typed Task 4 or Task 5 result.
+
+    Returns
+    -------
+    PhaseObservation
+        Counts sufficient for artifact validation without serializing operations.
+    """
+    if isinstance(measurement, MutationResult):
+        return PhaseObservation(
+            ordinal,
+            strategy,
+            measurement.duration_ns,
+            metrics=measurement.metrics,
+            session_count=1,
+            window_count=len(measurement.window_ids),
+            pane_count=len(measurement.pane_ids),
+            target=measurement.session_id,
+            verified=measurement.verified,
+        )
+    if isinstance(measurement, EnumerationResult):
+        return PhaseObservation(
+            ordinal,
+            strategy,
+            measurement.duration_ns,
+            metrics=measurement.metrics,
+            row_count=measurement.row_count,
+            verified=measurement.verified,
+        )
+    if isinstance(measurement, CaptureResult):
+        return PhaseObservation(
+            ordinal,
+            strategy,
+            measurement.duration_ns,
+            metrics=measurement.metrics,
+            byte_count=measurement.byte_count,
+            line_count=measurement.line_count,
+            pane_count=len(measurement.captures),
+            verified=measurement.verified,
+        )
+    if isinstance(measurement, SearchResult):
+        return PhaseObservation(
+            ordinal,
+            strategy,
+            measurement.duration_ns,
+            scanned_count=measurement.scanned_count,
+            matched_count=len(measurement.matched_ids),
+            target=measurement.target,
+            verified=measurement.verified,
+        )
+    return PhaseObservation(
+        ordinal,
+        strategy,
+        measurement.duration_ns,
+        poll_count=measurement.poll_count,
+        frame_count=measurement.frame_count,
+        dropped_notification_delta=measurement.dropped_notification_delta,
+        configured_delay_ns=measurement.configured_delay_ns,
+        scheduling_lateness_ns=measurement.scheduling_lateness_ns,
+        detection_overhead_ns=measurement.detection_overhead_ns,
+        target=measurement.pane_id,
+        verified=measurement.verified,
+    )
+
+
+def _replace_phase(report: RunReport, phase: PhaseReport) -> RunReport:
+    """Replace a named phase in place or append it while preserving order.
+
+    >>> topology = Topology(1, 1, 1)
+    >>> report = RunReport(topology, phases=(PhaseReport("a", topology, None),))
+    >>> tuple(row.name for row in _replace_phase(
+    ...     report, PhaseReport("b", topology, None)
+    ... ).phases)
+    ('a', 'b')
+    """
+    phases = list(report.phases)
+    for index, existing in enumerate(phases):
+        if existing.name == phase.name:
+            phases[index] = phase
+            break
+    else:
+        phases.append(phase)
+    return dataclasses.replace(report, phases=tuple(phases))
+
+
+def append_progress_event(path: pathlib.Path, event: ProgressEvent) -> None:
+    """Durably append one complete JSON line without rewriting prior events.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     path = pathlib.Path(directory) / "progress.jsonl"
+    ...     append_progress_event(path, ProgressEvent("run-7", 0, "start", 1))
+    ...     json.loads(path.read_text(encoding="utf-8"))["sequence"]
+    0
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Append-only worker-to-supervisor progress stream.
+    event : ProgressEvent
+        Complete event with cumulative process identities.
+
+    Returns
+    -------
+    None
+        After bytes and the containing directory are synchronized.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = (
+        json.dumps(_json_value(event), separators=(",", ":"), sort_keys=True) + "\n"
+    ).encode()
+    flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        written = os.write(descriptor, encoded)
+        if written != len(encoded):
+            message = "short append to progress stream"
+            raise OSError(message)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _progress_event_from_json(value: object) -> ProgressEvent:
+    """Decode and validate one complete progress line.
+
+    >>> _progress_event_from_json({
+    ...     "schema_version": 1, "run_id": "run-7", "sequence": 0,
+    ...     "checkpoint": "start", "monotonic_ns": 1, "processes": [],
+    ... }).checkpoint
+    'start'
+    """
+    row = _json_mapping(value, "progress event")
+    event = ProgressEvent(
+        run_id=t.cast(str, row.get("run_id")),
+        sequence=t.cast(int, row.get("sequence")),
+        checkpoint=t.cast(str, row.get("checkpoint")),
+        monotonic_ns=t.cast(int, row.get("monotonic_ns")),
+        processes=tuple(_identity_from_json(item) for item in row.get("processes", [])),
+        schema_version=t.cast(int, row.get("schema_version", 1)),
+    )
+    if (
+        event.schema_version != 1
+        or not _is_terminal_safe_component(event.run_id)
+        or type(event.sequence) is not int
+        or event.sequence < 0
+        or not event.checkpoint
+        or type(event.monotonic_ns) is not int
+        or event.monotonic_ns < 0
+    ):
+        message = "invalid progress event"
+        raise ValueError(message)
+    return event
+
+
+@dataclasses.dataclass
+class _WorkerRecorder:
+    """Own worker checkpoints and the append-only progress sequence.
+
+    Attributes
+    ----------
+    report : RunReport
+        Current immutable report snapshot.
+    checkpoint_path : pathlib.Path
+        Worker-owned atomic checkpoint artifact.
+    progress_path : pathlib.Path
+        Append-only supervisor progress stream.
+    stall_after : str | None
+        Private test-harness checkpoint that deliberately stops progress.
+    sequence : int
+        Last published sequence number.
+    identities : list[ProcessIdentity]
+        Cumulative exact identities published with every event.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     root = pathlib.Path(directory)
+    ...     recorder = _WorkerRecorder(
+    ...         RunReport(Topology(1, 1, 1)), root / "report.json",
+    ...         root / "progress.jsonl",
+    ...     )
+    ...     recorder.checkpoint("start")
+    ...     recorder.sequence
+    0
+    """
+
+    report: RunReport
+    checkpoint_path: pathlib.Path
+    progress_path: pathlib.Path
+    stall_after: str | None = None
+    sequence: int = -1
+    identities: list[ProcessIdentity] = dataclasses.field(default_factory=list)
+
+    def checkpoint(self, name: str) -> None:
+        """Publish an increasing event before its matching report checkpoint.
+
+        >>> with tempfile.TemporaryDirectory() as directory:
+        ...     root = pathlib.Path(directory)
+        ...     recorder = _WorkerRecorder(
+        ...         RunReport(Topology(1, 1, 1)), root / "report.json",
+        ...         root / "progress.jsonl",
+        ...     )
+        ...     recorder.checkpoint("one")
+        ...     load_run_report(root / "report.json").progress_sequence
+        0
+        """
+        self.sequence += 1
+        self.report = dataclasses.replace(
+            self.report,
+            processes=tuple(self.identities),
+            progress_sequence=self.sequence,
+        )
+        append_progress_event(
+            self.progress_path,
+            ProgressEvent(
+                run_id=t.cast(str, self.report.run_id),
+                sequence=self.sequence,
+                checkpoint=name,
+                monotonic_ns=time.monotonic_ns(),
+                processes=tuple(self.identities),
+            ),
+        )
+        write_json_atomic(self.checkpoint_path, self.report)
+        if self.stall_after == name:
+            while True:
+                time.sleep(0.05)
+
+    def record_identity(self, identity: ProcessIdentity) -> None:
+        """Publish one exact identity once, at the moment it becomes known.
+
+        >>> recorder = _WorkerRecorder(
+        ...     RunReport(Topology(1, 1, 1), run_id="run-7"),
+        ...     pathlib.Path("unused"), pathlib.Path("unused-progress"),
+        ... )
+        >>> recorder.identities.append(ProcessIdentity("worker", 2, 3))
+        >>> len(recorder.identities)
+        1
+        """
+        key = (identity.role, identity.pid, identity.start_time)
+        if key in {(item.role, item.pid, item.start_time) for item in self.identities}:
+            return
+        self.identities.append(identity)
+        self.checkpoint(f"identity.{identity.role}")
+
+
+async def _worker_live_postcondition(
+    context: RunContext,
+    _measurement: PhaseMeasurement,
+    policy: ResourcePolicy,
+) -> bool:
+    """Require live activity, owned processes, topology, and resource headroom.
+
+    >>> async def invalid():
+    ...     context = types.SimpleNamespace(
+    ...         fuzzer=types.SimpleNamespace(poll=lambda: 1), processes=(),
+    ...         topology_verified=True,
+    ...     )
+    ...     measurement = SearchResult(
+    ...         1, "snapshot", "sessions", 1, "$0", ("$0",), verified=True
+    ...     )
+    ...     try:
+    ...         await _worker_live_postcondition(context, measurement, ResourcePolicy())
+    ...     except RuntimeError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid())
+    'fuzzer exited during measured phase'
+
+    Parameters
+    ----------
+    context : RunContext
+        Active worker-owned topology.
+    _measurement : PhaseMeasurement
+        Independently typed and verified phase result.
+    policy : ResourcePolicy
+        Runtime PID and memory reserve configuration.
+
+    Returns
+    -------
+    bool
+        Exactly ``True`` after every independent live check passes.
+    """
+    _current_activity_heartbeat(context, max_age_s=2.0)
+    snapshot = probe_host(ProcessReader())
+    decision = check_runtime_guard(
+        snapshot,
+        policy=policy,
+        processes_alive=all(
+            process_identity_matches(identity) for identity in context.processes
+        ),
+        topology_verified=context.topology_verified,
+        watchdog_ok=True,
+        cleanup_complete=True,
+    )
+    if not decision.allowed:
+        raise RuntimeCutoffError(decision)
+    return True
+
+
+def _completed_phase(phase: PhaseReport) -> PhaseReport:
+    """Summarize all accepted raw rows and mark one repeatable cell complete.
+
+    >>> topology = Topology(1, 1, 1)
+    >>> sample = RawSample(3, True, verified=True, strategy="x", ordinal=0)
+    >>> _completed_phase(PhaseReport(
+    ...     "x", topology, topology, (sample,), status="in_progress", runs=1
+    ... )).summary["count"]
+    1
+    """
+    durations = tuple(
+        t.cast(int, sample.duration_ns) for sample in phase.samples if sample.accepted
+    )
+    return dataclasses.replace(
+        phase,
+        status="completed",
+        summary=summarize_ns(durations),
+    )
+
+
+async def _run_worker_group(
+    recorder: _WorkerRecorder,
+    context: RunContext,
+    strategies: cabc.Mapping[str, cabc.Callable[[], object]],
+    *,
+    warmup: int,
+    runs: int,
+    seed: int,
+    policy: ResourcePolicy,
+    latest: dict[str, PhaseMeasurement],
+    fail_after: str | None,
+) -> None:
+    """Run one deterministically interleaved family and checkpoint each call.
+
+    >>> async def empty_group():
+    ...     try:
+    ...         await _run_worker_group(
+    ...             t.cast(_WorkerRecorder, None), t.cast(RunContext, None), {},
+    ...             warmup=0, runs=1, seed=1, policy=ResourcePolicy(), latest={},
+    ...             fail_after=None,
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(empty_group())
+    'worker phase group requires strategies'
+
+    Parameters
+    ----------
+    recorder : _WorkerRecorder
+        Atomic checkpoint and append-only progress owner.
+    context : RunContext
+        Active topology used by every strategy.
+    strategies : collections.abc.Mapping[str, collections.abc.Callable]
+        Full phase names mapped to typed sync or async callables.
+    warmup : int
+        Untimed calls per cell.
+    runs : int
+        Timed accepted calls per cell.
+    seed : int
+        Deterministic family-order seed.
+    policy : ResourcePolicy
+        Runtime guard thresholds.
+    latest : dict[str, PhaseMeasurement]
+        Destination retaining the latest typed result by cell.
+    fail_after : str | None
+        Private test-harness phase that raises after its final checkpoint.
+
+    Returns
+    -------
+    None
+        After all cells retain exactly ``runs`` accepted samples.
+    """
+    if not strategies:
+        message = "worker phase group requires strategies"
+        raise ValueError(message)
+    topology = context.topology
+    for name in strategies:
+        recorder.report = _replace_phase(
+            recorder.report,
+            PhaseReport(
+                name=name,
+                requested_topology=topology,
+                observed_topology=topology,
+                status="in_progress",
+                warmup=warmup,
+                runs=runs,
+            ),
+        )
+    recorder.checkpoint(f"{next(iter(strategies))}.started")
+
+    async def on_progress(
+        stage: str,
+        strategy: str,
+        ordinal: int,
+        measurement: PhaseMeasurement,
+        sample: RawSample | None,
+    ) -> None:
+        latest[strategy] = measurement
+        phases = {phase.name: phase for phase in recorder.report.phases}
+        phase = phases[strategy]
+        if sample is not None:
+            phase = dataclasses.replace(
+                phase,
+                samples=(*phase.samples, sample),
+                observations=(
+                    *phase.observations,
+                    _observation_for_measurement(strategy, ordinal, measurement),
+                ),
+            )
+            if ordinal == runs - 1:
+                phase = _completed_phase(phase)
+        recorder.report = _replace_phase(recorder.report, phase)
+        checkpoint = (
+            strategy
+            if sample is not None and ordinal == runs - 1
+            else f"{strategy}.{stage}.{ordinal}"
+        )
+        recorder.checkpoint(checkpoint)
+        if checkpoint == strategy and fail_after == strategy:
+            message = f"injected phase failure after {strategy}"
+            raise RuntimeError(message)
+
+    result = await run_repeatable_phase(
+        strategies,
+        warmup=warmup,
+        runs=runs,
+        seed=seed,
+        snapshot_resources=lambda: probe_host(ProcessReader()),
+        live_postcondition=lambda measurement: _worker_live_postcondition(
+            context, measurement, policy
+        ),
+        progress_callback=on_progress,
+    )
+    if result.failure is not None:
+        phases = {phase.name: phase for phase in recorder.report.phases}
+        failed = dataclasses.replace(
+            phases[result.failure.strategy], status="failed", summary=None
+        )
+        recorder.report = _replace_phase(recorder.report, failed)
+        recorder.checkpoint(f"{result.failure.strategy}.failed")
+        raise PhaseExecutionError(result.failure.strategy, result.failure)
+
+
+def _position_target(ids: tuple[str, ...], position: str) -> str:
+    """Return the stable first, middle, or last concrete ID.
+
+    >>> [_position_target(("a", "b", "c"), position) for position in _SEARCH_POSITIONS]
+    ['a', 'b', 'c']
+
+    Parameters
+    ----------
+    ids : tuple[str, ...]
+        Nonempty stable concrete ID sequence.
+    position : str
+        One of ``first``, ``middle``, or ``last``.
+
+    Returns
+    -------
+    str
+        Concrete ID at the requested stable position.
+    """
+    if not ids:
+        message = "search target sequence must be nonempty"
+        raise ValueError(message)
+    indices = {"first": 0, "middle": len(ids) // 2, "last": len(ids) - 1}
+    try:
+        return ids[indices[position]]
+    except KeyError as error:
+        message = f"unknown search position: {position}"
+        raise ValueError(message) from error
+
+
+async def run_worker(
+    topology: Topology,
+    *,
+    lane: EngineLane,
+    mode: ExecutionMode,
+    runs: int,
+    warmup: int,
+    seed: int,
+    run_id: str,
+    scratch: pathlib.Path,
+    socket_path: pathlib.Path,
+    checkpoint_path: pathlib.Path,
+    progress_path: pathlib.Path,
+    guard_decision: GuardDecision,
+    original_guard_decision: GuardDecision,
+    policy: ResourcePolicy,
+    stall_after: str | None = None,
+    fail_after: str | None = None,
+    extra_identity: ProcessIdentity | None = None,
+) -> RunReport:
+    """Execute one complete worker phase graph with cleanup in ``finally``.
+
+    The private injection arguments are a subprocess-only test harness. Public
+    callers cannot select them through ``run`` or ``ramp`` help.
+
+    >>> async def invalid_worker():
+    ...     try:
+    ...         await run_worker(
+    ...             Topology(1, 1, 1), lane=EngineLane.CONTROL,
+    ...             mode=ExecutionMode.ASYNC, runs=0, warmup=0, seed=11,
+    ...             run_id="run-7", scratch=pathlib.Path("unused"),
+    ...             socket_path=pathlib.Path("unused/sock"),
+    ...             checkpoint_path=pathlib.Path("unused.json"),
+    ...             progress_path=pathlib.Path("unused.jsonl"),
+    ...             guard_decision=GuardDecision(
+    ...                 True, "ok", None, None, None, False, HostSnapshot()
+    ...             ),
+    ...             original_guard_decision=GuardDecision(
+    ...                 True, "ok", None, None, None, False, HostSnapshot()
+    ...             ), policy=ResourcePolicy(),
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_worker())
+    'worker runs must be positive and warmup nonnegative'
+
+    Parameters
+    ----------
+    topology : Topology
+        Exact requested hierarchy.
+    lane : EngineLane
+        Subprocess or control transport.
+    mode : ExecutionMode
+        Synchronous or asynchronous dispatch.
+    runs : int
+        Timed samples for every repeatable cell.
+    warmup : int
+        Untimed samples for every repeatable cell.
+    seed : int
+        Deterministic interleaving seed.
+    run_id : str
+        Terminal-safe owner identity.
+    scratch : pathlib.Path
+        New exclusive private run directory.
+    socket_path : pathlib.Path
+        Exact scratch-contained tmux socket.
+    checkpoint_path : pathlib.Path
+        Worker-owned atomic report checkpoint.
+    progress_path : pathlib.Path
+        Append-only supervisor progress stream.
+    guard_decision : GuardDecision
+        Effective predictive admission decision.
+    original_guard_decision : GuardDecision
+        Unmodified predictive admission evidence.
+    policy : ResourcePolicy
+        Runtime guard thresholds.
+    stall_after : str | None
+        Private test checkpoint that stops emitting progress.
+    fail_after : str | None
+        Private test phase that raises after completion.
+    extra_identity : ProcessIdentity | None
+        Private test identity published to prove PID-reuse safety.
+
+    Returns
+    -------
+    RunReport
+        Terminal worker candidate for supervisor validation and ownership.
+    """
+    if type(runs) is not int or runs <= 0 or type(warmup) is not int or warmup < 0:
+        message = "worker runs must be positive and warmup nonnegative"
+        raise ValueError(message)
+    if not guard_decision.allowed:
+        message = "worker cannot start after predictive refusal"
+        raise ValueError(message)
+    environment = _collect_environment(
+        seed=seed,
+        command_line=(
+            "run",
+            "--shape",
+            str(topology),
+            "--lane",
+            lane.value,
+            "--mode",
+            mode.value,
+            "--runs",
+            str(runs),
+            "--warmup",
+            str(warmup),
+        ),
+    )
+    initial = RunReport(
+        requested_topology=topology,
+        status="in_progress",
+        cleanup=CleanupReport(False),
+        guard_decision=guard_decision,
+        original_guard_decision=original_guard_decision,
+        run_id=run_id,
+        lane=lane.value,
+        mode=mode.value,
+        warmup=warmup,
+        runs=runs,
+        scratch_path=str(scratch),
+        socket_path=str(socket_path),
+        progress_path=str(progress_path),
+        environment=environment,
+    )
+    recorder = _WorkerRecorder(
+        initial,
+        checkpoint_path,
+        progress_path,
+        stall_after=stall_after,
+    )
+    recorder.identities.append(_record_process("worker", os.getpid()))
+    recorder.checkpoint("worker.started")
+    if extra_identity is not None:
+        recorder.record_identity(extra_identity)
+    context: RunContext | None = None
+    terminal_status: t.Literal["completed", "failed", "cutoff"] = "completed"
+    failed_phase: str | None = None
+    terminal_error: str | None = None
+    cleanup = CleanupReport(False)
+    latest: dict[str, PhaseMeasurement] = {}
+
+    def fail_if_requested(phase: str) -> None:
+        if fail_after == phase:
+            message = f"injected phase failure after {phase}"
+            raise RuntimeError(message)
+
+    try:
+        resources_before = probe_host(ProcessReader())
+        panes_per_session = topology.windows_per_session * topology.panes_per_window
+        delayed_ordinal = min(topology.panes // 2, panes_per_session - 1)
+        if mode is ExecutionMode.SYNC:
+            context = setup_sync(
+                topology,
+                lane,
+                scratch,
+                socket_path=socket_path,
+                run_id=run_id,
+                delayed_ordinal=delayed_ordinal,
+                _process_identity_callback=recorder.record_identity,
+            )
+        else:
+            context = await setup_async(
+                topology,
+                lane,
+                scratch,
+                socket_path=socket_path,
+                run_id=run_id,
+                delayed_ordinal=delayed_ordinal,
+                _process_identity_callback=recorder.record_identity,
+            )
+        resources_after = probe_host(ProcessReader())
+        setup_duration = max(1, context.setup_duration_ns)
+        setup_sample = RawSample(
+            setup_duration,
+            True,
+            verified=True,
+            strategy="setup",
+            ordinal=0,
+            resources_before=resources_before,
+            resources_after=resources_after,
+        )
+        setup_observation = PhaseObservation(
+            ordinal=0,
+            strategy="setup",
+            duration_ns=setup_duration,
+            metrics=context.setup_metrics,
+            session_count=topology.sessions,
+            window_count=topology.windows,
+            pane_count=topology.panes,
+        )
+        recorder.report = dataclasses.replace(
+            recorder.report,
+            observed_topology=topology,
+        )
+        recorder.report = _replace_phase(
+            recorder.report,
+            PhaseReport(
+                "setup",
+                topology,
+                topology,
+                samples=(setup_sample,),
+                summary=None,
+                status="completed",
+                warmup=0,
+                runs=1,
+                observations=(setup_observation,),
+            ),
+        )
+        recorder.checkpoint("setup")
+        fail_if_requested("setup")
+
+        stabilization_started = time.perf_counter_ns()
+        release_activity_gate(context)
+        if mode is ExecutionMode.SYNC:
+            verify_activity_sync(context)
+        else:
+            await verify_activity_async(context)
+        stabilization_duration = max(1, time.perf_counter_ns() - stabilization_started)
+        recorder.report = _replace_phase(
+            recorder.report,
+            PhaseReport(
+                "stabilization",
+                topology,
+                topology,
+                status="completed",
+                observations=(
+                    PhaseObservation(
+                        0,
+                        "stabilization",
+                        stabilization_duration,
+                        session_count=topology.sessions,
+                        window_count=topology.windows,
+                        pane_count=len(context.activity_pane_ids),
+                    ),
+                ),
+            ),
+        )
+        recorder.checkpoint("stabilization")
+        fail_if_requested("stabilization")
+
+        mutation_counter = 0
+
+        def mutation_sync_call() -> MutationResult:
+            nonlocal mutation_counter
+            mutation_counter += 1
+            return mutate_sync(context, generation=mutation_counter)
+
+        async def mutation_async_call() -> MutationResult:
+            nonlocal mutation_counter
+            mutation_counter += 1
+            return await mutate_async(context, generation=mutation_counter)
+
+        await _run_worker_group(
+            recorder,
+            context,
+            {
+                "mutation.bulk": (
+                    mutation_sync_call
+                    if mode is ExecutionMode.SYNC
+                    else mutation_async_call
+                )
+            },
+            warmup=warmup,
+            runs=runs,
+            seed=seed,
+            policy=policy,
+            latest=latest,
+            fail_after=fail_after,
+        )
+
+        wait_counter = 0
+
+        def next_request_id(strategy: str) -> str:
+            nonlocal wait_counter
+            wait_counter += 1
+            compact = strategy.removeprefix("wait.").replace("-", "_")
+            return f"{compact}-{wait_counter:04d}"
+
+        def wait_sync_call() -> WaitResult:
+            return wait_capture_poll_sync(
+                context,
+                request_id=next_request_id("wait.capture-poll"),
+            )
+
+        async def wait_async_call() -> WaitResult:
+            return await wait_capture_poll_async(
+                context,
+                request_id=next_request_id("wait.capture-poll"),
+            )
+
+        async def wait_control_call() -> WaitResult:
+            return await wait_control_stream(
+                context,
+                request_id=next_request_id("wait.control-stream"),
+            )
+
+        wait_strategies: dict[str, cabc.Callable[[], object]] = {
+            "wait.capture-poll": (
+                wait_sync_call if mode is ExecutionMode.SYNC else wait_async_call
+            )
+        }
+        control_applicable = lane is EngineLane.CONTROL and mode is ExecutionMode.ASYNC
+        if control_applicable:
+            wait_strategies["wait.control-stream"] = wait_control_call
+        await _run_worker_group(
+            recorder,
+            context,
+            wait_strategies,
+            warmup=warmup,
+            runs=runs,
+            seed=seed + 1,
+            policy=policy,
+            latest=latest,
+            fail_after=fail_after,
+        )
+        if not control_applicable:
+            recorder.report = _replace_phase(
+                recorder.report,
+                PhaseReport(
+                    "wait.control-stream",
+                    topology,
+                    topology,
+                    status="not_applicable",
+                    warmup=warmup,
+                    runs=runs,
+                ),
+            )
+            recorder.checkpoint("wait.control-stream")
+            fail_if_requested("wait.control-stream")
+
+        enumeration_strategies: dict[str, cabc.Callable[[], object]] = {}
+        for kind in _ENUMERATION_KINDS:
+            phase_name = f"enumeration.{kind}"
+            enumeration_kind = t.cast("EnumerationKind", kind)
+            if mode is ExecutionMode.SYNC:
+                enumeration_strategies[phase_name] = functools.partial(
+                    enumerate_sync,
+                    context,
+                    kind=enumeration_kind,
+                )
+            else:
+                enumeration_strategies[phase_name] = functools.partial(
+                    enumerate_async,
+                    context,
+                    kind=enumeration_kind,
+                )
+        await _run_worker_group(
+            recorder,
+            context,
+            enumeration_strategies,
+            warmup=warmup,
+            runs=runs,
+            seed=seed + 2,
+            policy=policy,
+            latest=latest,
+            fail_after=fail_after,
+        )
+
+        capture_strategies: dict[str, cabc.Callable[[], object]] = {}
+        for strategy in ("serial", "batched"):
+            phase_name = f"capture.{strategy}"
+            if mode is ExecutionMode.SYNC:
+                capture_strategies[phase_name] = functools.partial(
+                    capture_all_sync,
+                    context,
+                    strategy=strategy,
+                )
+            else:
+                capture_strategies[phase_name] = functools.partial(
+                    capture_all_async,
+                    context,
+                    strategy=strategy,
+                )
+        await _run_worker_group(
+            recorder,
+            context,
+            capture_strategies,
+            warmup=warmup,
+            runs=runs,
+            seed=seed + 3,
+            policy=policy,
+            latest=latest,
+            fail_after=fail_after,
+        )
+
+        from libtmux._internal.query_list import QueryList
+
+        snapshot = (
+            snapshot_topology_sync(context)
+            if mode is ExecutionMode.SYNC
+            else await snapshot_topology_async(context)
+        )
+        snapshot_rows = {
+            "sessions": QueryList(snapshot.sessions),
+            "windows": QueryList(snapshot.windows),
+            "panes": QueryList(snapshot.panes),
+        }
+        ids_by_kind = {
+            "sessions": context.session_ids,
+            "windows": context.window_ids,
+            "panes": context.pane_ids,
+        }
+        search_strategies: dict[str, cabc.Callable[[], object]] = {}
+        for family in _SEARCH_FAMILIES:
+            for kind in _ENUMERATION_KINDS:
+                for position in _SEARCH_POSITIONS:
+                    phase_name = f"search.{family}.{kind}.{position}"
+                    target = _position_target(ids_by_kind[kind], position)
+                    search_kind = t.cast("EnumerationKind", kind)
+                    if family == "classic":
+                        search_strategies[phase_name] = functools.partial(
+                            search_server_side,
+                            context,
+                            kind=search_kind,
+                            target=target,
+                        )
+                    elif family == "snapshot":
+                        search_strategies[phase_name] = functools.partial(
+                            search_snapshot,
+                            snapshot_rows[kind],
+                            kind=search_kind,
+                            target=target,
+                        )
+                    else:
+                        search_strategies[phase_name] = functools.partial(
+                            search_end_to_end,
+                            context,
+                            kind=search_kind,
+                            target=target,
+                        )
+        capture = t.cast(CaptureResult, latest["capture.batched"])
+        wait_name = "wait.control-stream" if control_applicable else "wait.capture-poll"
+        wait_result = t.cast(WaitResult, latest[wait_name])
+        search_strategies["search.contents"] = lambda: search_contents(
+            capture,
+            token=wait_result.token,
+            expected_pane_id=context.delayed_pane_id,
+        )
+        await _run_worker_group(
+            recorder,
+            context,
+            search_strategies,
+            warmup=warmup,
+            runs=runs,
+            seed=seed + 4,
+            policy=policy,
+            latest=latest,
+            fail_after=fail_after,
+        )
+
+        final_snapshot = (
+            snapshot_topology_sync(context)
+            if mode is ExecutionMode.SYNC
+            else await snapshot_topology_async(context)
+        )
+        verify_topology(context, final_snapshot)
+        recorder.checkpoint("verification")
+        fail_if_requested("verification")
+    except asyncio.CancelledError as error:
+        terminal_status = "cutoff"
+        failed_phase = "cancellation"
+        terminal_error = f"CancelledError: {error}"
+    except RuntimeCutoffError as error:
+        terminal_status = "cutoff"
+        failed_phase = error.decision.rule or "runtime_guard"
+        terminal_error = str(error)
+        recorder.report = dataclasses.replace(
+            recorder.report, guard_decision=error.decision
+        )
+    except PhaseExecutionError as error:
+        terminal_status = "failed"
+        failed_phase = error.phase
+        terminal_error = str(error)
+    except BaseException as error:  # noqa: BLE001
+        terminal_status = "failed"
+        failed_phase = failed_phase or "setup"
+        terminal_error = f"{type(error).__name__}: {error}"
+    finally:
+        if context is not None:
+            try:
+                cleanup = await cleanup_run(context)
+            except BaseException as error:  # noqa: BLE001
+                cleanup = CleanupReport(
+                    False,
+                    (f"cleanup raised {type(error).__name__}: {error}",),
+                    processes_absent=False,
+                    socket_absent=not socket_path.exists(),
+                    scratch_absent=not scratch.exists(),
+                )
+        else:
+            owned = tuple(
+                identity
+                for identity in recorder.identities
+                if identity.role != "worker" and identity is not extra_identity
+            )
+            cleanup = CleanupReport(
+                complete=(
+                    all(not process_identity_matches(identity) for identity in owned)
+                    and not socket_path.exists()
+                    and not scratch.exists()
+                ),
+                errors=(),
+                processes_absent=all(
+                    not process_identity_matches(identity) for identity in owned
+                ),
+                socket_absent=not socket_path.exists(),
+                scratch_absent=not scratch.exists(),
+            )
+        if not cleanup.complete:
+            terminal_status = "failed"
+            failed_phase = failed_phase or "cleanup"
+            cleanup_detail = "; ".join(cleanup.errors) or "cleanup incomplete"
+            terminal_error = (
+                f"{terminal_error}; {cleanup_detail}"
+                if terminal_error
+                else cleanup_detail
+            )
+        recorder.report = dataclasses.replace(
+            recorder.report,
+            status=terminal_status,
+            cleanup=cleanup,
+            maximum_completed=(
+                terminal_status == "completed"
+                and topology == Topology(100, 100, 4)
+                and recorder.report.observed_topology == topology
+            ),
+            failed_phase=failed_phase,
+            error=terminal_error,
+        )
+        recorder.checkpoint("cleanup")
+    return recorder.report
+
+
+def _read_progress_chunk(
+    path: pathlib.Path,
+    offset: int,
+    remainder: str,
+) -> tuple[tuple[ProgressEvent, ...], int, str]:
+    """Read only newly appended complete JSONL records.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     path = pathlib.Path(directory) / "events.jsonl"
+    ...     append_progress_event(path, ProgressEvent("run-7", 0, "start", 1))
+    ...     events, offset, remainder = _read_progress_chunk(path, 0, "")
+    ...     (events[0].sequence, offset > 0, remainder)
+    (0, True, '')
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Append-only progress stream.
+    offset : int
+        Previously consumed byte offset.
+    remainder : str
+        Incomplete decoded line retained from the prior read.
+
+    Returns
+    -------
+    tuple[tuple[ProgressEvent, ...], int, str]
+        Complete events, new byte offset, and any incomplete final line.
+    """
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            stream.seek(offset)
+            chunk = stream.read()
+            new_offset = stream.tell()
+    except FileNotFoundError:
+        return (), offset, remainder
+    combined = remainder + chunk
+    pieces = combined.split("\n")
+    trailing = pieces.pop()
+    events = tuple(
+        _progress_event_from_json(json.loads(line)) for line in pieces if line
+    )
+    return events, new_offset, trailing
+
+
+def _wait_identity_absence(
+    identities: t.Iterable[ProcessIdentity],
+    *,
+    timeout_s: float,
+) -> tuple[ProcessIdentity, ...]:
+    """Wait boundedly for exact identities without using process-name scans.
+
+    >>> _wait_identity_absence((), timeout_s=0.01)
+    ()
+    """
+    deadline = time.monotonic() + timeout_s
+    identities_tuple = tuple(identities)
+    while True:
+        survivors = tuple(
+            identity
+            for identity in identities_tuple
+            if process_identity_matches(identity)
+        )
+        if not survivors or time.monotonic() >= deadline:
+            return survivors
+        time.sleep(0.02)
+
+
+def _signal_worker_group(
+    worker: subprocess.Popen[bytes],
+    identity: ProcessIdentity,
+    signal_number: signal.Signals,
+) -> None:
+    """Signal an isolated worker group only while its leader identity matches.
+
+    >>> finished = subprocess.Popen((sys.executable, "-c", "pass"))
+    >>> finished.wait(timeout=1)
+    0
+    >>> _signal_worker_group(
+    ...     finished, ProcessIdentity("worker", finished.pid, -1), signal.SIGTERM
+    ... )
+    """
+    worker.poll()
+    if worker.returncode is not None or not process_identity_matches(identity):
+        return
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(identity.pid, signal_number)
+
+
+def _remove_supervised_scratch(path: pathlib.Path) -> tuple[str, ...]:
+    """Remove one exact private directory without following replacement links.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     path = pathlib.Path(directory) / "run"
+    ...     _ = _acquire_private_directory(path)
+    ...     _remove_supervised_scratch(path)
+    ()
+    """
+    if not path.exists() and not path.is_symlink():
+        return ()
+    try:
+        status = path.lstat()
+        if stat.S_ISLNK(status.st_mode) or not stat.S_ISDIR(status.st_mode):
+            return (f"scratch is not an owned directory: {path}",)
+        if status.st_uid != os.getuid() or stat.S_IMODE(status.st_mode) != 0o700:
+            return (f"scratch ownership or mode changed: {path}",)
+        shutil.rmtree(path)
+    except OSError as error:
+        return (f"scratch removal: {type(error).__name__}: {error}",)
+    return () if not path.exists() else (f"scratch remains: {path}",)
+
+
+def _recover_supervised_run(
+    worker: subprocess.Popen[bytes],
+    worker_identity: ProcessIdentity,
+    identities: tuple[ProcessIdentity, ...],
+    *,
+    scratch: pathlib.Path,
+    socket_path: pathlib.Path,
+    grace_s: float,
+) -> CleanupReport:
+    """Boundedly stop exact worker-owned processes and verify filesystem absence.
+
+    >>> finished = subprocess.Popen((sys.executable, "-c", "pass"))
+    >>> finished.wait(timeout=1)
+    0
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     scratch = pathlib.Path(directory) / "absent"
+    ...     report = _recover_supervised_run(
+    ...         finished, ProcessIdentity("worker", finished.pid, -1), (),
+    ...         scratch=scratch, socket_path=scratch / "sock", grace_s=0.01,
+    ...     )
+    ...     report.complete
+    True
+
+    Parameters
+    ----------
+    worker : subprocess.Popen[bytes]
+        Direct child launched in its own session.
+    worker_identity : ProcessIdentity
+        Exact group-leader identity captured immediately after spawn.
+    identities : tuple[ProcessIdentity, ...]
+        Cumulative progress identities, possibly including already absent PIDs.
+    scratch : pathlib.Path
+        Exact private worker directory.
+    socket_path : pathlib.Path
+        Exact isolated tmux socket.
+    grace_s : float
+        Bounded graceful and escalated wait interval.
+
+    Returns
+    -------
+    CleanupReport
+        Exact identity, socket, and scratch absence evidence.
+    """
+    if grace_s <= 0:
+        message = "supervisor cleanup grace must be positive"
+        raise ValueError(message)
+    errors: list[str] = []
+    _signal_worker_group(worker, worker_identity, signal.SIGTERM)
+    try:
+        worker.wait(timeout=grace_s)
+    except subprocess.TimeoutExpired:
+        _signal_worker_group(worker, worker_identity, signal.SIGKILL)
+        try:
+            worker.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            errors.append("worker process group did not exit")
+    unique: dict[tuple[int, int], ProcessIdentity] = {}
+    for identity in (worker_identity, *identities):
+        unique[(identity.pid, identity.start_time)] = identity
+    owned = tuple(unique.values())
+    survivors = _wait_identity_absence(owned, timeout_s=grace_s)
+    for signal_number in (signal.SIGTERM, signal.SIGKILL):
+        if not survivors:
+            break
+        for identity in survivors:
+            if not process_identity_matches(identity):
+                continue
+            try:
+                os.kill(identity.pid, signal_number)
+            except ProcessLookupError:
+                continue
+            except OSError as error:
+                errors.append(
+                    f"{identity.role} pid {identity.pid} signal {signal_number}: "
+                    f"{type(error).__name__}: {error}"
+                )
+        survivors = _wait_identity_absence(owned, timeout_s=grace_s)
+    errors.extend(
+        f"{identity.role} pid {identity.pid} with start time "
+        f"{identity.start_time} remains"
+        for identity in survivors
+        if process_identity_matches(identity)
+    )
+    errors.extend(_remove_supervised_scratch(scratch))
+    processes_absent = not any(process_identity_matches(identity) for identity in owned)
+    socket_absent = not socket_path.exists()
+    scratch_absent = not scratch.exists()
+    if not socket_absent:
+        errors.append(f"socket remains: {socket_path}")
+    return CleanupReport(
+        complete=(not errors and processes_absent and socket_absent and scratch_absent),
+        errors=tuple(errors),
+        processes_absent=processes_absent,
+        socket_absent=socket_absent,
+        scratch_absent=scratch_absent,
+    )
+
+
+def _merge_identities(
+    *groups: t.Iterable[ProcessIdentity],
+) -> tuple[ProcessIdentity, ...]:
+    """Deduplicate identities without collapsing different start times.
+
+    >>> one = ProcessIdentity("worker", 2, 3)
+    >>> _merge_identities((one,), (one,))
+    (ProcessIdentity(role='worker', pid=2, start_time=3),)
+    """
+    merged: dict[tuple[str, int, int], ProcessIdentity] = {}
+    for group in groups:
+        for identity in group:
+            merged[(identity.role, identity.pid, identity.start_time)] = identity
+    return tuple(merged.values())
+
+
+def _validate_progress_run_id(event: ProgressEvent, run_id: str) -> None:
+    """Reject progress from any other supervised run.
+
+    >>> _validate_progress_run_id(ProgressEvent("run", 0, "started", 1), "run")
+    >>> _validate_progress_run_id(ProgressEvent("other", 0, "started", 1), "run")
+    Traceback (most recent call last):
+        ...
+    RuntimeError: progress event run identity mismatch
+    """
+    if event.run_id != run_id:
+        message = "progress event run identity mismatch"
+        raise RuntimeError(message)
+
+
+def _accept_progress_events(
+    events: t.Iterable[ProgressEvent],
+    *,
+    run_id: str,
+    highest_sequence: int,
+    identities: tuple[ProcessIdentity, ...],
+) -> tuple[int, tuple[ProcessIdentity, ...], bool]:
+    """Accept only events that advance one supervised run's sequence.
+
+    >>> event = ProgressEvent("run-7", 1, "setup", 10)
+    >>> _accept_progress_events(
+    ...     (event,), run_id="run-7", highest_sequence=1, identities=()
+    ... )
+    (1, (), False)
+
+    Parameters
+    ----------
+    events : collections.abc.Iterable[ProgressEvent]
+        Newly appended complete progress rows.
+    run_id : str
+        Exact supervised run identity.
+    highest_sequence : int
+        Highest sequence previously accepted.
+    identities : tuple[ProcessIdentity, ...]
+        Cumulative identities from previously accepted rows.
+
+    Returns
+    -------
+    tuple[int, tuple[ProcessIdentity, ...], bool]
+        New high-water sequence, identities, and whether progress increased.
+
+    Raises
+    ------
+    RuntimeError
+        If any event belongs to another run.
+    """
+    advanced = False
+    for event in events:
+        _validate_progress_run_id(event, run_id)
+        if event.sequence <= highest_sequence:
+            continue
+        highest_sequence = event.sequence
+        identities = _merge_identities(identities, event.processes)
+        advanced = True
+    return highest_sequence, identities, advanced
+
+
+def supervise_worker(
+    topology: Topology,
+    *,
+    lane: EngineLane,
+    mode: ExecutionMode,
+    runs: int,
+    warmup: int,
+    seed: int,
+    run_id: str,
+    scratch: pathlib.Path,
+    socket_path: pathlib.Path,
+    output: pathlib.Path,
+    markdown_output: pathlib.Path,
+    guard_decision: GuardDecision,
+    original_guard_decision: GuardDecision,
+    policy: ResourcePolicy,
+    watchdog_s: float,
+    cleanup_grace_s: float,
+    _test_stall_after: str | None = None,
+    _test_fail_after: str | None = None,
+    _test_extra_identity: ProcessIdentity | None = None,
+) -> RunReport:
+    """Launch and supervise the hidden worker with a sequence-based watchdog.
+
+    The ``_test_*`` arguments are private CLI injection points used only by the
+    benchmark's subprocess recovery tests.
+
+    >>> try:
+    ...     supervise_worker(
+    ...         Topology(1, 1, 1), lane=EngineLane.CONTROL,
+    ...         mode=ExecutionMode.ASYNC, runs=1, warmup=0, seed=11,
+    ...         run_id="run-7", scratch=pathlib.Path("scratch"),
+    ...         socket_path=pathlib.Path("scratch/sock"),
+    ...         output=pathlib.Path("report.json"),
+    ...         markdown_output=pathlib.Path("report.md"),
+    ...         guard_decision=GuardDecision(
+    ...             True, "ok", None, None, None, False, HostSnapshot()
+    ...         ),
+    ...         original_guard_decision=GuardDecision(
+    ...             True, "ok", None, None, None, False, HostSnapshot()
+    ...         ), policy=ResourcePolicy(), watchdog_s=0,
+    ...         cleanup_grace_s=1,
+    ...     )
+    ... except ValueError as error:
+    ...     print(error)
+    supervisor watchdog must be positive
+
+    Returns
+    -------
+    RunReport
+        Supervisor-owned terminal report.
+    """
+    if watchdog_s <= 0:
+        message = "supervisor watchdog must be positive"
+        raise ValueError(message)
+    if cleanup_grace_s <= 0:
+        message = "supervisor cleanup grace must be positive"
+        raise ValueError(message)
+    progress_path = output.with_name(f"{output.stem}.{run_id}.progress.jsonl")
+    checkpoint_path = output.with_name(f".{output.name}.{run_id}.worker.json")
+    admission_path = output.with_name(f".{output.name}.{run_id}.admission.json")
+    write_json_atomic(
+        admission_path,
+        {
+            "guard_decision": guard_decision,
+            "original_guard_decision": original_guard_decision,
+        },
+    )
+    command = [
+        sys.executable,
+        str(pathlib.Path(__file__)),
+        "_worker",
+        "--shape",
+        str(topology),
+        "--lane",
+        lane.value,
+        "--mode",
+        mode.value,
+        "--runs",
+        str(runs),
+        "--warmup",
+        str(warmup),
+        "--seed",
+        str(seed),
+        "--run-id",
+        run_id,
+        "--scratch",
+        str(scratch),
+        "--socket-path",
+        str(socket_path),
+        "--checkpoint",
+        str(checkpoint_path),
+        "--progress",
+        str(progress_path),
+        "--admission",
+        str(admission_path),
+        "--pid-reserve",
+        str(policy.pid_reserve) if policy.pid_reserve is not None else "dynamic",
+        "--memory-floor-bytes",
+        (
+            str(policy.memory_floor_bytes)
+            if policy.memory_floor_bytes is not None
+            else "dynamic"
+        ),
+    ]
+    if _test_stall_after is not None:
+        command.extend(("--_test-stall-after", _test_stall_after))
+    if _test_fail_after is not None:
+        command.extend(("--_test-fail-after", _test_fail_after))
+    if _test_extra_identity is not None:
+        serialized_identity = ":".join(
+            (
+                _test_extra_identity.role,
+                str(_test_extra_identity.pid),
+                str(_test_extra_identity.start_time),
+            )
+        )
+        command.extend(
+            (
+                "--_test-extra-identity",
+                serialized_identity,
+            )
+        )
+    environment = os.environ.copy()
+    environment.pop("TMUX", None)
+    environment.pop("TMUX_PANE", None)
+    worker = subprocess.Popen(
+        command,
+        cwd=pathlib.Path(__file__).parents[1],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    worker_identity = _record_process("worker", worker.pid)
+    identities: tuple[ProcessIdentity, ...] = (worker_identity,)
+    highest_sequence = -1
+    offset = 0
+    remainder = ""
+    deadline = time.monotonic() + watchdog_s
+    supervisor_status: t.Literal["failed", "cutoff"] | None = None
+    failed_phase: str | None = None
+    terminal_error: str | None = None
+    try:
+        while worker.poll() is None:
+            events, offset, remainder = _read_progress_chunk(
+                progress_path, offset, remainder
+            )
+            highest_sequence, identities, advanced = _accept_progress_events(
+                events,
+                run_id=run_id,
+                highest_sequence=highest_sequence,
+                identities=identities,
+            )
+            if advanced:
+                deadline = time.monotonic() + watchdog_s
+            if time.monotonic() >= deadline:
+                supervisor_status = "cutoff"
+                failed_phase = "watchdog"
+                terminal_error = f"progress watchdog expired after {watchdog_s} seconds"
+                break
+            time.sleep(0.02)
+    except KeyboardInterrupt:
+        supervisor_status = "cutoff"
+        failed_phase = "cancellation"
+        terminal_error = "KeyboardInterrupt: supervisor interrupted"
+    except BaseException as error:  # noqa: BLE001
+        supervisor_status = "failed"
+        failed_phase = "supervisor"
+        terminal_error = f"{type(error).__name__}: {error}"
+
+    if supervisor_status is not None:
+        cleanup = _recover_supervised_run(
+            worker,
+            worker_identity,
+            identities,
+            scratch=scratch,
+            socket_path=socket_path,
+            grace_s=cleanup_grace_s,
+        )
+    else:
+        worker.wait()
+        events, offset, remainder = _read_progress_chunk(
+            progress_path, offset, remainder
+        )
+        highest_sequence, identities, _advanced = _accept_progress_events(
+            events,
+            run_id=run_id,
+            highest_sequence=highest_sequence,
+            identities=identities,
+        )
+        cleanup = CleanupReport(
+            complete=(
+                not any(process_identity_matches(item) for item in identities)
+                and not socket_path.exists()
+                and not scratch.exists()
+            ),
+            processes_absent=not any(
+                process_identity_matches(item) for item in identities
+            ),
+            socket_absent=not socket_path.exists(),
+            scratch_absent=not scratch.exists(),
+        )
+        if not cleanup.complete:
+            cleanup = _recover_supervised_run(
+                worker,
+                worker_identity,
+                identities,
+                scratch=scratch,
+                socket_path=socket_path,
+                grace_s=cleanup_grace_s,
+            )
+
+    try:
+        candidate = load_run_report(checkpoint_path)
+    except (OSError, ValueError):
+        candidate = RunReport(
+            topology,
+            status="in_progress",
+            cleanup=CleanupReport(False),
+            guard_decision=guard_decision,
+            original_guard_decision=original_guard_decision,
+            run_id=run_id,
+            lane=lane.value,
+            mode=mode.value,
+            warmup=warmup,
+            runs=runs,
+            scratch_path=str(scratch),
+            socket_path=str(socket_path),
+            progress_path=str(progress_path),
+            environment=_collect_environment(
+                seed=seed, command_line=("run", "--shape", str(topology))
+            ),
+        )
+    if supervisor_status is None:
+        if worker.returncode == 0 and candidate.status == "completed":
+            final_status: t.Literal["completed", "failed", "cutoff"] = "completed"
+        elif candidate.status == "cutoff":
+            final_status = "cutoff"
+        else:
+            final_status = "failed"
+        if final_status != "completed":
+            failed_phase = candidate.failed_phase or "worker"
+            terminal_error = candidate.error or f"worker exited {worker.returncode}"
+    else:
+        final_status = supervisor_status
+    if not cleanup.complete:
+        final_status = "failed"
+        failed_phase = "cleanup"
+        detail = "; ".join(cleanup.errors) or "cleanup verification failed"
+        terminal_error = f"{terminal_error}; {detail}" if terminal_error else detail
+    final_report = dataclasses.replace(
+        candidate,
+        status=final_status,
+        cleanup=cleanup,
+        maximum_completed=(
+            final_status == "completed"
+            and topology == Topology(100, 100, 4)
+            and candidate.observed_topology == topology
+        ),
+        failed_phase=(None if final_status == "completed" else failed_phase),
+        error=(None if final_status == "completed" else terminal_error),
+        processes=identities,
+        progress_path=str(progress_path),
+        progress_sequence=highest_sequence,
+        guard_decision=(
+            candidate.guard_decision
+            if candidate.guard_decision is not None
+            else guard_decision
+        ),
+        original_guard_decision=original_guard_decision,
+    )
+    write_json_atomic(output, final_report)
+    validate_report(final_report)
+    render_markdown_summary(output, markdown_output)
+    admission_path.unlink(missing_ok=True)
+    return final_report
+
+
+def _write_text_atomic(path: pathlib.Path, text: str) -> None:
+    r"""Atomically and durably replace one UTF-8 text artifact.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     path = pathlib.Path(directory) / "summary.md"
+    ...     _write_text_atomic(path, "summary\n")
+    ...     path.read_text(encoding="utf-8")
+    'summary\n'
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary: pathlib.Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = pathlib.Path(stream.name)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+        temporary = None
+        descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _format_ns(value: float) -> str:
+    """Render integer nanoseconds as compact descriptive milliseconds.
+
+    >>> _format_ns(1_500_000)
+    '1.500 ms'
+    """
+    return f"{float(value) / 1_000_000:.3f} ms"
+
+
+def render_markdown_summary(
+    report_path: pathlib.Path,
+    output_path: pathlib.Path | None = None,
+) -> str:
+    """Render only a validated JSON artifact as local descriptive evidence.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     root = pathlib.Path(directory)
+    ...     path = root / "report.json"
+    ...     report = RunReport(
+    ...         Topology(1, 1, 1), status="refused",
+    ...         cleanup=CleanupReport(
+    ...             True, processes_absent=True, socket_absent=True,
+    ...             scratch_absent=True,
+    ...         ), run_id="run-7", lane="control", mode="async", warmup=0,
+    ...         runs=1, failed_phase="preflight", error="predictive refusal",
+    ...         guard_decision=GuardDecision(
+    ...             False, "predictive_refusal", "pid_reserve", 2, 1, True,
+    ...             HostSnapshot(),
+    ...         ),
+    ...     )
+    ...     write_json_atomic(path, report)
+    ...     "Local descriptive evidence" in render_markdown_summary(path)
+    True
+
+    Parameters
+    ----------
+    report_path : pathlib.Path
+        Complete machine-readable JSON artifact.
+    output_path : pathlib.Path | None
+        Optional Markdown destination.
+
+    Returns
+    -------
+    str
+        Markdown summary explicitly limited to local descriptive evidence.
+
+    Raises
+    ------
+    ValueError
+        If JSON or its recomputed report contract is invalid.
+    """
+    report = load_run_report(report_path)
+    validate_report(report)
+    if report.status == "in_progress":
+        message = "cannot render an in-progress report"
+        raise ValueError(message)
+    lines = [
+        "# Active orchestration benchmark",
+        "",
+        (
+            "> Local descriptive evidence only; these timings are not causal or "
+            "machine-independent claims."
+        ),
+        "",
+        f"Status: `{report.status}`",
+        "",
+        f"Requested topology: `{report.requested_topology}`",
+        "",
+    ]
+    if report.observed_topology is not None:
+        lines.extend((f"Observed topology: `{report.observed_topology}`", ""))
+    if report.lane is not None and report.mode is not None:
+        lines.extend((f"Lane: `{report.lane}/{report.mode}`", ""))
+    if report.error is not None:
+        lines.extend((f"Terminal reason: {report.error}", ""))
+    if report.ramp:
+        lines.extend(
+            (
+                "## Ramp attempts",
+                "",
+                "| Shape | Status | Reason |",
+                "| --- | --- | --- |",
+            )
+        )
+        lines.extend(
+            f"| `{step.shape}` | `{step.status}` | {step.reason or ''} |"
+            for step in report.ramp
+        )
+        lines.append("")
+    if report.phases:
+        lines.extend(
+            (
+                "## Phase timings",
+                "",
+                "| Phase | Status | Samples | Median | p95 |",
+                "| --- | --- | ---: | ---: | ---: |",
+            )
+        )
+        for phase in report.phases:
+            if phase.name == "setup":
+                values = ", ".join(
+                    _format_ns(t.cast(int, sample.duration_ns))
+                    for sample in phase.samples
+                    if sample.accepted
+                )
+                lines.append(
+                    f"| `{phase.name}` | `{phase.status}` | "
+                    f"{len(phase.samples)} individual: {values} | n/a | n/a |"
+                )
+            elif phase.summary is None:
+                lines.append(f"| `{phase.name}` | `{phase.status}` | 0 | n/a | n/a |")
+            else:
+                lines.append(
+                    f"| `{phase.name}` | `{phase.status}` | "
+                    f"{phase.summary['count']} | "
+                    f"{_format_ns(phase.summary['median_ns'])} | "
+                    f"{_format_ns(phase.summary['p95_ns'])} |"
+                )
+        lines.append("")
+    lines.extend(
+        (
+            "## Cleanup",
+            "",
+            f"Verified complete: `{str(report.cleanup.complete).lower()}`",
+            "",
+        )
+    )
+    rendered = "\n".join(lines)
+    if output_path is not None:
+        _write_text_atomic(output_path, rendered)
+    return rendered
+
+
+def run_scenario(
+    topology: Topology,
+    *,
+    lane: EngineLane = EngineLane.CONTROL,
+    mode: ExecutionMode = ExecutionMode.ASYNC,
+    runs: int = 100,
+    warmup: int = 3,
+    seed: int = 11,
+    output: pathlib.Path = pathlib.Path("orchestration-report.json"),
+    markdown_output: pathlib.Path | None = None,
+    scratch_root: pathlib.Path | None = None,
+    force_extreme: bool = False,
+    policy: ResourcePolicy | None = None,
+    host_snapshot: HostSnapshot | None = None,
+    watchdog_s: float = 120.0,
+    cleanup_grace_s: float = 2.0,
+    _test_stall_after: str | None = None,
+    _test_fail_after: str | None = None,
+    _test_extra_identity: ProcessIdentity | None = None,
+) -> RunReport:
+    """Preflight and supervise one fresh active benchmark scenario.
+
+    Private ``_test_*`` arguments are exposed only as suppressed hidden-worker
+    harness flags and are never part of the documented benchmark interface.
+
+    >>> refusal_path = pathlib.Path(tempfile.gettempdir()) / "unused-refusal.json"
+    >>> refused = run_scenario(
+    ...     Topology(1, 1, 1), runs=1, warmup=0,
+    ...     output=refusal_path,
+    ...     host_snapshot=HostSnapshot(pids_current=10, pids_max=11),
+    ...     policy=ResourcePolicy(pid_reserve=1),
+    ... )
+    >>> refused.status
+    'refused'
+    >>> refusal_path.unlink(missing_ok=True)
+    >>> refusal_path.with_suffix(".md").unlink(missing_ok=True)
+
+    Parameters
+    ----------
+    topology : Topology
+        Exact requested hierarchy.
+    lane : EngineLane
+        Subprocess or control transport; control is the default.
+    mode : ExecutionMode
+        Sync or async execution; async is the default.
+    runs : int
+        Timed samples per repeatable cell.
+    warmup : int
+        Untimed samples per repeatable cell.
+    seed : int
+        Deterministic cell interleaving seed.
+    output : pathlib.Path
+        Supervisor-owned JSON destination.
+    markdown_output : pathlib.Path | None
+        Summary destination, defaulting beside ``output``.
+    scratch_root : pathlib.Path | None
+        Parent for fresh private run directories.
+    force_extreme : bool
+        Override predictive refusal only.
+    policy : ResourcePolicy | None
+        Predictive and runtime reserve thresholds.
+    host_snapshot : HostSnapshot | None
+        Injectable preflight observation; live probing is the default.
+    watchdog_s : float
+        Maximum interval without an increasing progress sequence.
+    cleanup_grace_s : float
+        Bounded graceful and escalation waits.
+
+    Returns
+    -------
+    RunReport
+        Validated supervisor-owned terminal report.
+    """
+    if type(runs) is not int or runs <= 0 or type(warmup) is not int or warmup < 0:
+        message = "runs must be positive and warmup nonnegative"
+        raise ValueError(message)
+    policy = policy or ResourcePolicy(
+        persistent_clients=(1 if lane is EngineLane.CONTROL else 0)
+    )
+    snapshot = host_snapshot or probe_host(ProcessReader())
+    original = predict_resources(topology, snapshot, policy)
+    decision = _forced_decision(original, force_extreme)
+    run_id = f"r{uuid.uuid4().hex[:10]}"
+    markdown_output = markdown_output or output.with_suffix(".md")
+    if not decision.allowed:
+        report = RunReport(
+            topology,
+            status="refused",
+            cleanup=CleanupReport(
+                True,
+                processes_absent=True,
+                socket_absent=True,
+                scratch_absent=True,
+            ),
+            guard_decision=original,
+            original_guard_decision=original,
+            run_id=run_id,
+            lane=lane.value,
+            mode=mode.value,
+            warmup=warmup,
+            runs=runs,
+            failed_phase="preflight",
+            error=f"predictive refusal: {original.rule or 'unknown'}",
+        )
+        write_json_atomic(output, report)
+        validate_report(report)
+        render_markdown_summary(output, markdown_output)
+        return report
+    scratch_parent = scratch_root or pathlib.Path(tempfile.gettempdir())
+    scratch = scratch_parent.resolve() / f"run-{run_id}"
+    socket_path = scratch / "tmux.sock"
+    return supervise_worker(
+        topology,
+        lane=lane,
+        mode=mode,
+        runs=runs,
+        warmup=warmup,
+        seed=seed,
+        run_id=run_id,
+        scratch=scratch,
+        socket_path=socket_path,
+        output=output,
+        markdown_output=markdown_output,
+        guard_decision=decision,
+        original_guard_decision=original,
+        policy=policy,
+        watchdog_s=watchdog_s,
+        cleanup_grace_s=cleanup_grace_s,
+        _test_stall_after=_test_stall_after,
+        _test_fail_after=_test_fail_after,
+        _test_extra_identity=_test_extra_identity,
+    )
+
+
+def run_ramp(
+    shapes: t.Sequence[Topology],
+    *,
+    lane: EngineLane = EngineLane.CONTROL,
+    mode: ExecutionMode = ExecutionMode.ASYNC,
+    runs: int = 100,
+    warmup: int = 3,
+    seed: int = 11,
+    output: pathlib.Path = pathlib.Path("orchestration-ramp.json"),
+    markdown_output: pathlib.Path | None = None,
+    scratch_root: pathlib.Path | None = None,
+    force_extreme: bool = False,
+    policy: ResourcePolicy | None = None,
+    host_snapshot: HostSnapshot | None = None,
+    watchdog_s: float = 120.0,
+    cleanup_grace_s: float = 2.0,
+    canonical: bool = False,
+    _test_stall_after: str | None = None,
+    _test_fail_after: str | None = None,
+    _test_extra_identity: ProcessIdentity | None = None,
+) -> RunReport:
+    """Run fresh disposable scenarios until completion or the first terminal stop.
+
+    >>> try:
+    ...     run_ramp((), runs=1, warmup=0)
+    ... except ValueError as error:
+    ...     print(error)
+    ramp requires at least one unique shape
+
+    Returns
+    -------
+    RunReport
+        Validated aggregate with later shapes marked ``not_attempted``.
+    """
+    declared = tuple(shapes)
+    if not declared or len(set(declared)) != len(declared):
+        message = "ramp requires at least one unique shape"
+        raise ValueError(message)
+    if canonical and declared != canonical_ramp():
+        message = "canonical ramp must use the exact declared sequence"
+        raise ValueError(message)
+    markdown_output = markdown_output or output.with_suffix(".md")
+    attempts = tuple(RampStep(shape, "not_attempted") for shape in declared)
+    report = RunReport(
+        requested_topology=declared[-1],
+        status="in_progress",
+        cleanup=CleanupReport(False),
+        ramp=attempts,
+        requested_shapes=declared,
+        ramp_kind="canonical" if canonical else "custom",
+        environment=_collect_environment(
+            seed=seed,
+            command_line=("ramp", "--shapes", ",".join(map(str, declared))),
+            include_tmux=False,
+        ),
+    )
+    write_json_atomic(output, report)
+    child_root = output.with_name(f"{output.stem}.runs")
+    steps = list(attempts)
+    last_observed: Topology | None = None
+    terminal_status: t.Literal["refused", "failed", "cutoff"] | None = None
+    terminal_reason: str | None = None
+    for index, shape in enumerate(declared):
+        child_output = child_root / f"{index:02d}-{shape}.json"
+        child_markdown = child_output.with_suffix(".md")
+        child = run_scenario(
+            shape,
+            lane=lane,
+            mode=mode,
+            runs=runs,
+            warmup=warmup,
+            seed=seed + index,
+            output=child_output,
+            markdown_output=child_markdown,
+            scratch_root=scratch_root,
+            force_extreme=force_extreme,
+            policy=policy,
+            host_snapshot=host_snapshot,
+            watchdog_s=watchdog_s,
+            cleanup_grace_s=cleanup_grace_s,
+            _test_stall_after=_test_stall_after,
+            _test_fail_after=_test_fail_after,
+            _test_extra_identity=_test_extra_identity,
+        )
+        steps[index] = RampStep(
+            shape,
+            t.cast(
+                t.Literal["completed", "refused", "failed", "cutoff"],
+                child.status,
+            ),
+            child.error,
+            run_id=child.run_id,
+            report_path=str(child_output),
+            scratch_path=child.scratch_path,
+            socket_path=child.socket_path,
+        )
+        if child.status == "completed":
+            last_observed = child.observed_topology
+        else:
+            terminal_status = t.cast(
+                t.Literal["refused", "failed", "cutoff"], child.status
+            )
+            terminal_reason = child.error or child.status
+            for later in range(index + 1, len(declared)):
+                steps[later] = RampStep(
+                    declared[later], "not_attempted", terminal_reason
+                )
+            break
+        report = dataclasses.replace(
+            report,
+            observed_topology=last_observed,
+            ramp=tuple(steps),
+        )
+        write_json_atomic(output, report)
+    cleanup_complete = all(
+        step.status == "not_attempted"
+        or load_run_report(pathlib.Path(t.cast(str, step.report_path))).cleanup.complete
+        for step in steps
+    )
+    cleanup = CleanupReport(
+        cleanup_complete,
+        processes_absent=cleanup_complete,
+        socket_absent=cleanup_complete,
+        scratch_absent=cleanup_complete,
+    )
+    final_status: t.Literal["completed", "refused", "failed", "cutoff"] = (
+        terminal_status or "completed"
+    )
+    report = dataclasses.replace(
+        report,
+        status=final_status,
+        observed_topology=last_observed,
+        cleanup=cleanup,
+        ramp=tuple(steps),
+        error=terminal_reason,
+    )
+    write_json_atomic(output, report)
+    validate_report(report)
+    render_markdown_summary(output, markdown_output)
+    return report
 
 
 def parse_topology(shape: str) -> Topology:
@@ -7171,8 +10310,250 @@ def summarize_ns(samples: t.Sequence[int]) -> dict[str, int | float]:
     }
 
 
+def _load_host_snapshot(path: pathlib.Path | None) -> HostSnapshot | None:
+    """Load a private test-harness preflight snapshot.
+
+    >>> _load_host_snapshot(None) is None
+    True
+
+    Parameters
+    ----------
+    path : pathlib.Path | None
+        Hidden CLI JSON fixture, or ``None`` for live probing.
+
+    Returns
+    -------
+    HostSnapshot | None
+        Decoded fixture or ``None``.
+    """
+    if path is None:
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        message = f"test host snapshot is not complete JSON: {path}"
+        raise ValueError(message) from error
+    snapshot = _host_snapshot_from_json(value)
+    if snapshot is None:
+        message = "test host snapshot cannot be null"
+        raise ValueError(message)
+    return snapshot
+
+
+def _parse_optional_limit(value: str) -> int | None:
+    """Parse a positive integer or the hidden worker's ``dynamic`` marker.
+
+    >>> _parse_optional_limit("dynamic") is None
+    True
+    >>> _parse_optional_limit("1024")
+    1024
+    """
+    if value == "dynamic":
+        return None
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        message = "resource limit must be a positive integer or dynamic"
+        raise ValueError(message) from error
+    if parsed <= 0:
+        message = "resource limit must be a positive integer or dynamic"
+        raise ValueError(message)
+    return parsed
+
+
+def _parse_extra_identity(value: str | None) -> ProcessIdentity | None:
+    """Decode the private PID-reuse test identity.
+
+    >>> _parse_extra_identity("pane:42:100")
+    ProcessIdentity(role='pane', pid=42, start_time=100)
+    >>> _parse_extra_identity(None) is None
+    True
+    """
+    if value is None:
+        return None
+    pieces = value.split(":")
+    if len(pieces) != 3 or not pieces[0]:
+        message = "test identity must use role:pid:start_time"
+        raise ValueError(message)
+    try:
+        identity = ProcessIdentity(pieces[0], int(pieces[1]), int(pieces[2]))
+    except ValueError as error:
+        message = "test identity must use role:pid:start_time"
+        raise ValueError(message) from error
+    if identity.pid <= 0 or identity.start_time <= 0:
+        message = "test identity requires positive pid and start_time"
+        raise ValueError(message)
+    return identity
+
+
+async def _run_worker_with_signals(**kwargs: t.Any) -> RunReport:
+    """Translate worker SIGINT/SIGTERM into cancellation and awaited cleanup.
+
+    >>> async def invalid():
+    ...     try:
+    ...         await _run_worker_with_signals()
+    ...     except TypeError as error:
+    ...         return "topology" in str(error)
+    >>> asyncio.run(invalid())
+    True
+    """
+    loop = asyncio.get_running_loop()
+    task = asyncio.create_task(run_worker(**kwargs), name="orchestration-worker")
+    installed: list[signal.Signals] = []
+    for signal_number in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(
+                signal_number,
+                task.cancel,
+                f"received {signal_number.name}",
+            )
+        except (NotImplementedError, RuntimeError):
+            continue
+        installed.append(signal_number)
+    try:
+        return await task
+    finally:
+        for signal_number in installed:
+            loop.remove_signal_handler(signal_number)
+
+
+def _run_hidden_worker(arguments: argparse.Namespace) -> int:
+    """Decode hidden CLI state and execute exactly one worker process.
+
+    >>> _run_hidden_worker.__name__
+    '_run_hidden_worker'
+    """
+    admission = _json_mapping(
+        json.loads(arguments.admission.read_text(encoding="utf-8")), "admission"
+    )
+    guard = _guard_from_json(admission.get("guard_decision"))
+    original = _guard_from_json(admission.get("original_guard_decision"))
+    if guard is None or original is None:
+        message = "worker admission requires both guard decisions"
+        raise ValueError(message)
+    policy = ResourcePolicy(
+        persistent_clients=(1 if arguments.lane == "control" else 0),
+        pid_reserve=_parse_optional_limit(arguments.pid_reserve),
+        memory_floor_bytes=_parse_optional_limit(arguments.memory_floor_bytes),
+    )
+    report = asyncio.run(
+        _run_worker_with_signals(
+            topology=parse_topology(arguments.shape),
+            lane=EngineLane(arguments.lane),
+            mode=ExecutionMode(arguments.mode),
+            runs=arguments.runs,
+            warmup=arguments.warmup,
+            seed=arguments.seed,
+            run_id=arguments.run_id,
+            scratch=arguments.scratch,
+            socket_path=arguments.socket_path,
+            checkpoint_path=arguments.checkpoint,
+            progress_path=arguments.progress,
+            guard_decision=guard,
+            original_guard_decision=original,
+            policy=policy,
+            stall_after=arguments.test_stall_after,
+            fail_after=arguments.test_fail_after,
+            extra_identity=_parse_extra_identity(arguments.test_extra_identity),
+        )
+    )
+    return 0 if report.status == "completed" else 2
+
+
+def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the shared public run/ramp execution flags.
+
+    >>> parser = argparse.ArgumentParser()
+    >>> _add_execution_arguments(parser)
+    >>> parser.parse_args(["--runs", "2"]).runs
+    2
+    """
+    parser.add_argument(
+        "--lane", choices=tuple(lane.value for lane in EngineLane), default="control"
+    )
+    parser.add_argument(
+        "--mode", choices=tuple(mode.value for mode in ExecutionMode), default="async"
+    )
+    parser.add_argument("--runs", type=int, default=100)
+    parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=11)
+    parser.add_argument("--output", type=pathlib.Path)
+    parser.add_argument("--markdown-output", type=pathlib.Path)
+    parser.add_argument("--scratch-root", type=pathlib.Path)
+    parser.add_argument("--force-extreme", action="store_true")
+    parser.add_argument("--pid-reserve", type=int)
+    parser.add_argument("--memory-floor-bytes", type=int)
+    parser.add_argument("--watchdog-seconds", type=float, default=120.0)
+    parser.add_argument("--cleanup-grace-seconds", type=float, default=2.0)
+    parser.add_argument(
+        "--_test-host-snapshot",
+        dest="test_host_snapshot",
+        type=pathlib.Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--_test-stall-after",
+        dest="test_stall_after",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--_test-fail-after",
+        dest="test_fail_after",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--_test-extra-identity",
+        dest="test_extra_identity",
+        help=argparse.SUPPRESS,
+    )
+
+
+def _hidden_worker_parser() -> argparse.ArgumentParser:
+    """Build the private supervisor-to-worker protocol parser.
+
+    Keeping this parser outside the public subcommand collection prevents the
+    implementation protocol and its test harness from appearing in help.
+
+    >>> parser = _hidden_worker_parser()
+    >>> parser.prog
+    'bench_orchestration.py _worker'
+
+    Returns
+    -------
+    argparse.ArgumentParser
+        Parser for arguments emitted only by :func:`supervise_worker`.
+    """
+    parser = argparse.ArgumentParser(prog="bench_orchestration.py _worker")
+    parser.add_argument("--shape", required=True)
+    parser.add_argument("--lane", required=True, choices=("subprocess", "control"))
+    parser.add_argument("--mode", required=True, choices=("sync", "async"))
+    parser.add_argument("--runs", required=True, type=int)
+    parser.add_argument("--warmup", required=True, type=int)
+    parser.add_argument("--seed", required=True, type=int)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--scratch", required=True, type=pathlib.Path)
+    parser.add_argument("--socket-path", required=True, type=pathlib.Path)
+    parser.add_argument("--checkpoint", required=True, type=pathlib.Path)
+    parser.add_argument("--progress", required=True, type=pathlib.Path)
+    parser.add_argument("--admission", required=True, type=pathlib.Path)
+    parser.add_argument("--pid-reserve", required=True)
+    parser.add_argument("--memory-floor-bytes", required=True)
+    parser.add_argument(
+        "--_test-stall-after", dest="test_stall_after", help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--_test-fail-after", dest="test_fail_after", help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--_test-extra-identity",
+        dest="test_extra_identity",
+        help=argparse.SUPPRESS,
+    )
+    return parser
+
+
 def main(argv: t.Sequence[str] | None = None) -> int:
-    """Run the side-effect-free benchmark planning command.
+    """Run planning, one supervised scenario, a ramp, or the hidden worker.
 
     >>> import contextlib, io
     >>> captured = io.StringIO()
@@ -7189,7 +10570,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     Returns
     -------
     int
-        Zero after the selected command completes.
+        Zero only after the selected public work completes successfully.
 
     Raises
     ------
@@ -7200,15 +10581,82 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     OSError
         If the selected plan output cannot be written.
     """
+    raw_arguments = tuple(sys.argv[1:] if argv is None else argv)
+    if raw_arguments[:1] == ("_worker",):
+        worker_arguments = _hidden_worker_parser().parse_args(raw_arguments[1:])
+        return _run_hidden_worker(worker_arguments)
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     plan_parser = commands.add_parser("plan", help="inspect topology and host limits")
     plan_parser.add_argument("--shape", required=True)
     plan_parser.add_argument("--output", type=pathlib.Path)
     plan_parser.add_argument("--force-extreme", action="store_true")
-    arguments = parser.parse_args(argv)
+    run_parser = commands.add_parser("run", help="run one active topology")
+    run_parser.add_argument("--shape", required=True)
+    _add_execution_arguments(run_parser)
+    ramp_parser = commands.add_parser("ramp", help="run fresh topologies in order")
+    ramp_parser.add_argument("--shapes")
+    _add_execution_arguments(ramp_parser)
+    arguments = parser.parse_args(raw_arguments)
     if arguments.command == "plan":
         return run_plan(arguments.shape, arguments.output, arguments.force_extreme)
+    policy = ResourcePolicy(
+        persistent_clients=(1 if arguments.lane == "control" else 0),
+        pid_reserve=arguments.pid_reserve,
+        memory_floor_bytes=arguments.memory_floor_bytes,
+    )
+    host_snapshot = _load_host_snapshot(arguments.test_host_snapshot)
+    extra_identity = _parse_extra_identity(arguments.test_extra_identity)
+    if arguments.command == "run":
+        output = arguments.output or pathlib.Path("orchestration-report.json")
+        report = run_scenario(
+            parse_topology(arguments.shape),
+            lane=EngineLane(arguments.lane),
+            mode=ExecutionMode(arguments.mode),
+            runs=arguments.runs,
+            warmup=arguments.warmup,
+            seed=arguments.seed,
+            output=output,
+            markdown_output=arguments.markdown_output,
+            scratch_root=arguments.scratch_root,
+            force_extreme=arguments.force_extreme,
+            policy=policy,
+            host_snapshot=host_snapshot,
+            watchdog_s=arguments.watchdog_seconds,
+            cleanup_grace_s=arguments.cleanup_grace_seconds,
+            _test_stall_after=arguments.test_stall_after,
+            _test_fail_after=arguments.test_fail_after,
+            _test_extra_identity=extra_identity,
+        )
+        return 0 if report.status == "completed" else 2
+    if arguments.command == "ramp":
+        shapes = (
+            canonical_ramp()
+            if arguments.shapes is None
+            else tuple(parse_topology(shape) for shape in arguments.shapes.split(","))
+        )
+        output = arguments.output or pathlib.Path("orchestration-ramp.json")
+        report = run_ramp(
+            shapes,
+            lane=EngineLane(arguments.lane),
+            mode=ExecutionMode(arguments.mode),
+            runs=arguments.runs,
+            warmup=arguments.warmup,
+            seed=arguments.seed,
+            output=output,
+            markdown_output=arguments.markdown_output,
+            scratch_root=arguments.scratch_root,
+            force_extreme=arguments.force_extreme,
+            policy=policy,
+            host_snapshot=host_snapshot,
+            watchdog_s=arguments.watchdog_seconds,
+            cleanup_grace_s=arguments.cleanup_grace_seconds,
+            canonical=arguments.shapes is None,
+            _test_stall_after=arguments.test_stall_after,
+            _test_fail_after=arguments.test_fail_after,
+            _test_extra_identity=extra_identity,
+        )
+        return 0 if report.status == "completed" else 2
     message = "argparse selected an unsupported command"
     raise AssertionError(message)
 
