@@ -30,6 +30,112 @@ _PHASE_LANES = (
     ("control", "async"),
 )
 
+_RUNNER_REPEATABLE_PHASES = (
+    "mutation.bulk",
+    "wait.capture-poll",
+    "enumeration.sessions",
+    "enumeration.windows",
+    "enumeration.panes",
+    "capture.serial",
+    "capture.batched",
+    "search.classic.sessions.first",
+    "search.classic.sessions.middle",
+    "search.classic.sessions.last",
+    "search.classic.windows.first",
+    "search.classic.windows.middle",
+    "search.classic.windows.last",
+    "search.classic.panes.first",
+    "search.classic.panes.middle",
+    "search.classic.panes.last",
+    "search.snapshot.sessions.first",
+    "search.snapshot.sessions.middle",
+    "search.snapshot.sessions.last",
+    "search.snapshot.windows.first",
+    "search.snapshot.windows.middle",
+    "search.snapshot.windows.last",
+    "search.snapshot.panes.first",
+    "search.snapshot.panes.middle",
+    "search.snapshot.panes.last",
+    "search.end-to-end.sessions.first",
+    "search.end-to-end.sessions.middle",
+    "search.end-to-end.sessions.last",
+    "search.end-to-end.windows.first",
+    "search.end-to-end.windows.middle",
+    "search.end-to-end.windows.last",
+    "search.end-to-end.panes.first",
+    "search.end-to-end.panes.middle",
+    "search.end-to-end.panes.last",
+    "search.contents",
+)
+
+
+def _benchmark_script() -> pathlib.Path:
+    """Return the real standalone benchmark entry point."""
+    return pathlib.Path(__file__).parents[1] / "scripts" / "bench_orchestration.py"
+
+
+def _run_cli(*arguments: str, cwd: pathlib.Path) -> subprocess.CompletedProcess[str]:
+    """Run the real benchmark process with no inherited tmux coordinates."""
+    environment = os.environ.copy()
+    environment.pop("TMUX", None)
+    environment.pop("TMUX_PANE", None)
+    return subprocess.run(
+        (sys.executable, str(_benchmark_script()), *arguments),
+        cwd=cwd,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+
+
+def _start_cli(*arguments: str, cwd: pathlib.Path) -> subprocess.Popen[str]:
+    """Start the real benchmark so a test can interrupt its supervisor."""
+    environment = os.environ.copy()
+    environment.pop("TMUX", None)
+    environment.pop("TMUX_PANE", None)
+    return subprocess.Popen(
+        (sys.executable, str(_benchmark_script()), *arguments),
+        cwd=cwd,
+        env=environment,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _process_start_time(pid: int) -> int:
+    """Read one exact Linux process start-time identity."""
+    raw = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    close = raw.rindex(")")
+    return int(raw[close + 2 :].split()[19])
+
+
+def _identity_still_matches(identity: dict[str, t.Any]) -> bool:
+    """Return whether procfs still names the exact serialized process."""
+    try:
+        raw = pathlib.Path(f"/proc/{identity['pid']}/stat").read_text(encoding="utf-8")
+        close = raw.rindex(")")
+        return int(raw[close + 2 :].split()[19]) == t.cast(int, identity["start_time"])
+    except (FileNotFoundError, OSError, ValueError, IndexError):
+        return False
+
+
+def _assert_terminal_cleanup(payload: dict[str, t.Any]) -> None:
+    """Assert the supervisor's exact terminal cleanup evidence."""
+    assert payload["cleanup"] == {
+        "complete": True,
+        "errors": [],
+        "processes_absent": True,
+        "scratch_absent": True,
+        "socket_absent": True,
+    }
+    assert not pathlib.Path(payload["scratch_path"]).exists()
+    assert not pathlib.Path(payload["socket_path"]).exists()
+    assert all(not _identity_still_matches(row) for row in payload["processes"])
+
 
 @pytest.fixture()
 def benchmark_module() -> types.ModuleType:
@@ -3318,3 +3424,739 @@ def test_run_repeatable_phase_stops_without_appending_failed_duration(
     assert result.failure.strategy == "only"
     assert result.failure.ordinal == 1
     assert result.failure.error == "RuntimeError: live postcondition lost"
+
+
+def test_cli_run_executes_every_phase_and_writes_validated_artifacts(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Skipping a phase or requested sample would publish incomplete evidence."""
+    report_path = tmp_path / "run.json"
+    markdown_path = tmp_path / "run.md"
+    scratch_root = tmp_path / "scratch"
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "2x2x2",
+        "--runs",
+        "2",
+        "--warmup",
+        "1",
+        "--output",
+        str(report_path),
+        "--markdown-output",
+        str(markdown_path),
+        "--scratch-root",
+        str(scratch_root),
+        "--watchdog-seconds",
+        "30",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "completed"
+    assert payload["requested_topology"] == {
+        "sessions": 2,
+        "windows_per_session": 2,
+        "panes_per_window": 2,
+    }
+    assert payload["observed_topology"] == payload["requested_topology"]
+    assert payload["lane"] == "control"
+    assert payload["mode"] == "async"
+    phases = {phase["name"]: phase for phase in payload["phases"]}
+    assert tuple(phases) == (
+        "setup",
+        "stabilization",
+        *_RUNNER_REPEATABLE_PHASES[:2],
+        "wait.control-stream",
+        *_RUNNER_REPEATABLE_PHASES[2:],
+    )
+    assert phases["setup"]["summary"] is None
+    assert len(phases["setup"]["samples"]) == 1
+    assert phases["stabilization"]["samples"] == []
+    for phase_name in (*_RUNNER_REPEATABLE_PHASES, "wait.control-stream"):
+        phase = phases[phase_name]
+        assert phase["status"] == "completed"
+        assert phase["warmup"] == 1
+        assert phase["runs"] == 2
+        assert len(phase["samples"]) == 2
+        assert phase["summary"]["count"] == 2
+        assert len(phase["observations"]) == 2
+        assert all(row["accepted"] and row["verified"] for row in phase["samples"])
+    assert payload["cleanup"] == {
+        "complete": True,
+        "errors": [],
+        "processes_absent": True,
+        "scratch_absent": True,
+        "socket_absent": True,
+    }
+    assert not pathlib.Path(payload["scratch_path"]).exists()
+    assert not pathlib.Path(payload["socket_path"]).exists()
+    assert all(not _identity_still_matches(row) for row in payload["processes"])
+    progress = pathlib.Path(payload["progress_path"])
+    events = [json.loads(line) for line in progress.read_text().splitlines()]
+    assert [event["sequence"] for event in events] == list(range(len(events)))
+    assert "Local descriptive evidence" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_cli_ramp_uses_fresh_owned_resources_for_every_shape(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Reusing a server between shapes would invalidate fresh-setup evidence."""
+    report_path = tmp_path / "ramp.json"
+    markdown_path = tmp_path / "ramp.md"
+
+    completed = _run_cli(
+        "ramp",
+        "--shapes",
+        "1x1x1,2x2x1",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--markdown-output",
+        str(markdown_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "30",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "completed"
+    assert [step["status"] for step in payload["ramp"]] == [
+        "completed",
+        "completed",
+    ]
+    assert [step["shape"] for step in payload["ramp"]] == [
+        {"sessions": 1, "windows_per_session": 1, "panes_per_window": 1},
+        {"sessions": 2, "windows_per_session": 2, "panes_per_window": 1},
+    ]
+    run_ids = [step["run_id"] for step in payload["ramp"]]
+    scratch_paths = [step["scratch_path"] for step in payload["ramp"]]
+    socket_paths = [step["socket_path"] for step in payload["ramp"]]
+    assert len(set(run_ids)) == 2
+    assert len(set(scratch_paths)) == 2
+    assert len(set(socket_paths)) == 2
+    assert all(not pathlib.Path(path).exists() for path in scratch_paths)
+    assert all(not pathlib.Path(path).exists() for path in socket_paths)
+    child_reports = [
+        json.loads(pathlib.Path(step["report_path"]).read_text(encoding="utf-8"))
+        for step in payload["ramp"]
+    ]
+    assert [child["run_id"] for child in child_reports] == run_ids
+    assert [child["status"] for child in child_reports] == [
+        "completed",
+        "completed",
+    ]
+    server_identities = [
+        next(row for row in child["processes"] if row["role"] == "server")
+        for child in child_reports
+    ]
+    assert len({(row["pid"], row["start_time"]) for row in server_identities}) == 2
+    assert all(not _identity_still_matches(row) for row in server_identities)
+    assert "1x1x1" in markdown_path.read_text(encoding="utf-8")
+    assert "2x2x1" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_cli_predictive_refusal_writes_terminal_report_without_worker(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A refused preflight must not create any live benchmark-owned resource."""
+    report_path = tmp_path / "refused.json"
+    markdown_path = tmp_path / "refused.md"
+    host_path = tmp_path / "host.json"
+    host_path.write_text(
+        json.dumps(
+            {
+                "available_memory_bytes": 16 * 1024**3,
+                "physical_memory_bytes": 32 * 1024**3,
+                "memory_current_bytes": 1024,
+                "memory_max_bytes": 32 * 1024**3,
+                "pids_current": 10,
+                "pids_max": 12,
+                "nofile_soft_limit": 65536,
+                "nofile_hard_limit": 65536,
+                "memory_pressure_some_avg10": 0.0,
+                "source_errors": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "2x2x2",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--markdown-output",
+        str(markdown_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--pid-reserve",
+        "1",
+        "--_test-host-snapshot",
+        str(host_path),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "refused"
+    assert payload["failed_phase"] == "preflight"
+    assert payload["guard_decision"]["kind"] == "predictive_refusal"
+    assert payload["processes"] == []
+    assert payload["progress_path"] is None
+    assert payload["scratch_path"] is None
+    assert payload["socket_path"] is None
+    assert payload["cleanup"]["complete"] is True
+    assert not (tmp_path / "scratch").exists()
+    assert not list(tmp_path.glob("*.progress.jsonl"))
+    assert "refused" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_cli_watchdog_recovers_stalled_worker_and_exact_resources(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A stopped progress stream must trigger bounded supervisor recovery."""
+    report_path = tmp_path / "watchdog.json"
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "1.0",
+        "--cleanup-grace-seconds",
+        "0.3",
+        "--_test-stall-after",
+        "setup",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "cutoff"
+    assert payload["failed_phase"] == "watchdog"
+    assert "progress watchdog expired" in payload["error"]
+    assert payload["progress_sequence"] >= 0
+    assert {row["role"] for row in payload["processes"]} >= {
+        "worker",
+        "fuzzer",
+        "server",
+        "pane",
+    }
+    _assert_terminal_cleanup(payload)
+
+
+def test_watchdog_progress_requires_an_increasing_sequence(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Duplicate or older progress lines must not refresh the watchdog."""
+    identity = benchmark_module.ProcessIdentity("fuzzer", 2, 3)
+    stalled = (
+        benchmark_module.ProgressEvent("run-7", 3, "same", 10, (identity,)),
+        benchmark_module.ProgressEvent("run-7", 2, "older", 11),
+        benchmark_module.ProgressEvent("run-7", 3, "same-again", 12),
+    )
+
+    highest, identities, advanced = benchmark_module._accept_progress_events(
+        stalled,
+        run_id="run-7",
+        highest_sequence=3,
+        identities=(),
+    )
+
+    assert highest == 3
+    assert identities == ()
+    assert advanced is False
+    advanced_event = benchmark_module.ProgressEvent("run-7", 4, "next", 13, (identity,))
+    highest, identities, advanced = benchmark_module._accept_progress_events(
+        (advanced_event,),
+        run_id="run-7",
+        highest_sequence=highest,
+        identities=identities,
+    )
+    assert highest == 4
+    assert identities == (identity,)
+    assert advanced is True
+
+
+def test_worker_progress_precedes_matching_report_checkpoint(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An identity event must be durable before its checkpoint can expose it."""
+    calls: list[str] = []
+    monkeypatch.setattr(
+        benchmark_module,
+        "append_progress_event",
+        lambda _path, _event: calls.append("progress"),
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "write_json_atomic",
+        lambda _path, _report: calls.append("checkpoint"),
+    )
+    recorder = benchmark_module._WorkerRecorder(
+        benchmark_module.RunReport(benchmark_module.Topology(1, 1, 1), run_id="run-7"),
+        tmp_path / "checkpoint.json",
+        tmp_path / "progress.jsonl",
+    )
+
+    recorder.checkpoint("worker.started")
+
+    assert calls == ["progress", "checkpoint"]
+
+
+def test_cli_phase_failure_uses_supervisor_cleanup_contract(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A measured phase exception must retain failure and cleanup evidence."""
+    report_path = tmp_path / "failure.json"
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "30",
+        "--_test-fail-after",
+        "mutation.bulk",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["failed_phase"] == "mutation.bulk"
+    assert "injected phase failure" in payload["error"]
+    phases = {phase["name"]: phase for phase in payload["phases"]}
+    assert phases["mutation.bulk"]["status"] == "failed"
+    _assert_terminal_cleanup(payload)
+
+
+def test_cli_runtime_cutoff_is_not_relaxed_by_force_extreme(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A predictive override must not turn a live memory cutoff into failure."""
+    report_path = tmp_path / "runtime-cutoff.json"
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--memory-floor-bytes",
+        str(10**18),
+        "--force-extreme",
+        "--watchdog-seconds",
+        "30",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "cutoff"
+    assert payload["failed_phase"] == "memory_floor"
+    assert payload["guard_decision"]["kind"] == "runtime_cutoff"
+    assert payload["original_guard_decision"]["kind"] == "predictive_refusal"
+    _assert_terminal_cleanup(payload)
+
+
+def test_cli_cancellation_uses_supervisor_cleanup_contract(
+    tmp_path: pathlib.Path,
+) -> None:
+    """SIGINT to the public supervisor must clean its isolated worker run."""
+    report_path = tmp_path / "cancelled.json"
+    process = _start_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "30",
+        "--cleanup-grace-seconds",
+        "0.3",
+        "--_test-stall-after",
+        "setup",
+        cwd=tmp_path,
+    )
+    stdout = stderr = ""
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            streams = tuple(tmp_path.glob("*.progress.jsonl"))
+            if streams and '"checkpoint":"setup"' in streams[0].read_text(
+                encoding="utf-8"
+            ):
+                break
+            if process.poll() is not None:
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("worker never reached the injected setup stall")
+        assert process.poll() is None
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=20)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            stdout, stderr = process.communicate(timeout=5)
+
+    assert process.returncode != 0, (stdout, stderr)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "cutoff"
+    assert payload["failed_phase"] == "cancellation"
+    assert "supervisor interrupted" in payload["error"]
+    _assert_terminal_cleanup(payload)
+
+
+def test_cli_process_identity_mismatch_never_signals_unrelated_pid(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A reused PID with another start time must remain outside recovery."""
+    unrelated = subprocess.Popen(
+        (sys.executable, "-c", "import time; time.sleep(60)"),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        start_time = _process_start_time(unrelated.pid)
+        report_path = tmp_path / "identity.json"
+        completed = _run_cli(
+            "run",
+            "--shape",
+            "1x1x1",
+            "--runs",
+            "1",
+            "--warmup",
+            "0",
+            "--output",
+            str(report_path),
+            "--scratch-root",
+            str(tmp_path / "scratch"),
+            "--watchdog-seconds",
+            "0.2",
+            "--cleanup-grace-seconds",
+            "0.3",
+            "--_test-extra-identity",
+            f"unrelated:{unrelated.pid}:{start_time + 1}",
+            "--_test-stall-after",
+            "identity.unrelated",
+            cwd=tmp_path,
+        )
+
+        assert completed.returncode != 0
+        assert unrelated.poll() is None
+        assert _process_start_time(unrelated.pid) == start_time
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        assert payload["status"] == "cutoff"
+        assert any(
+            row
+            == {
+                "role": "unrelated",
+                "pid": unrelated.pid,
+                "start_time": start_time + 1,
+            }
+            for row in payload["processes"]
+        )
+        _assert_terminal_cleanup(payload)
+    finally:
+        unrelated.terminate()
+        unrelated.wait(timeout=5)
+
+
+def test_cli_ramp_refusal_marks_later_shapes_not_attempted(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A refused shape must stop the ramp and preserve one reason downstream."""
+    report_path = tmp_path / "ramp-refused.json"
+    markdown_path = tmp_path / "ramp-refused.md"
+    host_path = tmp_path / "host.json"
+    host_path.write_text(
+        json.dumps(
+            {
+                "available_memory_bytes": 16 * 1024**3,
+                "physical_memory_bytes": 32 * 1024**3,
+                "memory_current_bytes": 1024,
+                "memory_max_bytes": 32 * 1024**3,
+                "pids_current": 10,
+                "pids_max": 12,
+                "nofile_soft_limit": 65536,
+                "nofile_hard_limit": 65536,
+                "memory_pressure_some_avg10": 0.0,
+                "source_errors": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = _run_cli(
+        "ramp",
+        "--shapes",
+        "1x1x1,2x2x2",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--markdown-output",
+        str(markdown_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--pid-reserve",
+        "1",
+        "--_test-host-snapshot",
+        str(host_path),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "refused"
+    assert [step["status"] for step in payload["ramp"]] == [
+        "refused",
+        "not_attempted",
+    ]
+    assert payload["ramp"][0]["reason"] == payload["ramp"][1]["reason"]
+    assert payload["ramp"][0]["run_id"] is not None
+    assert payload["ramp"][0]["report_path"] is not None
+    assert payload["ramp"][0]["scratch_path"] is None
+    assert payload["ramp"][0]["socket_path"] is None
+    assert payload["ramp"][1]["run_id"] is None
+    assert payload["cleanup"]["complete"] is True
+    assert not (tmp_path / "scratch").exists()
+    assert "not_attempted" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_cli_ramp_predictive_refusal_never_executes_tmux_binary(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aggregate environment capture must not contact tmux before admission."""
+    marker = tmp_path / "tmux-executed"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_tmux = fake_bin / "tmux"
+    fake_tmux.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib\n"
+        f"pathlib.Path({str(marker)!r}).touch()\n"
+        "print('tmux fake')\n",
+        encoding="utf-8",
+    )
+    fake_tmux.chmod(fake_tmux.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    host_path = tmp_path / "host.json"
+    host_path.write_text(
+        json.dumps(
+            {
+                "available_memory_bytes": 16 * 1024**3,
+                "physical_memory_bytes": 32 * 1024**3,
+                "memory_current_bytes": 1024,
+                "memory_max_bytes": 32 * 1024**3,
+                "pids_current": 10,
+                "pids_max": 12,
+                "nofile_soft_limit": 65536,
+                "nofile_hard_limit": 65536,
+                "memory_pressure_some_avg10": 0.0,
+                "source_errors": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = _run_cli(
+        "ramp",
+        "--shapes",
+        "1x1x1,2x2x2",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(tmp_path / "ramp.json"),
+        "--pid-reserve",
+        "1",
+        "--_test-host-snapshot",
+        str(host_path),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    assert not marker.exists()
+
+
+def test_cli_plan_is_a_real_read_only_subprocess(tmp_path: pathlib.Path) -> None:
+    """Planning must print admission evidence without creating owned state."""
+    completed = _run_cli("plan", "--shape", "2x2x2", cwd=tmp_path)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Sessions" in completed.stdout
+    assert "Windows" in completed.stdout
+    assert "Panes" in completed.stdout
+    assert "Allowed" in completed.stdout
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_markdown_renderer_refuses_invalid_json_evidence(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Rendering must validate JSON before replacing an existing summary."""
+    report_path = tmp_path / "invalid.json"
+    markdown_path = tmp_path / "summary.md"
+    report = completed_report(benchmark_module)
+    benchmark_module.write_json_atomic(report_path, report)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    payload["phases"][0]["summary"]["count"] = 99
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+    markdown_path.write_text("retained\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="summary"):
+        benchmark_module.render_markdown_summary(report_path, markdown_path)
+
+    assert markdown_path.read_text(encoding="utf-8") == "retained\n"
+
+
+def test_cli_help_hides_worker_and_private_test_harness_flags(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The worker protocol and injection hooks must not be public CLI surface."""
+    root_help = _run_cli("--help", cwd=tmp_path)
+    run_help = _run_cli("run", "--help", cwd=tmp_path)
+
+    assert root_help.returncode == 0
+    assert "_worker" not in root_help.stdout
+    assert "_test" not in root_help.stdout
+    assert run_help.returncode == 0
+    assert "_test" not in run_help.stdout
+
+
+@pytest.mark.parametrize(("lane", "mode"), _PHASE_LANES)
+def test_cli_run_supports_all_four_engine_mode_lanes(
+    tmp_path: pathlib.Path,
+    lane: str,
+    mode: str,
+) -> None:
+    """Every explicit engine/mode lane must execute the same phase graph."""
+    report_path = tmp_path / f"{lane}-{mode}.json"
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--lane",
+        lane,
+        "--mode",
+        mode,
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "30",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "completed"
+    assert (payload["lane"], payload["mode"]) == (lane, mode)
+    phases = {phase["name"]: phase for phase in payload["phases"]}
+    expected_control = (
+        "completed" if (lane, mode) == ("control", "async") else ("not_applicable")
+    )
+    assert phases["wait.control-stream"]["status"] == expected_control
+    assert phases["wait.capture-poll"]["status"] == "completed"
+    _assert_terminal_cleanup(payload)
+
+
+def test_cli_ramp_phase_failure_marks_later_shapes_not_attempted(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A worker failure must stop later ramp attempts after exact cleanup."""
+    report_path = tmp_path / "ramp-failed.json"
+
+    completed = _run_cli(
+        "ramp",
+        "--shapes",
+        "1x1x1,2x1x1",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "30",
+        "--_test-fail-after",
+        "setup",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert [step["status"] for step in payload["ramp"]] == [
+        "failed",
+        "not_attempted",
+    ]
+    assert payload["ramp"][0]["reason"] == payload["ramp"][1]["reason"]
+    child = json.loads(
+        pathlib.Path(payload["ramp"][0]["report_path"]).read_text(encoding="utf-8")
+    )
+    assert child["failed_phase"] == "setup"
+    _assert_terminal_cleanup(child)
+    assert payload["cleanup"]["complete"] is True
