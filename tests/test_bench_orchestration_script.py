@@ -214,8 +214,8 @@ def completed_report(benchmark_module: types.ModuleType) -> t.Any:
         requested_topology=topology,
         observed_topology=topology,
         samples=(
-            benchmark_module.RawSample(duration_ns=10, accepted=True),
-            benchmark_module.RawSample(duration_ns=30, accepted=True),
+            benchmark_module.RawSample(duration_ns=10, accepted=True, verified=True),
+            benchmark_module.RawSample(duration_ns=30, accepted=True, verified=True),
             benchmark_module.RawSample(
                 duration_ns=999, accepted=False, error="lost row count"
             ),
@@ -259,6 +259,118 @@ def test_write_json_atomic_replaces_complete_report(
         "windows_per_session": 100,
         "panes_per_window": 4,
     }
+
+
+def test_write_json_atomic_syncs_file_then_parent(
+    benchmark_module: types.ModuleType, tmp_path: pathlib.Path
+) -> None:
+    """Skipping either durability barrier could lose a completed checkpoint."""
+    target = tmp_path / "report.json"
+    calls: list[str] = []
+
+    def record_fsync(fd: int) -> None:
+        """Record the real descriptor type while preserving fsync behavior."""
+        calls.append(
+            "directory" if pathlib.Path(f"/proc/self/fd/{fd}").is_dir() else "file"
+        )
+        benchmark_module.os.fsync(fd)
+
+    def record_replace(
+        source: str | pathlib.Path, destination: str | pathlib.Path
+    ) -> None:
+        """Record atomic replacement while preserving the filesystem effect."""
+        calls.append("replace")
+        pathlib.Path(source).replace(destination)
+
+    benchmark_module.write_json_atomic(
+        target, {"ok": True}, fsync=record_fsync, replace=record_replace
+    )
+
+    assert calls == ["file", "replace", "directory"]
+    assert json.loads(target.read_text(encoding="utf-8")) == {"ok": True}
+
+
+def test_report_collections_are_deeply_immutable(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Mutable source errors or summaries could silently rewrite retained evidence."""
+    snapshot = benchmark_module.HostSnapshot(source_errors={"proc": "missing"})
+    phase = benchmark_module.PhaseReport(
+        "phase",
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.Topology(1, 1, 1),
+        summary={"count": 1},
+    )
+
+    with pytest.raises(TypeError):
+        snapshot.source_errors["proc"] = "changed"
+    assert phase.summary is not None
+    with pytest.raises(TypeError):
+        phase.summary["count"] = 2
+    assert benchmark_module._json_value(snapshot)["source_errors"] == {
+        "proc": "missing"
+    }
+
+
+def test_probe_host_keeps_rlimit_when_cgroup_resolution_fails(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A broken cgroup mount must not erase an independent descriptor limit."""
+    files = complete_procfs_files()
+    files["/proc/self/mountinfo"] = "bad mountinfo\n"
+    snapshot = benchmark_module.probe_host(LiteralReader(files))
+
+    assert snapshot.nofile_soft_limit == 65_536
+    assert "cgroup2" in snapshot.source_errors
+
+
+def test_probe_host_marks_malformed_pressure_and_partial_reads(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A partial cgroup fixture must retain every unavailable source explicitly."""
+    files = complete_procfs_files()
+    files[
+        "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/bench.scope/memory.pressure"
+    ] = "some total=1\n"
+    del files[
+        "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/bench.scope/memory.max"
+    ]
+    snapshot = benchmark_module.probe_host(LiteralReader(files))
+
+    assert snapshot.memory_max_bytes is None
+    assert {"memory.max", "memory.pressure"} <= set(snapshot.source_errors)
+
+
+@pytest.mark.parametrize(
+    "sample",
+    (
+        {"duration_ns": 1, "accepted": True, "error": "failure", "verified": True},
+        {"duration_ns": 1, "accepted": True, "verified": False},
+    ),
+)
+def test_validate_report_rejects_unverified_accepted_samples(
+    benchmark_module: types.ModuleType, sample: dict[str, t.Any]
+) -> None:
+    """An accepted timing without verified success is not benchmark evidence."""
+    report = completed_report(benchmark_module)
+    phase = dataclasses.replace(
+        report.phases[0], samples=(benchmark_module.RawSample(**sample),)
+    )
+    with pytest.raises(ValueError, match="verified"):
+        benchmark_module.validate_report(dataclasses.replace(report, phases=(phase,)))
+
+
+def test_validate_report_rejects_missing_or_mismatched_observed_topology(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A completed phase requires an exact observed topology check."""
+    report = completed_report(benchmark_module)
+    for observed in (None, benchmark_module.Topology(1, 1, 1)):
+        phase = dataclasses.replace(report.phases[0], observed_topology=observed)
+        with pytest.raises(ValueError, match="observed topology"):
+            benchmark_module.validate_report(
+                dataclasses.replace(report, phases=(phase,))
+            )
 
 
 def test_validate_report_recomputes_only_accepted_samples(
@@ -320,9 +432,19 @@ def test_validate_report_requires_unattempted_shapes_after_cutoff(
         status="cutoff",
         maximum_completed=False,
         ramp=(
-            benchmark_module.RampStep("80x20x1", "completed"),
-            benchmark_module.RampStep("100x20x1", "cutoff"),
-            benchmark_module.RampStep("80x20x2", "completed"),
+            benchmark_module.RampStep(
+                benchmark_module.parse_topology("80x20x1"), "completed"
+            ),
+            benchmark_module.RampStep(
+                benchmark_module.parse_topology("100x20x1"), "cutoff"
+            ),
+            benchmark_module.RampStep(
+                benchmark_module.parse_topology("80x20x2"), "completed"
+            ),
+        ),
+        requested_shapes=tuple(
+            benchmark_module.parse_topology(shape)
+            for shape in ("80x20x1", "100x20x1", "80x20x2")
         ),
     )
 

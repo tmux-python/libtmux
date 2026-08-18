@@ -12,13 +12,16 @@ import libtmux or start a tmux server.
 from __future__ import annotations
 
 import argparse
+import collections.abc as cabc
 import dataclasses
 import json
 import math
+import os
 import pathlib
 import resource
 import statistics
 import tempfile
+import types
 import typing as t
 
 
@@ -121,7 +124,7 @@ class HostSnapshot:
         Current process hard file-descriptor limit.
     memory_pressure_some_avg10 : float | None
         Ten-second cgroup memory pressure average.
-    source_errors : dict[str, str]
+    source_errors : collections.abc.Mapping[str, str]
         Source-specific errors retained instead of replacing missing data with zero.
     """
 
@@ -134,7 +137,18 @@ class HostSnapshot:
     nofile_soft_limit: int | None = None
     nofile_hard_limit: int | None = None
     memory_pressure_some_avg10: float | None = None
-    source_errors: dict[str, str] = dataclasses.field(default_factory=dict)
+    source_errors: cabc.Mapping[str, str] = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Freeze source errors independently of their caller-provided mapping.
+
+        >>> snapshot = HostSnapshot(source_errors={"proc": "missing"})
+        >>> snapshot.source_errors["proc"]
+        'missing'
+        """
+        object.__setattr__(
+            self, "source_errors", types.MappingProxyType(dict(self.source_errors))
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -327,24 +341,21 @@ def probe_host(reader: Reader) -> HostSnapshot:
     except (OSError, ValueError, KeyError) as exc:
         _source_error(errors, "cgroup2", exc)
 
-    if cgroup_path is None:
-        return HostSnapshot(
-            available_memory_bytes=memory.get("MemAvailable"),
-            physical_memory_bytes=memory.get("MemTotal"),
-            source_errors=errors,
-        )
-
-    pids_current = _read_int(reader, f"{cgroup_path}/pids.current", errors)
-    pids_max = _read_int(reader, f"{cgroup_path}/pids.max", errors)
-    memory_current = _read_int(reader, f"{cgroup_path}/memory.current", errors)
-    memory_max = _read_int(reader, f"{cgroup_path}/memory.max", errors)
+    pids_current = pids_max = memory_current = memory_max = None
     pressure: float | None = None
-    try:
-        pressure = _pressure_some_avg10(
-            reader.read_text(f"{cgroup_path}/memory.pressure")
-        )
-    except (OSError, ValueError, KeyError) as exc:
-        _source_error(errors, f"{cgroup_path}/memory.pressure", exc)
+    if cgroup_path is not None:
+        pids_current = _read_int(reader, f"{cgroup_path}/pids.current", errors)
+        pids_max = _read_int(reader, f"{cgroup_path}/pids.max", errors)
+        memory_current = _read_int(reader, f"{cgroup_path}/memory.current", errors)
+        memory_max = _read_int(reader, f"{cgroup_path}/memory.max", errors)
+        try:
+            pressure = _pressure_some_avg10(
+                reader.read_text(f"{cgroup_path}/memory.pressure")
+            )
+            if pressure is None:
+                errors["memory.pressure"] = "ValueError: missing some avg10"
+        except (OSError, ValueError, KeyError) as exc:
+            _source_error(errors, "memory.pressure", exc)
     nofile_soft: int | None
     nofile_hard: int | None
     try:
@@ -532,11 +543,14 @@ class RawSample:
         Whether phase correctness accepted this value for a summary.
     error : str | None
         Failure detail for a rejected sample.
+    verified : bool
+        Whether the phase's correctness check accepted this timing.
     """
 
     duration_ns: int | None
     accepted: bool
     error: str | None = None
+    verified: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -553,7 +567,7 @@ class PhaseReport:
         Shape verified at the phase boundary.
     samples : tuple[RawSample, ...]
         Timed results, including explicitly rejected rows.
-    summary : dict[str, int | float] | None
+    summary : collections.abc.Mapping[str, int | float] | None
         Statistics recomputed from accepted rows only.
     """
 
@@ -561,7 +575,21 @@ class PhaseReport:
     requested_topology: Topology
     observed_topology: Topology | None
     samples: tuple[RawSample, ...] = ()
-    summary: dict[str, int | float] | None = None
+    summary: cabc.Mapping[str, int | float] | None = None
+
+    def __post_init__(self) -> None:
+        """Freeze a copied summary so callers cannot alter recorded evidence.
+
+        >>> report = PhaseReport(
+        ...     "x", Topology(1, 1, 1), Topology(1, 1, 1), summary={"count": 1}
+        ... )
+        >>> report.summary["count"] if report.summary is not None else None
+        1
+        """
+        if self.summary is not None:
+            object.__setattr__(
+                self, "summary", types.MappingProxyType(dict(self.summary))
+            )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -586,14 +614,17 @@ class RampStep:
 
     Attributes
     ----------
-    shape : str
-        Canonical ``SxWxP`` shape.
+    shape : Topology
+        Declared ramp shape.
     status : {"completed", "refused", "failed", "cutoff", "not_attempted"}
         Terminal result for the step.
+    reason : str | None
+        Required reason for an unattempted shape after a terminal step.
     """
 
-    shape: str
+    shape: Topology
     status: t.Literal["completed", "refused", "failed", "cutoff", "not_attempted"]
+    reason: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -616,6 +647,8 @@ class RunReport:
         True only after exact requested and observed ``100x100x4`` completion.
     ramp : tuple[RampStep, ...]
         Ordered ramp outcomes, if this is a ramp run.
+    requested_shapes : tuple[Topology, ...]
+        Exact selected ramp sequence, including valid custom smoke ramps.
     guard_decision : GuardDecision | None
         Effective decision after an optional predictive override.
     original_guard_decision : GuardDecision | None
@@ -633,6 +666,7 @@ class RunReport:
     cleanup: CleanupReport = CleanupReport(complete=False)
     maximum_completed: bool = False
     ramp: tuple[RampStep, ...] = ()
+    requested_shapes: tuple[Topology, ...] = ()
     guard_decision: GuardDecision | None = None
     original_guard_decision: GuardDecision | None = None
     schema_version: int = 1
@@ -651,12 +685,18 @@ def _json_value(value: object) -> object:
         }
     if isinstance(value, tuple):
         return [_json_value(item) for item in value]
-    if isinstance(value, dict):
+    if isinstance(value, cabc.Mapping):
         return {str(key): _json_value(item) for key, item in value.items()}
     return value
 
 
-def write_json_atomic(path: pathlib.Path, value: object) -> None:
+def write_json_atomic(
+    path: pathlib.Path,
+    value: object,
+    *,
+    fsync: t.Callable[[int], None] = os.fsync,
+    replace: t.Callable[[str | pathlib.Path, str | pathlib.Path], None] = os.replace,
+) -> None:
     r"""Atomically replace ``path`` with one complete JSON value.
 
     >>> with tempfile.TemporaryDirectory() as directory:
@@ -664,23 +704,47 @@ def write_json_atomic(path: pathlib.Path, value: object) -> None:
     ...     write_json_atomic(target, {"schema_version": 1})
     ...     target.read_text(encoding="utf-8")
     '{"schema_version":1}\n'
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Artifact destination in an existing or creatable parent directory.
+    value : object
+        JSON-native value or immutable report record.
+    fsync : collections.abc.Callable[[int], None]
+        Injectable durability boundary for the temporary file and parent directory.
+    replace : collections.abc.Callable[[str | pathlib.Path, str | pathlib.Path], None]
+        Injectable atomic replacement boundary.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (
         json.dumps(_json_value(value), separators=(",", ":"), sort_keys=True) + "\n"
     )
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as temporary:
-        temporary.write(encoded)
-        temporary.flush()
-        temporary_path = pathlib.Path(temporary.name)
-    temporary_path.replace(path)
+    temporary_path: pathlib.Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = pathlib.Path(temporary.name)
+            temporary.write(encoded)
+            temporary.flush()
+            fsync(temporary.fileno())
+        replace(temporary_path, path)
+        temporary_path = None
+        parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+    except Exception:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise
 
 
 def validate_report(report: RunReport) -> None:
@@ -699,6 +763,9 @@ def validate_report(report: RunReport) -> None:
     for phase in report.phases:
         accepted: list[int] = []
         for sample in phase.samples:
+            if sample.accepted and (sample.error is not None or not sample.verified):
+                message = "accepted sample requires verified success without an error"
+                raise ValueError(message)
             if sample.accepted and (
                 sample.duration_ns is None or sample.duration_ns < 0
             ):
@@ -707,17 +774,34 @@ def validate_report(report: RunReport) -> None:
             if sample.accepted:
                 assert sample.duration_ns is not None
                 accepted.append(sample.duration_ns)
+        if (accepted or report.status == "completed") and (
+            phase.observed_topology is None
+            or phase.observed_topology != phase.requested_topology
+        ):
+            message = "accepted or completed phase requires exact observed topology"
+            raise ValueError(message)
         if phase.summary is not None and (
             not accepted or phase.summary != summarize_ns(accepted)
         ):
             message = "phase summary must match accepted samples"
             raise ValueError(message)
-    cutoff_seen = False
-    for step in report.ramp:
-        if cutoff_seen and step.status != "not_attempted":
-            message = "ramp shapes after cutoff must be not_attempted"
+    if len(report.ramp) != len(report.requested_shapes):
+        message = "ramp attempts must match requested shapes cardinality"
+        raise ValueError(message)
+    terminal_seen = False
+    for shape, step in zip(report.requested_shapes, report.ramp, strict=True):
+        if step.shape != shape:
+            message = "ramp attempts must match requested shapes in order"
             raise ValueError(message)
-        cutoff_seen = cutoff_seen or step.status == "cutoff"
+        if report.status == "completed" and step.status != "completed":
+            message = "completed report may contain completed ramp attempts only"
+            raise ValueError(message)
+        if terminal_seen and (step.status != "not_attempted" or step.reason is None):
+            message = (
+                "ramp shapes after terminal step must be not_attempted with reason"
+            )
+            raise ValueError(message)
+        terminal_seen = terminal_seen or step.status in {"refused", "failed", "cutoff"}
     maximum = Topology(100, 100, 4)
     if report.maximum_completed and (
         report.status != "completed"
