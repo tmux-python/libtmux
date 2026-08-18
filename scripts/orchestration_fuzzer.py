@@ -395,6 +395,29 @@ def _request_from_marker(
 def run_serve(options: WorkloadOptions) -> int:
     """Serve paused deterministic streams until a matching stop or lifecycle exit.
 
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     root = pathlib.Path(temporary)
+    ...     import threading
+    ...     options = WorkloadOptions(
+    ...         root / "output", "run-7", root, 0, 1000.0, 0.001, 0.0,
+    ...         "READY", 0.001,
+    ...     )
+    ...     def release_gate() -> None:
+    ...         while not options.output_dir.exists():
+    ...             time.sleep(0.001)
+    ...         write_json_atomic(
+    ...             options.output_dir / "gate.json",
+    ...             {"schema_version": 1, "run_id": "run-7"},
+    ...         )
+    ...     release = threading.Thread(target=release_gate)
+    ...     release.start()
+    ...     result = run_serve(options)
+    ...     release.join()
+    ...     result
+    0
+
     Notes
     -----
     The service owns signals and a real marker tree, so its gate, timing, and
@@ -551,6 +574,20 @@ def run_serve(options: WorkloadOptions) -> int:
 def run_preview(options: WorkloadOptions) -> int:
     """Render deterministic frames interactively without importing Rich at load.
 
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     root = pathlib.Path(temporary)
+    ...     import io
+    ...     options = WorkloadOptions(
+    ...         root / "output", "run-7", root, 0, 1000.0, 0.001, 0.0,
+    ...         "READY", 0.001,
+    ...     )
+    ...     with contextlib.redirect_stdout(io.StringIO()):
+    ...         result = run_preview(options)
+    ...     result
+    0
+
     Notes
     -----
     This terminal UI requires a live Rich console. Its import boundary is
@@ -606,6 +643,21 @@ def _options_from_namespace(arguments: argparse.Namespace) -> WorkloadOptions:
 
 def main(argv: t.Sequence[str] | None = None) -> int:
     """Run the ``serve`` or Rich ``preview`` command.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     root = pathlib.Path(temporary)
+    ...     import io
+    ...     with contextlib.redirect_stdout(io.StringIO()):
+    ...         result = main([
+    ...             "preview", "--output-dir", str(root / "output"),
+    ...             "--run-id", "run-7", "--source-root", str(root),
+    ...             "--frame-rate", "1000", "--duration", "0.001",
+    ...             "--delayed-match-after", "0", "--heartbeat-interval", "0.001",
+    ...         ])
+    ...     result
+    0
 
     Notes
     -----
