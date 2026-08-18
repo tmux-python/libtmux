@@ -1062,6 +1062,133 @@ def test_setup_acquires_private_scratch_under_permissive_umask(
             assert cleanup.complete, cleanup.errors
 
 
+@pytest.mark.parametrize(
+    ("target_kind", "failure_kind"),
+    (
+        ("scratch", "chmod"),
+        ("scratch", "stat"),
+        ("socket-root", "chmod"),
+        ("socket-root", "stat"),
+    ),
+)
+def test_private_directory_acquisition_rolls_back_post_mkdir_failure(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+    failure_kind: str,
+) -> None:
+    """A post-mkdir acquisition failure must remove the exact new directory."""
+    token = f"{target_kind[:3]}{failure_kind[:4]}0"
+    scratch = tmp_path / f"{target_kind}-{failure_kind}"
+    socket_root = pathlib.Path(benchmark_module.tempfile.gettempdir()) / (
+        f"libtmux-bench-{os.getpid():x}-{token}"
+    )
+    target = scratch if target_kind == "scratch" else socket_root
+    real_chmod = pathlib.Path.chmod
+    real_stat = pathlib.Path.stat
+    injected = False
+
+    def fail_target_chmod(path: pathlib.Path, *args: t.Any, **kwargs: t.Any) -> None:
+        nonlocal injected
+        if path == target:
+            injected = True
+            message = f"injected {target_kind} chmod failure"
+            raise OSError(message)
+        real_chmod(path, *args, **kwargs)
+
+    def fail_target_stat(
+        path: pathlib.Path,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> os.stat_result:
+        nonlocal injected
+        if path == target and not injected:
+            injected = True
+            message = f"injected {target_kind} stat failure"
+            raise OSError(message)
+        return real_stat(path, *args, **kwargs)
+
+    def unexpected_fuzzer(*_args: object, **_kwargs: object) -> t.NoReturn:
+        message = "fuzzer started after failed directory acquisition"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(
+        benchmark_module.uuid,
+        "uuid4",
+        lambda: types.SimpleNamespace(hex=token),
+    )
+    monkeypatch.setattr(benchmark_module, "start_fuzzer", unexpected_fuzzer)
+    if failure_kind == "chmod":
+        monkeypatch.setattr(pathlib.Path, "chmod", fail_target_chmod)
+    else:
+        monkeypatch.setattr(pathlib.Path, "stat", fail_target_stat)
+
+    try:
+        with pytest.raises(
+            OSError,
+            match=f"injected {target_kind} {failure_kind} failure",
+        ):
+            benchmark_module._prepare_context(
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.EngineLane.SUBPROCESS,
+                benchmark_module.ExecutionMode.SYNC,
+                scratch,
+                socket_path=None,
+                run_id=f"acquire-{target_kind}-{failure_kind}",
+                delayed_ordinal=0,
+            )
+
+        assert injected
+        assert not scratch.exists()
+        assert not socket_root.exists()
+    finally:
+        if socket_root.exists():
+            socket_root.rmdir()
+        if scratch.exists():
+            scratch.rmdir()
+
+
+def test_private_directory_acquisition_surfaces_exact_rollback_failure(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A nonempty rollback must preserve its path and both failure objects."""
+    directory = tmp_path / "rollback-failure"
+    marker = directory / "do-not-delete"
+    acquisition_error = OSError("injected chmod failure")
+    real_chmod = pathlib.Path.chmod
+
+    def fail_after_writing_marker(
+        path: pathlib.Path,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> None:
+        if path == directory:
+            marker.write_text("preserved\n", encoding="utf-8")
+            raise acquisition_error
+        real_chmod(path, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "chmod", fail_after_writing_marker)
+    try:
+        with pytest.raises(RuntimeError) as raised:
+            benchmark_module._acquire_private_directory(directory)
+
+        error = raised.value
+        assert isinstance(error, benchmark_module.PrivateDirectoryAcquisitionError)
+        assert error.directory == directory
+        assert error.acquisition_error is acquisition_error
+        assert isinstance(error.rollback_error, OSError)
+        assert error.__cause__ is acquisition_error
+        assert marker.read_text(encoding="utf-8") == "preserved\n"
+    finally:
+        if marker.exists():
+            marker.unlink()
+        if directory.exists():
+            directory.rmdir()
+
+
 def test_socket_path_limit_counts_encoded_bytes(
     benchmark_module: types.ModuleType,
 ) -> None:
