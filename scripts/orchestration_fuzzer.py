@@ -11,6 +11,7 @@ import argparse
 import contextlib
 import dataclasses
 import enum
+import hashlib
 import json
 import os
 import pathlib
@@ -139,11 +140,13 @@ class SentinelEvidence:
     scheduled_monotonic_ns : int
         Requested emission deadline on the monotonic clock.
     emitted_monotonic_ns : int
-        Actual append time on the monotonic clock.
+        Timestamp immediately before the append on the monotonic clock.
     scheduling_lateness_ns : int
         Difference between the actual append time and the scheduled deadline.
     sentinel : str
         Canonical text appended to the delayed stream.
+    sentinel_sha256 : str
+        SHA-256 of the exact newline-terminated UTF-8 bytes appended.
     """
 
     schema_version: int
@@ -155,6 +158,7 @@ class SentinelEvidence:
     emitted_monotonic_ns: int
     scheduling_lateness_ns: int
     sentinel: str
+    sentinel_sha256: str
 
 
 def stream_for_pane(ordinal: int, delayed_ordinal: int) -> StreamMode:
@@ -338,7 +342,7 @@ def _stream_path(paths: WorkloadPaths, mode: StreamMode) -> pathlib.Path:
     return paths.streams / f"{mode.value}.log"
 
 
-def _append_text(path: pathlib.Path, text: str) -> int:
+def _append_text(path: pathlib.Path, text: str, *, durable: bool = False) -> int:
     r"""Append one complete text record and return its UTF-8 byte count.
 
     Examples
@@ -347,11 +351,27 @@ def _append_text(path: pathlib.Path, text: str) -> int:
     ...     stream = pathlib.Path(temporary) / "stream.log"
     ...     _append_text(stream, "pi\n"), stream.read_text(encoding="utf-8")
     (3, 'pi\n')
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Existing append-only stream.
+    text : str
+        Exact text to encode as UTF-8 and append.
+    durable : bool
+        Flush and fsync the append before returning when true.
+
+    Returns
+    -------
+    int
+        Number of exact encoded bytes appended.
     """
     encoded = text.encode("utf-8")
     with path.open("ab") as stream:
         stream.write(encoded)
         stream.flush()
+        if durable:
+            os.fsync(stream.fileno())
     return len(encoded)
 
 
@@ -359,6 +379,8 @@ def _request_from_marker(
     marker: dict[str, t.Any],
     path: pathlib.Path,
     options: WorkloadOptions,
+    *,
+    seen_request_ids: t.Container[str] = (),
 ) -> tuple[str, int, str] | None:
     """Validate one request marker and return its delayed sentinel inputs.
 
@@ -372,6 +394,7 @@ def _request_from_marker(
     ...     {"request_id": "sample", "requested_monotonic_ns": 7},
     ...     pathlib.Path("sample.json"),
     ...     options,
+    ...     seen_request_ids=set(),
     ... )
     ('sample', 7, 'READY')
     """
@@ -381,12 +404,21 @@ def _request_from_marker(
     if (
         not isinstance(request_id, str)
         or not request_id
-        or path.stem != request_id
+        or len(request_id) > 128
+        or any(
+            not (character.isascii() and (character.isalnum() or character in "-_"))
+            for character in request_id
+        )
+        or path.name != f"{request_id}.json"
+        or request_id in seen_request_ids
         or isinstance(requested, bool)
         or not isinstance(requested, int)
+        or requested < 0
         or isinstance(value, bool)
         or not isinstance(value, str)
         or not value
+        or "\n" in value
+        or "\r" in value
     ):
         return None
     return request_id, requested, value
@@ -457,7 +489,7 @@ def run_serve(options: WorkloadOptions) -> int:
     activated_at_ns: int | None = None
     next_frame_ns: int | None = None
     epoch = 0
-    seen_requests: set[str] = set()
+    seen_request_ids: set[str] = set()
     pending_request: tuple[str, int, int, int, str] | None = None
 
     def publish_heartbeat(state: str, now_ns: int, force: bool = False) -> None:
@@ -513,15 +545,21 @@ def run_serve(options: WorkloadOptions) -> int:
 
             if pending_request is None:
                 for request_path in sorted(paths.requests.glob("*.json")):
-                    if request_path.name in seen_requests:
-                        continue
                     marker = read_control_marker(request_path, options.run_id)
                     if marker is None:
                         continue
-                    request = _request_from_marker(marker, request_path, options)
+                    request = _request_from_marker(
+                        marker,
+                        request_path,
+                        options,
+                        seen_request_ids=seen_request_ids,
+                    )
                     if request is None:
                         continue
                     request_id, requested_ns, value = request
+                    if (paths.sentinels / f"{request_id}.json").exists():
+                        seen_request_ids.add(request_id)
+                        continue
                     pending_request = (
                         request_id,
                         requested_ns,
@@ -529,7 +567,7 @@ def run_serve(options: WorkloadOptions) -> int:
                         requested_ns + delay_ns,
                         sentinel_text(options.run_id, request_id, value),
                     )
-                    seen_requests.add(request_path.name)
+                    seen_request_ids.add(request_id)
                     break
 
             if pending_request is not None and now_ns >= pending_request[3]:
@@ -540,10 +578,14 @@ def run_serve(options: WorkloadOptions) -> int:
                     scheduled_ns,
                     sentinel,
                 ) = pending_request
-                bytes_since_heartbeat += _append_text(
-                    _stream_path(paths, StreamMode.DELAYED_MATCH), f"{sentinel}\n"
-                )
+                sentinel_record = f"{sentinel}\n"
+                sentinel_bytes = sentinel_record.encode()
                 emitted_ns = time.monotonic_ns()
+                bytes_since_heartbeat += _append_text(
+                    _stream_path(paths, StreamMode.DELAYED_MATCH),
+                    sentinel_record,
+                    durable=True,
+                )
                 evidence = SentinelEvidence(
                     schema_version=1,
                     run_id=options.run_id,
@@ -554,6 +596,7 @@ def run_serve(options: WorkloadOptions) -> int:
                     emitted_monotonic_ns=emitted_ns,
                     scheduling_lateness_ns=emitted_ns - scheduled_ns,
                     sentinel=sentinel,
+                    sentinel_sha256=hashlib.sha256(sentinel_bytes).hexdigest(),
                 )
                 write_json_atomic(
                     paths.sentinels / f"{request_id}.json", dataclasses.asdict(evidence)
