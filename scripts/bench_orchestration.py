@@ -980,6 +980,63 @@ class SetupCleanupError(RuntimeError):
         )
 
 
+class PrivateDirectoryAcquisitionError(RuntimeError):
+    """A private directory failed acquisition and exact rollback.
+
+    Attributes
+    ----------
+    directory : pathlib.Path
+        Exact newly created directory whose rollback failed.
+    acquisition_error : BaseException
+        Original chmod, stat, or mode-verification failure.
+    rollback_error : BaseException
+        Failure raised by exact non-recursive ``Path.rmdir`` rollback.
+
+    Examples
+    --------
+    >>> acquire = OSError("chmod")
+    >>> rollback = OSError("not empty")
+    >>> error = PrivateDirectoryAcquisitionError(
+    ...     pathlib.Path("run"), acquire, rollback
+    ... )
+    >>> error.acquisition_error is acquire, error.rollback_error is rollback
+    (True, True)
+    """
+
+    def __init__(
+        self,
+        directory: pathlib.Path,
+        acquisition_error: BaseException,
+        rollback_error: BaseException,
+    ) -> None:
+        """Retain the exact directory and both acquisition failures.
+
+        >>> error = PrivateDirectoryAcquisitionError(
+        ...     pathlib.Path("run"), OSError("stat"), OSError("rmdir")
+        ... )
+        >>> "acquisition failed for run" in str(error)
+        True
+
+        Parameters
+        ----------
+        directory : pathlib.Path
+            Exact directory created by the failed acquisition.
+        acquisition_error : BaseException
+            Failure that prevented mode-0700 verification.
+        rollback_error : BaseException
+            Failure from exact non-recursive rollback.
+        """
+        self.directory = directory
+        self.acquisition_error = acquisition_error
+        self.rollback_error = rollback_error
+        super().__init__(
+            f"private directory acquisition failed for {directory}: "
+            f"{type(acquisition_error).__name__}: {acquisition_error}; "
+            "exact rollback failed: "
+            f"{type(rollback_error).__name__}: {rollback_error}"
+        )
+
+
 @dataclasses.dataclass(frozen=True)
 class ProcessIdentity:
     """One benchmark-owned process protected against PID reuse.
@@ -1795,14 +1852,54 @@ def _acquire_private_directory(directory: pathlib.Path) -> pathlib.Path:
         If another owner already created the directory.
     OSError
         If mode 0700 cannot be applied or verified.
+    PrivateDirectoryAcquisitionError
+        If mode acquisition and exact non-recursive rollback both fail.
     """
     directory.mkdir(mode=0o700, parents=True, exist_ok=False)
-    directory.chmod(0o700)
+    try:
+        directory.chmod(0o700)
+        _verify_private_directory_mode(directory)
+    except BaseException as acquisition_error:
+        try:
+            directory.rmdir()
+        except Exception as rollback_error:  # noqa: BLE001
+            raise PrivateDirectoryAcquisitionError(
+                directory,
+                acquisition_error,
+                rollback_error,
+            ) from acquisition_error
+        raise
+    else:
+        return directory
+
+
+def _verify_private_directory_mode(directory: pathlib.Path) -> None:
+    """Require one acquired directory to have exact mode 0700.
+
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     directory = pathlib.Path(temporary)
+    ...     directory.chmod(0o700)
+    ...     _verify_private_directory_mode(directory)
+
+    Parameters
+    ----------
+    directory : pathlib.Path
+        Existing directory whose effective permission bits are verified.
+
+    Returns
+    -------
+    None
+        After exact mode 0700 is observed.
+
+    Raises
+    ------
+    OSError
+        If stat fails or the observed permission bits differ from 0700.
+    """
     observed_mode = stat.S_IMODE(directory.stat().st_mode)
     if observed_mode != 0o700:
         message = f"private run directory mode is {oct(observed_mode)}, expected 0o700"
         raise OSError(message)
-    return directory
 
 
 def _stop_owned_process(
@@ -2502,11 +2599,11 @@ def _prepare_context(
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
-        cleanup_report = CleanupReport(
-            complete=not cleanup_errors,
-            errors=tuple(cleanup_errors),
-        )
-        if not cleanup_report.complete:
+        if cleanup_errors:
+            cleanup_report = CleanupReport(
+                complete=False,
+                errors=tuple(cleanup_errors),
+            )
             raise SetupCleanupError(setup_error, cleanup_report) from setup_error
         raise
 
