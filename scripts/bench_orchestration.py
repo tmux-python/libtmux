@@ -1037,7 +1037,7 @@ def write_json_atomic(
 
 
 def validate_report(report: RunReport) -> None:
-    """Reject internally inconsistent or incomplete terminal benchmark evidence.
+    """Reject internally inconsistent benchmark evidence.
 
     >>> report = RunReport(Topology(1, 1, 1))
     >>> validate_report(report)
@@ -1121,6 +1121,20 @@ def validate_report(report: RunReport) -> None:
         if step.status not in attempt_statuses:
             message = "invalid ramp attempt status"
             raise ValueError(message)
+    if report.ramp_kind != "none" and report.status == "in_progress":
+        pending = False
+        for step in report.ramp:
+            if step.status in terminal_statuses:
+                message = "in-progress ramp cannot contain a terminal attempt"
+                raise ValueError(message)
+            if step.status == "not_attempted":
+                if step.reason is not None:
+                    message = "in-progress pending attempt reason must be None"
+                    raise ValueError(message)
+                pending = True
+            elif pending:
+                message = "in-progress ramp requires a completed prefix"
+                raise ValueError(message)
     if (
         report.ramp_kind != "none"
         and report.status == "completed"

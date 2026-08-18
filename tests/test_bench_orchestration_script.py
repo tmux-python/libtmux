@@ -675,3 +675,144 @@ def test_validate_report_rejects_invalid_custom_shape_declaration(
 
     with pytest.raises(ValueError, match="custom ramp kind"):
         benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_in_progress_ramp_with_cutoff_attempt(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A runtime cutoff requires finalizing the report at the same checkpoint."""
+    shapes = (
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.Topology(1, 1, 2),
+        benchmark_module.Topology(1, 1, 3),
+    )
+    report = benchmark_module.RunReport(
+        requested_topology=shapes[-1],
+        status="in_progress",
+        ramp_kind="custom",
+        requested_shapes=shapes,
+        ramp=(
+            benchmark_module.RampStep(shapes[0], "completed"),
+            benchmark_module.RampStep(shapes[1], "cutoff", "pid_reserve"),
+            benchmark_module.RampStep(shapes[2], "not_attempted", "pid_reserve"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match=r"in-progress.*terminal"):
+        benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_in_progress_ramp_with_different_terminals(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """An unfinished report cannot retain competing terminal outcomes."""
+    shapes = (
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.Topology(1, 1, 2),
+        benchmark_module.Topology(1, 1, 3),
+    )
+    report = benchmark_module.RunReport(
+        requested_topology=shapes[-1],
+        status="in_progress",
+        ramp_kind="custom",
+        requested_shapes=shapes,
+        ramp=(
+            benchmark_module.RampStep(shapes[0], "refused", "pid_reserve"),
+            benchmark_module.RampStep(shapes[1], "failed", "tmux_exit"),
+            benchmark_module.RampStep(shapes[2], "not_attempted"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match=r"in-progress.*terminal"):
+        benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_in_progress_ramp_completed_after_pending(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Completed ramp work must remain a prefix of an unfinished checkpoint."""
+    shapes = (
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.Topology(1, 1, 2),
+        benchmark_module.Topology(1, 1, 3),
+    )
+    report = benchmark_module.RunReport(
+        requested_topology=shapes[-1],
+        status="in_progress",
+        ramp_kind="custom",
+        requested_shapes=shapes,
+        ramp=(
+            benchmark_module.RampStep(shapes[0], "completed"),
+            benchmark_module.RampStep(shapes[1], "not_attempted"),
+            benchmark_module.RampStep(shapes[2], "completed"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="completed prefix"):
+        benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_in_progress_ramp_pending_reason(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Pending attempts use ``None`` until a terminal reason exists."""
+    shapes = benchmark_module.canonical_ramp()
+    report = benchmark_module.RunReport(
+        requested_topology=shapes[-1],
+        status="in_progress",
+        ramp_kind="canonical",
+        requested_shapes=shapes,
+        ramp=tuple(
+            benchmark_module.RampStep(
+                shape,
+                "not_attempted",
+                "waiting" if index == 0 else None,
+            )
+            for index, shape in enumerate(shapes)
+        ),
+    )
+
+    with pytest.raises(ValueError, match=r"pending.*reason"):
+        benchmark_module.validate_report(report)
+
+
+def test_validate_report_accepts_initial_in_progress_ramp(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A canonical ramp may checkpoint before attempting its first shape."""
+    shapes = benchmark_module.canonical_ramp()
+    report = benchmark_module.RunReport(
+        requested_topology=shapes[-1],
+        status="in_progress",
+        ramp_kind="canonical",
+        requested_shapes=shapes,
+        ramp=tuple(
+            benchmark_module.RampStep(shape, "not_attempted") for shape in shapes
+        ),
+    )
+
+    benchmark_module.validate_report(report)
+
+
+def test_validate_report_accepts_in_progress_completed_prefix(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """An unfinished custom ramp may retain completed work before pending shapes."""
+    shapes = (
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.Topology(1, 1, 2),
+        benchmark_module.Topology(1, 1, 3),
+    )
+    report = benchmark_module.RunReport(
+        requested_topology=shapes[-1],
+        status="in_progress",
+        ramp_kind="custom",
+        requested_shapes=shapes,
+        ramp=(
+            benchmark_module.RampStep(shapes[0], "completed"),
+            benchmark_module.RampStep(shapes[1], "completed"),
+            benchmark_module.RampStep(shapes[2], "not_attempted"),
+        ),
+    )
+
+    benchmark_module.validate_report(report)
