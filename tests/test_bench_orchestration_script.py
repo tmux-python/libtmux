@@ -391,13 +391,56 @@ def test_write_json_atomic_replaces_complete_report(
     benchmark_module.write_json_atomic(report_path, report)
 
     payload = json.loads(report_path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["status"] == "completed"
     assert payload["requested_topology"] == {
         "sessions": 100,
         "windows_per_session": 100,
         "panes_per_window": 4,
     }
+
+
+@pytest.mark.parametrize("schema_version", (None, 1))
+def test_report_decoder_rejects_old_or_missing_ownership_schema(
+    benchmark_module: types.ModuleType,
+    schema_version: int | None,
+) -> None:
+    """Evidence without report ownership semantics must not decode as current."""
+    row = t.cast(
+        dict[str, object],
+        benchmark_module._json_value(
+            benchmark_module.RunReport(benchmark_module.Topology(1, 1, 1))
+        ),
+    )
+    if schema_version is None:
+        del row["schema_version"]
+    else:
+        row["schema_version"] = schema_version
+
+    with pytest.raises(ValueError, match="report schema_version"):
+        benchmark_module.run_report_from_json(row)
+
+
+@pytest.mark.parametrize("schema_version", (None, 1))
+def test_progress_decoder_rejects_old_or_missing_ownership_schema(
+    benchmark_module: types.ModuleType,
+    schema_version: int | None,
+) -> None:
+    """Evidence without progress ownership semantics must not enter recovery."""
+    row: dict[str, object] = {
+        "schema_version": schema_version,
+        "run_id": "run-7",
+        "sequence": 0,
+        "checkpoint": "worker.started",
+        "monotonic_ns": 1,
+        "processes": [],
+        "socket_ownership": None,
+    }
+    if schema_version is None:
+        del row["schema_version"]
+
+    with pytest.raises(ValueError, match="progress event"):
+        benchmark_module._progress_event_from_json(row)
 
 
 def test_write_json_atomic_syncs_file_then_parent(
@@ -1312,10 +1355,13 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
     monkeypatch.setattr(
         benchmark_module.subprocess, "Popen", unlink_without_killing_server
     )
+    registry = benchmark_module._PidfdRegistry()
+    assert registry.retain(ownerships[target].process)
     try:
         errors = benchmark_module._kill_exact_tmux_socket(
             target,
             timeout_s=1.0,
+            process_handles=registry,
             socket_ownership=ownerships[target],
         )
 
@@ -1331,6 +1377,7 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
         )
         assert still_alive.returncode == 0, still_alive.stderr
     finally:
+        registry.close()
         for socket_path in (target, unrelated):
             real_popen(
                 ("tmux", "-S", str(socket_path), "kill-server"),
@@ -1425,6 +1472,17 @@ def test_cleanup_preserves_live_replacement_after_original_server_exits(
             "replacement", int(replacement_pid.stdout.strip())
         )
         replacement_status = context.socket_path.lstat()
+        assert context.socket_ownership is not None
+        captured_socket = context.socket_ownership.socket
+        assert (
+            replacement_status.st_dev,
+            replacement_status.st_ino,
+            replacement_status.st_mtime_ns,
+        ) != (
+            captured_socket.st_dev,
+            captured_socket.st_ino,
+            captured_socket.st_mtime_ns,
+        )
 
         cleanup = asyncio.run(benchmark_module.cleanup_run(context, grace_s=0.3))
 
@@ -1468,6 +1526,56 @@ def test_cleanup_preserves_live_replacement_after_original_server_exits(
             registry.close()
         context.socket_path.unlink(missing_ok=True)
         benchmark_module._remove_supervised_scratch(scratch)
+
+
+def test_exact_socket_cleanup_preserves_reused_inode_number(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A replacement socket may reuse the original inode number.
+
+    The standard tmux fixtures cannot deterministically force filesystem inode
+    reuse, so this probe keeps device, inode, owner, and mode equal while
+    varying only the captured modification timestamp as inode-reuse evidence.
+    """
+    private = tmp_path / "reused-inode-number"
+    private.mkdir(mode=0o700)
+    socket_path = private / "tmux.sock"
+    replacement = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    replacement.bind(str(socket_path))
+    status = socket_path.lstat()
+    ownership = benchmark_module._SocketOwnership(
+        process=benchmark_module.ProcessIdentity("server", 2**31 - 1, 1),
+        socket=benchmark_module.SocketIdentity(
+            st_dev=status.st_dev,
+            st_ino=status.st_ino,
+            st_uid=status.st_uid,
+            st_mode=status.st_mode,
+            st_mtime_ns=status.st_mtime_ns - 1,
+        ),
+    )
+    registry = benchmark_module._PidfdRegistry()
+    try:
+        errors = benchmark_module._kill_exact_tmux_socket(
+            socket_path,
+            timeout_s=0.1,
+            process_handles=registry,
+            server_identity=ownership.process,
+            socket_ownership=ownership,
+        )
+
+        observed = socket_path.lstat()
+        assert errors
+        assert any("ownership changed" in error for error in errors)
+        assert (observed.st_dev, observed.st_ino, observed.st_mtime_ns) == (
+            status.st_dev,
+            status.st_ino,
+            status.st_mtime_ns,
+        )
+    finally:
+        registry.close()
+        replacement.close()
+        socket_path.unlink(missing_ok=True)
 
 
 def test_cleanup_kills_live_original_without_touching_replacement_path(
@@ -1646,10 +1754,12 @@ def test_exact_socket_cleanup_without_capability_preserves_path(
     node = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     node.bind(str(socket_path))
     before = socket_path.lstat()
+    registry = benchmark_module._PidfdRegistry()
     try:
         errors = benchmark_module._kill_exact_tmux_socket(
             socket_path,
             timeout_s=0.1,
+            process_handles=registry,
         )
 
         after = socket_path.lstat()
@@ -1657,6 +1767,7 @@ def test_exact_socket_cleanup_without_capability_preserves_path(
         assert "capability unavailable" in errors[0]
         assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
     finally:
+        registry.close()
         node.close()
         socket_path.unlink(missing_ok=True)
 
@@ -1693,9 +1804,9 @@ def test_exact_socket_cleanup_retain_failure_never_uses_pathname(
     before = socket_path.lstat()
     pathname_calls = 0
 
-    def refuse_owner_handle(current: t.Any, identity: t.Any) -> bool:
+    def refuse_owner_handle(identity: t.Any) -> bool:
         if identity == ownership.process:
-            current.errors.append("injected pidfd retain failure")
+            registry.errors.append("injected pidfd retain failure")
             return False
         pytest.fail("socket cleanup retained an unexpected identity")
 
@@ -1704,11 +1815,9 @@ def test_exact_socket_cleanup_retain_failure_never_uses_pathname(
         pathname_calls += 1
         pytest.fail("retain failure attempted pathname kill-server")
 
-    monkeypatch.setattr(
-        benchmark_module._PidfdRegistry,
-        "retain",
-        refuse_owner_handle,
-    )
+    registry = benchmark_module._PidfdRegistry()
+    monkeypatch.setattr(registry, "retain", refuse_owner_handle)
+    assert not registry.retain(ownership.process)
     monkeypatch.setattr(
         benchmark_module,
         "subprocess",
@@ -1718,6 +1827,8 @@ def test_exact_socket_cleanup_retain_failure_never_uses_pathname(
         errors = benchmark_module._kill_exact_tmux_socket(
             socket_path,
             timeout_s=0.1,
+            process_handles=registry,
+            server_identity=ownership.process,
             socket_ownership=ownership,
         )
 
@@ -1736,6 +1847,7 @@ def test_exact_socket_cleanup_retain_failure_never_uses_pathname(
         )
         assert answering.returncode == 0, answering.stderr
     finally:
+        registry.close()
         subprocess.run(
             ("tmux", "-S", str(socket_path), "kill-server"),
             check=False,
@@ -1747,6 +1859,229 @@ def test_exact_socket_cleanup_retain_failure_never_uses_pathname(
             timeout_s=2.0,
         )
         socket_path.unlink(missing_ok=True)
+
+
+def test_exact_socket_cleanup_reuses_previously_retained_server_handle(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Cleanup must not open a second pidfd after setup retained the server."""
+    scratch = tmp_path / "retained-server-handle"
+    context = benchmark_module.setup_sync(
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.EngineLane.SUBPROCESS,
+        scratch,
+        socket_path=scratch / "tmux.sock",
+        run_id="retained-server-handle",
+    )
+    server_identity = next(
+        identity for identity in context.processes if identity.role == "server"
+    )
+    assert server_identity in context.process_handles.retained
+
+    loop = asyncio.new_event_loop()
+    real_pidfd_open = benchmark_module.os.pidfd_open
+
+    def reject_new_server_handle(pid: int, flags: int) -> int:
+        if pid == server_identity.pid:
+            pytest.fail("cleanup attempted to acquire a second server pidfd")
+        return t.cast(int, real_pidfd_open(pid, flags))
+
+    try:
+        monkeypatch.setattr(
+            benchmark_module.os,
+            "pidfd_open",
+            reject_new_server_handle,
+        )
+        cleanup = loop.run_until_complete(
+            benchmark_module.cleanup_run(context, grace_s=0.3)
+        )
+    finally:
+        loop.close()
+        monkeypatch.setattr(benchmark_module.os, "pidfd_open", real_pidfd_open)
+        if scratch.exists():
+            rescue = asyncio.run(benchmark_module.cleanup_run(context, grace_s=0.3))
+            assert rescue.complete, rescue.errors
+
+    assert cleanup.complete, cleanup.errors
+    assert not benchmark_module.process_identity_matches(server_identity)
+
+
+def test_missing_socket_capability_escalates_retained_server_without_pathname(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Missing socket authority still permits TERM/KILL through the retained pidfd."""
+    private = tmp_path / "missing-socket-capability"
+    private.mkdir(mode=0o700)
+    socket_path = private / "tmux.sock"
+    node = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    node.bind(str(socket_path))
+    child = subprocess.Popen(
+        (
+            sys.executable,
+            "-c",
+            (
+                "import signal,time; "
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                "print('ready', flush=True); time.sleep(60)"
+            ),
+        ),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert child.stdout is not None
+    assert child.stdout.readline() == "ready\n"
+    identity = benchmark_module._record_process("server", child.pid)
+    registry = benchmark_module._PidfdRegistry()
+    assert registry.retain(identity)
+    signals: list[signal.Signals] = []
+    real_signal = registry.signal
+
+    def tracked_signal(current: t.Any, number: signal.Signals) -> bool:
+        signals.append(number)
+        return t.cast(bool, real_signal(current, number))
+
+    monkeypatch.setattr(registry, "signal", tracked_signal)
+
+    def reject_pathname(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        pytest.fail("missing capability contacted the socket pathname")
+
+    monkeypatch.setattr(benchmark_module.subprocess, "Popen", reject_pathname)
+    reaper = threading.Thread(target=child.wait)
+    reaper.start()
+    try:
+        errors = benchmark_module._kill_exact_tmux_socket(
+            socket_path,
+            timeout_s=0.1,
+            server_identity=identity,
+            socket_ownership=None,
+            process_handles=registry,
+        )
+    finally:
+        if child.poll() is None:
+            os.kill(child.pid, signal.SIGKILL)
+        reaper.join(timeout=2.0)
+        registry.close()
+        node.close()
+        socket_path.unlink(missing_ok=True)
+
+    assert errors
+    assert any("capability unavailable" in error for error in errors)
+    assert signals == [signal.SIGTERM, signal.SIGKILL]
+    assert not reaper.is_alive()
+
+
+def test_exact_stale_tmux_socket_is_removed_after_server_absence(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The captured inode may be unlinked after its exact tmux owner is absent."""
+    private = tmp_path / "stale-original"
+    private.mkdir(mode=0o700)
+    socket_path = private / "tmux.sock"
+    created = subprocess.run(
+        ("tmux", "-S", str(socket_path), "new-session", "-d", "-s", "owned"),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=2.0,
+    )
+    assert created.returncode == 0, created.stderr
+    ownership = benchmark_module._capture_socket_ownership(socket_path, timeout_s=1.0)
+    registry = benchmark_module._PidfdRegistry()
+    assert registry.retain(ownership.process)
+    try:
+        assert registry.signal(ownership.process, signal.SIGKILL)
+        assert not benchmark_module._wait_identity_absence(
+            (ownership.process,), timeout_s=2.0
+        )
+        assert socket_path.exists()
+
+        errors = benchmark_module._kill_exact_tmux_socket(
+            socket_path,
+            timeout_s=0.2,
+            server_identity=ownership.process,
+            socket_ownership=ownership,
+            process_handles=registry,
+        )
+
+        assert errors == ()
+        assert not socket_path.exists()
+    finally:
+        if benchmark_module.process_identity_matches(ownership.process):
+            registry.signal(ownership.process, signal.SIGKILL)
+            benchmark_module._wait_identity_absence((ownership.process,), timeout_s=2.0)
+        registry.close()
+        socket_path.unlink(missing_ok=True)
+
+
+def test_stale_socket_removal_rechecks_directory_before_unlink(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A deterministic replacement during the final recheck must be preserved."""
+    private = tmp_path / "stale-recheck"
+    private.mkdir(mode=0o700)
+    socket_path = private / "tmux.sock"
+    replacement_source = private / "replacement.sock"
+    original = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    original.bind(str(socket_path))
+    replacement = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    replacement.bind(str(replacement_source))
+    status = socket_path.lstat()
+    replacement_status = replacement_source.lstat()
+    assert (replacement_status.st_dev, replacement_status.st_ino) != (
+        status.st_dev,
+        status.st_ino,
+    )
+    ownership = benchmark_module._SocketOwnership(
+        benchmark_module.ProcessIdentity("server", os.getpid(), 1),
+        benchmark_module.SocketIdentity(
+            status.st_dev,
+            status.st_ino,
+            status.st_uid,
+            status.st_mode,
+            status.st_mtime_ns,
+        ),
+    )
+    checks = 0
+    real_verify = benchmark_module._verify_private_directory_mode
+
+    def replace_before_final_recheck(path: pathlib.Path) -> None:
+        nonlocal checks
+        checks += 1
+        real_verify(path)
+        if checks == 2:
+            original.close()
+            socket_path.unlink()
+            os.link(replacement_source, socket_path)
+
+    monkeypatch.setattr(
+        benchmark_module,
+        "_verify_private_directory_mode",
+        replace_before_final_recheck,
+    )
+    try:
+        errors = benchmark_module._remove_proven_stale_socket(
+            socket_path,
+            ownership,
+        )
+
+        assert checks == 2
+        assert errors
+        assert "ownership changed" in errors[0]
+        assert socket_path.exists()
+    finally:
+        original.close()
+        replacement.close()
+        socket_path.unlink(missing_ok=True)
+        replacement_source.unlink(missing_ok=True)
 
 
 def test_run_scenario_refuses_when_pidfds_are_unavailable(
@@ -2443,6 +2778,62 @@ def test_live_topology_lifecycle_cleans_each_engine_lane(
     assert not scratch.exists()
     assert os.environ["TMUX"] == "ambient-server"
     assert os.environ["TMUX_PANE"] == "%ambient"
+
+
+@pytest.mark.parametrize("mode_name", ("sync", "async"))
+def test_control_socket_mtime_stays_captured_through_start_and_close(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    mode_name: str,
+) -> None:
+    """Control startup and close preserve the captured modification timestamp."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    scratch = tmp_path / f"control-mtime-{mode_name}"
+    socket_path = scratch / "tmux.sock"
+    context = None
+    cleanup = None
+
+    async def exercise_async() -> None:
+        nonlocal context, cleanup
+        context = await benchmark_module.setup_async(
+            topology,
+            benchmark_module.EngineLane.CONTROL,
+            scratch,
+            socket_path=socket_path,
+            run_id=f"control-mtime-{mode_name}",
+        )
+        try:
+            assert context.socket_ownership is not None
+            captured_mtime = context.socket_ownership.socket.st_mtime_ns
+            assert socket_path.lstat().st_mtime_ns == captured_mtime
+            await context.engine.aclose()
+            assert socket_path.lstat().st_mtime_ns == captured_mtime
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    if mode_name == "async":
+        asyncio.run(exercise_async())
+    else:
+        context = benchmark_module.setup_sync(
+            topology,
+            benchmark_module.EngineLane.CONTROL,
+            scratch,
+            socket_path=socket_path,
+            run_id=f"control-mtime-{mode_name}",
+        )
+        try:
+            assert context.socket_ownership is not None
+            captured_mtime = context.socket_ownership.socket.st_mtime_ns
+            assert socket_path.lstat().st_mtime_ns == captured_mtime
+            context.engine.close()
+            assert socket_path.lstat().st_mtime_ns == captured_mtime
+        finally:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+
+    assert cleanup is not None
+    assert cleanup.complete, cleanup.errors
+    assert not socket_path.exists()
+    assert not scratch.exists()
 
 
 def _checksum_ids(ids: tuple[str, ...]) -> str:
@@ -5055,6 +5446,58 @@ def test_cli_watchdog_recovers_stalled_worker_and_exact_resources(
     _assert_terminal_cleanup(payload)
 
 
+def test_cli_watchdog_recovers_stall_after_atomic_server_ownership(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The first durable server identity must include its socket capability."""
+    report_path = tmp_path / "atomic-server.json"
+
+    completed = _run_cli(
+        "run",
+        "--shape",
+        "1x1x1",
+        "--runs",
+        "1",
+        "--warmup",
+        "0",
+        "--output",
+        str(report_path),
+        "--scratch-root",
+        str(tmp_path / "scratch"),
+        "--watchdog-seconds",
+        "0.3",
+        "--cleanup-grace-seconds",
+        "0.3",
+        "--_test-stall-after",
+        "identity.server.socket",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode != 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    events = tuple(
+        json.loads(line)
+        for line in pathlib.Path(payload["progress_path"])
+        .read_text(encoding="utf-8")
+        .splitlines()
+    )
+    server_events = tuple(
+        event
+        for event in events
+        if any(process["role"] == "server" for process in event["processes"])
+    )
+    assert len(server_events) == 1
+    assert (
+        server_events[0]["socket_ownership"]["process"] in server_events[0]["processes"]
+    )
+    assert payload["socket_ownership"] == server_events[0]["socket_ownership"]
+    assert not any(
+        event["checkpoint"] == "identity.server" and event["socket_ownership"] is None
+        for event in events
+    )
+    _assert_terminal_cleanup(payload)
+
+
 def test_watchdog_progress_requires_an_increasing_sequence(
     benchmark_module: types.ModuleType,
 ) -> None:
@@ -5131,6 +5574,7 @@ def test_socket_ownership_round_trips_and_rejects_progress_mutation(
             11,
             os.getuid(),
             stat.S_IFSOCK | 0o600,
+            13,
         ),
     )
     recorder = benchmark_module._WorkerRecorder(
@@ -5142,7 +5586,6 @@ def test_socket_ownership_round_trips_and_rejects_progress_mutation(
         progress,
     )
 
-    recorder.record_identities((owner,), checkpoint="identity.server")
     recorder.record_socket_ownership(ownership)
 
     loaded = benchmark_module.load_run_report(checkpoint)
@@ -5162,11 +5605,15 @@ def test_socket_ownership_round_trips_and_rejects_progress_mutation(
             "st_ino": 11,
             "st_uid": os.getuid(),
             "st_mode": stat.S_IFSOCK | 0o600,
+            "st_mtime_ns": 13,
         },
     }
+    assert loaded.processes == (owner,)
     assert loaded.socket_ownership == ownership
     assert payload["socket_ownership"] == expected
-    assert events[-1].socket_ownership == ownership
+    assert len(events) == 1
+    assert events[0].processes == (owner,)
+    assert events[0].socket_ownership == ownership
 
     registry = benchmark_module._PidfdRegistry()
     tracker = benchmark_module._ProgressTracker(progress, "run-7", registry)
@@ -5181,9 +5628,10 @@ def test_socket_ownership_round_trips_and_rejects_progress_mutation(
             progress,
             benchmark_module.ProgressEvent(
                 "run-7",
-                2,
+                1,
                 "identity.server.socket.changed",
                 time.monotonic_ns(),
+                processes=(owner,),
                 socket_ownership=changed,
             ),
         )
@@ -5200,6 +5648,7 @@ def test_socket_ownership_round_trips_and_rejects_progress_mutation(
         ("st_ino", 0),
         ("st_uid", -1),
         ("st_mode", stat.S_IFREG | 0o600),
+        ("st_mtime_ns", 0),
     ),
 )
 def test_progress_decoder_rejects_invalid_socket_ownership_schema(
@@ -5213,10 +5662,11 @@ def test_progress_decoder_rejects_invalid_socket_ownership_schema(
         "st_ino": 11,
         "st_uid": os.getuid(),
         "st_mode": stat.S_IFSOCK | 0o600,
+        "st_mtime_ns": 13,
     }
     socket_row[field] = value
     row = {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_id": "run-7",
         "sequence": 0,
         "checkpoint": "identity.server.socket",
@@ -5230,6 +5680,126 @@ def test_progress_decoder_rejects_invalid_socket_ownership_schema(
 
     with pytest.raises(ValueError, match="socket ownership"):
         benchmark_module._progress_event_from_json(row)
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("server-only", "ownership-only", "mismatched-server"),
+)
+def test_progress_decoder_requires_atomic_server_ownership_event(
+    benchmark_module: types.ModuleType,
+    case: str,
+) -> None:
+    """One progress row must pair its server delta with its exact capability."""
+    server = {"role": "server", "pid": 2, "start_time": 3}
+    other_server = {"role": "server", "pid": 5, "start_time": 7}
+    ownership = {
+        "process": server,
+        "socket": {
+            "st_dev": 11,
+            "st_ino": 13,
+            "st_uid": os.getuid(),
+            "st_mode": stat.S_IFSOCK | 0o600,
+            "st_mtime_ns": 17,
+        },
+    }
+    processes: list[dict[str, object]] = []
+    socket_ownership: dict[str, object] | None = None
+    if case == "server-only":
+        processes = [server]
+    elif case == "ownership-only":
+        socket_ownership = ownership
+    else:
+        processes = [other_server]
+        socket_ownership = ownership
+    row = {
+        "schema_version": 2,
+        "run_id": "run-7",
+        "sequence": 0,
+        "checkpoint": "identity.server.socket",
+        "monotonic_ns": 1,
+        "processes": processes,
+        "socket_ownership": socket_ownership,
+    }
+
+    with pytest.raises(ValueError, match="atomic server socket ownership"):
+        benchmark_module._progress_event_from_json(row)
+
+
+def test_progress_decoder_accepts_non_server_identity_without_socket_ownership(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Non-server process deltas do not require a socket capability."""
+    row = {
+        "schema_version": 2,
+        "run_id": "run-7",
+        "sequence": 0,
+        "checkpoint": "identity.fuzzer",
+        "monotonic_ns": 1,
+        "processes": [{"role": "fuzzer", "pid": 2, "start_time": 3}],
+        "socket_ownership": None,
+    }
+
+    event = benchmark_module._progress_event_from_json(row)
+
+    assert event.processes == (benchmark_module.ProcessIdentity("fuzzer", 2, 3),)
+    assert event.socket_ownership is None
+
+
+def test_progress_tracker_rejects_split_server_ownership_before_merge(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A server-only row cannot be repaired by a later ownership-only row."""
+    progress = tmp_path / "split-progress.jsonl"
+    server = {"role": "server", "pid": 2, "start_time": 3}
+    rows = (
+        {
+            "schema_version": 2,
+            "run_id": "run-7",
+            "sequence": 0,
+            "checkpoint": "identity.server",
+            "monotonic_ns": 1,
+            "processes": [server],
+            "socket_ownership": None,
+        },
+        {
+            "schema_version": 2,
+            "run_id": "run-7",
+            "sequence": 1,
+            "checkpoint": "identity.server.socket",
+            "monotonic_ns": 2,
+            "processes": [],
+            "socket_ownership": {
+                "process": server,
+                "socket": {
+                    "st_dev": 11,
+                    "st_ino": 13,
+                    "st_uid": os.getuid(),
+                    "st_mode": stat.S_IFSOCK | 0o600,
+                    "st_mtime_ns": 17,
+                },
+            },
+        },
+    )
+    progress.write_text(
+        "".join(f"{json.dumps(row)}\n" for row in rows),
+        encoding="utf-8",
+    )
+    registry = benchmark_module._PidfdRegistry()
+    tracker = benchmark_module._ProgressTracker(progress, "run-7", registry)
+    try:
+        with pytest.raises(
+            ValueError, match="progress journal contains an invalid event"
+        ):
+            tracker.drain(terminal=True)
+
+        assert tracker.highest_sequence == -1
+        assert tracker.identities == ()
+        assert tracker.socket_ownership is None
+        assert registry.retained == ()
+    finally:
+        registry.close()
 
 
 def test_progress_append_retries_short_writes_and_syncs_new_parent(
@@ -5936,6 +6506,84 @@ def test_validator_accepts_partial_active_failure_after_complete_prefix(
     )
 
 
+def _non_control_wait_boundary_report(benchmark_module: types.ModuleType) -> t.Any:
+    """Build one terminal report at the production non-control wait boundary."""
+    base = _failed_report_with_completed_mutation_prefix(benchmark_module)
+    topology = base.requested_topology
+    name = "wait.capture-poll"
+    samples = tuple(
+        benchmark_module.RawSample(
+            10 + ordinal,
+            True,
+            verified=True,
+            strategy=name,
+            ordinal=ordinal,
+        )
+        for ordinal in range(2)
+    )
+    observations = tuple(
+        benchmark_module.PhaseObservation(ordinal, name, 10 + ordinal)
+        for ordinal in range(2)
+    )
+    capture = benchmark_module.PhaseReport(
+        name,
+        topology,
+        topology,
+        samples=samples,
+        summary=benchmark_module.summarize_ns((10, 11)),
+        status="completed",
+        warmup=2,
+        runs=2,
+        warmup_observations=tuple(
+            benchmark_module.PhaseObservation(ordinal, name, 2 + ordinal)
+            for ordinal in range(2)
+        ),
+        observations=observations,
+    )
+    disposition = benchmark_module.PhaseReport(
+        "wait.control-stream",
+        topology,
+        topology,
+        status="not_applicable",
+        warmup=2,
+        runs=2,
+    )
+    return dataclasses.replace(
+        base,
+        status="cutoff",
+        phases=(*base.phases[:3], capture, disposition),
+        failed_phase="cancellation",
+        error="KeyboardInterrupt: cancelled after wait disposition",
+    )
+
+
+def test_validator_accepts_completed_capture_then_exact_not_applicable_control(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A non-control wait group may stop after its synthetic disposition row."""
+    report = _non_control_wait_boundary_report(benchmark_module)
+
+    benchmark_module.validate_report(report)
+
+
+@pytest.mark.parametrize("field", ("warmup", "runs"))
+def test_validator_rejects_malformed_not_applicable_control_disposition(
+    benchmark_module: types.ModuleType,
+    field: str,
+) -> None:
+    """Invented not-applicable counts cannot extend a reachable wait boundary."""
+    report = _non_control_wait_boundary_report(benchmark_module)
+    disposition = report.phases[-1]
+    disposition = dataclasses.replace(disposition, **{field: 1})
+    report = dataclasses.replace(
+        report,
+        phases=(*report.phases[:-1], disposition),
+    )
+
+    with pytest.raises(ValueError, match="reachable seeded strategy boundary"):
+        benchmark_module.validate_report(report)
+
+
 def test_validator_requires_socket_capability_for_owned_server_cleanup(
     benchmark_module: types.ModuleType,
 ) -> None:
@@ -5956,6 +6604,7 @@ def test_validator_requires_socket_capability_for_owned_server_cleanup(
             11,
             os.getuid(),
             stat.S_IFSOCK | 0o600,
+            13,
         ),
     )
     benchmark_module.validate_report(
