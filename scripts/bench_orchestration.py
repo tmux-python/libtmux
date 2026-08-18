@@ -25,6 +25,7 @@ import resource
 import shlex
 import shutil
 import signal
+import stat
 import statistics
 import subprocess
 import sys
@@ -32,6 +33,7 @@ import tempfile
 import time
 import types
 import typing as t
+import uuid
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
@@ -923,6 +925,61 @@ class CleanupReport:
     errors: tuple[str, ...] = ()
 
 
+class SetupCleanupError(RuntimeError):
+    """A setup failure whose required cleanup also failed.
+
+    Attributes
+    ----------
+    setup_error : BaseException
+        Original setup exception retained as the chained cause.
+    cleanup_report : CleanupReport
+        Structured evidence from the unsuccessful cleanup attempt.
+
+    Examples
+    --------
+    >>> cause = ValueError("setup")
+    >>> error = SetupCleanupError(cause, CleanupReport(False, ("socket remains",)))
+    >>> error.setup_error is cause, error.cleanup_report.complete
+    (True, False)
+    """
+
+    def __init__(
+        self,
+        setup_error: BaseException,
+        cleanup_report: CleanupReport,
+    ) -> None:
+        """Retain the original setup error and cleanup evidence.
+
+        >>> error = SetupCleanupError(
+        ...     RuntimeError("build"), CleanupReport(False, ("pid remains",))
+        ... )
+        >>> str(error)
+        'setup failed with RuntimeError; cleanup incomplete: pid remains'
+
+        Parameters
+        ----------
+        setup_error : BaseException
+            Failure that triggered partial-run cleanup.
+        cleanup_report : CleanupReport
+            Incomplete cleanup result with accessible error evidence.
+
+        Raises
+        ------
+        ValueError
+            If the supplied cleanup report claims completion.
+        """
+        if cleanup_report.complete:
+            message = "setup cleanup error requires an incomplete cleanup report"
+            raise ValueError(message)
+        self.setup_error = setup_error
+        self.cleanup_report = cleanup_report
+        detail = "; ".join(cleanup_report.errors) or "unspecified cleanup failure"
+        super().__init__(
+            f"setup failed with {type(setup_error).__name__}; "
+            f"cleanup incomplete: {detail}"
+        )
+
+
 @dataclasses.dataclass(frozen=True)
 class ProcessIdentity:
     """One benchmark-owned process protected against PID reuse.
@@ -1091,6 +1148,8 @@ class RunContext:
         Exclusive directory removed during cleanup.
     socket_path : pathlib.Path
         Explicit isolated tmux socket path.
+    socket_root : pathlib.Path or None
+        Short private directory owned only when the socket path is implicit.
     server : Server
         Classic server value used only to bind engines to the socket.
     engine : TmuxEngine or AsyncTmuxEngine
@@ -1105,6 +1164,8 @@ class RunContext:
         Exact declared session names.
     expected_window_names : tuple[str, ...]
         Exact declared window names.
+    expected_window_parents : tuple[tuple[str, str], ...]
+        Declared window-name to session-name ownership pairs.
     setup_duration_ns : int
         Timed construction duration excluding activity stabilization.
     processes : tuple[ProcessIdentity, ...]
@@ -1115,6 +1176,10 @@ class RunContext:
         Verified stable window identifiers.
     pane_ids : tuple[str, ...]
         Verified stable pane identifiers.
+    session_bindings : tuple[tuple[str, str], ...]
+        Verified session-name to session-ID bindings.
+    window_bindings : tuple[tuple[str, str, str], ...]
+        Verified window-name, window-ID, and parent-session-ID bindings.
     delayed_pane_id : str or None
         Verified pane following the unique delayed stream.
     topology_verified : bool
@@ -1143,6 +1208,7 @@ class RunContext:
     run_id: str
     scratch: pathlib.Path
     socket_path: pathlib.Path
+    socket_root: pathlib.Path | None
     server: Server
     engine: TmuxEngine | AsyncTmuxEngine
     fuzzer: subprocess.Popen[bytes]
@@ -1150,11 +1216,14 @@ class RunContext:
     delayed_ordinal: int
     expected_session_names: tuple[str, ...]
     expected_window_names: tuple[str, ...]
+    expected_window_parents: tuple[tuple[str, str], ...]
     setup_duration_ns: int
     processes: tuple[ProcessIdentity, ...]
     session_ids: tuple[str, ...] = ()
     window_ids: tuple[str, ...] = ()
     pane_ids: tuple[str, ...] = ()
+    session_bindings: tuple[tuple[str, str], ...] = ()
+    window_bindings: tuple[tuple[str, str, str], ...] = ()
     delayed_pane_id: str | None = None
     topology_verified: bool = False
     activity_epoch: int | None = None
@@ -1662,6 +1731,165 @@ def process_identity_matches(identity: ProcessIdentity) -> bool:
     return _process_start_time(identity.pid) == identity.start_time
 
 
+_UNIX_SOCKET_PATH_MAX_BYTES = 107
+
+
+def _validate_socket_path(path: pathlib.Path) -> pathlib.Path:
+    """Validate one pathname against the Linux Unix-socket ABI ceiling.
+
+    Linux defines ``sockaddr_un.sun_path`` as 108 bytes. Pathname sockets need
+    one trailing NUL byte, leaving 107 encoded filesystem bytes for tmux's
+    socket path.
+
+    >>> boundary = pathlib.Path("/" + "é" * 53)
+    >>> len(os.fsencode(boundary)), _validate_socket_path(boundary) == boundary
+    (107, True)
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Candidate tmux socket pathname.
+
+    Returns
+    -------
+    pathlib.Path
+        The accepted path unchanged.
+
+    Raises
+    ------
+    ValueError
+        If the encoded path contains NUL or exceeds 107 bytes.
+    """
+    encoded = os.fsencode(path)
+    if b"\0" in encoded:
+        message = "tmux socket path must not contain NUL"
+        raise ValueError(message)
+    if len(encoded) > _UNIX_SOCKET_PATH_MAX_BYTES:
+        message = f"tmux socket path exceeds 107 encoded bytes: {len(encoded)} bytes"
+        raise ValueError(message)
+    return path
+
+
+def _acquire_private_directory(directory: pathlib.Path) -> pathlib.Path:
+    """Create and verify an exclusively acquired mode-0700 directory.
+
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     run_dir = pathlib.Path(temporary) / "run"
+    ...     acquired = _acquire_private_directory(run_dir)
+    ...     oct(stat.S_IMODE(acquired.stat().st_mode))
+    '0o700'
+
+    Parameters
+    ----------
+    directory : pathlib.Path
+        New directory whose pre-existence rejects acquisition.
+
+    Returns
+    -------
+    pathlib.Path
+        The verified private directory.
+
+    Raises
+    ------
+    FileExistsError
+        If another owner already created the directory.
+    OSError
+        If mode 0700 cannot be applied or verified.
+    """
+    directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    directory.chmod(0o700)
+    observed_mode = stat.S_IMODE(directory.stat().st_mode)
+    if observed_mode != 0o700:
+        message = f"private run directory mode is {oct(observed_mode)}, expected 0o700"
+        raise OSError(message)
+    return directory
+
+
+def _stop_owned_process(
+    process: subprocess.Popen[bytes] | subprocess.Popen[str],
+    identity: ProcessIdentity,
+    *,
+    grace_s: float = 1.0,
+) -> CleanupReport:
+    """Boundedly stop and reap one child without signaling a reused PID.
+
+    >>> child = subprocess.Popen((sys.executable, "-c", "pass"))
+    >>> child.wait(timeout=1.0)
+    0
+    >>> _stop_owned_process(
+    ...     child, ProcessIdentity("finished", child.pid, -1), grace_s=0.01
+    ... ).complete
+    True
+
+    Parameters
+    ----------
+    process : subprocess.Popen[bytes] or subprocess.Popen[str]
+        Directly owned child handle used for bounded waits and reaping.
+    identity : ProcessIdentity
+        PID and procfs start time recorded immediately after spawn.
+    grace_s : float
+        Maximum wait after TERM and again after identity-checked KILL.
+
+    Returns
+    -------
+    CleanupReport
+        Complete only when the child is reaped and its identity is absent.
+
+    Raises
+    ------
+    ValueError
+        If the cleanup grace is not positive.
+    """
+    if grace_s <= 0:
+        message = "process cleanup grace must be positive"
+        raise ValueError(message)
+    errors: list[str] = []
+    process.poll()
+    if process.returncode is None:
+        if process_identity_matches(identity):
+            try:
+                os.kill(identity.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except OSError as error:
+                errors.append(
+                    f"{identity.role} pid {identity.pid} SIGTERM: "
+                    f"{type(error).__name__}: {error}"
+                )
+        else:
+            errors.append(
+                f"{identity.role} pid {identity.pid} identity changed before SIGTERM"
+            )
+        try:
+            process.wait(timeout=grace_s)
+        except subprocess.TimeoutExpired:
+            if process_identity_matches(identity):
+                try:
+                    os.kill(identity.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except OSError as error:
+                    errors.append(
+                        f"{identity.role} pid {identity.pid} SIGKILL: "
+                        f"{type(error).__name__}: {error}"
+                    )
+            else:
+                errors.append(
+                    f"{identity.role} pid {identity.pid} identity changed "
+                    "before SIGKILL"
+                )
+            try:
+                process.wait(timeout=grace_s)
+            except subprocess.TimeoutExpired:
+                errors.append(f"{identity.role} pid {identity.pid} was not reaped")
+    if process_identity_matches(identity):
+        errors.append(
+            f"{identity.role} pid {identity.pid} with start time "
+            f"{identity.start_time} remains"
+        )
+    return CleanupReport(complete=not errors, errors=tuple(errors))
+
+
 def _stream_name(ordinal: int, delayed_ordinal: int) -> str:
     """Return the Task 1 stream name for one global stable pane ordinal.
 
@@ -1780,6 +2008,36 @@ def _only_control_client_name(clients: tuple[ClientSnapshot, ...]) -> str:
     return clients[0].name
 
 
+def _only_process_identity(
+    identities: list[ProcessIdentity],
+) -> ProcessIdentity:
+    """Return the sole process identity transferred by a child starter.
+
+    >>> identity = ProcessIdentity("fuzzer", 42, 100)
+    >>> _only_process_identity([identity]) is identity
+    True
+
+    Parameters
+    ----------
+    identities : list[ProcessIdentity]
+        Mutable handoff populated before child startup returns.
+
+    Returns
+    -------
+    ProcessIdentity
+        The single transferred owner identity.
+
+    Raises
+    ------
+    RuntimeError
+        If startup did not transfer exactly one identity.
+    """
+    if len(identities) != 1:
+        message = "child startup did not transfer exactly one process identity"
+        raise RuntimeError(message)
+    return identities[0]
+
+
 def build_workspaces(
     topology: Topology,
     streams_dir: pathlib.Path,
@@ -1864,6 +2122,64 @@ def build_workspaces(
     return WorkspaceSet(workspaces)
 
 
+def _wait_for_fuzzer_ready(
+    process: subprocess.Popen[bytes],
+    ready: pathlib.Path,
+    run_id: str,
+    *,
+    timeout_s: float,
+) -> None:
+    """Wait boundedly for one exact fuzzer readiness marker.
+
+    >>> finished = subprocess.Popen((sys.executable, "-c", "pass"))
+    >>> finished.wait(timeout=1.0)
+    0
+    >>> try:
+    ...     _wait_for_fuzzer_ready(
+    ...         finished, pathlib.Path("missing.json"), "run-7", timeout_s=0.01
+    ...     )
+    ... except RuntimeError as error:
+    ...     print(str(error).startswith("fuzzer exited before ready"))
+    True
+
+    Parameters
+    ----------
+    process : subprocess.Popen[bytes]
+        Live central fuzzer child.
+    ready : pathlib.Path
+        Atomic readiness marker path.
+    run_id : str
+        Exact owner required in the marker.
+    timeout_s : float
+        Maximum monotonic wait.
+
+    Returns
+    -------
+    None
+        After the exact marker is visible.
+
+    Raises
+    ------
+    RuntimeError
+        If the child exits or the marker misses its deadline.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            message = f"fuzzer exited before ready with code {process.returncode}"
+            raise RuntimeError(message)
+        try:
+            marker = json.loads(ready.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            time.sleep(0.01)
+            continue
+        if marker == {"schema_version": 1, "run_id": run_id}:
+            return
+        time.sleep(0.01)
+    message = f"fuzzer did not become ready within {timeout_s}s"
+    raise RuntimeError(message)
+
+
 def start_fuzzer(
     scratch: pathlib.Path,
     run_id: str,
@@ -1871,6 +2187,7 @@ def start_fuzzer(
     ready_timeout_s: float = 5.0,
     frame_rate_hz: float = 40.0,
     duration_s: float = 300.0,
+    _identity_out: list[ProcessIdentity] | None = None,
 ) -> subprocess.Popen[bytes]:
     """Start the paused Task 1 service and wait for its exact ready marker.
 
@@ -1894,6 +2211,9 @@ def start_fuzzer(
         Active frames per stream per second after gate release.
     duration_s : float
         Maximum active service duration.
+    _identity_out : list[ProcessIdentity] | None
+        Internal ownership handoff populated with the identity captured at
+        spawn time before this function returns.
 
     Returns
     -------
@@ -1906,6 +2226,8 @@ def start_fuzzer(
         If the run identity or timeout is invalid.
     RuntimeError
         If the service exits or misses its ready deadline.
+    SetupCleanupError
+        If a startup failure is followed by incomplete child cleanup.
     """
     if not run_id:
         message = "run_id must be nonempty"
@@ -1950,25 +2272,49 @@ def start_fuzzer(
         stderr=subprocess.DEVNULL,
     )
     ready = output_dir / "ready.json"
-    deadline = time.monotonic() + ready_timeout_s
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            message = f"fuzzer exited before ready with code {process.returncode}"
-            raise RuntimeError(message)
-        try:
-            marker = json.loads(ready.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            time.sleep(0.01)
-            continue
-        if marker == {"schema_version": 1, "run_id": run_id}:
-            return process
-        time.sleep(0.01)
-    if process.poll() is None:
-        process.terminate()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=1.0)
-    message = f"fuzzer did not become ready within {ready_timeout_s}s"
-    raise RuntimeError(message)
+    identity: ProcessIdentity | None = None
+    try:
+        identity = _record_process("fuzzer", process.pid)
+        _wait_for_fuzzer_ready(
+            process,
+            ready,
+            run_id,
+            timeout_s=ready_timeout_s,
+        )
+        if _identity_out is not None:
+            _identity_out.append(identity)
+    except BaseException as startup_error:
+        if identity is None:
+            start_time = _process_start_time(process.pid)
+            if start_time is not None:
+                identity = ProcessIdentity("fuzzer", process.pid, start_time)
+        if identity is None:
+            process.poll()
+            if process.returncode is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    cleanup_error = (
+                        f"fuzzer pid {process.pid} identity unavailable; "
+                        "child was not reaped"
+                    )
+                    cleanup_report = CleanupReport(
+                        complete=False,
+                        errors=(cleanup_error,),
+                    )
+                else:
+                    cleanup_report = CleanupReport(complete=True)
+            else:
+                process.wait()
+                cleanup_report = CleanupReport(complete=True)
+        else:
+            cleanup_report = _stop_owned_process(process, identity)
+        if not cleanup_report.complete:
+            raise SetupCleanupError(startup_error, cleanup_report) from startup_error
+        raise
+    else:
+        return process
 
 
 def _prepare_context(
@@ -2004,7 +2350,7 @@ def _prepare_context(
     scratch : pathlib.Path
         New exclusive directory for this run.
     socket_path : pathlib.Path | None
-        Explicit socket path, defaulting inside ``scratch``.
+        Explicit scratch-contained path, or ``None`` for a short owned root.
     run_id : str
         Safe identifier used in markers and tmux names.
     delayed_ordinal : int
@@ -2020,7 +2366,11 @@ def _prepare_context(
     ValueError
         If identifiers, paths, or the delayed ordinal are invalid.
     FileExistsError
-        If ``scratch`` already exists.
+        If ``scratch`` or the generated socket root already exists.
+    OSError
+        If a private mode cannot be applied or resources cannot be created.
+    SetupCleanupError
+        If partial resource acquisition cannot be completely cleaned.
     """
     if not 0 <= delayed_ordinal < topology.panes:
         message = "delayed pane ordinal must identify a requested pane"
@@ -2034,16 +2384,26 @@ def _prepare_context(
         )
         raise ValueError(message)
     resolved_scratch = scratch.resolve()
-    resolved_socket = (socket_path or scratch / "tmux.sock").resolve()
-    if not resolved_socket.is_relative_to(resolved_scratch):
-        message = "socket path must stay inside the run scratch directory"
-        raise ValueError(message)
+    socket_root: pathlib.Path | None
+    if socket_path is None:
+        socket_root = pathlib.Path(tempfile.gettempdir()).resolve() / (
+            f"libtmux-bench-{os.getpid():x}-{uuid.uuid4().hex[:8]}"
+        )
+        resolved_socket = _validate_socket_path(socket_root / "tmux.sock")
+    else:
+        socket_root = None
+        resolved_socket = _validate_socket_path(socket_path.resolve())
+        if not resolved_socket.is_relative_to(resolved_scratch):
+            message = "explicit socket path must stay inside the run scratch directory"
+            raise ValueError(message)
     ambient_tmux_environment = (
         os.environ.pop("TMUX", None),
         os.environ.pop("TMUX_PANE", None),
     )
     scratch_created = False
+    socket_root_created = False
     fuzzer: subprocess.Popen[bytes] | None = None
+    fuzzer_identity: ProcessIdentity | None = None
     try:
         from libtmux.experimental.engines import (
             AsyncControlModeEngine,
@@ -2053,9 +2413,18 @@ def _prepare_context(
         )
         from libtmux.server import Server
 
-        scratch.mkdir(parents=True, exist_ok=False)
+        _acquire_private_directory(resolved_scratch)
         scratch_created = True
-        fuzzer = start_fuzzer(scratch, run_id)
+        if socket_root is not None:
+            _acquire_private_directory(socket_root)
+            socket_root_created = True
+        fuzzer_identities: list[ProcessIdentity] = []
+        fuzzer = start_fuzzer(
+            resolved_scratch,
+            run_id,
+            _identity_out=fuzzer_identities,
+        )
+        fuzzer_identity = _only_process_identity(fuzzer_identities)
         server = Server(socket_path=resolved_socket, config_file=os.devnull)
         if mode is ExecutionMode.SYNC:
             engine: TmuxEngine | AsyncTmuxEngine
@@ -2070,7 +2439,7 @@ def _prepare_context(
                 if lane is EngineLane.SUBPROCESS
                 else AsyncControlModeEngine.for_server(server)
             )
-        streams_dir = scratch / "fuzzer" / "streams"
+        streams_dir = resolved_scratch / "fuzzer" / "streams"
         streams = tuple(
             streams_dir / f"{name}.log"
             for name in ("editor", "dev-server", "installer", "delayed-match")
@@ -2080,8 +2449,9 @@ def _prepare_context(
             lane=lane,
             mode=mode,
             run_id=run_id,
-            scratch=scratch,
+            scratch=resolved_scratch,
             socket_path=resolved_socket,
+            socket_root=socket_root,
             server=server,
             engine=engine,
             fuzzer=fuzzer,
@@ -2095,17 +2465,36 @@ def _prepare_context(
                 for session_index in range(topology.sessions)
                 for window_index in range(topology.windows_per_session)
             ),
+            expected_window_parents=tuple(
+                (
+                    _window_name(run_id, session_index, window_index),
+                    _session_name(run_id, session_index),
+                )
+                for session_index in range(topology.sessions)
+                for window_index in range(topology.windows_per_session)
+            ),
             setup_duration_ns=0,
-            processes=(_record_process("fuzzer", fuzzer.pid),),
+            processes=(fuzzer_identity,),
             ambient_tmux_environment=ambient_tmux_environment,
         )
-    except BaseException:
-        if fuzzer is not None and fuzzer.poll() is None:
-            fuzzer.terminate()
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                fuzzer.wait(timeout=1.0)
-        if scratch_created:
-            shutil.rmtree(scratch, ignore_errors=True)
+    except BaseException as setup_error:
+        cleanup_errors: list[str] = []
+        if fuzzer is not None and fuzzer_identity is not None:
+            cleanup_errors.extend(_stop_owned_process(fuzzer, fuzzer_identity).errors)
+        for label, directory, acquired in (
+            ("socket root", socket_root, socket_root_created),
+            ("scratch", resolved_scratch, scratch_created),
+        ):
+            if directory is None or not acquired:
+                continue
+            try:
+                shutil.rmtree(directory)
+            except OSError as cleanup_error:
+                cleanup_errors.append(
+                    f"{label} removal: {type(cleanup_error).__name__}: {cleanup_error}"
+                )
+            if directory.exists():
+                cleanup_errors.append(f"{label} remains: {directory}")
         for name, value in zip(
             ("TMUX", "TMUX_PANE"), ambient_tmux_environment, strict=True
         ):
@@ -2113,6 +2502,12 @@ def _prepare_context(
                 os.environ.pop(name, None)
             else:
                 os.environ[name] = value
+        cleanup_report = CleanupReport(
+            complete=not cleanup_errors,
+            errors=tuple(cleanup_errors),
+        )
+        if not cleanup_report.complete:
+            raise SetupCleanupError(setup_error, cleanup_report) from setup_error
         raise
 
 
@@ -2161,6 +2556,15 @@ def setup_sync(
     -------
     RunContext
         Verified topology with stable IDs and process identities.
+
+    Raises
+    ------
+    ValueError
+        If topology identity, socket path, or delayed ordinal is invalid.
+    FileExistsError
+        If the run cannot exclusively acquire its scratch directory.
+    SetupCleanupError
+        If setup fails and cleanup also reports errors.
     """
     from libtmux.experimental.engines import SubprocessEngine
     from libtmux.experimental.ops import (
@@ -2231,8 +2635,18 @@ def setup_sync(
         server_pid = int(server_pid_result.text)
         context.processes = (*context.processes, _record_process("server", server_pid))
         verify_topology(context, snapshot_topology_sync(context))
-    except BaseException:
-        asyncio.run(cleanup_run(context))
+    except BaseException as setup_error:
+        try:
+            cleanup_report = asyncio.run(cleanup_run(context))
+        except BaseException as cleanup_error:  # noqa: BLE001
+            cleanup_report = CleanupReport(
+                complete=False,
+                errors=(
+                    f"cleanup raised {type(cleanup_error).__name__}: {cleanup_error}",
+                ),
+            )
+        if not cleanup_report.complete:
+            raise SetupCleanupError(setup_error, cleanup_report) from setup_error
         raise
     else:
         return context
@@ -2281,6 +2695,15 @@ async def setup_async(
     -------
     RunContext
         Verified topology with stable IDs and process identities.
+
+    Raises
+    ------
+    ValueError
+        If topology identity, socket path, or delayed ordinal is invalid.
+    FileExistsError
+        If the run cannot exclusively acquire its scratch directory.
+    SetupCleanupError
+        If setup fails and cleanup also reports errors.
     """
     from libtmux.experimental.engines import (
         AsyncControlModeEngine,
@@ -2368,8 +2791,18 @@ async def setup_async(
         server_pid = int(server_pid_result.text)
         context.processes = (*context.processes, _record_process("server", server_pid))
         verify_topology(context, await snapshot_topology_async(context))
-    except BaseException:
-        await cleanup_run(context)
+    except BaseException as setup_error:
+        try:
+            cleanup_report = await cleanup_run(context)
+        except BaseException as cleanup_error:  # noqa: BLE001
+            cleanup_report = CleanupReport(
+                complete=False,
+                errors=(
+                    f"cleanup raised {type(cleanup_error).__name__}: {cleanup_error}",
+                ),
+            )
+        if not cleanup_report.complete:
+            raise SetupCleanupError(setup_error, cleanup_report) from setup_error
         raise
     else:
         return context
@@ -2378,8 +2811,12 @@ async def setup_async(
 def snapshot_topology_sync(context: RunContext) -> TopologySnapshot:
     """Read exact sync session, window, and pane snapshots through typed ops.
 
-    >>> snapshot_topology_sync.__name__
-    'snapshot_topology_sync'
+    >>> wrong_mode = types.SimpleNamespace(mode=ExecutionMode.ASYNC)
+    >>> try:
+    ...     snapshot_topology_sync(wrong_mode)
+    ... except ValueError as error:
+    ...     print(error)
+    sync snapshot requires a synchronous run context
 
     Parameters
     ----------
@@ -2413,8 +2850,12 @@ def snapshot_topology_sync(context: RunContext) -> TopologySnapshot:
 async def snapshot_topology_async(context: RunContext) -> TopologySnapshot:
     """Read exact async session, window, and pane snapshots through typed ops.
 
-    >>> snapshot_topology_async.__name__
-    'snapshot_topology_async'
+    >>> wrong_mode = types.SimpleNamespace(mode=ExecutionMode.SYNC)
+    >>> try:
+    ...     asyncio.run(snapshot_topology_async(wrong_mode))
+    ... except ValueError as error:
+    ...     print(error)
+    async snapshot requires an asynchronous run context
 
     Parameters
     ----------
@@ -2453,8 +2894,12 @@ def verify_topology(
 ) -> TopologySnapshot:
     """Verify exact shape, names, liveness, process identities, and delayed pane.
 
-    >>> verify_topology.__name__
-    'verify_topology'
+    >>> empty_context = types.SimpleNamespace(topology=Topology(1, 1, 1))
+    >>> try:
+    ...     verify_topology(empty_context, TopologySnapshot((), (), ()))
+    ... except TopologyVerificationError as error:
+    ...     print(error.detail)
+    flat totals differ
 
     Parameters
     ----------
@@ -2505,6 +2950,16 @@ def verify_topology(
     ):
         fail("window names differ from the declaration")
 
+    session_ids_by_name = {
+        t.cast(str, session.name): session.session_id for session in snapshot.sessions
+    }
+    expected_window_parents = dict(context.expected_window_parents)
+    windows_by_name = {t.cast(str, window.name): window for window in snapshot.windows}
+    for window_name, expected_session_name in context.expected_window_parents:
+        window = windows_by_name[window_name]
+        if window.session_id != session_ids_by_name[expected_session_name]:
+            fail("window parent differs from the declaration")
+
     window_counts = dict.fromkeys(session_ids, 0)
     for window in snapshot.windows:
         if window.session_id not in window_counts:
@@ -2513,9 +2968,12 @@ def verify_topology(
     if set(window_counts.values()) != {context.topology.windows_per_session}:
         fail("a session has the wrong window count")
     pane_counts = dict.fromkeys(window_ids, 0)
+    windows_by_id = {window.window_id: window for window in snapshot.windows}
     for pane in snapshot.panes:
         if pane.window_id not in pane_counts or pane.session_id not in window_counts:
             fail("pane refers to an unknown owner")
+        if pane.session_id != windows_by_id[pane.window_id].session_id:
+            fail("pane session differs from its window parent")
         pane_counts[pane.window_id] += 1
     if set(pane_counts.values()) != {context.topology.panes_per_window}:
         fail("a window has the wrong pane count")
@@ -2551,6 +3009,17 @@ def verify_topology(
     context.session_ids = session_ids
     context.window_ids = window_ids
     context.pane_ids = pane_ids
+    context.session_bindings = tuple(
+        (name, session_ids_by_name[name]) for name in context.expected_session_names
+    )
+    context.window_bindings = tuple(
+        (
+            name,
+            windows_by_name[name].window_id,
+            session_ids_by_name[expected_window_parents[name]],
+        )
+        for name in context.expected_window_names
+    )
     context.delayed_pane_id = delayed[0].pane_id
     context.processes = (
         *(process for process in context.processes if process.role != "pane"),
@@ -2594,8 +3063,16 @@ def _read_run_marker(path: pathlib.Path, run_id: str) -> dict[str, t.Any] | None
 def _heartbeat_epoch(context: RunContext) -> tuple[str | None, int | None]:
     """Return the current matching fuzzer state and integer epoch.
 
-    >>> _heartbeat_epoch.__name__
-    '_heartbeat_epoch'
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     scratch = pathlib.Path(temporary)
+    ...     (scratch / "fuzzer").mkdir()
+    ...     write_json_atomic(
+    ...         scratch / "fuzzer" / "heartbeat.json",
+    ...         {"schema_version": 1, "run_id": "run-7", "state": "active",
+    ...          "epoch": 3},
+    ...     )
+    ...     _heartbeat_epoch(types.SimpleNamespace(scratch=scratch, run_id="run-7"))
+    ('active', 3)
 
     Parameters
     ----------
@@ -2627,8 +3104,11 @@ def release_activity_gate(context: RunContext) -> int:
     run marker establishes one exact stabilization target across streams whose
     ordinary frame prefixes otherwise differ by mode.
 
-    >>> release_activity_gate.__name__
-    'release_activity_gate'
+    >>> try:
+    ...     release_activity_gate(types.SimpleNamespace(topology_verified=False))
+    ... except RuntimeError as error:
+    ...     print(error)
+    activity cannot start before exact topology verification
 
     Parameters
     ----------
@@ -2681,8 +3161,11 @@ def verify_activity_sync(
 ) -> int:
     """Poll typed pane captures until every pane contains the released marker.
 
-    >>> verify_activity_sync.__name__
-    'verify_activity_sync'
+    >>> try:
+    ...     verify_activity_sync(types.SimpleNamespace(mode=ExecutionMode.ASYNC))
+    ... except ValueError as error:
+    ...     print(error)
+    sync activity verification requires a synchronous context
 
     Parameters
     ----------
@@ -2702,6 +3185,8 @@ def verify_activity_sync(
 
     Raises
     ------
+    ValueError
+        If the context mode or timeout values are invalid.
     RuntimeError
         If the gate is absent, the fuzzer exits, or heartbeat epochs regress.
     TimeoutError
@@ -2776,8 +3261,12 @@ async def verify_activity_async(
 ) -> int:
     """Async sibling of :func:`verify_activity_sync` over typed captures.
 
-    >>> verify_activity_async.__name__
-    'verify_activity_async'
+    >>> wrong_mode = types.SimpleNamespace(mode=ExecutionMode.SYNC)
+    >>> try:
+    ...     asyncio.run(verify_activity_async(wrong_mode))
+    ... except ValueError as error:
+    ...     print(error)
+    async activity verification requires an asynchronous context
 
     Parameters
     ----------
@@ -2797,6 +3286,8 @@ async def verify_activity_async(
 
     Raises
     ------
+    ValueError
+        If the context mode or timeout values are invalid.
     RuntimeError
         If the gate is absent, the fuzzer exits, or heartbeat epochs regress.
     TimeoutError
@@ -2914,8 +3405,11 @@ async def cleanup_run(
     every recorded identity. Escalation sends signals only after re-reading an
     equal procfs start time.
 
-    >>> cleanup_run.__name__
-    'cleanup_run'
+    >>> try:
+    ...     asyncio.run(cleanup_run(types.SimpleNamespace(), grace_s=0))
+    ... except ValueError as error:
+    ...     print(error)
+    cleanup grace must be positive
 
     Parameters
     ----------
@@ -2928,6 +3422,11 @@ async def cleanup_run(
     -------
     CleanupReport
         Complete only when all identities and filesystem resources are absent.
+
+    Raises
+    ------
+    ValueError
+        If the cleanup grace is not positive.
     """
     if grace_s <= 0:
         message = "cleanup grace must be positive"
@@ -2997,10 +3496,17 @@ async def cleanup_run(
             shutil.rmtree(context.scratch)
     except OSError as error:
         errors.append(f"scratch removal: {type(error).__name__}: {error}")
+    try:
+        if context.socket_root is not None and context.socket_root.exists():
+            shutil.rmtree(context.socket_root)
+    except OSError as error:
+        errors.append(f"socket root removal: {type(error).__name__}: {error}")
     if context.socket_path.exists():
         errors.append(f"socket remains: {context.socket_path}")
     if context.scratch.exists():
         errors.append(f"scratch remains: {context.scratch}")
+    if context.socket_root is not None and context.socket_root.exists():
+        errors.append(f"socket root remains: {context.socket_root}")
     for identity in context.processes:
         if process_identity_matches(identity) and not any(
             f"pid {identity.pid} " in error for error in errors
