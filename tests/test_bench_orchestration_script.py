@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -1264,7 +1265,7 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
     """A failed helper must not hide a live exact server behind an unlinked socket."""
     target = tmp_path / "target.sock"
     unrelated = tmp_path / "unrelated.sock"
-    identities: dict[pathlib.Path, t.Any] = {}
+    ownerships: dict[pathlib.Path, t.Any] = {}
     for socket_path in (target, unrelated):
         created = subprocess.run(
             (
@@ -1288,8 +1289,9 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
             text=True,
         )
         assert server_pid.returncode == 0, server_pid.stderr
-        identities[socket_path] = benchmark_module._record_process(
-            "server", int(server_pid.stdout.strip())
+        ownerships[socket_path] = benchmark_module._capture_socket_ownership(
+            socket_path,
+            timeout_s=1.0,
         )
 
     real_popen = subprocess.Popen
@@ -1311,12 +1313,16 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
         benchmark_module.subprocess, "Popen", unlink_without_killing_server
     )
     try:
-        errors = benchmark_module._kill_exact_tmux_socket(target, timeout_s=1.0)
+        errors = benchmark_module._kill_exact_tmux_socket(
+            target,
+            timeout_s=1.0,
+            socket_ownership=ownerships[target],
+        )
 
         assert errors == ("exact socket kill-server exited 7",)
         assert not target.exists()
-        assert not benchmark_module.process_identity_matches(identities[target])
-        assert benchmark_module.process_identity_matches(identities[unrelated])
+        assert not benchmark_module.process_identity_matches(ownerships[target].process)
+        assert benchmark_module.process_identity_matches(ownerships[unrelated].process)
         still_alive = subprocess.run(
             ("tmux", "-S", str(unrelated), "list-sessions"),
             check=False,
@@ -1334,21 +1340,413 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
             ).wait(timeout=2.0)
         registry = benchmark_module._PidfdRegistry()
         try:
-            for identity in identities.values():
+            for ownership in ownerships.values():
+                identity = ownership.process
                 if registry.retain(identity):
                     registry.signal(identity, signal.SIGKILL)
-            benchmark_module._wait_identity_absence(identities.values(), timeout_s=2.0)
+            benchmark_module._wait_identity_absence(
+                (ownership.process for ownership in ownerships.values()),
+                timeout_s=2.0,
+            )
         finally:
             registry.close()
-        for socket_path, identity in identities.items():
-            benchmark_module._remove_proven_stale_socket(socket_path, (identity,))
+        for socket_path, ownership in ownerships.items():
+            benchmark_module._remove_proven_stale_socket(socket_path, ownership)
 
     assert all(
-        not benchmark_module.process_identity_matches(identity)
-        for identity in identities.values()
+        not benchmark_module.process_identity_matches(ownership.process)
+        for ownership in ownerships.values()
     )
     assert not target.exists()
     assert not unrelated.exists()
+
+
+def test_cleanup_preserves_live_replacement_after_original_server_exits(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Cleanup must not contact or unlink a replacement at the recorded path."""
+    scratch = tmp_path / "replacement-run"
+    context = benchmark_module.setup_sync(
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.EngineLane.SUBPROCESS,
+        scratch,
+        socket_path=scratch / "tmux.sock",
+        run_id="replacement-live",
+    )
+    original = next(
+        identity for identity in context.processes if identity.role == "server"
+    )
+    replacement: t.Any = None
+    replacement_status: os.stat_result | None = None
+    try:
+        stopped = subprocess.run(
+            ("tmux", "-S", str(context.socket_path), "kill-server"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert stopped.returncode == 0, stopped.stderr
+        assert not benchmark_module._wait_identity_absence((original,), timeout_s=2.0)
+
+        created = subprocess.run(
+            (
+                "tmux",
+                "-S",
+                str(context.socket_path),
+                "new-session",
+                "-d",
+                "-s",
+                "replacement",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert created.returncode == 0, created.stderr
+        replacement_pid = subprocess.run(
+            (
+                "tmux",
+                "-S",
+                str(context.socket_path),
+                "display-message",
+                "-p",
+                "#{pid}",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert replacement_pid.returncode == 0, replacement_pid.stderr
+        replacement = benchmark_module._record_process(
+            "replacement", int(replacement_pid.stdout.strip())
+        )
+        replacement_status = context.socket_path.lstat()
+
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context, grace_s=0.3))
+
+        assert not cleanup.complete
+        assert cleanup.errors
+        assert not benchmark_module.process_identity_matches(original)
+        assert benchmark_module.process_identity_matches(replacement)
+        observed = context.socket_path.lstat()
+        assert (observed.st_dev, observed.st_ino) == (
+            replacement_status.st_dev,
+            replacement_status.st_ino,
+        )
+        answering = subprocess.run(
+            ("tmux", "-S", str(context.socket_path), "list-sessions"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert answering.returncode == 0, answering.stderr
+    finally:
+        subprocess.run(
+            ("tmux", "-S", str(context.socket_path), "kill-server"),
+            check=False,
+            capture_output=True,
+            timeout=2.0,
+        )
+        registry = benchmark_module._PidfdRegistry()
+        try:
+            for identity in (
+                *context.processes,
+                *((replacement,) if replacement else ()),
+            ):
+                if registry.retain(identity):
+                    registry.signal(identity, signal.SIGKILL)
+            benchmark_module._wait_identity_absence(
+                (*context.processes, *((replacement,) if replacement else ())),
+                timeout_s=2.0,
+            )
+        finally:
+            registry.close()
+        context.socket_path.unlink(missing_ok=True)
+        benchmark_module._remove_supervised_scratch(scratch)
+
+
+def test_cleanup_kills_live_original_without_touching_replacement_path(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A replaced pathname must remain bound to its answering replacement."""
+    scratch = tmp_path / "replaced-path-run"
+    context = benchmark_module.setup_sync(
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.EngineLane.SUBPROCESS,
+        scratch,
+        socket_path=scratch / "tmux.sock",
+        run_id="replacement-original-live",
+    )
+    original = next(
+        identity for identity in context.processes if identity.role == "server"
+    )
+    original_socket = scratch / "original.sock"
+    replacement: t.Any = None
+    replacement_status: os.stat_result | None = None
+    try:
+        context.socket_path.rename(original_socket)
+        created = subprocess.run(
+            (
+                "tmux",
+                "-S",
+                str(context.socket_path),
+                "new-session",
+                "-d",
+                "-s",
+                "replacement",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert created.returncode == 0, created.stderr
+        replacement_pid = subprocess.run(
+            (
+                "tmux",
+                "-S",
+                str(context.socket_path),
+                "display-message",
+                "-p",
+                "#{pid}",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert replacement_pid.returncode == 0, replacement_pid.stderr
+        replacement = benchmark_module._record_process(
+            "replacement", int(replacement_pid.stdout.strip())
+        )
+        replacement_status = context.socket_path.lstat()
+
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context, grace_s=0.3))
+
+        assert not cleanup.complete
+        assert cleanup.errors
+        assert not benchmark_module.process_identity_matches(original)
+        assert benchmark_module.process_identity_matches(replacement)
+        observed = context.socket_path.lstat()
+        assert (observed.st_dev, observed.st_ino) == (
+            replacement_status.st_dev,
+            replacement_status.st_ino,
+        )
+        answering = subprocess.run(
+            ("tmux", "-S", str(context.socket_path), "list-sessions"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert answering.returncode == 0, answering.stderr
+    finally:
+        subprocess.run(
+            ("tmux", "-S", str(context.socket_path), "kill-server"),
+            check=False,
+            capture_output=True,
+            timeout=2.0,
+        )
+        registry = benchmark_module._PidfdRegistry()
+        try:
+            for identity in (
+                *context.processes,
+                *((replacement,) if replacement else ()),
+            ):
+                if registry.retain(identity):
+                    registry.signal(identity, signal.SIGKILL)
+            benchmark_module._wait_identity_absence(
+                (*context.processes, *((replacement,) if replacement else ())),
+                timeout_s=2.0,
+            )
+        finally:
+            registry.close()
+        context.socket_path.unlink(missing_ok=True)
+        original_socket.unlink(missing_ok=True)
+        benchmark_module._remove_supervised_scratch(scratch)
+
+
+def test_cleanup_preserves_stale_same_user_replacement_socket(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An unanswering replacement inode must remain as mismatch evidence."""
+    scratch = tmp_path / "stale-replacement-run"
+    context = benchmark_module.setup_sync(
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.EngineLane.SUBPROCESS,
+        scratch,
+        socket_path=scratch / "tmux.sock",
+        run_id="replacement-stale",
+    )
+    original = next(
+        identity for identity in context.processes if identity.role == "server"
+    )
+    stale_socket: socket.socket | None = None
+    stale_status: os.stat_result | None = None
+    try:
+        stopped = subprocess.run(
+            ("tmux", "-S", str(context.socket_path), "kill-server"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert stopped.returncode == 0, stopped.stderr
+        assert not benchmark_module._wait_identity_absence((original,), timeout_s=2.0)
+        context.socket_path.unlink(missing_ok=True)
+        stale_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        stale_socket.bind(str(context.socket_path))
+        stale_status = context.socket_path.lstat()
+        stale_socket.close()
+        stale_socket = None
+
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context, grace_s=0.3))
+
+        assert not cleanup.complete
+        assert cleanup.errors
+        assert not benchmark_module.process_identity_matches(original)
+        observed = context.socket_path.lstat()
+        assert (observed.st_dev, observed.st_ino) == (
+            stale_status.st_dev,
+            stale_status.st_ino,
+        )
+    finally:
+        if stale_socket is not None:
+            stale_socket.close()
+        registry = benchmark_module._PidfdRegistry()
+        try:
+            for identity in context.processes:
+                if registry.retain(identity):
+                    registry.signal(identity, signal.SIGKILL)
+            benchmark_module._wait_identity_absence(
+                context.processes,
+                timeout_s=2.0,
+            )
+        finally:
+            registry.close()
+        context.socket_path.unlink(missing_ok=True)
+        benchmark_module._remove_supervised_scratch(scratch)
+
+
+def test_exact_socket_cleanup_without_capability_preserves_path(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A pathname alone grants no authority to contact or unlink its socket."""
+    private = tmp_path / "missing-capability"
+    private.mkdir(mode=0o700)
+    socket_path = private / "tmux.sock"
+    node = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    node.bind(str(socket_path))
+    before = socket_path.lstat()
+    try:
+        errors = benchmark_module._kill_exact_tmux_socket(
+            socket_path,
+            timeout_s=0.1,
+        )
+
+        after = socket_path.lstat()
+        assert errors
+        assert "capability unavailable" in errors[0]
+        assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    finally:
+        node.close()
+        socket_path.unlink(missing_ok=True)
+
+
+def test_exact_socket_cleanup_retain_failure_never_uses_pathname(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Failed stable-handle retention forbids pathname kill-server."""
+    private = tmp_path / "retain-failure"
+    private.mkdir(mode=0o700)
+    socket_path = private / "tmux.sock"
+    created = subprocess.run(
+        (
+            "tmux",
+            "-S",
+            str(socket_path),
+            "new-session",
+            "-d",
+            "-s",
+            "owned",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=2.0,
+    )
+    assert created.returncode == 0, created.stderr
+    ownership = benchmark_module._capture_socket_ownership(
+        socket_path,
+        timeout_s=1.0,
+    )
+    before = socket_path.lstat()
+    pathname_calls = 0
+
+    def refuse_owner_handle(current: t.Any, identity: t.Any) -> bool:
+        if identity == ownership.process:
+            current.errors.append("injected pidfd retain failure")
+            return False
+        pytest.fail("socket cleanup retained an unexpected identity")
+
+    def reject_pathname(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        nonlocal pathname_calls
+        pathname_calls += 1
+        pytest.fail("retain failure attempted pathname kill-server")
+
+    monkeypatch.setattr(
+        benchmark_module._PidfdRegistry,
+        "retain",
+        refuse_owner_handle,
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "subprocess",
+        types.SimpleNamespace(Popen=reject_pathname),
+    )
+    try:
+        errors = benchmark_module._kill_exact_tmux_socket(
+            socket_path,
+            timeout_s=0.1,
+            socket_ownership=ownership,
+        )
+
+        after = socket_path.lstat()
+        assert errors
+        assert any("stable handle unavailable" in error for error in errors)
+        assert pathname_calls == 0
+        assert benchmark_module.process_identity_matches(ownership.process)
+        assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+        answering = subprocess.run(
+            ("tmux", "-S", str(socket_path), "list-sessions"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+        assert answering.returncode == 0, answering.stderr
+    finally:
+        subprocess.run(
+            ("tmux", "-S", str(socket_path), "kill-server"),
+            check=False,
+            capture_output=True,
+            timeout=2.0,
+        )
+        benchmark_module._wait_identity_absence(
+            (ownership.process,),
+            timeout_s=2.0,
+        )
+        socket_path.unlink(missing_ok=True)
 
 
 def test_run_scenario_refuses_when_pidfds_are_unavailable(
@@ -4169,6 +4567,252 @@ def test_worker_group_checkpoints_keep_only_one_active_interleaved_row(
     assert all(phase.status == "completed" for phase in recorder.report.phases)
 
 
+def test_worker_group_checkpoints_revisited_boundary_before_progress(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Cancellation after a repeated boundary must retain that exact strategy."""
+    base = _failed_report_with_completed_mutation_prefix(benchmark_module)
+    initial = dataclasses.replace(
+        base,
+        status="in_progress",
+        phases=base.phases[:3],
+        cleanup=benchmark_module.CleanupReport(False),
+        failed_phase=None,
+        error=None,
+        lane="control",
+        mode="async",
+    )
+    checkpoint_path = tmp_path / "boundary.json"
+    progress_path = tmp_path / "boundary.jsonl"
+    recorder = benchmark_module._WorkerRecorder(
+        initial,
+        checkpoint_path,
+        progress_path,
+    )
+    cancellation = asyncio.CancelledError("cancelled after repeated boundary")
+    real_checkpoint = benchmark_module._WorkerRecorder.checkpoint
+    boundary_count = 0
+
+    def interrupt_repeated_boundary(
+        current: t.Any,
+        name: str,
+        **kwargs: t.Any,
+    ) -> None:
+        nonlocal boundary_count
+        real_checkpoint(current, name, **kwargs)
+        if name == "wait.control-stream.started":
+            boundary_count += 1
+            if boundary_count == 2:
+                raise cancellation
+
+    def measured(name: str) -> t.Callable[[], t.Any]:
+        return lambda: benchmark_module.SearchResult(
+            23,
+            "snapshot",
+            "sessions",
+            1,
+            name,
+            (name,),
+            verified=True,
+        )
+
+    async def live_postcondition(*_args: t.Any, **_kwargs: t.Any) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        benchmark_module._WorkerRecorder,
+        "checkpoint",
+        interrupt_repeated_boundary,
+    )
+    monkeypatch.setattr(
+        benchmark_module, "_worker_live_postcondition", live_postcondition
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "probe_host",
+        lambda _reader: benchmark_module.HostSnapshot(),
+    )
+
+    with pytest.raises(asyncio.CancelledError) as raised:
+        asyncio.run(
+            benchmark_module._run_worker_group(
+                recorder,
+                types.SimpleNamespace(topology=base.requested_topology),
+                {
+                    "wait.capture-poll": measured("wait.capture-poll"),
+                    "wait.control-stream": measured("wait.control-stream"),
+                },
+                warmup=2,
+                runs=2,
+                seed=12,
+                policy=benchmark_module.ResourcePolicy(),
+                latest={},
+                fail_after=None,
+                active_phase=["mutation.bulk"],
+            )
+        )
+
+    assert isinstance(raised.value, asyncio.CancelledError)
+    assert boundary_count == 2
+    durable = benchmark_module.load_run_report(checkpoint_path)
+    assert tuple(phase.name for phase in durable.phases) == (
+        "setup",
+        "stabilization",
+        "mutation.bulk",
+        "wait.control-stream",
+    )
+    active = durable.phases[-1]
+    assert active.status == "in_progress"
+    assert len(active.warmup_observations) == 1
+    assert active.samples == ()
+    last_event = benchmark_module._progress_event_from_json(
+        json.loads(progress_path.read_text(encoding="utf-8").splitlines()[-1])
+    )
+    assert last_event.checkpoint == "wait.control-stream.started"
+    terminal = dataclasses.replace(
+        durable,
+        status="cutoff",
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        failed_phase="cancellation",
+        error="CancelledError: cancelled after repeated boundary",
+    )
+    benchmark_module.validate_report(terminal)
+
+
+def test_validator_accepts_actual_seeded_group_boundaries(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real warmup, timed, cutoff, and failed snapshots remain executable."""
+    base = _failed_report_with_completed_mutation_prefix(benchmark_module)
+    initial = dataclasses.replace(
+        base,
+        status="in_progress",
+        phases=base.phases[:3],
+        cleanup=benchmark_module.CleanupReport(False),
+        failed_phase=None,
+        error=None,
+        lane="control",
+        mode="async",
+    )
+    checkpoints: list[str] = []
+
+    class ValidatingRecorder:
+        def __init__(self) -> None:
+            self.report = initial
+
+        def checkpoint(self, name: str) -> None:
+            checkpoints.append(name)
+            cutoff = dataclasses.replace(
+                self.report,
+                status="cutoff",
+                cleanup=benchmark_module.CleanupReport(
+                    True,
+                    processes_absent=True,
+                    socket_absent=True,
+                    scratch_absent=True,
+                ),
+                failed_phase="cancellation",
+                error="CancelledError: exact boundary",
+            )
+            benchmark_module.validate_report(cutoff)
+            current = name.removesuffix(".started")
+            for marker in (".warmup.", ".timed."):
+                if marker in current:
+                    current = current.split(marker, maxsplit=1)[0]
+            if current not in {phase.name for phase in self.report.phases}:
+                return
+            prior = self.report.phases[:3]
+            group = self.report.phases[3:]
+            active = next(phase for phase in group if phase.name == current)
+            completed = tuple(
+                phase
+                for phase in group
+                if phase.name != current and phase.status == "completed"
+            )
+            failed_phases = (
+                *prior,
+                *completed,
+                dataclasses.replace(active, status="failed", summary=None),
+            )
+            benchmark_module.validate_report(
+                dataclasses.replace(
+                    cutoff,
+                    status="failed",
+                    phases=failed_phases,
+                    failed_phase=current,
+                    error=f"RuntimeError: {current} failed",
+                )
+            )
+
+    def measured(name: str) -> t.Callable[[], t.Any]:
+        strategy = t.cast(
+            t.Literal["capture-poll", "control-stream"],
+            name.removeprefix("wait."),
+        )
+        return lambda: benchmark_module.WaitResult(
+            strategy,
+            name,
+            "token",
+            "%1",
+            5,
+            7,
+            12,
+            14,
+            17,
+            2,
+            3,
+            1 if strategy == "capture-poll" else 0,
+            1 if strategy == "control-stream" else 0,
+            1.0,
+            False,
+            0,
+            True,
+        )
+
+    async def live_postcondition(*_args: t.Any, **_kwargs: t.Any) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        benchmark_module, "_worker_live_postcondition", live_postcondition
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "probe_host",
+        lambda _reader: benchmark_module.HostSnapshot(),
+    )
+    recorder = ValidatingRecorder()
+
+    asyncio.run(
+        benchmark_module._run_worker_group(
+            recorder,
+            types.SimpleNamespace(topology=base.requested_topology),
+            {
+                "wait.capture-poll": measured("wait.capture-poll"),
+                "wait.control-stream": measured("wait.control-stream"),
+            },
+            warmup=2,
+            runs=2,
+            seed=12,
+            policy=benchmark_module.ResourcePolicy(),
+            latest={},
+            fail_after=None,
+            active_phase=["mutation.bulk"],
+        )
+    )
+
+    assert any(name.endswith(".started") for name in checkpoints)
+    assert any(".warmup." in name for name in checkpoints)
+    assert any(".timed." in name for name in checkpoints)
+
+
 def test_cli_run_executes_every_phase_and_writes_validated_artifacts(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -4470,6 +5114,122 @@ def test_worker_progress_precedes_matching_report_checkpoint(
     recorder.checkpoint("worker.started")
 
     assert calls == ["progress", "checkpoint"]
+
+
+def test_socket_ownership_round_trips_and_rejects_progress_mutation(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Checkpoint and journal retain one immutable process/socket capability."""
+    checkpoint = tmp_path / "ownership.json"
+    progress = tmp_path / "ownership.jsonl"
+    owner = benchmark_module._record_process("server", os.getpid())
+    ownership = benchmark_module._SocketOwnership(
+        owner,
+        benchmark_module.SocketIdentity(
+            7,
+            11,
+            os.getuid(),
+            stat.S_IFSOCK | 0o600,
+        ),
+    )
+    recorder = benchmark_module._WorkerRecorder(
+        benchmark_module.RunReport(
+            benchmark_module.Topology(1, 1, 1),
+            run_id="run-7",
+        ),
+        checkpoint,
+        progress,
+    )
+
+    recorder.record_identities((owner,), checkpoint="identity.server")
+    recorder.record_socket_ownership(ownership)
+
+    loaded = benchmark_module.load_run_report(checkpoint)
+    payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+    events = tuple(
+        benchmark_module._progress_event_from_json(json.loads(line))
+        for line in progress.read_text(encoding="utf-8").splitlines()
+    )
+    expected = {
+        "process": {
+            "role": "server",
+            "pid": owner.pid,
+            "start_time": owner.start_time,
+        },
+        "socket": {
+            "st_dev": 7,
+            "st_ino": 11,
+            "st_uid": os.getuid(),
+            "st_mode": stat.S_IFSOCK | 0o600,
+        },
+    }
+    assert loaded.socket_ownership == ownership
+    assert payload["socket_ownership"] == expected
+    assert events[-1].socket_ownership == ownership
+
+    registry = benchmark_module._PidfdRegistry()
+    tracker = benchmark_module._ProgressTracker(progress, "run-7", registry)
+    try:
+        assert tracker.drain(terminal=True)
+        assert tracker.socket_ownership == ownership
+        changed = dataclasses.replace(
+            ownership,
+            socket=dataclasses.replace(ownership.socket, st_ino=12),
+        )
+        benchmark_module.append_progress_event(
+            progress,
+            benchmark_module.ProgressEvent(
+                "run-7",
+                2,
+                "identity.server.socket.changed",
+                time.monotonic_ns(),
+                socket_ownership=changed,
+            ),
+        )
+        with pytest.raises(RuntimeError, match="socket ownership changed"):
+            tracker.drain(terminal=True)
+    finally:
+        registry.close()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("st_dev", True),
+        ("st_ino", 0),
+        ("st_uid", -1),
+        ("st_mode", stat.S_IFREG | 0o600),
+    ),
+)
+def test_progress_decoder_rejects_invalid_socket_ownership_schema(
+    benchmark_module: types.ModuleType,
+    field: str,
+    value: object,
+) -> None:
+    """Malformed durable socket capabilities cannot enter recovery state."""
+    socket_row: dict[str, object] = {
+        "st_dev": 7,
+        "st_ino": 11,
+        "st_uid": os.getuid(),
+        "st_mode": stat.S_IFSOCK | 0o600,
+    }
+    socket_row[field] = value
+    row = {
+        "schema_version": 1,
+        "run_id": "run-7",
+        "sequence": 0,
+        "checkpoint": "identity.server.socket",
+        "monotonic_ns": 1,
+        "processes": [],
+        "socket_ownership": {
+            "process": {"role": "server", "pid": 2, "start_time": 3},
+            "socket": socket_row,
+        },
+    }
+
+    with pytest.raises(ValueError, match="socket ownership"):
+        benchmark_module._progress_event_from_json(row)
 
 
 def test_progress_append_retries_short_writes_and_syncs_new_parent(
@@ -5176,10 +5936,37 @@ def test_validator_accepts_partial_active_failure_after_complete_prefix(
     )
 
 
-def test_validator_accepts_cancellation_between_interleaved_strategies(
+def test_validator_requires_socket_capability_for_owned_server_cleanup(
     benchmark_module: types.ModuleType,
 ) -> None:
-    """A completed interleaved subset remains valid before the next boundary."""
+    """Complete server cleanup claims require the durable paired capability."""
+    owner = benchmark_module.ProcessIdentity("server", 200_001, 300_001)
+    report = dataclasses.replace(
+        _failed_report_with_completed_mutation_prefix(benchmark_module),
+        processes=(owner,),
+    )
+
+    with pytest.raises(ValueError, match="lacks exact socket ownership"):
+        benchmark_module.validate_report(report)
+
+    ownership = benchmark_module._SocketOwnership(
+        owner,
+        benchmark_module.SocketIdentity(
+            7,
+            11,
+            os.getuid(),
+            stat.S_IFSOCK | 0o600,
+        ),
+    )
+    benchmark_module.validate_report(
+        dataclasses.replace(report, socket_ownership=ownership)
+    )
+
+
+def test_validator_rejects_unreachable_completed_interleaved_subset(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A unique subset is invalid when the seeded schedule cannot produce it."""
     base = _failed_report_with_completed_mutation_prefix(benchmark_module)
     topology = base.requested_topology
 
@@ -5239,7 +6026,8 @@ def test_validator_accepts_cancellation_between_interleaved_strategies(
         error="KeyboardInterrupt: cancelled between strategies",
     )
 
-    benchmark_module.validate_report(report)
+    with pytest.raises(ValueError, match="reachable seeded strategy boundary"):
+        benchmark_module.validate_report(report)
 
 
 def test_validator_rejects_failed_phase_that_disagrees_with_active_row(
@@ -5754,6 +6542,8 @@ def test_finalizer_start_after_native_launch_executes_once_and_restores_mask(
     assert mask_calls == [
         (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
         (signal.SIG_SETMASK, prior_mask),
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
     ]
 
 
@@ -5807,7 +6597,7 @@ def test_finalizer_restores_mask_before_original_sigterm_handler(
     benchmark_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """SIGTERM during handler restoration must be recorded, not delivered to DFL."""
+    """Handler restoration keeps managed signals blocked until the mask is exact."""
     original_handler = signal.getsignal(signal.SIGTERM)
     original_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
     interruption = KeyboardInterrupt("SIGTERM during handler restoration")
@@ -5850,7 +6640,7 @@ def test_finalizer_restores_mask_before_original_sigterm_handler(
     assert result == 29
     assert observed is interruption
     assert raised_during_restore
-    assert restore_mask == original_mask
+    assert restore_mask == original_mask | {signal.SIGINT, signal.SIGTERM}
     assert restored_handler is prior_sigterm
     assert restored_mask == original_mask
 
@@ -5985,7 +6775,21 @@ def test_supervisor_cancellation_during_final_report_write_is_durable(
     release_write = threading.Event()
     real_write = benchmark_module.write_json_atomic
     real_drain = benchmark_module._drain_finalizer_thread
+    real_signal = signal.signal
+    original_sigint = signal.getsignal(signal.SIGINT)
+    original_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+    first = KeyboardInterrupt("interrupt before artifact commit")
     drain_calls = 0
+    observed_sigint: t.Any = None
+    observed_mask: frozenset[int | signal.Signals] | None = None
+
+    def caller_sigint(
+        _signal_number: int,
+        _frame: types.FrameType | None,
+    ) -> t.NoReturn:
+        raise first
+
+    real_signal(signal.SIGINT, caller_sigint)
 
     def counting_drain(*args: t.Any, **kwargs: t.Any) -> t.Any:
         nonlocal drain_calls
@@ -6050,14 +6854,20 @@ def test_supervisor_cancellation_during_final_report_write_is_durable(
                 watchdog_s=30.0,
                 cleanup_grace_s=0.3,
             )
+        observed_sigint = signal.getsignal(signal.SIGINT)
+        observed_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
     finally:
         release_write.set()
         interrupter.join(timeout=5.0)
+        real_signal(signal.SIGINT, original_sigint)
+        signal.pthread_sigmask(signal.SIG_SETMASK, original_mask)
 
     assert not interrupter.is_alive()
     assert drain_calls == 1
     durable = benchmark_module.load_run_report(report_path)
-    assert isinstance(cancellation.value, KeyboardInterrupt)
+    assert cancellation.value is first
+    assert observed_sigint is caller_sigint
+    assert observed_mask == original_mask
     assert durable.status == "cutoff"
     assert durable.failed_phase == "cancellation"
     assert durable.cleanup.complete
@@ -6065,6 +6875,10 @@ def test_supervisor_cancellation_during_final_report_write_is_durable(
         not benchmark_module.process_identity_matches(row) for row in durable.processes
     )
     assert "cutoff" in markdown_path.read_text(encoding="utf-8")
+    assert not any(
+        thread.name == "orchestration-finalization" and thread.is_alive()
+        for thread in threading.enumerate()
+    )
 
 
 def test_supervisor_interrupt_before_popen_return_is_durable_and_reraised(
@@ -6129,6 +6943,8 @@ def test_supervisor_interrupt_before_popen_return_is_durable_and_reraised(
 
     assert raised.value is interruption
     assert mask_calls == [
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
         (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
         (signal.SIG_SETMASK, prior_mask),
         (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
@@ -6226,6 +7042,8 @@ def test_supervisor_interrupt_during_pidfd_handoff_recovers_exact_worker(
     assert worker_absent_before_test_cleanup
     assert record_calls >= 2
     assert mask_calls == [
+        (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
+        (signal.SIG_SETMASK, prior_mask),
         (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
         (signal.SIG_SETMASK, prior_mask),
         (signal.SIG_BLOCK, frozenset({signal.SIGINT, signal.SIGTERM})),
@@ -6358,6 +7176,217 @@ def test_supervisor_reraises_original_monitor_interrupt_after_recovery_interrupt
         not benchmark_module.process_identity_matches(row) for row in durable.processes
     )
     assert not (tmp_path / "scratch").exists()
+
+
+def test_supervisor_restores_caller_sigterm_under_repeated_interrupt(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A restore-time interrupt cannot replace the first monitor interruption."""
+    first = KeyboardInterrupt("first monitor interruption")
+    second = KeyboardInterrupt("SIGTERM restoration interruption")
+    original_handler = signal.getsignal(signal.SIGTERM)
+    original_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+    real_signal = signal.signal
+    real_drain_progress = benchmark_module._ProgressTracker.drain
+    real_drain_finalizer = benchmark_module._drain_finalizer_thread
+    monitor_interrupted = False
+    restore_interrupted = False
+    finalizer_calls = 0
+
+    def caller_sigterm(
+        _signal_number: int,
+        _frame: types.FrameType | None,
+    ) -> None:
+        return None
+
+    real_signal(signal.SIGTERM, caller_sigterm)
+
+    def interrupt_monitor(tracker: t.Any, *, terminal: bool = False) -> bool:
+        nonlocal monitor_interrupted
+        advanced = real_drain_progress(tracker, terminal=terminal)
+        if not terminal and advanced and not monitor_interrupted:
+            monitor_interrupted = True
+            raise first
+        return t.cast(bool, advanced)
+
+    def interrupt_restore(signal_number: int, handler: t.Any) -> t.Any:
+        nonlocal restore_interrupted
+        if (
+            signal_number == signal.SIGTERM
+            and handler is caller_sigterm
+            and not restore_interrupted
+        ):
+            restore_interrupted = True
+            raise second
+        return real_signal(signal_number, handler)
+
+    def count_finalizer(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal finalizer_calls
+        finalizer_calls += 1
+        return real_drain_finalizer(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark_module._ProgressTracker, "drain", interrupt_monitor)
+    monkeypatch.setattr(benchmark_module.signal, "signal", interrupt_restore)
+    monkeypatch.setattr(benchmark_module, "_drain_finalizer_thread", count_finalizer)
+    output = tmp_path / "restore-interrupt.json"
+    markdown = tmp_path / "restore-interrupt.md"
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    raised: KeyboardInterrupt | None = None
+    observed_handler: t.Any = None
+    observed_mask: frozenset[int | signal.Signals] | None = None
+    try:
+        with pytest.raises(KeyboardInterrupt) as cancellation:
+            benchmark_module.supervise_worker(
+                benchmark_module.Topology(1, 1, 1),
+                lane=benchmark_module.EngineLane.SUBPROCESS,
+                mode=benchmark_module.ExecutionMode.SYNC,
+                runs=1,
+                warmup=0,
+                seed=11,
+                run_id="restore-interrupt",
+                scratch=tmp_path / "scratch",
+                socket_path=tmp_path / "scratch" / "tmux.sock",
+                output=output,
+                markdown_output=markdown,
+                guard_decision=decision,
+                original_guard_decision=decision,
+                policy=benchmark_module.ResourcePolicy(),
+                watchdog_s=30.0,
+                cleanup_grace_s=0.3,
+                _test_stall_after="worker.started",
+            )
+        raised = cancellation.value
+        observed_handler = signal.getsignal(signal.SIGTERM)
+        observed_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+    finally:
+        real_signal(signal.SIGTERM, original_handler)
+        signal.pthread_sigmask(signal.SIG_SETMASK, original_mask)
+
+    durable = benchmark_module.load_run_report(output)
+    assert raised is first
+    assert restore_interrupted
+    assert finalizer_calls == 1
+    assert observed_handler is caller_sigterm
+    assert observed_mask == original_mask
+    assert durable.status == "cutoff"
+    assert durable.failed_phase == "cancellation"
+    assert durable.cleanup.complete
+    assert not any(
+        thread.name == "orchestration-finalization" and thread.is_alive()
+        for thread in threading.enumerate()
+    )
+
+
+def test_supervisor_post_commit_interrupt_preserves_completed_artifact(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An interrupt after artifact commit belongs to the restored caller."""
+    interruption = KeyboardInterrupt("interrupt after artifact commit")
+    original_handler = signal.getsignal(signal.SIGTERM)
+    original_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+    real_signal = signal.signal
+    real_drain = benchmark_module._drain_finalizer_thread
+    output = tmp_path / "post-commit.json"
+    markdown = tmp_path / "post-commit.md"
+    restore_interrupted = False
+    finalizer_calls = 0
+    committed_status: str | None = None
+    restore_mask: frozenset[int | signal.Signals] | None = None
+
+    def caller_sigterm(
+        _signal_number: int,
+        _frame: types.FrameType | None,
+    ) -> None:
+        return None
+
+    real_signal(signal.SIGTERM, caller_sigterm)
+
+    def interrupt_restore(signal_number: int, handler: t.Any) -> t.Any:
+        nonlocal restore_interrupted, committed_status, restore_mask
+        if (
+            signal_number == signal.SIGTERM
+            and handler is caller_sigterm
+            and not restore_interrupted
+        ):
+            restore_interrupted = True
+            committed_status = benchmark_module.load_run_report(output).status
+            assert markdown.exists()
+            restore_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+            raise interruption
+        return real_signal(signal_number, handler)
+
+    def count_finalizer(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal finalizer_calls
+        finalizer_calls += 1
+        return real_drain(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark_module.signal, "signal", interrupt_restore)
+    monkeypatch.setattr(benchmark_module, "_drain_finalizer_thread", count_finalizer)
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    raised: KeyboardInterrupt | None = None
+    observed_handler: t.Any = None
+    observed_mask: frozenset[int | signal.Signals] | None = None
+    try:
+        with pytest.raises(KeyboardInterrupt) as cancellation:
+            benchmark_module.supervise_worker(
+                benchmark_module.Topology(1, 1, 1),
+                lane=benchmark_module.EngineLane.SUBPROCESS,
+                mode=benchmark_module.ExecutionMode.SYNC,
+                runs=1,
+                warmup=0,
+                seed=11,
+                run_id="post-commit",
+                scratch=tmp_path / "scratch",
+                socket_path=tmp_path / "scratch" / "tmux.sock",
+                output=output,
+                markdown_output=markdown,
+                guard_decision=decision,
+                original_guard_decision=decision,
+                policy=benchmark_module.ResourcePolicy(),
+                watchdog_s=30.0,
+                cleanup_grace_s=0.3,
+            )
+        raised = cancellation.value
+        observed_handler = signal.getsignal(signal.SIGTERM)
+        observed_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+    finally:
+        real_signal(signal.SIGTERM, original_handler)
+        signal.pthread_sigmask(signal.SIG_SETMASK, original_mask)
+
+    durable = benchmark_module.load_run_report(output)
+    assert raised is interruption
+    assert committed_status == "completed"
+    assert restore_interrupted
+    assert restore_mask == original_mask | {signal.SIGINT, signal.SIGTERM}
+    assert finalizer_calls == 1
+    assert observed_handler is caller_sigterm
+    assert observed_mask == original_mask
+    assert durable.status == "completed"
+    assert durable.cleanup.complete
+    assert not any(
+        thread.name == "orchestration-finalization" and thread.is_alive()
+        for thread in threading.enumerate()
+    )
 
 
 def test_cli_process_identity_mismatch_never_signals_unrelated_pid(
