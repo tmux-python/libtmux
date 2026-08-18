@@ -13,6 +13,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 import types
 import typing as t
@@ -2091,6 +2092,426 @@ def _assert_wait_tokens_only_reach_delayed_pane(
             assert matched == ()
 
 
+def _isolated_wait_context(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    *,
+    mode: t.Any,
+    lane: t.Any,
+    engine: t.Any,
+    run_id: str = "wait-run",
+) -> t.Any:
+    """Build the marker boundary needed by deterministic waiter regressions."""
+    fuzzer_root = tmp_path / "fuzzer"
+    (fuzzer_root / "requests").mkdir(parents=True)
+    (fuzzer_root / "sentinels").mkdir()
+    return types.SimpleNamespace(
+        mode=mode,
+        lane=lane,
+        engine=engine,
+        delayed_pane_id="%7",
+        run_id=run_id,
+        scratch=tmp_path,
+        sentinel_delay_ns=0,
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+    )
+
+
+def _blocking_tmux_binary(tmp_path: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    """Create a real blocking process so timeout cleanup stays observable."""
+    executable = tmp_path / "blocking-tmux"
+    pid_path = tmp_path / "blocking-tmux.pid"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import pathlib\n"
+        "import time\n"
+        "pathlib.Path(os.environ['BLOCKING_TMUX_PID']).write_text(\n"
+        "    str(os.getpid()), encoding='ascii'\n"
+        ")\n"
+        "time.sleep(0.5)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    return executable, pid_path
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe"),
+    (
+        ("run_id", "unsafe run"),
+        ("run_id", "unsafe\tcontrol"),
+        ("run_id", "unsafe\nline"),
+        ("run_id", "unsafe\x1bescape"),
+        ("run_id", "unsafe\x08backspace"),
+        ("run_id", "nonascii-π"),
+        ("run_id", "r" * 129),
+        ("request_id", "unsafe request"),
+        ("request_id", "unsafe\tcontrol"),
+        ("request_id", "unsafe\nline"),
+        ("request_id", "unsafe\x1bescape"),
+        ("request_id", "unsafe\x08backspace"),
+        ("request_id", "nonascii-π"),
+        ("request_id", "q" * 129),
+        ("value", "unsafe value"),
+        ("value", "unsafe\tcontrol"),
+        ("value", "unsafe\nline"),
+        ("value", "unsafe\x1bescape"),
+        ("value", "unsafe\x08backspace"),
+        ("value", "nonascii-π"),
+        ("value", "v" * 129),
+    ),
+)
+def test_request_sentinel_rejects_unsafe_components_before_publication(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    field: str,
+    unsafe: str,
+) -> None:
+    """Terminal controls and oversized identities never reach marker storage."""
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.SYNC,
+        lane=benchmark_module.EngineLane.SUBPROCESS,
+        engine=object(),
+    )
+    arguments = {
+        "request_id": "request.safe:1",
+        "value": "VALUE.safe:1",
+    }
+    if field == "run_id":
+        context.run_id = unsafe
+    else:
+        arguments[field] = unsafe
+
+    with pytest.raises(ValueError, match="terminal-safe"):
+        benchmark_module.request_sentinel(context, **arguments)
+
+    assert tuple((tmp_path / "fuzzer" / "requests").iterdir()) == ()
+
+
+def test_request_sentinel_accepts_literal_maximum_terminal_safe_token(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """All documented boundary bytes remain valid and exactly reproducible."""
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.SYNC,
+        lane=benchmark_module.EngineLane.SUBPROCESS,
+        engine=object(),
+        run_id="r" * 128,
+    )
+
+    request = benchmark_module.request_sentinel(
+        context,
+        request_id="q" * 128,
+        value="v" * 128,
+    )
+
+    assert len(f"{request.token}\n".encode()) == 422
+    assert benchmark_module._SENTINEL_RECORD_MAX_BYTES == 422
+    marker = json.loads(
+        next((tmp_path / "fuzzer" / "requests").iterdir()).read_text(encoding="utf-8")
+    )
+    assert marker["run_id"] == "r" * 128
+    assert marker["request_id"] == "q" * 128
+    assert marker["value"] == "v" * 128
+
+
+@pytest.mark.parametrize("timeout_s", (3.000_001, float("inf"), float("nan")))
+def test_capture_wait_rejects_unbounded_timeout_before_publication(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    timeout_s: float,
+) -> None:
+    """The history-sized wait ceiling applies before a request is visible."""
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.SYNC,
+        lane=benchmark_module.EngineLane.SUBPROCESS,
+        engine=object(),
+    )
+
+    with pytest.raises(ValueError, match=r"at most 3\.0 seconds"):
+        benchmark_module.wait_capture_poll_sync(
+            context,
+            request_id="bounded-timeout",
+            timeout_s=timeout_s,
+        )
+
+    assert tuple((tmp_path / "fuzzer" / "requests").iterdir()) == ()
+
+
+def test_start_fuzzer_rejects_frame_rate_above_wait_history_bound(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The producer cannot outrun the documented capture history budget."""
+    monkeypatch.setattr(
+        benchmark_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("fuzzer started above frame bound"),
+    )
+
+    with pytest.raises(ValueError, match=r"at most 40\.0 frames per second"):
+        benchmark_module.start_fuzzer(
+            tmp_path,
+            "bounded-rate",
+            frame_rate_hz=40.000_001,
+        )
+
+
+def test_sync_subprocess_capture_timeout_kills_and_reaps_exact_child(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blocked real subprocess cannot outlive the capture wait deadline."""
+    from libtmux.experimental.engines import SubprocessEngine
+
+    executable, pid_path = _blocking_tmux_binary(tmp_path)
+    monkeypatch.setenv("BLOCKING_TMUX_PID", str(pid_path))
+    engine = SubprocessEngine(tmux_bin=executable)
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.SYNC,
+        lane=benchmark_module.EngineLane.SUBPROCESS,
+        engine=engine,
+    )
+    threads_before = frozenset(thread.ident for thread in threading.enumerate())
+    started = time.monotonic()
+
+    with pytest.raises(
+        TimeoutError,
+        match="capture wait timed out for request sync-blocked",
+    ):
+        benchmark_module.wait_capture_poll_sync(
+            context,
+            request_id="sync-blocked",
+            timeout_s=0.05,
+            poll_interval_s=0.01,
+        )
+
+    elapsed = time.monotonic() - started
+    pid = int(pid_path.read_text(encoding="ascii"))
+    assert elapsed < 0.25
+    assert benchmark_module._process_start_time(pid) is None
+    assert frozenset(thread.ident for thread in threading.enumerate()) == threads_before
+
+
+def test_sync_control_capture_uses_and_restores_remaining_transport_timeout(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The supported control engine owns a blocked request until timeout."""
+    from libtmux.experimental.engines.control_mode import (
+        ControlModeEngine,
+        ControlModeError,
+    )
+
+    class BlockingControlEngine(ControlModeEngine):
+        def __init__(self) -> None:
+            super().__init__(timeout=0.5)
+            self.observed_timeout: float | None = None
+
+        def tmux_version(self) -> None:
+            return None
+
+        def run(self, request: t.Any) -> t.NoReturn:
+            del request
+            self.observed_timeout = self.timeout
+            threading.Event().wait(self.timeout)
+            message = f"blocked for {self.timeout}s"
+            raise ControlModeError(message)
+
+    engine = BlockingControlEngine()
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.SYNC,
+        lane=benchmark_module.EngineLane.CONTROL,
+        engine=engine,
+    )
+    threads_before = frozenset(thread.ident for thread in threading.enumerate())
+    started = time.monotonic()
+
+    with pytest.raises(
+        TimeoutError,
+        match="capture wait timed out for request control-blocked",
+    ):
+        benchmark_module.wait_capture_poll_sync(
+            context,
+            request_id="control-blocked",
+            timeout_s=0.05,
+            poll_interval_s=0.01,
+        )
+
+    elapsed = time.monotonic() - started
+    assert elapsed < 0.25
+    assert engine.observed_timeout is not None
+    assert 0 < engine.observed_timeout <= 0.05
+    assert engine.timeout == 0.5
+    assert frozenset(thread.ident for thread in threading.enumerate()) == threads_before
+
+
+def test_async_subprocess_capture_timeout_drains_task_and_reaps_child(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancelling a blocked native async capture leaves no task or child."""
+    from libtmux.experimental.engines import AsyncSubprocessEngine
+
+    executable, pid_path = _blocking_tmux_binary(tmp_path)
+    monkeypatch.setenv("BLOCKING_TMUX_PID", str(pid_path))
+    engine = AsyncSubprocessEngine(tmux_bin=executable)
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.ASYNC,
+        lane=benchmark_module.EngineLane.SUBPROCESS,
+        engine=engine,
+    )
+
+    async def exercise() -> tuple[float, tuple[str, ...]]:
+        started = time.monotonic()
+        with pytest.raises(
+            TimeoutError,
+            match="capture wait timed out for request async-blocked",
+        ):
+            await asyncio.wait_for(
+                benchmark_module.wait_capture_poll_async(
+                    context,
+                    request_id="async-blocked",
+                    timeout_s=0.05,
+                    poll_interval_s=0.01,
+                ),
+                timeout=0.3,
+            )
+        await asyncio.sleep(0)
+        names = tuple(
+            task.get_name()
+            for task in asyncio.all_tasks()
+            if task is not asyncio.current_task()
+            and (
+                task.get_name().startswith("bench-capture-wait-")
+                or task.get_name().startswith("libtmux-async-subprocess-")
+            )
+        )
+        return time.monotonic() - started, names
+
+    elapsed, task_names = asyncio.run(exercise(), debug=True)
+    pid = int(pid_path.read_text(encoding="ascii"))
+    assert elapsed < 0.25
+    assert task_names == ()
+    assert benchmark_module._process_start_time(pid) is None
+
+
+def test_control_wait_timeout_drains_pending_subscription(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A pending real subscriber unregisters without loop diagnostics."""
+    from libtmux.experimental.engines.async_control_mode import (
+        AsyncControlModeEngine,
+    )
+
+    engine = AsyncControlModeEngine()
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.ASYNC,
+        lane=benchmark_module.EngineLane.CONTROL,
+        engine=engine,
+    )
+
+    async def exercise() -> tuple[list[dict[str, t.Any]], tuple[str, ...]]:
+        diagnostics: list[dict[str, t.Any]] = []
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(lambda _loop, details: diagnostics.append(details))
+        with pytest.raises(
+            TimeoutError,
+            match="control stream wait timed out for request pending-timeout",
+        ):
+            await benchmark_module.wait_control_stream(
+                context,
+                request_id="pending-timeout",
+                timeout_s=0.03,
+            )
+        await asyncio.sleep(0)
+        assert engine._subscribers == set()
+        names = tuple(
+            task.get_name()
+            for task in asyncio.all_tasks()
+            if task is not asyncio.current_task()
+            and task.get_name().startswith("bench-control-wait-")
+        )
+        return diagnostics, names
+
+    diagnostics, task_names = asyncio.run(exercise(), debug=True)
+    assert diagnostics == []
+    assert task_names == ()
+
+
+def test_control_wait_external_cancellation_preserves_payload_and_unregisters(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Caller cancellation drains pending iteration and remains unchanged."""
+    from libtmux.experimental.engines.async_control_mode import (
+        AsyncControlModeEngine,
+    )
+
+    engine = AsyncControlModeEngine()
+    context = _isolated_wait_context(
+        benchmark_module,
+        tmp_path,
+        mode=benchmark_module.ExecutionMode.ASYNC,
+        lane=benchmark_module.EngineLane.CONTROL,
+        engine=engine,
+    )
+
+    async def exercise() -> tuple[list[dict[str, t.Any]], tuple[str, ...]]:
+        diagnostics: list[dict[str, t.Any]] = []
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(lambda _loop, details: diagnostics.append(details))
+        waiter = asyncio.create_task(
+            benchmark_module.wait_control_stream(
+                context,
+                request_id="pending-cancel",
+                timeout_s=1.0,
+            ),
+            name="test-pending-control-wait",
+        )
+        deadline = loop.time() + 0.5
+        while not engine._subscribers and loop.time() < deadline:
+            await asyncio.sleep(0)
+        assert engine._subscribers
+        waiter.cancel("caller-stop")
+        with pytest.raises(asyncio.CancelledError) as captured:
+            await waiter
+        await asyncio.sleep(0)
+        assert captured.value.args == ("caller-stop",)
+        assert engine._subscribers == set()
+        names = tuple(
+            task.get_name()
+            for task in asyncio.all_tasks()
+            if task is not asyncio.current_task()
+            and task.get_name().startswith("bench-control-wait-")
+        )
+        return diagnostics, names
+
+    diagnostics, task_names = asyncio.run(exercise(), debug=True)
+    assert diagnostics == []
+    assert task_names == ()
+
+
 def test_control_wait_matches_split_target_bytes_and_closes_subscription(
     benchmark_module: types.ModuleType,
     tmp_path: pathlib.Path,
@@ -2309,6 +2730,45 @@ def test_wait_evidence_rejects_wrong_or_stale_request_identity(
         benchmark_module._validated_sentinel_evidence(
             types.SimpleNamespace(run_id="run-7"), request, marker
         )
+
+
+def test_maximum_wait_token_round_trips_through_one_real_wrapped_pane(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The longest supported token survives tmux wrapping byte-for-byte."""
+    context = benchmark_module.setup_sync(
+        benchmark_module.Topology(1, 2, 2),
+        benchmark_module.EngineLane.SUBPROCESS,
+        tmp_path / "maximum-wait-token",
+        run_id="r" * 128,
+        delayed_ordinal=2,
+    )
+    cleanup = None
+    try:
+        benchmark_module.release_activity_gate(context)
+        result = benchmark_module.wait_capture_poll_sync(
+            context,
+            request_id="q" * 128,
+            value="v" * 128,
+            timeout_s=2.0,
+            poll_interval_s=0.005,
+        )
+        captured = context.server.cmd(
+            "capture-pane",
+            "-t",
+            context.delayed_pane_id,
+            "-p",
+            "-J",
+            "-S",
+            str(-benchmark_module._WAIT_CAPTURE_HISTORY_LINES),
+        )
+        assert captured.returncode == 0, captured.stderr
+        assert result.token in captured.stdout
+        assert len(f"{result.token}\n".encode()) == 422
+    finally:
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+    assert cleanup.complete, cleanup.errors
 
 
 def test_repeated_wait_capture_poll_sync_uses_one_active_topology(

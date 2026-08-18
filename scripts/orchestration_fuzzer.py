@@ -21,6 +21,14 @@ import tempfile
 import time
 import typing as t
 
+# Sentinel components are printable ASCII terminal atoms. Spaces and every
+# control byte are excluded so a captured token remains one literal field.
+_TERMINAL_SAFE_COMPONENT_ALPHABET = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
+)
+SENTINEL_COMPONENT_MAX_BYTES = 128
+SENTINEL_RECORD_MAX_BYTES = 422
+
 
 class StreamMode(str, enum.Enum):
     """A deterministic active-output stream category."""
@@ -176,13 +184,72 @@ def stream_for_pane(ordinal: int, delayed_ordinal: int) -> StreamMode:
     return shared[compacted % len(shared)]
 
 
+def _is_terminal_safe_component(value: object) -> bool:
+    """Return whether *value* is one bounded printable ASCII component.
+
+    Components contain 1-128 encoded bytes drawn only from letters, digits,
+    ``.``, ``_``, ``:``, and ``-``. The bound keeps a complete sentinel within
+    :data:`SENTINEL_RECORD_MAX_BYTES`.
+
+    >>> _is_terminal_safe_component("run.uuid:sample_1-2")
+    True
+    >>> _is_terminal_safe_component("unsafe value")
+    False
+    """
+    return (
+        isinstance(value, str)
+        and value.isascii()
+        and 0 < len(value.encode()) <= SENTINEL_COMPONENT_MAX_BYTES
+        and all(character in _TERMINAL_SAFE_COMPONENT_ALPHABET for character in value)
+    )
+
+
 def sentinel_text(run_id: str, request_id: str, value: str) -> str:
-    """Return a sentinel that identifies its owning run and request.
+    """Return a bounded terminal-safe sentinel for one run and request.
 
     >>> sentinel_text("run-7", "sample-03", "READY")
     'LIBTMUX_SENTINEL run=run-7 request=sample-03 value=READY'
+
+    Raises
+    ------
+    ValueError
+        If any component is not a 1-128 byte terminal-safe ASCII atom or the
+        complete newline-terminated record exceeds 422 encoded bytes.
     """
-    return f"LIBTMUX_SENTINEL run={run_id} request={request_id} value={value}"
+    components = {"run_id": run_id, "request_id": request_id, "value": value}
+    for name, component in components.items():
+        if not _is_terminal_safe_component(component):
+            message = (
+                f"{name} must be a 1-{SENTINEL_COMPONENT_MAX_BYTES} byte "
+                "terminal-safe ASCII component using letters, digits, '.', '_', "
+                "':', or '-'"
+            )
+            raise ValueError(message)
+    sentinel = f"LIBTMUX_SENTINEL run={run_id} request={request_id} value={value}"
+    if len(f"{sentinel}\n".encode()) > SENTINEL_RECORD_MAX_BYTES:
+        message = (
+            f"sentinel record must be at most {SENTINEL_RECORD_MAX_BYTES} encoded bytes"
+        )
+        raise ValueError(message)
+    return sentinel
+
+
+def _validate_workload_identity(options: WorkloadOptions) -> None:
+    """Reject unsafe service identity before creating output or rendering UI.
+
+    >>> _validate_workload_identity(
+    ...     WorkloadOptions(
+    ...         pathlib.Path("out"), "run-7", pathlib.Path("."), 0, 1.0, 1.0,
+    ...         0.0, "READY", 1.0,
+    ...     )
+    ... )
+
+    Raises
+    ------
+    ValueError
+        If the run identity or default sentinel value is not terminal-safe.
+    """
+    sentinel_text(options.run_id, "request", options.sentinel_prefix)
 
 
 def source_lines(source_root: pathlib.Path, seed: int) -> tuple[str, ...]:
@@ -254,6 +321,7 @@ def prepare_output(options: WorkloadOptions) -> WorkloadPaths:
     FileExistsError
         If another process already owns the requested output directory.
     """
+    _validate_workload_identity(options)
     root = options.output_dir
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
     streams = root / "streams"
@@ -404,11 +472,7 @@ def _request_from_marker(
     if (
         not isinstance(request_id, str)
         or not request_id
-        or len(request_id) > 128
-        or any(
-            not (character.isascii() and (character.isalnum() or character in "-_"))
-            for character in request_id
-        )
+        or not _is_terminal_safe_component(request_id)
         or path.name != f"{request_id}.json"
         or request_id in seen_request_ids
         or isinstance(requested, bool)
@@ -416,10 +480,12 @@ def _request_from_marker(
         or requested < 0
         or isinstance(value, bool)
         or not isinstance(value, str)
-        or not value
-        or "\n" in value
-        or "\r" in value
+        or not _is_terminal_safe_component(value)
     ):
+        return None
+    try:
+        sentinel_text(options.run_id, request_id, value)
+    except ValueError:
         return None
     return request_id, requested, value
 
@@ -455,6 +521,7 @@ def run_serve(options: WorkloadOptions) -> int:
     The service owns signals and a real marker tree, so its gate, timing, and
     shutdown behavior is exercised in ``tests/test_orchestration_fuzzer.py``.
     """
+    _validate_workload_identity(options)
     if options.frame_rate_hz <= 0:
         message = "frame_rate_hz must be positive"
         raise ValueError(message)
@@ -637,6 +704,7 @@ def run_preview(options: WorkloadOptions) -> int:
     exercised by the module-import tests; service rendering is covered by the
     dedicated functional test file.
     """
+    _validate_workload_identity(options)
     if options.frame_rate_hz <= 0:
         message = "frame_rate_hz must be positive"
         raise ValueError(message)
