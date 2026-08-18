@@ -8,12 +8,16 @@ import importlib.util
 import json
 import os
 import pathlib
+import signal
+import stat
 import subprocess
 import sys
 import types
 import typing as t
 
 import pytest
+
+from libtmux.experimental.models import PaneSnapshot, SessionSnapshot, WindowSnapshot
 
 
 @pytest.fixture()
@@ -850,6 +854,359 @@ def test_live_topology_setup_preserves_preexisting_scratch(
         )
 
     assert marker.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_owned_process_cleanup_kills_sigterm_ignoring_child(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A child that ignores graceful stop must be identity-killed and reaped."""
+    process = subprocess.Popen(
+        (
+            sys.executable,
+            "-c",
+            (
+                "import signal,sys,time; "
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                "print('ready', flush=True); time.sleep(30)"
+            ),
+        ),
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert process.stdout is not None
+        assert process.stdout.readline() == "ready\n"
+        identity = benchmark_module._record_process("test-child", process.pid)
+
+        report = benchmark_module._stop_owned_process(
+            process,
+            identity,
+            grace_s=0.05,
+        )
+
+        assert report.complete
+        assert report.errors == ()
+        assert process.poll() == -signal.SIGKILL
+        assert not benchmark_module.process_identity_matches(identity)
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=2.0)
+
+
+def test_start_fuzzer_reaps_child_after_readiness_timeout(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A pre-return timeout must leave no fuzzer child for the caller to own."""
+    run_id = f"readiness-timeout-{os.getpid()}"
+
+    with pytest.raises(RuntimeError, match="did not become ready"):
+        benchmark_module.start_fuzzer(
+            tmp_path,
+            run_id,
+            ready_timeout_s=1e-9,
+        )
+
+    processes = subprocess.run(
+        ("ps", "-eo", "args="),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert run_id not in processes
+
+
+def test_prepare_context_keeps_start_fuzzer_identity_for_partial_cleanup(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Later setup must reuse the identity captured while starting the child."""
+    real_record_process = benchmark_module._record_process
+    real_start_fuzzer = benchmark_module.start_fuzzer
+    fuzzer_identities: list[t.Any] = []
+    spawned: list[subprocess.Popen[bytes]] = []
+    context = None
+
+    def record_fuzzer_once(role: str, pid: int) -> t.Any:
+        if role == "fuzzer":
+            if fuzzer_identities:
+                message = "fuzzer identity was captured twice"
+                raise RuntimeError(message)
+            identity = real_record_process(role, pid)
+            fuzzer_identities.append(identity)
+            return identity
+        return real_record_process(role, pid)
+
+    def capture_fuzzer(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[bytes]:
+        process = t.cast(
+            subprocess.Popen[bytes],
+            real_start_fuzzer(*args, **kwargs),
+        )
+        spawned.append(process)
+        return process
+
+    monkeypatch.setattr(benchmark_module, "_record_process", record_fuzzer_once)
+    monkeypatch.setattr(benchmark_module, "start_fuzzer", capture_fuzzer)
+    try:
+        context = benchmark_module._prepare_context(
+            benchmark_module.Topology(1, 1, 1),
+            benchmark_module.EngineLane.SUBPROCESS,
+            benchmark_module.ExecutionMode.SYNC,
+            tmp_path / "identity-owner",
+            socket_path=None,
+            run_id="identity-owner",
+            delayed_ordinal=0,
+        )
+
+        assert len(fuzzer_identities) == 1
+        assert context.processes == (fuzzer_identities[0],)
+    finally:
+        if context is not None:
+            report = asyncio.run(benchmark_module.cleanup_run(context))
+            assert report.complete, report.errors
+        elif spawned:
+            report = benchmark_module._stop_owned_process(
+                spawned[0],
+                fuzzer_identities[0],
+            )
+            assert report.complete, report.errors
+
+
+@pytest.mark.parametrize("mode_name", ("sync", "async"))
+def test_setup_surfaces_original_and_cleanup_failures(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode_name: str,
+) -> None:
+    """A partial setup must retain its cause and unsuccessful cleanup evidence."""
+    captured_contexts: list[t.Any] = []
+    real_cleanup = benchmark_module.cleanup_run
+
+    def fail_verification(_context: t.Any, _snapshot: t.Any) -> t.NoReturn:
+        message = "injected setup failure"
+        raise RuntimeError(message)
+
+    async def cleanup_with_injected_failure(context: t.Any) -> t.Any:
+        captured_contexts.append(context)
+        report = await real_cleanup(context)
+        assert report.complete, report.errors
+        return benchmark_module.CleanupReport(
+            complete=False,
+            errors=("injected cleanup failure",),
+        )
+
+    monkeypatch.setattr(benchmark_module, "verify_topology", fail_verification)
+    monkeypatch.setattr(
+        benchmark_module,
+        "cleanup_run",
+        cleanup_with_injected_failure,
+    )
+    scratch = tmp_path / mode_name
+
+    with pytest.raises(benchmark_module.SetupCleanupError) as raised:
+        if mode_name == "sync":
+            benchmark_module.setup_sync(
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.EngineLane.SUBPROCESS,
+                scratch,
+                run_id=f"cleanup-evidence-{mode_name}",
+            )
+        else:
+            asyncio.run(
+                benchmark_module.setup_async(
+                    benchmark_module.Topology(1, 1, 1),
+                    benchmark_module.EngineLane.SUBPROCESS,
+                    scratch,
+                    run_id=f"cleanup-evidence-{mode_name}",
+                )
+            )
+
+    error = raised.value
+    assert isinstance(error.setup_error, RuntimeError)
+    assert str(error.setup_error) == "injected setup failure"
+    assert error.__cause__ is error.setup_error
+    assert error.cleanup_report.errors == ("injected cleanup failure",)
+    assert len(captured_contexts) == 1
+    assert not scratch.exists()
+    assert all(
+        not benchmark_module.process_identity_matches(identity)
+        for identity in captured_contexts[0].processes
+    )
+
+
+def test_setup_acquires_private_scratch_under_permissive_umask(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Run scratch must be mode 0700 even when the ambient umask permits 0777."""
+    scratch = tmp_path / "private-scratch"
+    context = None
+    previous_umask = os.umask(0)
+    try:
+        context = benchmark_module.setup_sync(
+            benchmark_module.Topology(1, 1, 1),
+            benchmark_module.EngineLane.SUBPROCESS,
+            scratch,
+            run_id="private-scratch",
+        )
+    finally:
+        os.umask(previous_umask)
+    try:
+        assert stat.S_IMODE(scratch.stat().st_mode) == 0o700
+    finally:
+        if context is not None:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+            assert cleanup.complete, cleanup.errors
+
+
+def test_socket_path_limit_counts_encoded_bytes(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """The pathname ceiling must reserve the sockaddr_un terminator byte."""
+    at_limit = pathlib.Path("/" + "é" * 53)
+    over_limit = pathlib.Path("/" + "é" * 53 + "s")
+    assert len(os.fsencode(at_limit)) == 107
+    assert len(os.fsencode(over_limit)) == 108
+
+    assert benchmark_module._validate_socket_path(at_limit) == at_limit
+    with pytest.raises(ValueError, match="107 encoded bytes"):
+        benchmark_module._validate_socket_path(over_limit)
+
+
+def test_explicit_long_socket_is_rejected_before_owned_side_effects(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid explicit socket must not start a fuzzer or acquire scratch."""
+    scratch = tmp_path / "must-not-exist"
+    socket_path = scratch / ("s" * 200)
+
+    def unexpected_fuzzer(*_args: object, **_kwargs: object) -> t.NoReturn:
+        message = "fuzzer started before socket validation"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(benchmark_module, "start_fuzzer", unexpected_fuzzer)
+
+    with pytest.raises(ValueError, match="107 encoded bytes"):
+        benchmark_module.setup_sync(
+            benchmark_module.Topology(1, 1, 1),
+            benchmark_module.EngineLane.SUBPROCESS,
+            scratch,
+            socket_path=socket_path,
+            run_id="long-socket",
+        )
+
+    assert not scratch.exists()
+
+
+def test_default_socket_uses_short_owned_root_for_long_scratch(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An owned socket remains ABI-safe when the caller's scratch path is long."""
+    scratch = tmp_path / ("long-scratch-" + "s" * 100)
+    context = benchmark_module.setup_sync(
+        benchmark_module.Topology(1, 1, 1),
+        benchmark_module.EngineLane.SUBPROCESS,
+        scratch,
+        run_id="short-owned-socket",
+    )
+    socket_root = context.socket_root
+    try:
+        assert len(os.fsencode(context.socket_path)) <= 107
+        assert socket_root is not None
+        assert context.socket_path.parent == socket_root
+        assert not context.socket_path.is_relative_to(scratch)
+    finally:
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+        assert cleanup.complete, cleanup.errors
+    assert not socket_root.exists()
+
+
+def test_verify_topology_rejects_swapped_window_parents(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Correct per-session counts must not hide windows attached to wrong parents."""
+    session_names = ("bench-parent-s000", "bench-parent-s001")
+    window_names = (
+        "bench-parent-s000-w000",
+        "bench-parent-s001-w000",
+    )
+    context = types.SimpleNamespace(
+        topology=benchmark_module.Topology(2, 1, 1),
+        expected_session_names=session_names,
+        expected_window_names=window_names,
+        expected_window_parents=(
+            (window_names[0], session_names[0]),
+            (window_names[1], session_names[1]),
+        ),
+        streams=(pathlib.Path("editor.log"), pathlib.Path("delayed-match.log")),
+    )
+    snapshot = benchmark_module.TopologySnapshot(
+        sessions=(
+            SessionSnapshot(session_id="$0", name=session_names[0]),
+            SessionSnapshot(session_id="$1", name=session_names[1]),
+        ),
+        windows=(
+            WindowSnapshot(window_id="@0", name=window_names[0], session_id="$1"),
+            WindowSnapshot(window_id="@1", name=window_names[1], session_id="$0"),
+        ),
+        panes=(
+            PaneSnapshot(pane_id="%0", window_id="@0", session_id="$1", pid=9_999_991),
+            PaneSnapshot(pane_id="%1", window_id="@1", session_id="$0", pid=9_999_992),
+        ),
+    )
+
+    with pytest.raises(
+        benchmark_module.TopologyVerificationError,
+        match="window parent differs from the declaration",
+    ):
+        benchmark_module.verify_topology(context, snapshot)
+
+
+def test_verify_topology_rejects_pane_session_parent_mismatch(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A pane must name the same session as the window that owns its ID."""
+    session_names = ("bench-parent-s000", "bench-parent-s001")
+    window_names = (
+        "bench-parent-s000-w000",
+        "bench-parent-s001-w000",
+    )
+    context = types.SimpleNamespace(
+        topology=benchmark_module.Topology(2, 1, 1),
+        expected_session_names=session_names,
+        expected_window_names=window_names,
+        expected_window_parents=(
+            (window_names[0], session_names[0]),
+            (window_names[1], session_names[1]),
+        ),
+        streams=(pathlib.Path("editor.log"), pathlib.Path("delayed-match.log")),
+    )
+    snapshot = benchmark_module.TopologySnapshot(
+        sessions=(
+            SessionSnapshot(session_id="$0", name=session_names[0]),
+            SessionSnapshot(session_id="$1", name=session_names[1]),
+        ),
+        windows=(
+            WindowSnapshot(window_id="@0", name=window_names[0], session_id="$0"),
+            WindowSnapshot(window_id="@1", name=window_names[1], session_id="$1"),
+        ),
+        panes=(
+            PaneSnapshot(pane_id="%0", window_id="@0", session_id="$1", pid=9_999_991),
+            PaneSnapshot(pane_id="%1", window_id="@1", session_id="$0", pid=9_999_992),
+        ),
+    )
+
+    with pytest.raises(
+        benchmark_module.TopologyVerificationError,
+        match="pane session differs from its window parent",
+    ):
+        benchmark_module.verify_topology(context, snapshot)
 
 
 @pytest.mark.parametrize(
