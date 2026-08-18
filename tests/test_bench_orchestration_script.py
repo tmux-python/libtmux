@@ -553,3 +553,14 @@ def test_validate_report_rejects_canonical_kind_with_custom_shapes(
     )
     with pytest.raises(ValueError, match="canonical"):
         benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_invalid_runtime_ramp_kind(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Deserialized report data must not bypass the Literal ramp vocabulary."""
+    report = dataclasses.replace(
+        completed_report(benchmark_module), ramp_kind="invalid"
+    )
+    with pytest.raises(ValueError, match="ramp_kind"):
+        benchmark_module.validate_report(report)
