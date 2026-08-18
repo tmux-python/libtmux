@@ -431,6 +431,7 @@ def test_validate_report_requires_unattempted_shapes_after_cutoff(
         completed_report(benchmark_module),
         status="cutoff",
         maximum_completed=False,
+        ramp_kind="custom",
         ramp=(
             benchmark_module.RampStep(
                 benchmark_module.parse_topology("80x20x1"), "completed"
@@ -516,3 +517,39 @@ def test_plan_writes_original_predictive_decision_without_talking_to_tmux(
         payload["original_guard_decision"] == payload["guard_decision"]
         or payload["original_guard_decision"]["kind"] == "predictive_refusal"
     )
+
+
+def test_validate_report_rejects_contradictory_ramp_terminal_sequence(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A ramp cannot report completion after recording a cutoff."""
+    shapes = tuple(benchmark_module.Topology(1, 1, panes) for panes in (1, 2, 3))
+    report = dataclasses.replace(
+        completed_report(benchmark_module),
+        status="cutoff",
+        maximum_completed=False,
+        ramp_kind="custom",
+        requested_shapes=shapes,
+        ramp=(
+            benchmark_module.RampStep(shapes[0], "completed"),
+            benchmark_module.RampStep(shapes[1], "cutoff", "pid_reserve"),
+            benchmark_module.RampStep(shapes[2], "completed"),
+        ),
+    )
+    with pytest.raises(ValueError, match="not_attempted"):
+        benchmark_module.validate_report(report)
+
+
+def test_validate_report_rejects_canonical_kind_with_custom_shapes(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Canonical evidence must retain every specified canonical ramp shape."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    report = dataclasses.replace(
+        completed_report(benchmark_module),
+        ramp_kind="canonical",
+        requested_shapes=(shape,),
+        ramp=(benchmark_module.RampStep(shape, "completed"),),
+    )
+    with pytest.raises(ValueError, match="canonical"):
+        benchmark_module.validate_report(report)
