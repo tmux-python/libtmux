@@ -12,17 +12,63 @@ import libtmux or start a tmux server.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import collections.abc as cabc
+import contextlib
 import dataclasses
+import enum
 import json
 import math
 import os
 import pathlib
 import resource
+import shlex
+import shutil
+import signal
 import statistics
+import subprocess
+import sys
 import tempfile
+import time
 import types
 import typing as t
+
+if t.TYPE_CHECKING:
+    from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
+    from libtmux.experimental.models import (
+        ClientSnapshot,
+        PaneSnapshot,
+        SessionSnapshot,
+        WindowSnapshot,
+    )
+    from libtmux.experimental.workspace import WorkspaceSet
+    from libtmux.server import Server
+
+
+class EngineLane(str, enum.Enum):
+    """Transport family used for one live benchmark server.
+
+    Examples
+    --------
+    >>> EngineLane("control") is EngineLane.CONTROL
+    True
+    """
+
+    SUBPROCESS = "subprocess"
+    CONTROL = "control"
+
+
+class ExecutionMode(str, enum.Enum):
+    """Synchronous or asynchronous operation execution.
+
+    Examples
+    --------
+    >>> ExecutionMode("async") is ExecutionMode.ASYNC
+    True
+    """
+
+    SYNC = "sync"
+    ASYNC = "async"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -878,6 +924,247 @@ class CleanupReport:
 
 
 @dataclasses.dataclass(frozen=True)
+class ProcessIdentity:
+    """One benchmark-owned process protected against PID reuse.
+
+    Attributes
+    ----------
+    role : str
+        Stable owner label such as ``fuzzer``, ``server``, or ``pane``.
+    pid : int
+        Positive process identifier.
+    start_time : int
+        Linux procfs start-time tick from field 22 of ``/proc/PID/stat``.
+
+    Examples
+    --------
+    >>> ProcessIdentity("pane", 42, 100).role
+    'pane'
+    """
+
+    role: str
+    pid: int
+    start_time: int
+
+
+@dataclasses.dataclass(frozen=True)
+class TopologyTotals:
+    """Flat session, window, and pane totals used in mismatch evidence.
+
+    Attributes
+    ----------
+    sessions : int
+        Number of observed or requested sessions.
+    windows : int
+        Number of observed or requested windows.
+    panes : int
+        Number of observed or requested panes.
+
+    Examples
+    --------
+    >>> TopologyTotals.from_topology(Topology(2, 3, 4))
+    TopologyTotals(sessions=2, windows=6, panes=24)
+    """
+
+    sessions: int
+    windows: int
+    panes: int
+
+    @classmethod
+    def from_topology(cls, topology: Topology) -> TopologyTotals:
+        """Return the exact flat totals for a requested topology.
+
+        >>> TopologyTotals.from_topology(Topology(1, 2, 3)).panes
+        6
+
+        Parameters
+        ----------
+        topology : Topology
+            Requested hierarchy dimensions.
+
+        Returns
+        -------
+        TopologyTotals
+            Sessions, windows, and panes after multiplication.
+        """
+        return cls(topology.sessions, topology.windows, topology.panes)
+
+
+@dataclasses.dataclass(frozen=True)
+class TopologySnapshot:
+    """Concrete typed snapshots returned by all three list operations.
+
+    Attributes
+    ----------
+    sessions : tuple[SessionSnapshot, ...]
+        Rows returned by typed ``ListSessions``.
+    windows : tuple[WindowSnapshot, ...]
+        Rows returned by typed ``ListWindows(all_windows=True)``.
+    panes : tuple[PaneSnapshot, ...]
+        Rows returned by typed ``ListPanes(all_panes=True)``.
+
+    Examples
+    --------
+    >>> TopologySnapshot((), (), ()).totals
+    TopologyTotals(sessions=0, windows=0, panes=0)
+    """
+
+    sessions: tuple[SessionSnapshot, ...]
+    windows: tuple[WindowSnapshot, ...]
+    panes: tuple[PaneSnapshot, ...]
+
+    @property
+    def totals(self) -> TopologyTotals:
+        """Return flat counts without contacting tmux.
+
+        >>> TopologySnapshot((), (), ()).totals.panes
+        0
+
+        Returns
+        -------
+        TopologyTotals
+            Counts derived from the stored immutable rows.
+        """
+        return TopologyTotals(len(self.sessions), len(self.windows), len(self.panes))
+
+
+class TopologyVerificationError(RuntimeError):
+    """Exact topology verification failed.
+
+    Examples
+    --------
+    >>> error = TopologyVerificationError(
+    ...     TopologyTotals(2, 4, 8), TopologyTotals(2, 4, 7), "pane count"
+    ... )
+    >>> error.requested.panes, error.observed.panes
+    (8, 7)
+    """
+
+    def __init__(
+        self,
+        requested: TopologyTotals,
+        observed: TopologyTotals,
+        detail: str,
+    ) -> None:
+        """Retain both totals and the failed invariant.
+
+        >>> str(TopologyVerificationError(
+        ...     TopologyTotals(1, 1, 1), TopologyTotals(1, 1, 0), "missing pane"
+        ... ))
+        'topology verification failed: missing pane; requested=1/1/1 observed=1/1/0'
+
+        Parameters
+        ----------
+        requested : TopologyTotals
+            Exact totals required by the run.
+        observed : TopologyTotals
+            Flat totals returned by the live server.
+        detail : str
+            First failed topology invariant.
+        """
+        self.requested = requested
+        self.observed = observed
+        self.detail = detail
+        super().__init__(
+            "topology verification failed: "
+            f"{detail}; requested={requested.sessions}/{requested.windows}/"
+            f"{requested.panes} observed={observed.sessions}/{observed.windows}/"
+            f"{observed.panes}"
+        )
+
+
+@dataclasses.dataclass
+class RunContext:
+    """Single owner for one live topology and all disposable resources.
+
+    Attributes
+    ----------
+    topology : Topology
+        Requested hierarchy.
+    lane : EngineLane
+        Selected transport family.
+    mode : ExecutionMode
+        Sync or async dispatch mode.
+    run_id : str
+        Identity carried by fuzzer control markers.
+    scratch : pathlib.Path
+        Exclusive directory removed during cleanup.
+    socket_path : pathlib.Path
+        Explicit isolated tmux socket path.
+    server : Server
+        Classic server value used only to bind engines to the socket.
+    engine : TmuxEngine or AsyncTmuxEngine
+        Active transport engine.
+    fuzzer : subprocess.Popen[bytes]
+        Paused central stream generator.
+    streams : tuple[pathlib.Path, ...]
+        Precreated activity streams in mode order.
+    delayed_ordinal : int
+        Global pane ordinal assigned the delayed-match stream.
+    expected_session_names : tuple[str, ...]
+        Exact declared session names.
+    expected_window_names : tuple[str, ...]
+        Exact declared window names.
+    setup_duration_ns : int
+        Timed construction duration excluding activity stabilization.
+    processes : tuple[ProcessIdentity, ...]
+        Fuzzer, server, and pane-follower identities.
+    session_ids : tuple[str, ...]
+        Verified stable session identifiers.
+    window_ids : tuple[str, ...]
+        Verified stable window identifiers.
+    pane_ids : tuple[str, ...]
+        Verified stable pane identifiers.
+    delayed_pane_id : str or None
+        Verified pane following the unique delayed stream.
+    topology_verified : bool
+        Whether exact live verification succeeded.
+    activity_epoch : int or None
+        Released run-scoped activity epoch.
+    activity_marker : str or None
+        Exact marker required in every pane.
+    activity_pane_ids : tuple[str, ...]
+        Panes that captured the released marker.
+    heartbeat_epoch : int
+        Last monotonic fuzzer heartbeat epoch observed.
+    ambient_tmux_environment : tuple[str | None, str | None]
+        Original ``TMUX`` and ``TMUX_PANE`` values restored after cleanup.
+
+    Examples
+    --------
+    >>> required = {"session_ids", "pane_ids", "processes", "activity_epoch"}
+    >>> required <= {field.name for field in dataclasses.fields(RunContext)}
+    True
+    """
+
+    topology: Topology
+    lane: EngineLane
+    mode: ExecutionMode
+    run_id: str
+    scratch: pathlib.Path
+    socket_path: pathlib.Path
+    server: Server
+    engine: TmuxEngine | AsyncTmuxEngine
+    fuzzer: subprocess.Popen[bytes]
+    streams: tuple[pathlib.Path, ...]
+    delayed_ordinal: int
+    expected_session_names: tuple[str, ...]
+    expected_window_names: tuple[str, ...]
+    setup_duration_ns: int
+    processes: tuple[ProcessIdentity, ...]
+    session_ids: tuple[str, ...] = ()
+    window_ids: tuple[str, ...] = ()
+    pane_ids: tuple[str, ...] = ()
+    delayed_pane_id: str | None = None
+    topology_verified: bool = False
+    activity_epoch: int | None = None
+    activity_marker: str | None = None
+    activity_pane_ids: tuple[str, ...] = ()
+    heartbeat_epoch: int = -1
+    ambient_tmux_environment: tuple[str | None, str | None] = (None, None)
+
+
+@dataclasses.dataclass(frozen=True)
 class RampStep:
     """Outcome recorded for one canonical ramp shape.
 
@@ -1293,6 +1580,1443 @@ def run_plan(shape: str, output: pathlib.Path | None, force_extreme: bool) -> in
     if output is not None:
         write_json_atomic(output, payload)
     return 0
+
+
+def _process_start_time(pid: int) -> int | None:
+    """Read one Linux process start-time tick without following a PID blindly.
+
+    >>> value = _process_start_time(os.getpid())
+    >>> isinstance(value, int) and value > 0
+    True
+
+    Parameters
+    ----------
+    pid : int
+        Positive process identifier.
+
+    Returns
+    -------
+    int | None
+        Procfs field 22, or ``None`` if the identity is absent or unreadable.
+    """
+    if pid <= 0:
+        return None
+    try:
+        stat = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        close = stat.rindex(")")
+        fields = stat[close + 2 :].split()
+        return int(fields[19])
+    except (FileNotFoundError, OSError, ValueError, IndexError):
+        return None
+
+
+def _record_process(role: str, pid: int) -> ProcessIdentity:
+    """Capture a positive PID and its current procfs start time.
+
+    >>> _record_process("self", os.getpid()).role
+    'self'
+
+    Parameters
+    ----------
+    role : str
+        Stable resource-owner label.
+    pid : int
+        Process identifier to bind.
+
+    Returns
+    -------
+    ProcessIdentity
+        Identity safe to compare before later escalation.
+
+    Raises
+    ------
+    RuntimeError
+        If procfs cannot prove the process identity.
+    """
+    start_time = _process_start_time(pid)
+    if start_time is None:
+        message = f"cannot record {role} process identity for pid {pid}"
+        raise RuntimeError(message)
+    return ProcessIdentity(role, pid, start_time)
+
+
+def process_identity_matches(identity: ProcessIdentity) -> bool:
+    """Return whether a PID still names the exact process that was recorded.
+
+    >>> current = _record_process("self", os.getpid())
+    >>> process_identity_matches(current)
+    True
+    >>> process_identity_matches(dataclasses.replace(current, start_time=-1))
+    False
+
+    Parameters
+    ----------
+    identity : ProcessIdentity
+        PID and start time captured while the process was owned by this run.
+
+    Returns
+    -------
+    bool
+        True only while both PID and procfs start time still match.
+    """
+    return _process_start_time(identity.pid) == identity.start_time
+
+
+def _stream_name(ordinal: int, delayed_ordinal: int) -> str:
+    """Return the Task 1 stream name for one global stable pane ordinal.
+
+    >>> [_stream_name(index, 2) for index in range(4)]
+    ['editor', 'dev-server', 'delayed-match', 'installer']
+
+    Parameters
+    ----------
+    ordinal : int
+        Zero-based pane position across every session and window.
+    delayed_ordinal : int
+        Position reserved for the unique delayed stream.
+
+    Returns
+    -------
+    str
+        One fuzzer stream basename without its ``.log`` suffix.
+    """
+    if ordinal == delayed_ordinal:
+        return "delayed-match"
+    shared = ("editor", "dev-server", "installer")
+    compacted = ordinal - int(ordinal > delayed_ordinal)
+    return shared[compacted % len(shared)]
+
+
+def _tail_command(stream: pathlib.Path) -> str:
+    """Render the portable follower command as one shell-safe string.
+
+    >>> _tail_command(pathlib.Path("a stream.log"))
+    "exec tail -n 0 -f 'a stream.log'"
+
+    Parameters
+    ----------
+    stream : pathlib.Path
+        Precreated append-only activity file.
+
+    Returns
+    -------
+    str
+        ``exec tail -n 0 -f`` plus a safely quoted path.
+    """
+    return shlex.join(("exec", "tail", "-n", "0", "-f", str(stream)))
+
+
+def _session_name(run_id: str, index: int) -> str:
+    """Return one globally distinct, stable benchmark session name.
+
+    >>> _session_name("run-7", 2)
+    'bench-run-7-s002'
+
+    Parameters
+    ----------
+    run_id : str
+        Validated run identity.
+    index : int
+        Zero-based session ordinal.
+
+    Returns
+    -------
+    str
+        Exact tmux session name.
+    """
+    return f"bench-{run_id}-s{index:03d}"
+
+
+def _window_name(run_id: str, session_index: int, window_index: int) -> str:
+    """Return one globally distinct, stable benchmark window name.
+
+    >>> _window_name("run-7", 2, 3)
+    'bench-run-7-s002-w003'
+
+    Parameters
+    ----------
+    run_id : str
+        Validated run identity.
+    session_index : int
+        Zero-based session ordinal.
+    window_index : int
+        Zero-based window ordinal within the session.
+
+    Returns
+    -------
+    str
+        Exact tmux window name.
+    """
+    return f"{_session_name(run_id, session_index)}-w{window_index:03d}"
+
+
+def _only_control_client_name(clients: tuple[ClientSnapshot, ...]) -> str:
+    """Return the sole client attached to an isolated control server.
+
+    >>> try:
+    ...     _only_control_client_name(())
+    ... except RuntimeError as error:
+    ...     print(error)
+    isolated control server must have one attached client
+
+    Parameters
+    ----------
+    clients : tuple[ClientSnapshot, ...]
+        Concrete rows returned by typed ``ListClients``.
+
+    Returns
+    -------
+    str
+        Exact tmux client name accepted by ``SwitchClient``.
+
+    Raises
+    ------
+    RuntimeError
+        If bootstrap did not leave exactly one persistent control client.
+    """
+    if len(clients) != 1:
+        message = "isolated control server must have one attached client"
+        raise RuntimeError(message)
+    return clients[0].name
+
+
+def build_workspaces(
+    topology: Topology,
+    streams_dir: pathlib.Path,
+    run_id: str,
+    *,
+    delayed_ordinal: int,
+) -> WorkspaceSet:
+    """Declare one workspace per session with active commands in every pane.
+
+    The returned set is one compilation unit. Every first pane receives its
+    command through ``Window.window_shell`` and every split receives the same
+    command through ``Pane.shell``.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     streams = pathlib.Path(directory)
+    ...     for name in ("editor", "dev-server", "installer", "delayed-match"):
+    ...         (streams / f"{name}.log").touch()
+    ...     workspace_set = build_workspaces(
+    ...         Topology(1, 1, 2), streams, "run-7", delayed_ordinal=1
+    ...     )
+    ...     len(workspace_set.workspaces[0].windows[0].panes)
+    2
+
+    Parameters
+    ----------
+    topology : Topology
+        Positive hierarchy to declare.
+    streams_dir : pathlib.Path
+        Directory containing all four precreated Task 1 streams.
+    run_id : str
+        Run identity used in stable tmux names.
+    delayed_ordinal : int
+        Unique global pane ordinal assigned the delayed stream.
+
+    Returns
+    -------
+    WorkspaceSet
+        All sessions wrapped in one declarative collection.
+
+    Raises
+    ------
+    ValueError
+        If the delayed ordinal is outside the requested pane range.
+    FileNotFoundError
+        If any selected stream was not precreated by the fuzzer.
+    """
+    from libtmux.experimental.workspace import Pane, Window, Workspace, WorkspaceSet
+
+    if not 0 <= delayed_ordinal < topology.panes:
+        message = "delayed pane ordinal must identify a requested pane"
+        raise ValueError(message)
+    workspaces: list[Workspace] = []
+    ordinal = 0
+    for session_index in range(topology.sessions):
+        windows: list[Window] = []
+        for window_index in range(topology.windows_per_session):
+            panes: list[Pane] = []
+            commands: list[str] = []
+            for _pane_index in range(topology.panes_per_window):
+                stream = streams_dir / f"{_stream_name(ordinal, delayed_ordinal)}.log"
+                if not stream.is_file():
+                    raise FileNotFoundError(stream)
+                command = _tail_command(stream)
+                commands.append(command)
+                panes.append(Pane(shell=command))
+                ordinal += 1
+            windows.append(
+                Window(
+                    name=_window_name(run_id, session_index, window_index),
+                    window_shell=commands[0],
+                    panes=tuple(panes),
+                )
+            )
+        workspaces.append(
+            Workspace(
+                name=_session_name(run_id, session_index),
+                windows=tuple(windows),
+            )
+        )
+    return WorkspaceSet(workspaces)
+
+
+def start_fuzzer(
+    scratch: pathlib.Path,
+    run_id: str,
+    *,
+    ready_timeout_s: float = 5.0,
+    frame_rate_hz: float = 40.0,
+    duration_s: float = 300.0,
+) -> subprocess.Popen[bytes]:
+    """Start the paused Task 1 service and wait for its exact ready marker.
+
+    Examples
+    --------
+    >>> try:
+    ...     start_fuzzer(pathlib.Path("."), "", ready_timeout_s=1.0)
+    ... except ValueError as error:
+    ...     print(error)
+    run_id must be nonempty
+
+    Parameters
+    ----------
+    scratch : pathlib.Path
+        Existing exclusive directory that will own ``fuzzer/``.
+    run_id : str
+        Identity required in every lifecycle marker.
+    ready_timeout_s : float
+        Maximum wait for the service's completed ready marker.
+    frame_rate_hz : float
+        Active frames per stream per second after gate release.
+    duration_s : float
+        Maximum active service duration.
+
+    Returns
+    -------
+    subprocess.Popen[bytes]
+        Paused fuzzer process whose PID remains owned by the caller.
+
+    Raises
+    ------
+    ValueError
+        If the run identity or timeout is invalid.
+    RuntimeError
+        If the service exits or misses its ready deadline.
+    """
+    if not run_id:
+        message = "run_id must be nonempty"
+        raise ValueError(message)
+    if ready_timeout_s <= 0:
+        message = "ready timeout must be positive"
+        raise ValueError(message)
+    output_dir = scratch / "fuzzer"
+    script = pathlib.Path(__file__).with_name("orchestration_fuzzer.py")
+    environment = os.environ.copy()
+    environment.pop("TMUX", None)
+    environment.pop("TMUX_PANE", None)
+    environment.pop("VIRTUAL_ENV", None)
+    process = subprocess.Popen(
+        (
+            sys.executable,
+            str(script),
+            "serve",
+            "--output-dir",
+            str(output_dir),
+            "--run-id",
+            run_id,
+            "--source-root",
+            str(pathlib.Path(__file__).parents[1]),
+            "--seed",
+            "11",
+            "--frame-rate",
+            str(frame_rate_hz),
+            "--duration",
+            str(duration_s),
+            "--delayed-match-after",
+            "0.05",
+            "--sentinel-prefix",
+            "READY",
+            "--heartbeat-interval",
+            "0.02",
+        ),
+        cwd=pathlib.Path(__file__).parents[1],
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    ready = output_dir / "ready.json"
+    deadline = time.monotonic() + ready_timeout_s
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            message = f"fuzzer exited before ready with code {process.returncode}"
+            raise RuntimeError(message)
+        try:
+            marker = json.loads(ready.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            time.sleep(0.01)
+            continue
+        if marker == {"schema_version": 1, "run_id": run_id}:
+            return process
+        time.sleep(0.01)
+    if process.poll() is None:
+        process.terminate()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=1.0)
+    message = f"fuzzer did not become ready within {ready_timeout_s}s"
+    raise RuntimeError(message)
+
+
+def _prepare_context(
+    topology: Topology,
+    lane: EngineLane,
+    mode: ExecutionMode,
+    scratch: pathlib.Path,
+    *,
+    socket_path: pathlib.Path | None,
+    run_id: str,
+    delayed_ordinal: int,
+) -> RunContext:
+    """Create isolated host resources and an engine without starting setup timing.
+
+    >>> try:
+    ...     _prepare_context(
+    ...         Topology(1, 1, 1), EngineLane.SUBPROCESS, ExecutionMode.SYNC,
+    ...         pathlib.Path("unused"), socket_path=None, run_id="run-7",
+    ...         delayed_ordinal=2,
+    ...     )
+    ... except ValueError as error:
+    ...     print(error)
+    delayed pane ordinal must identify a requested pane
+
+    Parameters
+    ----------
+    topology : Topology
+        Requested live hierarchy.
+    lane : EngineLane
+        Selected engine transport.
+    mode : ExecutionMode
+        Sync or async dispatch.
+    scratch : pathlib.Path
+        New exclusive directory for this run.
+    socket_path : pathlib.Path | None
+        Explicit socket path, defaulting inside ``scratch``.
+    run_id : str
+        Safe identifier used in markers and tmux names.
+    delayed_ordinal : int
+        Unique pane assigned the delayed stream.
+
+    Returns
+    -------
+    RunContext
+        Paused fuzzer, isolated server value, and unstarted engine.
+
+    Raises
+    ------
+    ValueError
+        If identifiers, paths, or the delayed ordinal are invalid.
+    FileExistsError
+        If ``scratch`` already exists.
+    """
+    if not 0 <= delayed_ordinal < topology.panes:
+        message = "delayed pane ordinal must identify a requested pane"
+        raise ValueError(message)
+    if not run_id or any(
+        not (character.isascii() and (character.isalnum() or character in "-_"))
+        for character in run_id
+    ):
+        message = (
+            "run_id must contain only ASCII letters, digits, hyphens, or underscores"
+        )
+        raise ValueError(message)
+    resolved_scratch = scratch.resolve()
+    resolved_socket = (socket_path or scratch / "tmux.sock").resolve()
+    if not resolved_socket.is_relative_to(resolved_scratch):
+        message = "socket path must stay inside the run scratch directory"
+        raise ValueError(message)
+    ambient_tmux_environment = (
+        os.environ.pop("TMUX", None),
+        os.environ.pop("TMUX_PANE", None),
+    )
+    scratch_created = False
+    fuzzer: subprocess.Popen[bytes] | None = None
+    try:
+        from libtmux.experimental.engines import (
+            AsyncControlModeEngine,
+            AsyncSubprocessEngine,
+            ControlModeEngine,
+            SubprocessEngine,
+        )
+        from libtmux.server import Server
+
+        scratch.mkdir(parents=True, exist_ok=False)
+        scratch_created = True
+        fuzzer = start_fuzzer(scratch, run_id)
+        server = Server(socket_path=resolved_socket, config_file=os.devnull)
+        if mode is ExecutionMode.SYNC:
+            engine: TmuxEngine | AsyncTmuxEngine
+            engine = (
+                SubprocessEngine.for_server(server)
+                if lane is EngineLane.SUBPROCESS
+                else ControlModeEngine.for_server(server)
+            )
+        else:
+            engine = (
+                AsyncSubprocessEngine.for_server(server)
+                if lane is EngineLane.SUBPROCESS
+                else AsyncControlModeEngine.for_server(server)
+            )
+        streams_dir = scratch / "fuzzer" / "streams"
+        streams = tuple(
+            streams_dir / f"{name}.log"
+            for name in ("editor", "dev-server", "installer", "delayed-match")
+        )
+        return RunContext(
+            topology=topology,
+            lane=lane,
+            mode=mode,
+            run_id=run_id,
+            scratch=scratch,
+            socket_path=resolved_socket,
+            server=server,
+            engine=engine,
+            fuzzer=fuzzer,
+            streams=streams,
+            delayed_ordinal=delayed_ordinal,
+            expected_session_names=tuple(
+                _session_name(run_id, index) for index in range(topology.sessions)
+            ),
+            expected_window_names=tuple(
+                _window_name(run_id, session_index, window_index)
+                for session_index in range(topology.sessions)
+                for window_index in range(topology.windows_per_session)
+            ),
+            setup_duration_ns=0,
+            processes=(_record_process("fuzzer", fuzzer.pid),),
+            ambient_tmux_environment=ambient_tmux_environment,
+        )
+    except BaseException:
+        if fuzzer is not None and fuzzer.poll() is None:
+            fuzzer.terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                fuzzer.wait(timeout=1.0)
+        if scratch_created:
+            shutil.rmtree(scratch, ignore_errors=True)
+        for name, value in zip(
+            ("TMUX", "TMUX_PANE"), ambient_tmux_environment, strict=True
+        ):
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        raise
+
+
+def setup_sync(
+    topology: Topology,
+    lane: EngineLane,
+    scratch: pathlib.Path,
+    *,
+    socket_path: pathlib.Path | None = None,
+    run_id: str = "run-0",
+    delayed_ordinal: int = 0,
+) -> RunContext:
+    """Build and exactly verify one synchronous live topology.
+
+    Control mode attaches to a disposable keepalive before timing. The returned
+    ``setup_duration_ns`` ends after that keepalive is removed and excludes the
+    activity gate and stabilization polls.
+
+    Examples
+    --------
+    >>> try:
+    ...     setup_sync(
+    ...         Topology(1, 1, 1), EngineLane.SUBPROCESS, pathlib.Path("unused"),
+    ...         delayed_ordinal=2,
+    ...     )
+    ... except ValueError as error:
+    ...     print(error)
+    delayed pane ordinal must identify a requested pane
+
+    Parameters
+    ----------
+    topology : Topology
+        Requested hierarchy.
+    lane : EngineLane
+        Synchronous subprocess or control transport.
+    scratch : pathlib.Path
+        New exclusive run directory.
+    socket_path : pathlib.Path | None
+        Explicit socket path inside ``scratch``.
+    run_id : str
+        Marker and topology identity.
+    delayed_ordinal : int
+        Unique pane assigned the delayed stream.
+
+    Returns
+    -------
+    RunContext
+        Verified topology with stable IDs and process identities.
+    """
+    from libtmux.experimental.engines import SubprocessEngine
+    from libtmux.experimental.ops import (
+        BatchingPlanner,
+        DisplayMessage,
+        KillSession,
+        ListClients,
+        ListSessions,
+        NameRef,
+        NewSession,
+        SetOption,
+        SwitchClient,
+        run,
+    )
+
+    context = _prepare_context(
+        topology,
+        lane,
+        ExecutionMode.SYNC,
+        scratch,
+        socket_path=socket_path,
+        run_id=run_id,
+        delayed_ordinal=delayed_ordinal,
+    )
+    engine = t.cast("TmuxEngine", context.engine)
+    keepalive = f"bench-{run_id}-keepalive"
+    try:
+        if lane is EngineLane.CONTROL:
+            bootstrap = SubprocessEngine.for_server(context.server)
+            run(
+                NewSession(
+                    session_name=keepalive,
+                    window_shell="exec tail -n 0 -f /dev/null",
+                ),
+                bootstrap,
+            ).raise_for_status()
+            run(
+                SetOption(server=True, option="exit-empty", value="off"),
+                bootstrap,
+            ).raise_for_status()
+            run(ListSessions(), engine).raise_for_status()
+
+        workspaces = build_workspaces(
+            topology,
+            context.scratch / "fuzzer" / "streams",
+            run_id,
+            delayed_ordinal=delayed_ordinal,
+        )
+        started_ns = time.perf_counter_ns()
+        build_result = workspaces.build(
+            engine,
+            preflight=False,
+            planner=BatchingPlanner(),
+        ).raise_for_status()
+        if lane is EngineLane.CONTROL:
+            clients = run(ListClients(), engine).raise_for_status().clients
+            run(
+                SwitchClient(
+                    client=_only_control_client_name(clients),
+                    to_session=build_result.bindings[0],
+                ),
+                engine,
+            ).raise_for_status()
+            run(KillSession(target=NameRef(keepalive)), engine).raise_for_status()
+        context.setup_duration_ns = time.perf_counter_ns() - started_ns
+        server_pid_result = run(DisplayMessage(message="#{pid}"), engine)
+        server_pid_result.raise_for_status()
+        server_pid = int(server_pid_result.text)
+        context.processes = (*context.processes, _record_process("server", server_pid))
+        verify_topology(context, snapshot_topology_sync(context))
+    except BaseException:
+        asyncio.run(cleanup_run(context))
+        raise
+    else:
+        return context
+
+
+async def setup_async(
+    topology: Topology,
+    lane: EngineLane,
+    scratch: pathlib.Path,
+    *,
+    socket_path: pathlib.Path | None = None,
+    run_id: str = "run-0",
+    delayed_ordinal: int = 0,
+) -> RunContext:
+    """Build and exactly verify one asynchronous live topology.
+
+    Examples
+    --------
+    >>> async def invalid_setup():
+    ...     try:
+    ...         await setup_async(
+    ...             Topology(1, 1, 1), EngineLane.SUBPROCESS,
+    ...             pathlib.Path("unused"), delayed_ordinal=2,
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_setup())
+    'delayed pane ordinal must identify a requested pane'
+
+    Parameters
+    ----------
+    topology : Topology
+        Requested hierarchy.
+    lane : EngineLane
+        Asynchronous subprocess or control transport.
+    scratch : pathlib.Path
+        New exclusive run directory.
+    socket_path : pathlib.Path | None
+        Explicit socket path inside ``scratch``.
+    run_id : str
+        Marker and topology identity.
+    delayed_ordinal : int
+        Unique pane assigned the delayed stream.
+
+    Returns
+    -------
+    RunContext
+        Verified topology with stable IDs and process identities.
+    """
+    from libtmux.experimental.engines import (
+        AsyncControlModeEngine,
+        AsyncSubprocessEngine,
+    )
+    from libtmux.experimental.ops import (
+        BatchingPlanner,
+        DisplayMessage,
+        KillSession,
+        ListClients,
+        ListSessions,
+        NameRef,
+        NewSession,
+        SetOption,
+        SwitchClient,
+        arun,
+    )
+
+    context = _prepare_context(
+        topology,
+        lane,
+        ExecutionMode.ASYNC,
+        scratch,
+        socket_path=socket_path,
+        run_id=run_id,
+        delayed_ordinal=delayed_ordinal,
+    )
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    keepalive = f"bench-{run_id}-keepalive"
+    try:
+        if lane is EngineLane.CONTROL:
+            bootstrap = AsyncSubprocessEngine.for_server(context.server)
+            (
+                await arun(
+                    NewSession(
+                        session_name=keepalive,
+                        window_shell="exec tail -n 0 -f /dev/null",
+                    ),
+                    bootstrap,
+                )
+            ).raise_for_status()
+            (
+                await arun(
+                    SetOption(server=True, option="exit-empty", value="off"),
+                    bootstrap,
+                )
+            ).raise_for_status()
+            control = t.cast(AsyncControlModeEngine, engine)
+            await control.start()
+            (await arun(ListSessions(), engine)).raise_for_status()
+
+        workspaces = build_workspaces(
+            topology,
+            context.scratch / "fuzzer" / "streams",
+            run_id,
+            delayed_ordinal=delayed_ordinal,
+        )
+        started_ns = time.perf_counter_ns()
+        build_result = (
+            await workspaces.abuild(
+                engine,
+                preflight=False,
+                planner=BatchingPlanner(),
+            )
+        ).raise_for_status()
+        if lane is EngineLane.CONTROL:
+            clients = (await arun(ListClients(), engine)).raise_for_status().clients
+            real_session_id = build_result.bindings[0]
+            (
+                await arun(
+                    SwitchClient(
+                        client=_only_control_client_name(clients),
+                        to_session=real_session_id,
+                    ),
+                    engine,
+                )
+            ).raise_for_status()
+            control.set_attach_targets([real_session_id])
+            (
+                await arun(KillSession(target=NameRef(keepalive)), engine)
+            ).raise_for_status()
+        context.setup_duration_ns = time.perf_counter_ns() - started_ns
+        server_pid_result = await arun(DisplayMessage(message="#{pid}"), engine)
+        server_pid_result.raise_for_status()
+        server_pid = int(server_pid_result.text)
+        context.processes = (*context.processes, _record_process("server", server_pid))
+        verify_topology(context, await snapshot_topology_async(context))
+    except BaseException:
+        await cleanup_run(context)
+        raise
+    else:
+        return context
+
+
+def snapshot_topology_sync(context: RunContext) -> TopologySnapshot:
+    """Read exact sync session, window, and pane snapshots through typed ops.
+
+    >>> snapshot_topology_sync.__name__
+    'snapshot_topology_sync'
+
+    Parameters
+    ----------
+    context : RunContext
+        Synchronous live run.
+
+    Returns
+    -------
+    TopologySnapshot
+        Concrete typed rows from three independent list operations.
+
+    Raises
+    ------
+    ValueError
+        If called with an asynchronous context.
+    ~libtmux.experimental.ops.exc.TmuxCommandError
+        If a list operation fails.
+    """
+    from libtmux.experimental.ops import ListPanes, ListSessions, ListWindows, run
+
+    if context.mode is not ExecutionMode.SYNC:
+        message = "sync snapshot requires a synchronous run context"
+        raise ValueError(message)
+    engine = t.cast("TmuxEngine", context.engine)
+    sessions = run(ListSessions(), engine).raise_for_status().sessions
+    windows = run(ListWindows(all_windows=True), engine).raise_for_status().windows
+    panes = run(ListPanes(all_panes=True), engine).raise_for_status().panes
+    return TopologySnapshot(sessions, windows, panes)
+
+
+async def snapshot_topology_async(context: RunContext) -> TopologySnapshot:
+    """Read exact async session, window, and pane snapshots through typed ops.
+
+    >>> snapshot_topology_async.__name__
+    'snapshot_topology_async'
+
+    Parameters
+    ----------
+    context : RunContext
+        Asynchronous live run.
+
+    Returns
+    -------
+    TopologySnapshot
+        Concrete typed rows from three independent list operations.
+
+    Raises
+    ------
+    ValueError
+        If called with a synchronous context.
+    ~libtmux.experimental.ops.exc.TmuxCommandError
+        If a list operation fails.
+    """
+    from libtmux.experimental.ops import ListPanes, ListSessions, ListWindows, arun
+
+    if context.mode is not ExecutionMode.ASYNC:
+        message = "async snapshot requires an asynchronous run context"
+        raise ValueError(message)
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    sessions = (await arun(ListSessions(), engine)).raise_for_status().sessions
+    windows = (
+        (await arun(ListWindows(all_windows=True), engine)).raise_for_status().windows
+    )
+    panes = (await arun(ListPanes(all_panes=True), engine)).raise_for_status().panes
+    return TopologySnapshot(sessions, windows, panes)
+
+
+def verify_topology(
+    context: RunContext,
+    snapshot: TopologySnapshot,
+) -> TopologySnapshot:
+    """Verify exact shape, names, liveness, process identities, and delayed pane.
+
+    >>> verify_topology.__name__
+    'verify_topology'
+
+    Parameters
+    ----------
+    context : RunContext
+        Run whose declared shape and names are authoritative.
+    snapshot : TopologySnapshot
+        Typed live rows to verify.
+
+    Returns
+    -------
+    TopologySnapshot
+        The accepted snapshot for fluent callers.
+
+    Raises
+    ------
+    TopologyVerificationError
+        If any exact topology or process invariant differs.
+    """
+    requested = TopologyTotals.from_topology(context.topology)
+    observed = snapshot.totals
+
+    def fail(detail: str) -> t.NoReturn:
+        raise TopologyVerificationError(requested, observed, detail)
+
+    if observed != requested:
+        fail("flat totals differ")
+    session_ids = tuple(session.session_id for session in snapshot.sessions)
+    window_ids = tuple(window.window_id for window in snapshot.windows)
+    pane_ids = tuple(pane.pane_id for pane in snapshot.panes)
+    if len(set(session_ids)) != requested.sessions or any(
+        not value.startswith("$") for value in session_ids
+    ):
+        fail("session identifiers are not unique concrete ids")
+    if len(set(window_ids)) != requested.windows or any(
+        not value.startswith("@") for value in window_ids
+    ):
+        fail("window identifiers are not unique concrete ids")
+    if len(set(pane_ids)) != requested.panes or any(
+        not value.startswith("%") for value in pane_ids
+    ):
+        fail("pane identifiers are not unique concrete ids")
+    if tuple(session.name for session in snapshot.sessions) != (
+        context.expected_session_names
+    ):
+        fail("session names differ from the declaration")
+    if {window.name for window in snapshot.windows} != set(
+        context.expected_window_names
+    ):
+        fail("window names differ from the declaration")
+
+    window_counts = dict.fromkeys(session_ids, 0)
+    for window in snapshot.windows:
+        if window.session_id not in window_counts:
+            fail("window refers to an unknown session")
+        window_counts[window.session_id] += 1
+    if set(window_counts.values()) != {context.topology.windows_per_session}:
+        fail("a session has the wrong window count")
+    pane_counts = dict.fromkeys(window_ids, 0)
+    for pane in snapshot.panes:
+        if pane.window_id not in pane_counts or pane.session_id not in window_counts:
+            fail("pane refers to an unknown owner")
+        pane_counts[pane.window_id] += 1
+    if set(pane_counts.values()) != {context.topology.panes_per_window}:
+        fail("a window has the wrong pane count")
+
+    pane_pids = tuple(pane.pid for pane in snapshot.panes)
+    if any(pid is None or pid <= 0 for pid in pane_pids):
+        fail("a pane has no positive follower pid")
+    positive_pids = t.cast(tuple[int, ...], pane_pids)
+    if len(set(positive_pids)) != requested.panes:
+        fail("pane follower pids are not unique")
+    if any(pane.fields.get("pane_dead") != "0" for pane in snapshot.panes):
+        fail("a pane is dead")
+    delayed_path = str(context.streams[-1])
+    delayed = tuple(
+        pane
+        for pane in snapshot.panes
+        if delayed_path in pane.fields.get("pane_start_command", "")
+    )
+    if len(delayed) != 1:
+        fail("delayed stream does not have exactly one follower")
+    if any(
+        "exec tail -n 0 -f" not in pane.fields.get("pane_start_command", "")
+        for pane in snapshot.panes
+    ):
+        fail("a pane is not running the portable follower command")
+    try:
+        pane_processes = tuple(_record_process("pane", pid) for pid in positive_pids)
+    except RuntimeError as error:
+        fail(str(error))
+    if context.fuzzer.poll() is not None:
+        fail("fuzzer exited before activity release")
+
+    context.session_ids = session_ids
+    context.window_ids = window_ids
+    context.pane_ids = pane_ids
+    context.delayed_pane_id = delayed[0].pane_id
+    context.processes = (
+        *(process for process in context.processes if process.role != "pane"),
+        *pane_processes,
+    )
+    context.topology_verified = True
+    return snapshot
+
+
+def _read_run_marker(path: pathlib.Path, run_id: str) -> dict[str, t.Any] | None:
+    """Return a complete schema-v1 marker owned by ``run_id``.
+
+    >>> _read_run_marker(pathlib.Path("missing.json"), "run-7") is None
+    True
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Candidate JSON marker.
+    run_id : str
+        Required owner identity.
+
+    Returns
+    -------
+    dict[str, typing.Any] | None
+        Matching mapping, or ``None`` for missing, malformed, or foreign data.
+    """
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    marker = t.cast(dict[str, t.Any], parsed)
+    version = marker.get("schema_version")
+    if type(version) is not int or version != 1 or marker.get("run_id") != run_id:
+        return None
+    return marker
+
+
+def _heartbeat_epoch(context: RunContext) -> tuple[str | None, int | None]:
+    """Return the current matching fuzzer state and integer epoch.
+
+    >>> _heartbeat_epoch.__name__
+    '_heartbeat_epoch'
+
+    Parameters
+    ----------
+    context : RunContext
+        Run whose heartbeat marker is authoritative.
+
+    Returns
+    -------
+    tuple[str | None, int | None]
+        Marker state and epoch, or two ``None`` values before publication.
+    """
+    marker = _read_run_marker(
+        context.scratch / "fuzzer" / "heartbeat.json", context.run_id
+    )
+    if marker is None:
+        return None, None
+    state = marker.get("state")
+    epoch = marker.get("epoch")
+    return (
+        state if isinstance(state, str) else None,
+        epoch if type(epoch) is int and epoch >= 0 else None,
+    )
+
+
+def release_activity_gate(context: RunContext) -> int:
+    """Atomically release one verified topology and publish its shared epoch.
+
+    The fuzzer's heartbeat independently proves continuing activity. The shared
+    run marker establishes one exact stabilization target across streams whose
+    ordinary frame prefixes otherwise differ by mode.
+
+    >>> release_activity_gate.__name__
+    'release_activity_gate'
+
+    Parameters
+    ----------
+    context : RunContext
+        Exact verified live topology.
+
+    Returns
+    -------
+    int
+        Monotonic epoch carried by the shared pane marker.
+
+    Raises
+    ------
+    RuntimeError
+        If topology verification has not completed or the fuzzer exited.
+    """
+    if not context.topology_verified:
+        message = "activity cannot start before exact topology verification"
+        raise RuntimeError(message)
+    if context.fuzzer.poll() is not None:
+        message = "fuzzer exited before activity release"
+        raise RuntimeError(message)
+    if context.activity_epoch is not None:
+        return context.activity_epoch
+    _state, observed_epoch = _heartbeat_epoch(context)
+    epoch = max(context.heartbeat_epoch, observed_epoch or 0) + 1
+    marker = f"LIBTMUX_EPOCH run={context.run_id} epoch={epoch}"
+    write_json_atomic(
+        context.scratch / "fuzzer" / "gate.json",
+        {"schema_version": 1, "run_id": context.run_id, "epoch": epoch},
+    )
+    encoded = f"{marker}\n".encode()
+    for stream in context.streams:
+        with stream.open("ab") as destination:
+            destination.write(encoded)
+            destination.flush()
+            os.fsync(destination.fileno())
+    context.activity_epoch = epoch
+    context.activity_marker = marker
+    context.heartbeat_epoch = observed_epoch or 0
+    return epoch
+
+
+def verify_activity_sync(
+    context: RunContext,
+    *,
+    timeout_s: float = 8.0,
+    no_progress_timeout_s: float = 3.0,
+    poll_interval_s: float = 0.02,
+) -> int:
+    """Poll typed pane captures until every pane contains the released marker.
+
+    >>> verify_activity_sync.__name__
+    'verify_activity_sync'
+
+    Parameters
+    ----------
+    context : RunContext
+        Released synchronous live run.
+    timeout_s : float
+        Overall stabilization deadline.
+    no_progress_timeout_s : float
+        Deadline reset whenever another pane verifies.
+    poll_interval_s : float
+        Delay between incomplete capture passes.
+
+    Returns
+    -------
+    int
+        Verified shared activity epoch.
+
+    Raises
+    ------
+    RuntimeError
+        If the gate is absent, the fuzzer exits, or heartbeat epochs regress.
+    TimeoutError
+        If overall or no-progress stabilization expires.
+    """
+    from libtmux.experimental.ops import CapturePane, PaneId, run
+
+    if context.mode is not ExecutionMode.SYNC:
+        message = "sync activity verification requires a synchronous context"
+        raise ValueError(message)
+    if context.activity_epoch is None or context.activity_marker is None:
+        message = "activity gate has not been released"
+        raise RuntimeError(message)
+    if timeout_s <= 0 or no_progress_timeout_s <= 0 or poll_interval_s <= 0:
+        message = "activity verification timeouts and cadence must be positive"
+        raise ValueError(message)
+    engine = t.cast("TmuxEngine", context.engine)
+    remaining = set(context.pane_ids)
+    deadline = time.monotonic() + timeout_s
+    progress_deadline = time.monotonic() + no_progress_timeout_s
+    heartbeat_active = False
+    while remaining or not heartbeat_active:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited during activity stabilization"
+            raise RuntimeError(message)
+        state, heartbeat_epoch = _heartbeat_epoch(context)
+        if heartbeat_epoch is not None:
+            if heartbeat_epoch < context.heartbeat_epoch:
+                message = "fuzzer heartbeat epoch moved backwards"
+                raise RuntimeError(message)
+            context.heartbeat_epoch = heartbeat_epoch
+        heartbeat_active = (
+            state == "active"
+            and heartbeat_epoch is not None
+            and heartbeat_epoch >= context.activity_epoch
+        )
+        before = len(remaining)
+        for pane_id in tuple(remaining):
+            result = run(
+                CapturePane(target=PaneId(pane_id), start=-5000),
+                engine,
+            ).raise_for_status()
+            if context.activity_marker in "\n".join(result.lines):
+                remaining.remove(pane_id)
+        now = time.monotonic()
+        if len(remaining) < before:
+            progress_deadline = now + no_progress_timeout_s
+        if not remaining and heartbeat_active:
+            break
+        if now >= deadline:
+            message = (
+                f"activity stabilization timed out with {len(remaining)} panes pending"
+            )
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = (
+                "activity stabilization made no progress with "
+                f"{len(remaining)} panes pending"
+            )
+            raise TimeoutError(message)
+        time.sleep(poll_interval_s)
+    context.activity_pane_ids = context.pane_ids
+    return context.activity_epoch
+
+
+async def verify_activity_async(
+    context: RunContext,
+    *,
+    timeout_s: float = 8.0,
+    no_progress_timeout_s: float = 3.0,
+    poll_interval_s: float = 0.02,
+) -> int:
+    """Async sibling of :func:`verify_activity_sync` over typed captures.
+
+    >>> verify_activity_async.__name__
+    'verify_activity_async'
+
+    Parameters
+    ----------
+    context : RunContext
+        Released asynchronous live run.
+    timeout_s : float
+        Overall stabilization deadline.
+    no_progress_timeout_s : float
+        Deadline reset whenever another pane verifies.
+    poll_interval_s : float
+        Delay between incomplete capture passes.
+
+    Returns
+    -------
+    int
+        Verified shared activity epoch.
+
+    Raises
+    ------
+    RuntimeError
+        If the gate is absent, the fuzzer exits, or heartbeat epochs regress.
+    TimeoutError
+        If overall or no-progress stabilization expires.
+    """
+    from libtmux.experimental.ops import CapturePane, PaneId, arun
+
+    if context.mode is not ExecutionMode.ASYNC:
+        message = "async activity verification requires an asynchronous context"
+        raise ValueError(message)
+    if context.activity_epoch is None or context.activity_marker is None:
+        message = "activity gate has not been released"
+        raise RuntimeError(message)
+    if timeout_s <= 0 or no_progress_timeout_s <= 0 or poll_interval_s <= 0:
+        message = "activity verification timeouts and cadence must be positive"
+        raise ValueError(message)
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    remaining = set(context.pane_ids)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    progress_deadline = loop.time() + no_progress_timeout_s
+    heartbeat_active = False
+    while remaining or not heartbeat_active:
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited during activity stabilization"
+            raise RuntimeError(message)
+        state, heartbeat_epoch = _heartbeat_epoch(context)
+        if heartbeat_epoch is not None:
+            if heartbeat_epoch < context.heartbeat_epoch:
+                message = "fuzzer heartbeat epoch moved backwards"
+                raise RuntimeError(message)
+            context.heartbeat_epoch = heartbeat_epoch
+        heartbeat_active = (
+            state == "active"
+            and heartbeat_epoch is not None
+            and heartbeat_epoch >= context.activity_epoch
+        )
+        before = len(remaining)
+        for pane_id in tuple(remaining):
+            result = (
+                await arun(
+                    CapturePane(target=PaneId(pane_id), start=-5000),
+                    engine,
+                )
+            ).raise_for_status()
+            if context.activity_marker in "\n".join(result.lines):
+                remaining.remove(pane_id)
+        now = loop.time()
+        if len(remaining) < before:
+            progress_deadline = now + no_progress_timeout_s
+        if not remaining and heartbeat_active:
+            break
+        if now >= deadline:
+            message = (
+                f"activity stabilization timed out with {len(remaining)} panes pending"
+            )
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = (
+                "activity stabilization made no progress with "
+                f"{len(remaining)} panes pending"
+            )
+            raise TimeoutError(message)
+        await asyncio.sleep(poll_interval_s)
+    context.activity_pane_ids = context.pane_ids
+    return context.activity_epoch
+
+
+async def _wait_for_process_absence(
+    identities: tuple[ProcessIdentity, ...],
+    *,
+    timeout_s: float,
+    poll_child: cabc.Callable[[], object] | None = None,
+) -> tuple[ProcessIdentity, ...]:
+    """Wait for recorded identities to disappear without broad process scans.
+
+    >>> asyncio.run(_wait_for_process_absence((), timeout_s=0.01))
+    ()
+
+    Parameters
+    ----------
+    identities : tuple[ProcessIdentity, ...]
+        Exact PID and procfs start-time pairs owned by one run.
+    timeout_s : float
+        Maximum monotonic wait before returning survivors.
+    poll_child : collections.abc.Callable[[], object] | None
+        Optional child poll used to reap the directly owned fuzzer process.
+
+    Returns
+    -------
+    tuple[ProcessIdentity, ...]
+        Identity-matched processes still alive at the deadline.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout_s
+    while True:
+        if poll_child is not None:
+            poll_child()
+        remaining = tuple(
+            identity for identity in identities if process_identity_matches(identity)
+        )
+        if not remaining or asyncio.get_running_loop().time() >= deadline:
+            return remaining
+        await asyncio.sleep(0.02)
+
+
+async def cleanup_run(
+    context: RunContext,
+    *,
+    grace_s: float = 2.0,
+) -> CleanupReport:
+    """Close one engine and remove only identity-matched run resources.
+
+    Cleanup first requests a graceful fuzzer stop, closes a persistent engine,
+    kills the server through its configured ``Server`` connection, and waits for
+    every recorded identity. Escalation sends signals only after re-reading an
+    equal procfs start time.
+
+    >>> cleanup_run.__name__
+    'cleanup_run'
+
+    Parameters
+    ----------
+    context : RunContext
+        Single owner of fuzzer, engine, server, pane followers, socket, and scratch.
+    grace_s : float
+        Wait after each graceful or escalated cleanup step.
+
+    Returns
+    -------
+    CleanupReport
+        Complete only when all identities and filesystem resources are absent.
+    """
+    if grace_s <= 0:
+        message = "cleanup grace must be positive"
+        raise ValueError(message)
+    errors: list[str] = []
+    stop_path = context.scratch / "fuzzer" / "stop.json"
+    if stop_path.parent.exists():
+        try:
+            write_json_atomic(
+                stop_path,
+                {"schema_version": 1, "run_id": context.run_id},
+            )
+        except Exception as error:  # noqa: BLE001
+            errors.append(f"fuzzer stop marker: {type(error).__name__}: {error}")
+
+    async_closer = getattr(context.engine, "aclose", None)
+    sync_closer = getattr(context.engine, "close", None)
+    try:
+        if callable(async_closer):
+            await async_closer()
+        elif callable(sync_closer):
+            sync_closer()
+    except Exception as error:  # noqa: BLE001
+        errors.append(f"engine close: {type(error).__name__}: {error}")
+
+    try:
+        context.server.kill()
+    except Exception as error:  # noqa: BLE001
+        errors.append(f"server kill: {type(error).__name__}: {error}")
+
+    survivors = await _wait_for_process_absence(
+        context.processes,
+        timeout_s=grace_s,
+        poll_child=context.fuzzer.poll,
+    )
+    for signal_number in (signal.SIGTERM, signal.SIGKILL):
+        if not survivors:
+            break
+        for identity in survivors:
+            if not process_identity_matches(identity):
+                continue
+            try:
+                os.kill(identity.pid, signal_number)
+            except ProcessLookupError:
+                continue
+            except OSError as error:
+                errors.append(
+                    f"{identity.role} pid {identity.pid} signal "
+                    f"{signal_number}: {type(error).__name__}: {error}"
+                )
+        survivors = await _wait_for_process_absence(
+            context.processes,
+            timeout_s=grace_s,
+            poll_child=context.fuzzer.poll,
+        )
+
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        context.fuzzer.wait(timeout=0.1)
+    errors.extend(
+        f"{identity.role} pid {identity.pid} with start time "
+        f"{identity.start_time} remains"
+        for identity in survivors
+        if process_identity_matches(identity)
+    )
+    try:
+        if context.scratch.exists():
+            shutil.rmtree(context.scratch)
+    except OSError as error:
+        errors.append(f"scratch removal: {type(error).__name__}: {error}")
+    if context.socket_path.exists():
+        errors.append(f"socket remains: {context.socket_path}")
+    if context.scratch.exists():
+        errors.append(f"scratch remains: {context.scratch}")
+    for identity in context.processes:
+        if process_identity_matches(identity) and not any(
+            f"pid {identity.pid} " in error for error in errors
+        ):
+            errors.append(
+                f"{identity.role} pid {identity.pid} with start time "
+                f"{identity.start_time} remains"
+            )
+    for name, value in zip(
+        ("TMUX", "TMUX_PANE"), context.ambient_tmux_environment, strict=True
+    ):
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
+    return CleanupReport(complete=not errors, errors=tuple(errors))
 
 
 def parse_topology(shape: str) -> Topology:
