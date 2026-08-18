@@ -55,6 +55,113 @@ if t.TYPE_CHECKING:
 
 _SENTINEL_DELAY_S = 0.05
 _SENTINEL_DELAY_NS = 50_000_000
+_TERMINAL_SAFE_COMPONENT_ALPHABET = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
+)
+_SENTINEL_COMPONENT_MAX_BYTES = 128
+_SENTINEL_RECORD_MAX_BYTES = 422
+_WAIT_TIMEOUT_MAX_S = 3.0
+_WAIT_FRAME_RATE_MAX_HZ = 40.0
+# At the maximum supported producer rate and wait duration, 5,000 joined
+# history rows retain 120 ordinary delayed frames plus the 422-byte sentinel
+# with ample wrapping headroom in the required active 1x2x2 topology.
+_WAIT_CAPTURE_HISTORY_LINES = 5_000
+
+
+def _is_terminal_safe_component(value: object) -> bool:
+    """Return whether *value* is one bounded printable ASCII component.
+
+    Components contain 1-128 encoded bytes drawn only from letters, digits,
+    ``.``, ``_``, ``:``, and ``-``.
+
+    >>> _is_terminal_safe_component("run.uuid:sample_1-2")
+    True
+    >>> _is_terminal_safe_component("unsafe value")
+    False
+    """
+    return (
+        isinstance(value, str)
+        and value.isascii()
+        and 0 < len(value.encode()) <= _SENTINEL_COMPONENT_MAX_BYTES
+        and all(character in _TERMINAL_SAFE_COMPONENT_ALPHABET for character in value)
+    )
+
+
+def _sentinel_token(run_id: str, request_id: str, value: str) -> str:
+    """Build one terminal-safe sentinel within the capture-history contract.
+
+    >>> _sentinel_token("run-7", "sample-1", "READY")
+    'LIBTMUX_SENTINEL run=run-7 request=sample-1 value=READY'
+
+    Raises
+    ------
+    ValueError
+        If a component is not terminal-safe or the complete record is too long.
+    """
+    components = {"run_id": run_id, "request_id": request_id, "value": value}
+    for name, component in components.items():
+        if not _is_terminal_safe_component(component):
+            message = (
+                f"{name} must be a 1-{_SENTINEL_COMPONENT_MAX_BYTES} byte "
+                "terminal-safe ASCII component using letters, digits, '.', '_', "
+                "':', or '-'"
+            )
+            raise ValueError(message)
+    token = f"LIBTMUX_SENTINEL run={run_id} request={request_id} value={value}"
+    if len(f"{token}\n".encode()) > _SENTINEL_RECORD_MAX_BYTES:
+        message = (
+            f"sentinel record must be at most {_SENTINEL_RECORD_MAX_BYTES} "
+            "encoded bytes"
+        )
+        raise ValueError(message)
+    return token
+
+
+def _validated_wait_timeout(timeout_s: float) -> float:
+    """Return one finite wait duration covered by retained capture history.
+
+    >>> _validated_wait_timeout(3.0)
+    3.0
+
+    Raises
+    ------
+    ValueError
+        If the timeout is not finite, positive, or at most three seconds.
+    """
+    if (
+        isinstance(timeout_s, bool)
+        or not isinstance(timeout_s, (int, float))
+        or not math.isfinite(timeout_s)
+        or timeout_s <= 0
+        or timeout_s > _WAIT_TIMEOUT_MAX_S
+    ):
+        message = (
+            f"wait timeout must be positive and at most {_WAIT_TIMEOUT_MAX_S} seconds"
+        )
+        raise ValueError(message)
+    return float(timeout_s)
+
+
+def _validated_poll_interval(poll_interval_s: float) -> float:
+    """Return one finite positive capture-poll cadence.
+
+    >>> _validated_poll_interval(0.01)
+    0.01
+
+    Raises
+    ------
+    ValueError
+        If the cadence is not finite and positive.
+    """
+    if (
+        isinstance(poll_interval_s, bool)
+        or not isinstance(poll_interval_s, (int, float))
+        or not math.isfinite(poll_interval_s)
+        or poll_interval_s <= 0
+    ):
+        message = "capture wait cadence must be finite and positive"
+        raise ValueError(message)
+    return float(poll_interval_s)
 
 
 class EngineLane(str, enum.Enum):
@@ -2754,8 +2861,8 @@ def start_fuzzer(
     >>> try:
     ...     start_fuzzer(pathlib.Path("."), "", ready_timeout_s=1.0)
     ... except ValueError as error:
-    ...     print(error)
-    run_id must be nonempty
+    ...     str(error).startswith("run_id must be a 1-128 byte terminal-safe")
+    True
 
     Parameters
     ----------
@@ -2787,11 +2894,25 @@ def start_fuzzer(
     SetupCleanupError
         If a startup failure is followed by incomplete child cleanup.
     """
-    if not run_id:
-        message = "run_id must be nonempty"
+    if not _is_terminal_safe_component(run_id):
+        message = (
+            f"run_id must be a 1-{_SENTINEL_COMPONENT_MAX_BYTES} byte "
+            "terminal-safe ASCII component using letters, digits, '.', '_', ':', "
+            "or '-'"
+        )
         raise ValueError(message)
     if ready_timeout_s <= 0:
         message = "ready timeout must be positive"
+        raise ValueError(message)
+    if (
+        not math.isfinite(frame_rate_hz)
+        or frame_rate_hz <= 0
+        or frame_rate_hz > _WAIT_FRAME_RATE_MAX_HZ
+    ):
+        message = (
+            f"fuzzer frame rate must be positive and at most "
+            f"{_WAIT_FRAME_RATE_MAX_HZ} frames per second"
+        )
         raise ValueError(message)
     output_dir = scratch / "fuzzer"
     script = pathlib.Path(__file__).with_name("orchestration_fuzzer.py")
@@ -2933,12 +3054,11 @@ def _prepare_context(
     if not 0 <= delayed_ordinal < topology.panes:
         message = "delayed pane ordinal must identify a requested pane"
         raise ValueError(message)
-    if not run_id or any(
-        not (character.isascii() and (character.isalnum() or character in "-_"))
-        for character in run_id
-    ):
+    if not _is_terminal_safe_component(run_id):
         message = (
-            "run_id must contain only ASCII letters, digits, hyphens, or underscores"
+            f"run_id must be a 1-{_SENTINEL_COMPONENT_MAX_BYTES} byte "
+            "terminal-safe ASCII component using letters, digits, '.', '_', ':', "
+            "or '-'"
         )
         raise ValueError(message)
     resolved_scratch = scratch.resolve()
@@ -4221,10 +4341,9 @@ def request_sentinel(
     context : RunContext
         Active topology whose fuzzer owns the request directory.
     request_id : str
-        Unique ASCII identifier containing only letters, digits, hyphens, or
-        underscores.
+        Unique 1-128 byte terminal-safe ASCII component.
     value : str
-        Nonempty single-line value embedded in the canonical sentinel.
+        Terminal-safe 1-128 byte value embedded in the canonical sentinel.
 
     Returns
     -------
@@ -4242,22 +4361,7 @@ def request_sentinel(
     OSError
         If atomic marker publication fails.
     """
-    if (
-        not request_id
-        or len(request_id) > 128
-        or any(
-            not (character.isascii() and (character.isalnum() or character in "-_"))
-            for character in request_id
-        )
-    ):
-        message = (
-            "request_id must contain 1-128 ASCII letters, digits, hyphens, "
-            "or underscores"
-        )
-        raise ValueError(message)
-    if not isinstance(value, str) or not value or "\n" in value or "\r" in value:
-        message = "sentinel value must be a nonempty single line"
-        raise ValueError(message)
+    token = _sentinel_token(context.run_id, request_id, value)
     delay_ns = context.sentinel_delay_ns
     if type(delay_ns) is not int or delay_ns < 0:
         message = "sentinel delay must be a nonnegative integer nanosecond value"
@@ -4275,7 +4379,6 @@ def request_sentinel(
     if request_path.exists() or evidence_path.exists():
         message = f"sentinel request already exists: {request_id}"
         raise FileExistsError(message)
-    token = f"LIBTMUX_SENTINEL run={context.run_id} request={request_id} value={value}"
     requested_ns = time.monotonic_ns()
     write_json_atomic(
         request_path,
@@ -4572,22 +4675,36 @@ def wait_capture_poll_sync(
     ~libtmux.experimental.ops.exc.TmuxCommandError
         If a typed capture fails.
     """
-    from libtmux.experimental.ops import CapturePane, PaneId, run
+    from libtmux import exc
+    from libtmux.experimental.engines.base import CommandRequest, encode_direct_argv
+    from libtmux.experimental.engines.control_mode import (
+        ControlModeEngine,
+        ControlModeError,
+    )
+    from libtmux.experimental.engines.subprocess import SubprocessEngine
+    from libtmux.experimental.ops import CapturePane, PaneId
 
     if context.mode is not ExecutionMode.SYNC:
         message = "sync capture wait requires a synchronous run context"
         raise ValueError(message)
-    if timeout_s <= 0 or poll_interval_s <= 0:
-        message = "capture wait timeout and cadence must be positive"
-        raise ValueError(message)
-    engine = t.cast("TmuxEngine", context.engine)
+    timeout_s = _validated_wait_timeout(timeout_s)
+    poll_interval_s = _validated_poll_interval(poll_interval_s)
+    engine = context.engine
+    if not isinstance(engine, (SubprocessEngine, ControlModeEngine)):
+        message = "sync capture wait requires a subprocess or control engine"
+        raise TypeError(message)
     pane_id = context.delayed_pane_id
     if not isinstance(pane_id, str) or not pane_id:
         message = "capture wait requires a concrete delayed pane ID"
         raise ValueError(message)
     request = request_sentinel(context, request_id=request_id, value=value)
     deadline_ns = request.requested_monotonic_ns + int(timeout_s * 1_000_000_000)
-    operation = CapturePane(target=PaneId(pane_id), start=-5000, join_wrapped=True)
+    operation = CapturePane(
+        target=PaneId(pane_id),
+        start=-_WAIT_CAPTURE_HISTORY_LINES,
+        join_wrapped=True,
+    )
+    rendered = operation.render()
     needle = f"{request.token}\n".encode()
     poll_count = 0
     detected_ns: int | None = None
@@ -4595,7 +4712,62 @@ def wait_capture_poll_sync(
         if context.fuzzer.poll() is not None:
             message = "fuzzer exited during capture wait"
             raise RuntimeError(message)
-        result = run(operation, engine).raise_for_status()
+        remaining_s = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+        if remaining_s <= 0:
+            break
+        if isinstance(engine, SubprocessEngine):
+            command = engine.connection.argv(*encode_direct_argv(rendered))
+            try:
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="backslashreplace",
+                    start_new_session=True,
+                )
+            except FileNotFoundError:
+                raise exc.TmuxCommandNotFound from None
+            try:
+                stdout, stderr = process.communicate(timeout=remaining_s)
+            except subprocess.TimeoutExpired as error:
+                with contextlib.suppress(OSError):
+                    os.killpg(process.pid, signal.SIGKILL)
+                stdout, stderr = process.communicate()
+                del stdout, stderr
+                message = f"capture wait timed out for request {request.request_id}"
+                raise TimeoutError(message) from error
+            stdout_lines = stdout.split("\n")
+            while stdout_lines and stdout_lines[-1] == "":
+                stdout_lines.pop()
+            stderr_lines = tuple(line for line in stderr.split("\n") if line)
+            result = operation.build_result(
+                argv=rendered,
+                returncode=(
+                    process.returncode if process.returncode is not None else -1
+                ),
+                stdout=tuple(stdout_lines),
+                stderr=stderr_lines,
+            ).raise_for_status()
+        else:
+            original_timeout = engine.timeout
+            engine.timeout = min(original_timeout, remaining_s)
+            try:
+                raw = engine.run(CommandRequest(args=rendered))
+            except ControlModeError as error:
+                if time.monotonic_ns() >= deadline_ns:
+                    message = f"capture wait timed out for request {request.request_id}"
+                    raise TimeoutError(message) from error
+                raise
+            finally:
+                engine.timeout = original_timeout
+            result = operation.build_result(
+                argv=rendered,
+                returncode=raw.returncode,
+                stdout=raw.stdout,
+                stderr=raw.stderr,
+            ).raise_for_status()
         poll_count += 1
         captured = ("\n".join(result.lines) + "\n").encode()
         observed_ns = time.monotonic_ns()
@@ -4688,9 +4860,8 @@ async def wait_capture_poll_async(
     if context.mode is not ExecutionMode.ASYNC:
         message = "async capture wait requires an asynchronous run context"
         raise ValueError(message)
-    if timeout_s <= 0 or poll_interval_s <= 0:
-        message = "capture wait timeout and cadence must be positive"
-        raise ValueError(message)
+    timeout_s = _validated_wait_timeout(timeout_s)
+    poll_interval_s = _validated_poll_interval(poll_interval_s)
     engine = t.cast("AsyncTmuxEngine", context.engine)
     pane_id = context.delayed_pane_id
     if not isinstance(pane_id, str) or not pane_id:
@@ -4698,7 +4869,11 @@ async def wait_capture_poll_async(
         raise ValueError(message)
     request = request_sentinel(context, request_id=request_id, value=value)
     deadline_ns = request.requested_monotonic_ns + int(timeout_s * 1_000_000_000)
-    operation = CapturePane(target=PaneId(pane_id), start=-5000, join_wrapped=True)
+    operation = CapturePane(
+        target=PaneId(pane_id),
+        start=-_WAIT_CAPTURE_HISTORY_LINES,
+        join_wrapped=True,
+    )
     needle = f"{request.token}\n".encode()
     poll_count = 0
     detected_ns: int | None = None
@@ -4706,7 +4881,24 @@ async def wait_capture_poll_async(
         if context.fuzzer.poll() is not None:
             message = "fuzzer exited during capture wait"
             raise RuntimeError(message)
-        result = (await arun(operation, engine)).raise_for_status()
+        remaining_s = (deadline_ns - time.monotonic_ns()) / 1_000_000_000
+        if remaining_s <= 0:
+            break
+        capture_task = asyncio.create_task(
+            arun(operation, engine),
+            name=f"bench-capture-wait-{request.request_id}",
+        )
+        try:
+            result = (
+                await asyncio.wait_for(capture_task, timeout=remaining_s)
+            ).raise_for_status()
+        except asyncio.TimeoutError as error:
+            message = f"capture wait timed out for request {request.request_id}"
+            raise TimeoutError(message) from error
+        finally:
+            if not capture_task.done():
+                capture_task.cancel()
+            await asyncio.gather(capture_task, return_exceptions=True)
         poll_count += 1
         captured = ("\n".join(result.lines) + "\n").encode()
         observed_ns = time.monotonic_ns()
@@ -4808,9 +5000,7 @@ async def wait_control_stream(
     if context.lane is not EngineLane.CONTROL:
         message = "control stream wait requires the control engine lane"
         raise ValueError(message)
-    if timeout_s <= 0:
-        message = "control stream wait timeout must be positive"
-        raise ValueError(message)
+    timeout_s = _validated_wait_timeout(timeout_s)
     if not isinstance(context.engine, AsyncControlModeEngine):
         message = "control stream wait requires AsyncControlModeEngine"
         raise TypeError(message)

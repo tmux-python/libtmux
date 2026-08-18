@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import importlib.util
 import json
@@ -60,6 +61,97 @@ def test_sentinel_text_is_unique_to_run_and_request(
     )
 
 
+def test_sentinel_text_accepts_maximum_terminal_safe_components(
+    fuzzer_module: types.ModuleType,
+) -> None:
+    """The documented component and complete-record boundaries stay literal."""
+    sentinel = fuzzer_module.sentinel_text("r" * 128, "q" * 128, "v" * 128)
+
+    assert len(f"{sentinel}\n".encode()) == 422
+    assert fuzzer_module.SENTINEL_COMPONENT_MAX_BYTES == 128
+    assert fuzzer_module.SENTINEL_RECORD_MAX_BYTES == 422
+
+
+@pytest.mark.parametrize(
+    ("component", "unsafe"),
+    (
+        ("run_id", "unsafe run"),
+        ("run_id", "unsafe\tcontrol"),
+        ("run_id", "unsafe\nline"),
+        ("run_id", "unsafe\x1bescape"),
+        ("run_id", "unsafe\x08backspace"),
+        ("run_id", "nonascii-π"),
+        ("run_id", "r" * 129),
+        ("request_id", "unsafe request"),
+        ("request_id", "unsafe\tcontrol"),
+        ("request_id", "unsafe\nline"),
+        ("request_id", "unsafe\x1bescape"),
+        ("request_id", "unsafe\x08backspace"),
+        ("request_id", "nonascii-π"),
+        ("request_id", "q" * 129),
+        ("value", "unsafe value"),
+        ("value", "unsafe\tcontrol"),
+        ("value", "unsafe\nline"),
+        ("value", "unsafe\x1bescape"),
+        ("value", "unsafe\x08backspace"),
+        ("value", "nonascii-π"),
+        ("value", "v" * 129),
+    ),
+)
+def test_sentinel_text_rejects_unsafe_or_oversized_components(
+    fuzzer_module: types.ModuleType,
+    component: str,
+    unsafe: str,
+) -> None:
+    """No terminal control or unbounded component reaches stream output."""
+    values = {"run_id": "run.safe:1", "request_id": "request.safe:1", "value": "READY"}
+    values[component] = unsafe
+
+    with pytest.raises(ValueError, match="terminal-safe"):
+        fuzzer_module.sentinel_text(**values)
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe"),
+    (
+        ("run_id", "unsafe run"),
+        ("run_id", "r" * 129),
+        ("sentinel_prefix", "unsafe\tvalue"),
+        ("sentinel_prefix", "v" * 129),
+    ),
+)
+def test_serve_rejects_unsafe_identity_before_output_publication(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    unsafe: str,
+) -> None:
+    """Invalid service identity fails before the marker tree can be created."""
+    options = fuzzer_module.WorkloadOptions(
+        tmp_path / "output",
+        "run.safe:1",
+        tmp_path,
+        0,
+        1.0,
+        1.0,
+        0.0,
+        "READY",
+        1.0,
+    )
+    options = dataclasses.replace(options, **{field: unsafe})
+    monkeypatch.setattr(
+        fuzzer_module,
+        "prepare_output",
+        lambda _options: pytest.fail("output publication preceded identity validation"),
+    )
+
+    with pytest.raises(ValueError, match="terminal-safe"):
+        fuzzer_module.run_serve(options)
+
+    assert not options.output_dir.exists()
+
+
 def test_source_lines_uses_sorted_paths_and_a_private_seeded_shuffle(
     fuzzer_module: types.ModuleType,
     tmp_path: pathlib.Path,
@@ -104,7 +196,7 @@ def test_render_frame_uses_only_its_mode_epoch_and_seeded_corpus(
 @pytest.mark.parametrize(
     ("filename", "request_id"),
     (
-        ("nested.json.json", "nested.json"),
+        ("nested.json.json", "nested"),
         (".json", ".json"),
         ("space id.json", "space id"),
         ("unicode-π.json", "unicode-π"),
@@ -141,6 +233,34 @@ def test_request_marker_rejects_noncanonical_filename_payload_id(
         )
         is None
     )
+
+
+def test_request_marker_accepts_terminal_safe_dot_and_colon_identity(
+    fuzzer_module: types.ModuleType,
+) -> None:
+    """Dots and colons remain canonical terminal-safe identity components."""
+    options = fuzzer_module.WorkloadOptions(
+        pathlib.Path("out"),
+        "run-7",
+        pathlib.Path(),
+        0,
+        1.0,
+        1.0,
+        0.0,
+        "READY",
+        1.0,
+    )
+
+    assert fuzzer_module._request_from_marker(
+        {
+            "request_id": "sample.part:1",
+            "requested_monotonic_ns": 7,
+            "value": "READY",
+        },
+        pathlib.Path("sample.part:1.json"),
+        options,
+        seen_request_ids=set(),
+    ) == ("sample.part:1", 7, "READY")
 
 
 def test_request_marker_rejects_duplicate_payload_id(
