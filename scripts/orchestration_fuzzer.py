@@ -132,10 +132,16 @@ class SentinelEvidence:
         Run identity that owns the evidence.
     request_id : str
         Unique request identity.
+    requested_monotonic_ns : int
+        Request receipt timestamp supplied by the benchmark.
+    configured_delay_ns : int
+        Configured delay applied to the request timestamp.
     scheduled_monotonic_ns : int
         Requested emission deadline on the monotonic clock.
     emitted_monotonic_ns : int
         Actual append time on the monotonic clock.
+    scheduling_lateness_ns : int
+        Difference between the actual append time and the scheduled deadline.
     sentinel : str
         Canonical text appended to the delayed stream.
     """
@@ -143,8 +149,11 @@ class SentinelEvidence:
     schema_version: int
     run_id: str
     request_id: str
+    requested_monotonic_ns: int
+    configured_delay_ns: int
     scheduled_monotonic_ns: int
     emitted_monotonic_ns: int
+    scheduling_lateness_ns: int
     sentinel: str
 
 
@@ -200,7 +209,7 @@ def render_frame(
     r"""Render one deterministic newline-terminated activity record.
 
     >>> render_frame(StreamMode.DEV_SERVER, 4, (), 11).text
-    '[dev-server epoch=4] request=GET /sessions status=200 elapsed_ms=5\\n'
+    '[dev-server epoch=4] recovery service=api state=ready\n'
     """
     if mode is StreamMode.EDITOR:
         source = corpus[(seed + epoch) % len(corpus)] if corpus else "<empty source>"
@@ -224,6 +233,17 @@ def render_frame(
 
 def prepare_output(options: WorkloadOptions) -> WorkloadPaths:
     """Create the exclusive marker tree and empty append-only stream files.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     root = pathlib.Path(temporary)
+    ...     options = WorkloadOptions(
+    ...         root / "output", "run-7", root, 0, 1.0, 1.0, 0.0, "READY", 1.0
+    ...     )
+    ...     paths = prepare_output(options)
+    ...     sorted(path.name for path in paths.streams.iterdir())
+    ['delayed-match.log', 'dev-server.log', 'editor.log', 'installer.log']
 
     Raises
     ------
@@ -252,10 +272,18 @@ def prepare_output(options: WorkloadOptions) -> WorkloadPaths:
 
 
 def write_json_atomic(path: pathlib.Path, data: t.Mapping[str, t.Any]) -> None:
-    """Replace a marker only after its JSON bytes are durable on disk.
+    r"""Replace a marker only after its JSON bytes are durable on disk.
 
     The sibling temporary file and replacement make readers see either the
     previous complete marker or the next complete marker, never a partial one.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     marker = pathlib.Path(temporary) / "marker.json"
+    ...     write_json_atomic(marker, {"schema_version": 1})
+    ...     marker.read_text(encoding="utf-8")
+    '{"schema_version":1}\n'
     """
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -299,7 +327,8 @@ def read_control_marker(path: pathlib.Path, run_id: str) -> dict[str, t.Any] | N
     if not isinstance(parsed, dict):
         return None
     marker = t.cast(dict[str, t.Any], parsed)
-    if marker.get("schema_version") != 1 or marker.get("run_id") != run_id:
+    version = marker.get("schema_version")
+    if type(version) is not int or version != 1 or marker.get("run_id") != run_id:
         return None
     return marker
 
@@ -310,7 +339,15 @@ def _stream_path(paths: WorkloadPaths, mode: StreamMode) -> pathlib.Path:
 
 
 def _append_text(path: pathlib.Path, text: str) -> int:
-    """Append one complete text record and return its UTF-8 byte count."""
+    r"""Append one complete text record and return its UTF-8 byte count.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     stream = pathlib.Path(temporary) / "stream.log"
+    ...     _append_text(stream, "pi\n"), stream.read_text(encoding="utf-8")
+    (3, 'pi\n')
+    """
     encoded = text.encode("utf-8")
     with path.open("ab") as stream:
         stream.write(encoded)
@@ -323,7 +360,21 @@ def _request_from_marker(
     path: pathlib.Path,
     options: WorkloadOptions,
 ) -> tuple[str, int, str] | None:
-    """Validate one request marker and return its delayed sentinel inputs."""
+    """Validate one request marker and return its delayed sentinel inputs.
+
+    Examples
+    --------
+    >>> options = WorkloadOptions(
+    ...     pathlib.Path("out"), "run-7", pathlib.Path("."), 0, 1.0, 1.0,
+    ...     0.0, "READY", 1.0,
+    ... )
+    >>> _request_from_marker(
+    ...     {"request_id": "sample", "requested_monotonic_ns": 7},
+    ...     pathlib.Path("sample.json"),
+    ...     options,
+    ... )
+    ('sample', 7, 'READY')
+    """
     request_id = marker.get("request_id")
     requested = marker.get("requested_monotonic_ns")
     value = marker.get("value", options.sentinel_prefix)
@@ -342,7 +393,13 @@ def _request_from_marker(
 
 
 def run_serve(options: WorkloadOptions) -> int:
-    """Serve paused deterministic streams until a matching stop or lifecycle exit."""
+    """Serve paused deterministic streams until a matching stop or lifecycle exit.
+
+    Notes
+    -----
+    The service owns signals and a real marker tree, so its gate, timing, and
+    shutdown behavior is exercised in ``tests/test_orchestration_fuzzer.py``.
+    """
     if options.frame_rate_hz <= 0:
         message = "frame_rate_hz must be positive"
         raise ValueError(message)
@@ -378,7 +435,7 @@ def run_serve(options: WorkloadOptions) -> int:
     next_frame_ns: int | None = None
     epoch = 0
     seen_requests: set[str] = set()
-    pending_request: tuple[str, int, str] | None = None
+    pending_request: tuple[str, int, int, int, str] | None = None
 
     def publish_heartbeat(state: str, now_ns: int, force: bool = False) -> None:
         """Publish bounded liveness state when time or emitted bytes require it."""
@@ -444,14 +501,22 @@ def run_serve(options: WorkloadOptions) -> int:
                     request_id, requested_ns, value = request
                     pending_request = (
                         request_id,
+                        requested_ns,
+                        delay_ns,
                         requested_ns + delay_ns,
                         sentinel_text(options.run_id, request_id, value),
                     )
                     seen_requests.add(request_path.name)
                     break
 
-            if pending_request is not None and now_ns >= pending_request[1]:
-                request_id, scheduled_ns, sentinel = pending_request
+            if pending_request is not None and now_ns >= pending_request[3]:
+                (
+                    request_id,
+                    requested_ns,
+                    configured_delay_ns,
+                    scheduled_ns,
+                    sentinel,
+                ) = pending_request
                 bytes_since_heartbeat += _append_text(
                     _stream_path(paths, StreamMode.DELAYED_MATCH), f"{sentinel}\n"
                 )
@@ -460,8 +525,11 @@ def run_serve(options: WorkloadOptions) -> int:
                     schema_version=1,
                     run_id=options.run_id,
                     request_id=request_id,
+                    requested_monotonic_ns=requested_ns,
+                    configured_delay_ns=configured_delay_ns,
                     scheduled_monotonic_ns=scheduled_ns,
                     emitted_monotonic_ns=emitted_ns,
+                    scheduling_lateness_ns=emitted_ns - scheduled_ns,
                     sentinel=sentinel,
                 )
                 write_json_atomic(
@@ -481,7 +549,14 @@ def run_serve(options: WorkloadOptions) -> int:
 
 
 def run_preview(options: WorkloadOptions) -> int:
-    """Render the deterministic frames interactively without importing Rich at load."""
+    """Render deterministic frames interactively without importing Rich at load.
+
+    Notes
+    -----
+    This terminal UI requires a live Rich console. Its import boundary is
+    exercised by the module-import tests; service rendering is covered by the
+    dedicated functional test file.
+    """
     if options.frame_rate_hz <= 0:
         message = "frame_rate_hz must be positive"
         raise ValueError(message)
@@ -504,7 +579,18 @@ def run_preview(options: WorkloadOptions) -> int:
 
 
 def _options_from_namespace(arguments: argparse.Namespace) -> WorkloadOptions:
-    """Convert parsed command-line values into the typed workload configuration."""
+    """Convert parsed command-line values into the typed workload configuration.
+
+    Examples
+    --------
+    >>> arguments = argparse.Namespace(
+    ...     output_dir="out", run_id="run-7", source_root=".", seed=3,
+    ...     frame_rate=2.0, duration=4.0, delayed_match_after=0.5,
+    ...     sentinel_prefix="READY", heartbeat_interval=1.0,
+    ... )
+    >>> _options_from_namespace(arguments).run_id
+    'run-7'
+    """
     return WorkloadOptions(
         output_dir=pathlib.Path(arguments.output_dir),
         run_id=arguments.run_id,
@@ -519,7 +605,13 @@ def _options_from_namespace(arguments: argparse.Namespace) -> WorkloadOptions:
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:
-    """Run the ``serve`` or Rich ``preview`` command."""
+    """Run the ``serve`` or Rich ``preview`` command.
+
+    Notes
+    -----
+    The real ``serve`` command is invoked through ``sys.executable`` in the
+    dedicated functional test file so its process lifecycle stays observable.
+    """
     parser = argparse.ArgumentParser(prog="orchestration_fuzzer.py")
     commands = parser.add_subparsers(dest="command", required=True)
     for command in ("serve", "preview"):
