@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import hashlib
 import importlib.util
 import json
 import os
@@ -12,12 +13,21 @@ import signal
 import stat
 import subprocess
 import sys
+import time
 import types
 import typing as t
 
 import pytest
 
+from libtmux._internal.query_list import QueryList
 from libtmux.experimental.models import PaneSnapshot, SessionSnapshot, WindowSnapshot
+
+_PHASE_LANES = (
+    ("subprocess", "sync"),
+    ("subprocess", "async"),
+    ("control", "sync"),
+    ("control", "async"),
+)
 
 
 @pytest.fixture()
@@ -1466,3 +1476,438 @@ def test_live_topology_lifecycle_cleans_each_engine_lane(
     assert not scratch.exists()
     assert os.environ["TMUX"] == "ambient-server"
     assert os.environ["TMUX_PANE"] == "%ambient"
+
+
+def _checksum_ids(ids: tuple[str, ...]) -> str:
+    """Derive the test oracle without calling the benchmark helper."""
+    return hashlib.sha256("\0".join(ids).encode()).hexdigest()
+
+
+@pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
+def test_live_mutation_phase_restores_stable_targets_and_keeps_activity_advancing(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    lane_name: str,
+    mode_name: str,
+) -> None:
+    """A mutation sample must verify live state and restore it outside timing."""
+    topology = benchmark_module.Topology(2, 3, 2)
+    lane = benchmark_module.EngineLane(lane_name)
+    scratch = tmp_path / f"mutation-{lane_name}-{mode_name}"
+    context = result = restored = cleanup = None
+
+    async def exercise_async() -> None:
+        """Keep an async engine on one loop through mutation and cleanup."""
+        nonlocal context, result, restored, cleanup
+        context = await benchmark_module.setup_async(
+            topology,
+            lane,
+            scratch,
+            run_id=f"mutation-{lane_name}-{mode_name}",
+            delayed_ordinal=7,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            await benchmark_module.verify_activity_async(context)
+            result = await benchmark_module.mutate_async(context, generation=7)
+            restored = await benchmark_module.snapshot_topology_async(context)
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    if mode_name == "async":
+        asyncio.run(exercise_async())
+    else:
+        context = benchmark_module.setup_sync(
+            topology,
+            lane,
+            scratch,
+            run_id=f"mutation-{lane_name}-{mode_name}",
+            delayed_ordinal=7,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            benchmark_module.verify_activity_sync(context)
+            result = benchmark_module.mutate_sync(context, generation=7)
+            restored = benchmark_module.snapshot_topology_sync(context)
+        finally:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+
+    assert context is not None
+    assert result is not None
+    assert restored is not None
+    assert cleanup is not None
+    assert result.duration_ns > 0
+    assert result.generation == "7"
+    assert result.session_id in context.session_ids
+    assert len(result.window_ids) == 3
+    assert len(result.pane_ids) == 6
+    assert result.metrics.operations == 10
+    assert result.metrics.planner_steps == 1
+    assert result.metrics.engine_batches == 1
+    assert result.metrics.tmux_requests == 10
+    assert result.metrics.process_starts == (
+        10 if lane is benchmark_module.EngineLane.SUBPROCESS else 0
+    )
+    assert result.verified
+    assert result.restored
+    assert result.activity_after_epoch > result.activity_before_epoch
+    assert tuple(session.name for session in restored.sessions) == (
+        context.expected_session_names
+    )
+    assert {window.name for window in restored.windows} == set(
+        context.expected_window_names
+    )
+    restored_panes = {
+        pane.pane_id: pane.fields.get("pane_title") for pane in restored.panes
+    }
+    assert all(
+        not (restored_panes[pane_id] or "").startswith(f"bench-{context.run_id}-g7-")
+        for pane_id in result.pane_ids
+    )
+    assert cleanup.complete, cleanup.errors
+
+
+@pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
+def test_live_enumeration_phase_accepts_exact_rows_and_stable_id_checksums(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    lane_name: str,
+    mode_name: str,
+) -> None:
+    """An accepted enumeration must match the verified concrete ID tuples."""
+    topology = benchmark_module.Topology(2, 3, 2)
+    lane = benchmark_module.EngineLane(lane_name)
+    scratch = tmp_path / f"enumeration-{lane_name}-{mode_name}"
+    context = cleanup = None
+    observed: dict[str, t.Any] = {}
+
+    async def exercise_async() -> None:
+        """Keep async enumeration and cleanup on one event loop."""
+        nonlocal context, cleanup
+        context = await benchmark_module.setup_async(
+            topology,
+            lane,
+            scratch,
+            run_id=f"enumeration-{lane_name}-{mode_name}",
+            delayed_ordinal=7,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            await benchmark_module.verify_activity_async(context)
+            for kind in ("sessions", "windows", "panes"):
+                observed[kind] = await benchmark_module.enumerate_async(
+                    context, kind=kind
+                )
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    if mode_name == "async":
+        asyncio.run(exercise_async())
+    else:
+        context = benchmark_module.setup_sync(
+            topology,
+            lane,
+            scratch,
+            run_id=f"enumeration-{lane_name}-{mode_name}",
+            delayed_ordinal=7,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            benchmark_module.verify_activity_sync(context)
+            for kind in ("sessions", "windows", "panes"):
+                observed[kind] = benchmark_module.enumerate_sync(context, kind=kind)
+        finally:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+
+    assert context is not None
+    expected = {
+        "sessions": context.session_ids,
+        "windows": context.window_ids,
+        "panes": context.pane_ids,
+    }
+    assert {kind: result.row_count for kind, result in observed.items()} == {
+        "sessions": 2,
+        "windows": 6,
+        "panes": 12,
+    }
+    for kind, ids in expected.items():
+        result = observed[kind]
+        assert result.ids == ids
+        assert result.id_checksum == _checksum_ids(ids)
+        assert result.duration_ns > 0
+        assert result.metrics.operations == 1
+        assert result.metrics.tmux_requests == 1
+        assert result.verified
+    assert cleanup is not None
+    assert cleanup.complete, cleanup.errors
+
+
+@pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
+def test_live_capture_phase_uses_identical_graphs_with_distinct_planners(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    lane_name: str,
+    mode_name: str,
+) -> None:
+    """Serial and batched capture must return every current active pane."""
+    topology = benchmark_module.Topology(2, 3, 2)
+    lane = benchmark_module.EngineLane(lane_name)
+    scratch = tmp_path / f"capture-{lane_name}-{mode_name}"
+    context = serial = batched = cleanup = None
+
+    async def exercise_async() -> None:
+        """Keep both async planner executions on the engine's owning loop."""
+        nonlocal context, serial, batched, cleanup
+        context = await benchmark_module.setup_async(
+            topology,
+            lane,
+            scratch,
+            run_id=f"capture-{lane_name}-{mode_name}",
+            delayed_ordinal=7,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            await benchmark_module.verify_activity_async(context)
+            serial = await benchmark_module.capture_all_async(
+                context, strategy="serial"
+            )
+            batched = await benchmark_module.capture_all_async(
+                context, strategy="batched"
+            )
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    if mode_name == "async":
+        asyncio.run(exercise_async())
+    else:
+        context = benchmark_module.setup_sync(
+            topology,
+            lane,
+            scratch,
+            run_id=f"capture-{lane_name}-{mode_name}",
+            delayed_ordinal=7,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            benchmark_module.verify_activity_sync(context)
+            serial = benchmark_module.capture_all_sync(context, strategy="serial")
+            batched = benchmark_module.capture_all_sync(context, strategy="batched")
+        finally:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+
+    assert context is not None
+    assert serial is not None
+    assert batched is not None
+    for result in (serial, batched):
+        assert tuple(capture.pane_id for capture in result.captures) == (
+            context.pane_ids
+        )
+        assert result.duration_ns > 0
+        assert result.line_count >= 12
+        assert result.byte_count > 0
+        assert result.epoch == context.activity_epoch
+        assert result.metrics.operations == 12
+        assert result.metrics.tmux_requests == 12
+        assert result.metrics.process_starts == (
+            12 if lane is benchmark_module.EngineLane.SUBPROCESS else 0
+        )
+        assert result.verified
+    assert serial.metrics.planner_steps == 12
+    assert serial.metrics.engine_batches == 12
+    assert batched.metrics.planner_steps == 1
+    assert batched.metrics.engine_batches == 1
+    assert serial.operations == batched.operations
+    assert cleanup is not None
+    assert cleanup.complete, cleanup.errors
+
+
+def test_live_search_phase_keeps_server_snapshot_end_to_end_and_content_distinct(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Each search family must scan its declared source and return one target."""
+    topology = benchmark_module.Topology(2, 3, 2)
+    scratch = tmp_path / "search"
+    context = benchmark_module.setup_sync(
+        topology,
+        benchmark_module.EngineLane.SUBPROCESS,
+        scratch,
+        run_id="search-phase",
+        delayed_ordinal=7,
+    )
+    cleanup = None
+    try:
+        benchmark_module.release_activity_gate(context)
+        benchmark_module.verify_activity_sync(context)
+        snapshot = benchmark_module.snapshot_topology_sync(context)
+        ids_by_kind = {
+            "sessions": context.session_ids,
+            "windows": context.window_ids,
+            "panes": context.pane_ids,
+        }
+        for kind, ids in ids_by_kind.items():
+            for target in (ids[0], ids[len(ids) // 2], ids[-1]):
+                result = benchmark_module.search_server_side(
+                    context, kind=kind, target=target
+                )
+                assert result.family == "server-side"
+                assert result.matched_ids == (target,)
+                assert result.scanned_count == len(ids)
+                assert result.verified
+
+        snapshot_rows = QueryList(snapshot.sessions)
+        snapshot_result = benchmark_module.search_snapshot(
+            snapshot_rows,
+            kind="sessions",
+            target=context.session_ids[1],
+        )
+        end_to_end_result = benchmark_module.search_end_to_end(
+            context,
+            kind="windows",
+            target=context.window_ids[3],
+        )
+
+        request_id = "content-search"
+        requested_ns = time.monotonic_ns()
+        benchmark_module.write_json_atomic(
+            scratch / "fuzzer" / "requests" / f"{request_id}.json",
+            {
+                "schema_version": 1,
+                "run_id": context.run_id,
+                "request_id": request_id,
+                "requested_monotonic_ns": requested_ns,
+                "value": "CONTENT-ONLY",
+            },
+        )
+        evidence_path = scratch / "fuzzer" / "sentinels" / f"{request_id}.json"
+        deadline = time.monotonic() + 2.0
+        evidence = None
+        while time.monotonic() < deadline:
+            try:
+                evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError):
+                time.sleep(0.01)
+                continue
+            break
+        assert evidence is not None
+        sentinel = evidence["sentinel"]
+
+        captures = None
+        while time.monotonic() < deadline:
+            candidate = benchmark_module.capture_all_sync(context, strategy="batched")
+            if any(sentinel in capture.lines for capture in candidate.captures):
+                captures = candidate
+                break
+            time.sleep(0.01)
+        assert captures is not None
+        content_result = benchmark_module.search_contents(
+            captures,
+            token=sentinel,
+            expected_pane_id=context.delayed_pane_id,
+        )
+
+        assert snapshot_result.family == "snapshot"
+        assert snapshot_result.matched_ids == (context.session_ids[1],)
+        assert end_to_end_result.family == "end-to-end"
+        assert end_to_end_result.matched_ids == (context.window_ids[3],)
+        assert content_result.family == "contents"
+        assert content_result.matched_ids == (context.delayed_pane_id,)
+        assert content_result.token == sentinel
+        assert {
+            snapshot_result.scanned_count,
+            end_to_end_result.scanned_count,
+            content_result.scanned_count,
+        } == {2, 6, 12}
+    finally:
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+    assert cleanup.complete, cleanup.errors
+
+
+def test_run_repeatable_phase_interleaves_and_accepts_only_verified_samples(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Only typed results with a true live postcondition become raw samples."""
+    calls: list[str] = []
+    resource_ordinal = 0
+
+    def snapshot_resources() -> t.Any:
+        nonlocal resource_ordinal
+        resource_ordinal += 1
+        return benchmark_module.HostSnapshot(pids_current=resource_ordinal)
+
+    def measured(name: str) -> t.Callable[[], t.Any]:
+        def run() -> t.Any:
+            calls.append(name)
+            return benchmark_module.SearchResult(
+                duration_ns=17,
+                family="snapshot",
+                kind="sessions",
+                scanned_count=2,
+                target="$1",
+                matched_ids=("$1",),
+                verified=True,
+            )
+
+        return run
+
+    result = asyncio.run(
+        benchmark_module.run_repeatable_phase(
+            {"alpha": measured("alpha"), "beta": measured("beta")},
+            warmup=1,
+            runs=2,
+            seed=11,
+            snapshot_resources=snapshot_resources,
+            live_postcondition=lambda measurement: measurement.matched_ids == ("$1",),
+        )
+    )
+
+    assert result.failure is None
+    assert len(result.samples) == 4
+    assert len(result.order) == 6
+    assert calls[:2] in (["alpha", "beta"], ["beta", "alpha"])
+    assert calls[2:4] == list(reversed(calls[:2]))
+    assert calls[4:6] == calls[:2]
+    assert all(sample.duration_ns == 17 for sample in result.samples)
+    assert all(sample.accepted and sample.verified for sample in result.samples)
+    assert all(sample.resources_before is not None for sample in result.samples)
+    assert all(sample.resources_after is not None for sample in result.samples)
+
+
+def test_run_repeatable_phase_stops_without_appending_failed_duration(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A phase exception must retain failure metadata but no duration row."""
+    attempts = 0
+
+    def fail_second() -> t.Any:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 2:
+            message = "live postcondition lost"
+            raise RuntimeError(message)
+        return benchmark_module.SearchResult(
+            duration_ns=23,
+            family="snapshot",
+            kind="sessions",
+            scanned_count=2,
+            target="$1",
+            matched_ids=("$1",),
+            verified=True,
+        )
+
+    result = asyncio.run(
+        benchmark_module.run_repeatable_phase(
+            {"only": fail_second},
+            warmup=0,
+            runs=3,
+            seed=3,
+            snapshot_resources=lambda: benchmark_module.HostSnapshot(),
+        )
+    )
+
+    assert len(result.samples) == 1
+    assert result.samples[0].duration_ns == 23
+    assert result.failure is not None
+    assert result.failure.strategy == "only"
+    assert result.failure.ordinal == 1
+    assert result.failure.error == "RuntimeError: live postcondition lost"
