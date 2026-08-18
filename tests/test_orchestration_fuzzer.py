@@ -166,6 +166,108 @@ def finish_process(process: subprocess.Popen[str]) -> None:
         process.wait(timeout=3)
 
 
+def test_serve_evidence_preserves_request_delay_and_lateness(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Evidence separates requested delay from scheduling lateness."""
+    output_dir = tmp_path / "evidence-output"
+    process = start_serve(output_dir)
+
+    try:
+        wait_for(lambda: (output_dir / "ready.json").exists())
+        write_marker(output_dir / "gate.json", {"schema_version": 1, "run_id": "run-7"})
+        requested = time.monotonic_ns()
+        write_marker(
+            output_dir / "requests" / "sample-delay.json",
+            {
+                "schema_version": 1,
+                "run_id": "run-7",
+                "request_id": "sample-delay",
+                "requested_monotonic_ns": requested,
+                "value": "READY",
+            },
+        )
+        evidence_path = output_dir / "sentinels" / "sample-delay.json"
+        wait_for(evidence_path.exists)
+        evidence = read_json(evidence_path)
+
+        assert evidence["requested_monotonic_ns"] == requested
+        assert evidence["configured_delay_ns"] == 20_000_000
+        assert evidence["scheduled_monotonic_ns"] == requested + 20_000_000
+        assert evidence["scheduling_lateness_ns"] == (
+            evidence["emitted_monotonic_ns"] - evidence["scheduled_monotonic_ns"]
+        )
+    finally:
+        write_marker(output_dir / "stop.json", {"schema_version": 1, "run_id": "run-7"})
+        finish_process(process)
+
+
+def test_serve_ignores_boolean_and_float_schema_versions(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Only an integer schema version activates gates, requests, or stops."""
+    output_dir = tmp_path / "schema-output"
+    process = start_serve(output_dir)
+
+    try:
+        ready = output_dir / "ready.json"
+        streams = output_dir / "streams"
+        requests = output_dir / "requests"
+        sentinels = output_dir / "sentinels"
+        wait_for(ready.exists)
+        stream_paths = [
+            streams / f"{mode}.log"
+            for mode in (
+                "editor",
+                "dev-server",
+                "installer",
+                "delayed-match",
+            )
+        ]
+
+        for invalid_version in (True, 1.0):
+            write_marker(
+                output_dir / "gate.json",
+                {"schema_version": invalid_version, "run_id": "run-7"},
+            )
+            time.sleep(0.05)
+            assert all(path.read_bytes() == b"" for path in stream_paths)
+
+        write_marker(output_dir / "gate.json", {"schema_version": 1, "run_id": "run-7"})
+        wait_for(lambda: all(path.read_bytes() for path in stream_paths))
+
+        for invalid_version, request_id in (
+            (True, "bool-request"),
+            (1.0, "float-request"),
+        ):
+            write_marker(
+                requests / f"{request_id}.json",
+                {
+                    "schema_version": invalid_version,
+                    "run_id": "run-7",
+                    "request_id": request_id,
+                    "requested_monotonic_ns": time.monotonic_ns(),
+                    "value": "READY",
+                },
+            )
+        time.sleep(0.1)
+        assert not (sentinels / "bool-request.json").exists()
+        assert not (sentinels / "float-request.json").exists()
+
+        for invalid_version in (True, 1.0):
+            write_marker(
+                output_dir / "stop.json",
+                {"schema_version": invalid_version, "run_id": "run-7"},
+            )
+            time.sleep(0.05)
+            assert process.poll() is None
+
+        write_marker(output_dir / "stop.json", {"schema_version": 1, "run_id": "run-7"})
+        assert process.wait(timeout=3) == 0
+    finally:
+        finish_process(process)
+
+
 def test_serve_pauses_until_a_matching_gate_and_handles_repeated_requests(
     tmp_path: pathlib.Path,
 ) -> None:
