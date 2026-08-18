@@ -2994,48 +2994,55 @@ def _validate_executable_report(report: RunReport) -> None:
     if phase_names != _RUNNER_PHASES[: len(phase_names)]:
         message = "attempted executable report phases must be a runner phase prefix"
         raise ValueError(message)
-    if report.status != "completed":
-        if not report.failed_phase or not report.error:
-            message = "terminal unsuccessful report requires phase and error"
+    terminal_unsuccessful = report.status in {"failed", "cutoff"}
+    if terminal_unsuccessful and (not report.failed_phase or not report.error):
+        message = "terminal unsuccessful report requires phase and error"
+        raise ValueError(message)
+    if report.status == "completed":
+        if report.failed_phase is not None or report.error is not None:
+            message = "completed report cannot carry a terminal failure"
             raise ValueError(message)
-        return
-    if report.failed_phase is not None or report.error is not None:
-        message = "completed report cannot carry a terminal failure"
-        raise ValueError(message)
-    if report.observed_topology != report.requested_topology:
-        message = "completed report requires exact observed topology"
-        raise ValueError(message)
-    if tuple(phase.name for phase in report.phases) != _RUNNER_PHASES:
-        message = "completed report has an incomplete phase graph"
-        raise ValueError(message)
+        if report.observed_topology != report.requested_topology:
+            message = "completed report requires exact observed topology"
+            raise ValueError(message)
+        if tuple(phase.name for phase in report.phases) != _RUNNER_PHASES:
+            message = "completed report has an incomplete phase graph"
+            raise ValueError(message)
     phases = {phase.name: phase for phase in report.phases}
-    setup = phases["setup"]
+    setup = phases.get("setup")
     if (
-        setup.status != "completed"
-        or setup.warmup != 0
-        or setup.runs != 1
-        or len(setup.samples) != 1
-        or len(setup.observations) != 1
-        or setup.warmup_observations
-        or setup.summary is not None
-        or not setup.samples[0].accepted
-        or not setup.samples[0].verified
-        or not setup.observations[0].verified
-        or setup.samples[0].ordinal != 0
-        or setup.observations[0].ordinal != 0
-        or setup.samples[0].strategy != "setup"
-        or setup.observations[0].strategy != "setup"
-        or setup.samples[0].duration_ns != setup.observations[0].duration_ns
+        setup is not None
+        and setup.status == "completed"
+        and (
+            setup.warmup != 0
+            or setup.runs != 1
+            or len(setup.samples) != 1
+            or len(setup.observations) != 1
+            or setup.warmup_observations
+            or setup.summary is not None
+            or not setup.samples[0].accepted
+            or not setup.samples[0].verified
+            or not setup.observations[0].verified
+            or setup.samples[0].ordinal != 0
+            or setup.observations[0].ordinal != 0
+            or setup.samples[0].strategy != "setup"
+            or setup.observations[0].strategy != "setup"
+            or setup.samples[0].duration_ns != setup.observations[0].duration_ns
+        )
     ):
         message = "setup must remain one unsummarized fresh-server observation"
         raise ValueError(message)
-    stabilization = phases["stabilization"]
+    stabilization = phases.get("stabilization")
     if (
-        stabilization.status != "completed"
-        or stabilization.samples
-        or stabilization.summary is not None
-        or len(stabilization.observations) != 1
-        or stabilization.observations[0].pane_count != report.requested_topology.panes
+        stabilization is not None
+        and stabilization.status == "completed"
+        and (
+            stabilization.samples
+            or stabilization.summary is not None
+            or len(stabilization.observations) != 1
+            or stabilization.observations[0].pane_count
+            != report.requested_topology.panes
+        )
     ):
         message = "stabilization requires one exact untimed topology observation"
         raise ValueError(message)
@@ -3043,33 +3050,68 @@ def _validate_executable_report(report: RunReport) -> None:
         report.lane == EngineLane.CONTROL.value
         and report.mode == ExecutionMode.ASYNC.value
     )
-    control_phase = phases["wait.control-stream"]
-    if not control_applicable:
-        if control_phase.status != "not_applicable":
+    control_phase = phases.get("wait.control-stream")
+    if control_phase is not None:
+        if not control_applicable and control_phase.status != "not_applicable":
             message = "control-stream must be not_applicable outside async control"
             raise ValueError(message)
-    elif control_phase.status != "completed":
-        message = "async control report requires control-stream evidence"
-        raise ValueError(message)
-    repeatable_names = (*_RUNNER_REPEATABLE_PHASES,)
-    if control_applicable:
-        repeatable_names = (
-            *repeatable_names[:2],
-            "wait.control-stream",
-            *repeatable_names[2:],
-        )
-    for name in repeatable_names:
-        phase = phases[name]
         if (
-            phase.status != "completed"
-            or phase.warmup != report.warmup
-            or phase.runs != report.runs
-            or len(phase.samples) != report.runs
-            or len(phase.observations) != report.runs
-            or phase.summary is None
-            or phase.summary.get("count") != report.runs
+            control_applicable
+            and report.status == "completed"
+            and control_phase.status != "completed"
         ):
-            message = f"repeatable phase {name} has incomplete raw evidence"
+            message = "async control report requires control-stream evidence"
+            raise ValueError(message)
+    elif report.status == "completed":
+        message = "completed report is missing control-stream disposition"
+        raise ValueError(message)
+    active = tuple(
+        phase for phase in report.phases if phase.status in {"failed", "in_progress"}
+    )
+    if terminal_unsuccessful and len(active) > 1:
+        message = "terminal unsuccessful report has multiple active phases"
+        raise ValueError(message)
+    failed_rows = tuple(phase for phase in active if phase.status == "failed")
+    if failed_rows and report.failed_phase != failed_rows[0].name:
+        message = "failed_phase must match the active failed phase"
+        raise ValueError(message)
+    repeatable_names = set(_RUNNER_REPEATABLE_PHASES)
+    if control_applicable:
+        repeatable_names.add("wait.control-stream")
+    for name in repeatable_names:
+        phase = phases.get(name)
+        if phase is None:
+            continue
+        if phase.status == "not_applicable":
+            if name != "wait.control-stream" or control_applicable:
+                message = f"repeatable phase {name} cannot be not_applicable"
+                raise ValueError(message)
+            continue
+        if phase.warmup != report.warmup or phase.runs != report.runs:
+            message = f"repeatable phase {name} count declaration differs from report"
+            raise ValueError(message)
+        if phase.status == "completed":
+            if (
+                len(phase.warmup_observations) != report.warmup
+                or len(phase.samples) != report.runs
+                or len(phase.observations) != report.runs
+                or phase.summary is None
+                or phase.summary.get("count") != report.runs
+            ):
+                message = f"repeatable phase {name} has incomplete raw evidence"
+                raise ValueError(message)
+        elif phase.status in {"failed", "in_progress"}:
+            if (
+                len(phase.warmup_observations) > report.warmup
+                or len(phase.samples) > report.runs
+                or len(phase.observations) > report.runs
+                or phase.summary is not None
+                or (phase.samples and len(phase.warmup_observations) != report.warmup)
+            ):
+                message = f"active repeatable phase {name} has invalid partial evidence"
+                raise ValueError(message)
+        else:
+            message = f"repeatable phase {name} has an invalid status"
             raise ValueError(message)
         samples_by_ordinal = {sample.ordinal: sample for sample in phase.samples}
         for observation in phase.observations:
@@ -3089,20 +3131,30 @@ def _validate_executable_report(report: RunReport) -> None:
         ("windows", topology.windows),
         ("panes", topology.panes),
     ):
-        if any(
-            observation.row_count != expected
-            for observation in phases[f"enumeration.{kind}"].observations
+        enumeration = phases.get(f"enumeration.{kind}")
+        if (
+            enumeration is not None
+            and enumeration.status == "completed"
+            and any(
+                observation.row_count != expected
+                for observation in enumeration.observations
+            )
         ):
             message = f"enumeration.{kind} row count differs from topology"
             raise ValueError(message)
     for strategy in ("serial", "batched"):
-        if any(
-            observation.pane_count != topology.panes
-            or observation.line_count is None
-            or observation.line_count <= 0
-            or observation.byte_count is None
-            or observation.byte_count <= 0
-            for observation in phases[f"capture.{strategy}"].observations
+        capture = phases.get(f"capture.{strategy}")
+        if (
+            capture is not None
+            and capture.status == "completed"
+            and any(
+                observation.pane_count != topology.panes
+                or observation.line_count is None
+                or observation.line_count <= 0
+                or observation.byte_count is None
+                or observation.byte_count <= 0
+                for observation in capture.observations
+            )
         ):
             message = f"capture.{strategy} count evidence is incomplete"
             raise ValueError(message)
@@ -3119,6 +3171,23 @@ def _validate_executable_report(report: RunReport) -> None:
         ):
             message = f"{phase.name} search count evidence is incomplete"
             raise ValueError(message)
+    if report.status != "completed":
+        return
+    if control_applicable and control_phase is not None:
+        if control_phase.status != "completed":
+            message = "async control report requires control-stream evidence"
+            raise ValueError(message)
+    elif control_phase is not None and control_phase.status != "not_applicable":
+        message = "control-stream must be not_applicable outside async control"
+        raise ValueError(message)
+    for name in _RUNNER_REPEATABLE_PHASES:
+        phase = phases[name]
+        if phase.status != "completed":
+            message = f"repeatable phase {name} has incomplete raw evidence"
+            raise ValueError(message)
+    if control_applicable and phases["wait.control-stream"].status != "completed":
+        message = "async control report requires control-stream evidence"
+        raise ValueError(message)
 
 
 def _validate_executable_ramp(report: RunReport) -> None:
@@ -3219,6 +3288,7 @@ def plan_payload(
     """
     original = predict_resources(topology, snapshot)
     decision = _forced_decision(original, force_extreme)
+    capability_error = _pidfd_capability_error()
     return t.cast(
         dict[str, object],
         _json_value(
@@ -3230,6 +3300,10 @@ def plan_payload(
                 "guard_decision": decision,
                 "original_guard_decision": original,
                 "force_extreme": force_extreme,
+                "pidfd_capability": {
+                    "available": capability_error is None,
+                    "reason": capability_error,
+                },
             }
         ),
     )
@@ -3282,6 +3356,8 @@ def run_plan(shape: str, output: pathlib.Path | None, force_extreme: bool) -> in
     table.add_row("Panes", str(topology.panes))
     table.add_row("Guard decision", str(decision["kind"]))
     table.add_row("Allowed", str(decision["allowed"]))
+    capability = t.cast(dict[str, object], payload["pidfd_capability"])
+    table.add_row("Stable signaling", str(capability["available"]))
     Console().print(table)
     if output is not None:
         write_json_atomic(output, payload)
@@ -3368,8 +3444,31 @@ def process_identity_matches(identity: ProcessIdentity) -> bool:
     return _process_start_time(identity.pid) == identity.start_time
 
 
+def _pidfd_api_error() -> str | None:
+    """Return why the interpreter cannot expose Linux stable signaling.
+
+    >>> error = _pidfd_api_error()
+    >>> error is None or "pidfd" in error
+    True
+
+    Returns
+    -------
+    str | None
+        ``None`` only when both required Linux pidfd APIs are callable.
+    """
+    if platform.system() != "Linux":
+        return "pidfd signaling requires Linux"
+    if not callable(getattr(os, "pidfd_open", None)):
+        return "os.pidfd_open is unavailable"
+    if not callable(getattr(signal, "pidfd_send_signal", None)):
+        return "signal.pidfd_send_signal is unavailable"
+    if not callable(getattr(signal, "pthread_sigmask", None)):
+        return "signal.pthread_sigmask is unavailable for the pidfd handoff"
+    return None
+
+
 def _pidfd_capability_error() -> str | None:
-    """Return why stable process signaling is unavailable, if applicable.
+    """Probe whether stable signaling actually works for the current process.
 
     >>> error = _pidfd_capability_error()
     >>> error is None or "pidfd" in error
@@ -3378,15 +3477,33 @@ def _pidfd_capability_error() -> str | None:
     Returns
     -------
     str | None
-        ``None`` only when Linux pidfd open and signal APIs are callable.
+        ``None`` only after opening a self pidfd and sending signal zero.
     """
-    if platform.system() != "Linux":
-        return "pidfd signaling requires Linux"
-    if not callable(getattr(os, "pidfd_open", None)):
-        return "os.pidfd_open is unavailable"
-    if not callable(getattr(signal, "pidfd_send_signal", None)):
-        return "signal.pidfd_send_signal is unavailable"
-    return None
+    api_error = _pidfd_api_error()
+    if api_error is not None:
+        return api_error
+    try:
+        descriptor = os.pidfd_open(os.getpid(), 0)
+    except Exception as error:  # noqa: BLE001
+        return f"os.pidfd_open self-probe failed: {type(error).__name__}: {error}"
+    failure: str | None = None
+    try:
+        signal.pidfd_send_signal(descriptor, 0, None, 0)
+    except Exception as error:  # noqa: BLE001
+        failure = (
+            "signal.pidfd_send_signal signal-zero self-probe failed: "
+            f"{type(error).__name__}: {error}"
+        )
+    finally:
+        try:
+            os.close(descriptor)
+        except OSError as error:
+            if failure is None:
+                failure = (
+                    "pidfd stable-signaling probe close failed: "
+                    f"{type(error).__name__}: {error}"
+                )
+    return failure
 
 
 @dataclasses.dataclass(frozen=True)
@@ -3439,7 +3556,7 @@ class _PidfdRegistry:
         ()
         >>> registry.close()
         """
-        capability_error = _pidfd_capability_error()
+        capability_error = _pidfd_api_error()
         if capability_error is not None:
             raise RuntimeError(capability_error)
         self._start_time_reader = _start_time_reader or _process_start_time
@@ -8803,6 +8920,41 @@ def append_progress_event(path: pathlib.Path, event: ProgressEvent) -> None:
             os.close(parent_descriptor)
 
 
+def _initialize_progress_journal(path: pathlib.Path) -> None:
+    """Durably create an empty supervisor-owned progress journal.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     path = pathlib.Path(directory) / "progress.jsonl"
+    ...     _initialize_progress_journal(path)
+    ...     path.read_bytes()
+    b''
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Fresh journal path created before the worker handoff begins.
+
+    Returns
+    -------
+    None
+        After the empty file and its parent directory are synchronized.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    parent_descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(parent_descriptor)
+    finally:
+        os.close(parent_descriptor)
+
+
 def _progress_event_from_json(value: object) -> ProgressEvent:
     """Decode and validate one complete progress line.
 
@@ -9916,8 +10068,8 @@ def _remove_supervised_scratch(path: pathlib.Path) -> tuple[str, ...]:
 
 
 def _recover_supervised_run(
-    worker: subprocess.Popen[bytes],
-    worker_identity: ProcessIdentity,
+    worker: subprocess.Popen[bytes] | None,
+    worker_identity: ProcessIdentity | None,
     progress: _ProgressTracker,
     *,
     scratch: pathlib.Path,
@@ -9948,10 +10100,10 @@ def _recover_supervised_run(
 
     Parameters
     ----------
-    worker : subprocess.Popen[bytes]
-        Direct child launched in its own session.
-    worker_identity : ProcessIdentity
-        Exact group-leader identity captured immediately after spawn.
+    worker : subprocess.Popen[bytes] | None
+        Direct child launched in its own session, or ``None`` when spawn failed.
+    worker_identity : ProcessIdentity | None
+        Exact group-leader identity captured immediately after spawn, if available.
     progress : _ProgressTracker
         Live journal state and stable handles for newly learned identities.
     scratch : pathlib.Path
@@ -9970,7 +10122,8 @@ def _recover_supervised_run(
         message = "supervisor cleanup grace must be positive"
         raise ValueError(message)
     errors: list[str] = []
-    progress.handles.retain(worker_identity)
+    if worker_identity is not None:
+        progress.handles.retain(worker_identity)
 
     def drain(*, terminal: bool = False) -> bool:
         try:
@@ -9982,6 +10135,8 @@ def _recover_supervised_run(
             return False
 
     def wait_worker() -> bool:
+        if worker is None:
+            return True
         deadline = time.monotonic() + grace_s
         while worker.poll() is None and time.monotonic() < deadline:
             drain()
@@ -9990,14 +10145,24 @@ def _recover_supervised_run(
         return worker.poll() is not None
 
     drain()
-    progress.handles.signal(worker_identity, signal.SIGTERM)
-    if not wait_worker():
+    if worker is not None and worker.poll() is None:
+        if worker_identity is None:
+            errors.append("worker identity unavailable; exact signaling is impossible")
+        else:
+            progress.handles.signal(worker_identity, signal.SIGTERM)
+    if not wait_worker() and worker_identity is not None:
         progress.handles.signal(worker_identity, signal.SIGKILL)
         if not wait_worker():
             errors.append("worker process did not exit")
-    drain(terminal=worker.poll() is not None)
+    worker_absent = worker is None or worker.poll() is not None
+    drain(terminal=worker_absent)
     unique: dict[tuple[int, int], ProcessIdentity] = {}
-    for identity in (worker_identity, *progress.identities):
+    initial_identities = (
+        progress.identities
+        if worker_identity is None
+        else (worker_identity, *progress.identities)
+    )
+    for identity in initial_identities:
         unique[(identity.pid, identity.start_time)] = identity
     owned = tuple(unique.values())
     progress.handles.retain_many(owned)
@@ -10014,7 +10179,9 @@ def _recover_supervised_run(
         for identity in survivors
         if process_identity_matches(identity)
     )
-    processes_absent = not any(process_identity_matches(identity) for identity in owned)
+    processes_absent = worker_absent and not any(
+        process_identity_matches(identity) for identity in owned
+    )
     if socket_path.exists():
         errors.extend(_kill_exact_tmux_socket(socket_path, timeout_s=grace_s))
     if processes_absent and socket_path.exists():
@@ -10269,8 +10436,17 @@ def _drain_finalizer_thread(
         target=run,
         name="orchestration-finalization",
     )
-    thread.start()
     interruption = initial_interrupt
+    started = False
+    while not started:
+        try:
+            thread.start()
+        except KeyboardInterrupt as error:  # noqa: PERF203
+            if interruption is None:
+                interruption = error
+            started = thread.ident is not None
+        else:
+            started = True
     while not completed.is_set():
         try:
             completed.wait(timeout=0.02)
@@ -10293,8 +10469,8 @@ def _drain_finalizer_thread(
 
 
 def _finalize_supervised_worker(
-    worker: subprocess.Popen[bytes],
-    worker_identity: ProcessIdentity,
+    worker: subprocess.Popen[bytes] | None,
+    worker_identity: ProcessIdentity | None,
     progress: _ProgressTracker,
     *,
     topology: Topology,
@@ -10337,7 +10513,7 @@ def _finalize_supervised_worker(
                 socket_path=socket_path,
                 grace_s=cleanup_grace_s,
             )
-        else:
+        elif worker is not None:
             worker.wait()
             try:
                 progress.drain(terminal=True)
@@ -10381,6 +10557,18 @@ def _finalize_supervised_worker(
                     socket_path=socket_path,
                     grace_s=cleanup_grace_s,
                 )
+        else:
+            supervisor_status = "failed"
+            failed_phase = failed_phase or "supervisor"
+            terminal_error = terminal_error or "worker was not spawned"
+            cleanup = _recover_supervised_run(
+                worker,
+                worker_identity,
+                progress,
+                scratch=scratch,
+                socket_path=socket_path,
+                grace_s=cleanup_grace_s,
+            )
 
         try:
             candidate = load_run_report(checkpoint_path)
@@ -10404,6 +10592,7 @@ def _finalize_supervised_worker(
                 ),
             )
         if supervisor_status is None:
+            assert worker is not None
             if worker.returncode == 0 and candidate.status == "completed":
                 final_status: t.Literal["completed", "failed", "cutoff"] = "completed"
             elif candidate.status == "cutoff":
@@ -10539,13 +10728,6 @@ def supervise_worker(
     progress_path = output.with_name(f"{output.stem}.{run_id}.progress.jsonl")
     checkpoint_path = output.with_name(f".{output.name}.{run_id}.worker.json")
     admission_path = output.with_name(f".{output.name}.{run_id}.admission.json")
-    write_json_atomic(
-        admission_path,
-        {
-            "guard_decision": guard_decision,
-            "original_guard_decision": original_guard_decision,
-        },
-    )
     command = [
         sys.executable,
         str(pathlib.Path(__file__)),
@@ -10604,30 +10786,87 @@ def supervise_worker(
     environment = os.environ.copy()
     environment.pop("TMUX", None)
     environment.pop("TMUX_PANE", None)
-    worker = subprocess.Popen(
-        command,
-        cwd=pathlib.Path(__file__).parents[1],
-        env=environment,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    worker_identity = _record_process("worker", worker.pid)
+    capability_error = _pidfd_capability_error()
+    if capability_error is not None:
+        raise RuntimeError(capability_error)
+    if threading.current_thread() is not threading.main_thread():
+        message = "supervisor worker handoff requires the main thread"
+        raise RuntimeError(message)
+    worker: subprocess.Popen[bytes] | None = None
+    worker_identity: ProcessIdentity | None = None
     handles = _PidfdRegistry()
-    handles.retain(worker_identity)
     progress = _ProgressTracker(
         progress_path,
         run_id,
         handles,
-        identities=(worker_identity,),
     )
     deadline = time.monotonic() + watchdog_s
     supervisor_status: t.Literal["failed", "cutoff"] | None = None
     failed_phase: str | None = None
     terminal_error: str | None = None
     interruption: KeyboardInterrupt | None = None
+    previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
+
+    def request_termination(
+        signal_number: int,
+        _frame: types.FrameType | None,
+    ) -> t.NoReturn:
+        message = f"received {signal.Signals(signal_number).name}"
+        raise KeyboardInterrupt(message)
+
+    signal.signal(signal.SIGTERM, request_termination)
     try:
+        _initialize_progress_journal(progress_path)
+        write_json_atomic(
+            admission_path,
+            {
+                "guard_decision": guard_decision,
+                "original_guard_decision": original_guard_decision,
+            },
+        )
+        blocked = frozenset({signal.SIGINT, signal.SIGTERM})
+        previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+        handoff_failure: BaseException | None = None
+        try:
+            worker = subprocess.Popen(
+                command,
+                cwd=pathlib.Path(__file__).parents[1],
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            worker_identity = _record_process("worker", worker.pid)
+            if not handles.retain(worker_identity):
+                message = "cannot retain stable worker pidfd during handoff"
+                raise RuntimeError(message)  # noqa: TRY301
+            progress.identities = (worker_identity,)
+        except BaseException as error:  # noqa: BLE001
+            handoff_failure = error
+            if worker is not None:
+                try:
+                    if worker_identity is None:
+                        worker_identity = _record_process("worker", worker.pid)
+                    if handles.retain(worker_identity):
+                        progress.identities = _merge_identities(
+                            progress.identities,
+                            (worker_identity,),
+                        )
+                except BaseException as recovery_error:  # noqa: BLE001
+                    handles.errors.append(
+                        "worker pidfd handoff recovery: "
+                        f"{type(recovery_error).__name__}: {recovery_error}"
+                    )
+        finally:
+            try:
+                signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+            except BaseException as error:  # noqa: BLE001
+                if handoff_failure is None:
+                    handoff_failure = error
+        if handoff_failure is not None:
+            raise handoff_failure  # noqa: TRY301
+        assert worker is not None
         while worker.poll() is None:
             advanced = progress.drain()
             if advanced:
@@ -10648,43 +10887,55 @@ def supervise_worker(
         failed_phase = "supervisor"
         terminal_error = f"{type(error).__name__}: {error}"
 
-    final_report, _interruption = _drain_finalizer_thread(
-        lambda: _finalize_supervised_worker(
-            worker,
-            worker_identity,
-            progress,
-            topology=topology,
-            lane=lane,
-            mode=mode,
-            runs=runs,
-            warmup=warmup,
-            seed=seed,
-            run_id=run_id,
-            scratch=scratch,
-            socket_path=socket_path,
-            output=output,
-            markdown_output=markdown_output,
-            checkpoint_path=checkpoint_path,
-            admission_path=admission_path,
-            guard_decision=guard_decision,
-            original_guard_decision=original_guard_decision,
-            cleanup_grace_s=cleanup_grace_s,
-            supervisor_status=supervisor_status,
-            failed_phase=failed_phase,
-            terminal_error=terminal_error,
-        ),
-        initial_interrupt=interruption,
-    )
-    if _interruption is not None and final_report.status == "completed":
-        final_report, _interruption = _drain_finalizer_thread(
-            lambda: _publish_interrupted_supervisor_report(
-                final_report,
-                output,
-                markdown_output,
+    try:
+        final_report, deferred_interruption = _drain_finalizer_thread(
+            lambda: _finalize_supervised_worker(
+                worker,
+                worker_identity,
+                progress,
+                topology=topology,
+                lane=lane,
+                mode=mode,
+                runs=runs,
+                warmup=warmup,
+                seed=seed,
+                run_id=run_id,
+                scratch=scratch,
+                socket_path=socket_path,
+                output=output,
+                markdown_output=markdown_output,
+                checkpoint_path=checkpoint_path,
+                admission_path=admission_path,
+                guard_decision=guard_decision,
+                original_guard_decision=original_guard_decision,
+                cleanup_grace_s=cleanup_grace_s,
+                supervisor_status=supervisor_status,
+                failed_phase=failed_phase,
+                terminal_error=terminal_error,
             ),
-            initial_interrupt=_interruption,
+            initial_interrupt=interruption,
         )
-    return final_report
+        if deferred_interruption is not None and (
+            final_report.cleanup.complete
+            and not any(phase.status == "failed" for phase in final_report.phases)
+            and (
+                final_report.status != "cutoff"
+                or final_report.failed_phase != "cancellation"
+            )
+        ):
+            final_report, deferred_interruption = _drain_finalizer_thread(
+                lambda: _publish_interrupted_supervisor_report(
+                    final_report,
+                    output,
+                    markdown_output,
+                ),
+                initial_interrupt=deferred_interruption,
+            )
+        if deferred_interruption is not None:
+            raise deferred_interruption
+        return final_report
+    finally:
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
 
 
 def _write_text_atomic(path: pathlib.Path, text: str) -> None:
@@ -10971,7 +11222,7 @@ def run_scenario(
             failed_phase="preflight",
             error=(
                 capability_error
-                if capability_error is not None and original.allowed
+                if capability_error is not None and decision.rule == "pidfd_capability"
                 else f"predictive refusal: {original.rule or 'unknown'}"
             ),
         )
@@ -11153,28 +11404,33 @@ def run_ramp(
     last_observed: Topology | None = None
     terminal_status: t.Literal["refused", "failed", "cutoff"] | None = None
     terminal_reason: str | None = None
+    interruption: KeyboardInterrupt | None = None
     for index, shape in enumerate(declared):
         child_output = child_root / f"{index:02d}-{shape}.json"
         child_markdown = child_output.with_suffix(".md")
-        child = run_scenario(
-            shape,
-            lane=lane,
-            mode=mode,
-            runs=runs,
-            warmup=warmup,
-            seed=seed + index,
-            output=child_output,
-            markdown_output=child_markdown,
-            scratch_root=scratch_root,
-            force_extreme=force_extreme,
-            policy=policy,
-            host_snapshot=host_snapshot,
-            watchdog_s=watchdog_s,
-            cleanup_grace_s=cleanup_grace_s,
-            _test_stall_after=_test_stall_after,
-            _test_fail_after=_test_fail_after,
-            _test_extra_identity=_test_extra_identity,
-        )
+        try:
+            child = run_scenario(
+                shape,
+                lane=lane,
+                mode=mode,
+                runs=runs,
+                warmup=warmup,
+                seed=seed + index,
+                output=child_output,
+                markdown_output=child_markdown,
+                scratch_root=scratch_root,
+                force_extreme=force_extreme,
+                policy=policy,
+                host_snapshot=host_snapshot,
+                watchdog_s=watchdog_s,
+                cleanup_grace_s=cleanup_grace_s,
+                _test_stall_after=_test_stall_after,
+                _test_fail_after=_test_fail_after,
+                _test_extra_identity=_test_extra_identity,
+            )
+        except KeyboardInterrupt as error:
+            interruption = error
+            child = load_run_report(child_output)
         steps[index] = RampStep(
             shape,
             t.cast(
@@ -11205,7 +11461,7 @@ def run_ramp(
             ramp=tuple(steps),
         )
         write_json_atomic(output, report)
-    report, interruption = _drain_finalizer_thread(
+    report, deferred_interruption = _drain_finalizer_thread(
         lambda: _finalize_ramp_aggregation(
             report,
             steps,
@@ -11214,17 +11470,20 @@ def run_ramp(
             terminal_reason=terminal_reason,
             output=output,
             markdown_output=markdown_output,
-        )
+        ),
+        initial_interrupt=interruption,
     )
-    if interruption is not None and report.status == "completed":
-        report, _interruption = _drain_finalizer_thread(
+    if deferred_interruption is not None and report.status == "completed":
+        report, deferred_interruption = _drain_finalizer_thread(
             lambda: _publish_interrupted_ramp_report(
                 report,
                 output,
                 markdown_output,
             ),
-            initial_interrupt=interruption,
+            initial_interrupt=deferred_interruption,
         )
+    if deferred_interruption is not None:
+        raise deferred_interruption
     return report
 
 
@@ -11429,6 +11688,8 @@ async def _run_worker_with_signals(**kwargs: t.Any) -> RunReport:
         except (NotImplementedError, RuntimeError):
             continue
         installed.append(signal_number)
+    if installed and callable(getattr(signal, "pthread_sigmask", None)):
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, installed)
     try:
         return await task
     finally:
@@ -11628,25 +11889,28 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     extra_identity = _parse_extra_identity(arguments.test_extra_identity)
     if arguments.command == "run":
         output = arguments.output or pathlib.Path("orchestration-report.json")
-        report = run_scenario(
-            parse_topology(arguments.shape),
-            lane=EngineLane(arguments.lane),
-            mode=ExecutionMode(arguments.mode),
-            runs=arguments.runs,
-            warmup=arguments.warmup,
-            seed=arguments.seed,
-            output=output,
-            markdown_output=arguments.markdown_output,
-            scratch_root=arguments.scratch_root,
-            force_extreme=arguments.force_extreme,
-            policy=policy,
-            host_snapshot=host_snapshot,
-            watchdog_s=arguments.watchdog_seconds,
-            cleanup_grace_s=arguments.cleanup_grace_seconds,
-            _test_stall_after=arguments.test_stall_after,
-            _test_fail_after=arguments.test_fail_after,
-            _test_extra_identity=extra_identity,
-        )
+        try:
+            report = run_scenario(
+                parse_topology(arguments.shape),
+                lane=EngineLane(arguments.lane),
+                mode=ExecutionMode(arguments.mode),
+                runs=arguments.runs,
+                warmup=arguments.warmup,
+                seed=arguments.seed,
+                output=output,
+                markdown_output=arguments.markdown_output,
+                scratch_root=arguments.scratch_root,
+                force_extreme=arguments.force_extreme,
+                policy=policy,
+                host_snapshot=host_snapshot,
+                watchdog_s=arguments.watchdog_seconds,
+                cleanup_grace_s=arguments.cleanup_grace_seconds,
+                _test_stall_after=arguments.test_stall_after,
+                _test_fail_after=arguments.test_fail_after,
+                _test_extra_identity=extra_identity,
+            )
+        except KeyboardInterrupt:
+            return 130
         return 0 if report.status == "completed" else 2
     if arguments.command == "ramp":
         shapes = (
@@ -11655,26 +11919,29 @@ def main(argv: t.Sequence[str] | None = None) -> int:
             else tuple(parse_topology(shape) for shape in arguments.shapes.split(","))
         )
         output = arguments.output or pathlib.Path("orchestration-ramp.json")
-        report = run_ramp(
-            shapes,
-            lane=EngineLane(arguments.lane),
-            mode=ExecutionMode(arguments.mode),
-            runs=arguments.runs,
-            warmup=arguments.warmup,
-            seed=arguments.seed,
-            output=output,
-            markdown_output=arguments.markdown_output,
-            scratch_root=arguments.scratch_root,
-            force_extreme=arguments.force_extreme,
-            policy=policy,
-            host_snapshot=host_snapshot,
-            watchdog_s=arguments.watchdog_seconds,
-            cleanup_grace_s=arguments.cleanup_grace_seconds,
-            canonical=arguments.shapes is None,
-            _test_stall_after=arguments.test_stall_after,
-            _test_fail_after=arguments.test_fail_after,
-            _test_extra_identity=extra_identity,
-        )
+        try:
+            report = run_ramp(
+                shapes,
+                lane=EngineLane(arguments.lane),
+                mode=ExecutionMode(arguments.mode),
+                runs=arguments.runs,
+                warmup=arguments.warmup,
+                seed=arguments.seed,
+                output=output,
+                markdown_output=arguments.markdown_output,
+                scratch_root=arguments.scratch_root,
+                force_extreme=arguments.force_extreme,
+                policy=policy,
+                host_snapshot=host_snapshot,
+                watchdog_s=arguments.watchdog_seconds,
+                cleanup_grace_s=arguments.cleanup_grace_seconds,
+                canonical=arguments.shapes is None,
+                _test_stall_after=arguments.test_stall_after,
+                _test_fail_after=arguments.test_fail_after,
+                _test_extra_identity=extra_identity,
+            )
+        except KeyboardInterrupt:
+            return 130
         return 0 if report.status == "completed" else 2
     message = "argparse selected an unsupported command"
     raise AssertionError(message)
