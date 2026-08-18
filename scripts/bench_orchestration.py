@@ -94,6 +94,23 @@ _RUNNER_PHASES = (
     "wait.control-stream",
     *_RUNNER_REPEATABLE_PHASES[2:],
 )
+_RUNNER_PHASE_GROUPS = (
+    ("setup",),
+    ("stabilization",),
+    ("mutation.bulk",),
+    ("wait.capture-poll", "wait.control-stream"),
+    tuple(f"enumeration.{kind}" for kind in _ENUMERATION_KINDS),
+    ("capture.serial", "capture.batched"),
+    (
+        *(
+            f"search.{family}.{kind}.{position}"
+            for family in _SEARCH_FAMILIES
+            for kind in _ENUMERATION_KINDS
+            for position in _SEARCH_POSITIONS
+        ),
+        "search.contents",
+    ),
+)
 
 
 def _is_terminal_safe_component(value: object) -> bool:
@@ -3008,11 +3025,41 @@ def _validate_executable_report(report: RunReport) -> None:
     if not report.scratch_path or not report.socket_path or not report.progress_path:
         message = "attempted executable report requires owned resource paths"
         raise ValueError(message)
-    phase_names = tuple(phase.name for phase in report.phases)
-    if phase_names != _RUNNER_PHASES[: len(phase_names)]:
-        message = "attempted executable report phases must be a runner phase prefix"
-        raise ValueError(message)
     terminal_unsuccessful = report.status in {"failed", "cutoff"}
+    phase_names = tuple(phase.name for phase in report.phases)
+    canonical_prefix = phase_names == _RUNNER_PHASES[: len(phase_names)]
+    if not canonical_prefix:
+        active_names = tuple(
+            phase.name
+            for phase in report.phases
+            if phase.status in {"failed", "in_progress"}
+        )
+        active_name = active_names[0] if len(active_names) == 1 else None
+        interleaved_terminal_prefix = False
+        if terminal_unsuccessful and len(active_names) <= 1:
+            for group_index, group in enumerate(_RUNNER_PHASE_GROUPS):
+                prior_names = tuple(
+                    name
+                    for prior_group in _RUNNER_PHASE_GROUPS[:group_index]
+                    for name in prior_group
+                )
+                active_suffix = phase_names[len(prior_names) :]
+                if (
+                    phase_names[: len(prior_names)] != prior_names
+                    or not active_suffix
+                    or len(set(active_suffix)) != len(active_suffix)
+                    or not all(name in group for name in active_suffix)
+                ):
+                    continue
+                if active_name is not None and active_suffix[-1] != active_name:
+                    continue
+                if active_name is None and report.failed_phase != "cancellation":
+                    continue
+                interleaved_terminal_prefix = True
+                break
+        if not interleaved_terminal_prefix:
+            message = "attempted executable report phases must be a runner phase prefix"
+            raise ValueError(message)
     if terminal_unsuccessful and (not report.failed_phase or not report.error):
         message = "terminal unsuccessful report requires phase and error"
         raise ValueError(message)
@@ -3889,6 +3936,7 @@ def _kill_exact_tmux_socket(
     socket_path: pathlib.Path,
     *,
     timeout_s: float,
+    server_identity: ProcessIdentity | None = None,
 ) -> tuple[str, ...]:
     """Boundedly request ``kill-server`` on one exact isolated socket.
 
@@ -3901,11 +3949,13 @@ def _kill_exact_tmux_socket(
         Exact isolated socket owned by one benchmark run.
     timeout_s : float
         Maximum wait for the helper and each stable-handle escalation.
+    server_identity : ProcessIdentity | None
+        Already recorded exact server identity, queried from the socket when absent.
 
     Returns
     -------
     tuple[str, ...]
-        Empty only when the socket is absent after the bounded request.
+        Empty only when the exact server and socket are absent afterward.
 
     Raises
     ------
@@ -3921,6 +3971,51 @@ def _kill_exact_tmux_socket(
     environment.pop("TMUX", None)
     environment.pop("TMUX_PANE", None)
     errors: list[str] = []
+    identity_was_supplied = server_identity is not None
+    if server_identity is None:
+        try:
+            server_pid_result = subprocess.run(
+                (
+                    "tmux",
+                    "-S",
+                    str(socket_path),
+                    "display-message",
+                    "-p",
+                    "#{pid}",
+                ),
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+        except subprocess.TimeoutExpired:
+            return ("exact socket server identity query timed out",)
+        except OSError as error:
+            return (f"exact socket server identity: {type(error).__name__}: {error}",)
+        if server_pid_result.returncode != 0:
+            detail = server_pid_result.stderr.strip()
+            suffix = f": {detail}" if detail else ""
+            exit_code = server_pid_result.returncode
+            return (f"exact socket server identity query exited {exit_code}{suffix}",)
+        try:
+            server_identity = _record_process(
+                "server",
+                int(server_pid_result.stdout.strip()),
+            )
+        except (RuntimeError, ValueError) as error:
+            return (f"exact socket server identity: {type(error).__name__}: {error}",)
+
+    if identity_was_supplied and not _wait_identity_absence(
+        (server_identity,),
+        timeout_s=timeout_s,
+    ):
+        return _remove_proven_stale_socket(socket_path, (server_identity,))
+
+    server_registry = _PidfdRegistry()
+    server_registry.retain(server_identity)
+    helper: subprocess.Popen[bytes] | None = None
+    helper_timed_out = False
     try:
         helper = subprocess.Popen(
             ("tmux", "-S", str(socket_path), "kill-server"),
@@ -3930,42 +4025,61 @@ def _kill_exact_tmux_socket(
             stderr=subprocess.DEVNULL,
         )
     except OSError as error:
-        return (f"exact socket kill-server: {type(error).__name__}: {error}",)
-    try:
-        identity = _record_process("tmux-kill-server", helper.pid)
-    except RuntimeError:
+        errors.append(f"exact socket kill-server: {type(error).__name__}: {error}")
+    if helper is not None:
         try:
-            helper.wait(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            errors.append("exact socket kill-server identity unavailable")
-    else:
-        registry = _PidfdRegistry()
-        try:
-            registry.retain(identity)
+            helper_identity = _record_process("tmux-kill-server", helper.pid)
+        except RuntimeError:
             try:
                 helper.wait(timeout=timeout_s)
             except subprocess.TimeoutExpired:
-                registry.signal(identity, signal.SIGTERM)
+                helper_timed_out = True
+                errors.append("exact socket kill-server identity unavailable")
+        else:
+            registry = _PidfdRegistry()
+            try:
+                registry.retain(helper_identity)
                 try:
                     helper.wait(timeout=timeout_s)
                 except subprocess.TimeoutExpired:
-                    registry.signal(identity, signal.SIGKILL)
+                    helper_timed_out = True
+                    registry.signal(helper_identity, signal.SIGTERM)
                     try:
                         helper.wait(timeout=timeout_s)
                     except subprocess.TimeoutExpired:
-                        errors.append("exact socket kill-server helper remains")
-            errors.extend(registry.errors)
-        finally:
-            registry.close()
-    if helper.returncode == 0 and socket_path.exists():
-        try:
-            socket_status = socket_path.lstat()
-            if not stat.S_ISSOCK(socket_status.st_mode):
-                errors.append(f"configured socket was replaced: {socket_path}")
-            else:
-                socket_path.unlink()
-        except OSError as error:
-            errors.append(f"exact socket path removal: {type(error).__name__}: {error}")
+                        registry.signal(helper_identity, signal.SIGKILL)
+                        try:
+                            helper.wait(timeout=timeout_s)
+                        except subprocess.TimeoutExpired:
+                            errors.append("exact socket kill-server helper remains")
+                errors.extend(registry.errors)
+            finally:
+                registry.close()
+        if helper_timed_out:
+            errors.append("exact socket kill-server timed out")
+        elif helper.returncode != 0:
+            errors.append(f"exact socket kill-server exited {helper.returncode}")
+
+    try:
+        survivors = _wait_identity_absence((server_identity,), timeout_s=timeout_s)
+        for signal_number in (signal.SIGTERM, signal.SIGKILL):
+            if not survivors:
+                break
+            server_registry.signal(server_identity, signal_number)
+            survivors = _wait_identity_absence(
+                (server_identity,),
+                timeout_s=timeout_s,
+            )
+        if survivors:
+            errors.append(
+                f"server pid {server_identity.pid} with start time "
+                f"{server_identity.start_time} remains"
+            )
+        elif socket_path.exists():
+            errors.extend(_remove_proven_stale_socket(socket_path, (server_identity,)))
+        errors.extend(server_registry.errors)
+    finally:
+        server_registry.close()
     return tuple(errors)
 
 
@@ -8564,7 +8678,17 @@ async def cleanup_run(
     except Exception as error:  # noqa: BLE001
         errors.append(f"server kill: {type(error).__name__}: {error}")
     if context.socket_path.exists():
-        errors.extend(_kill_exact_tmux_socket(context.socket_path, timeout_s=grace_s))
+        server_identity = next(
+            (identity for identity in context.processes if identity.role == "server"),
+            None,
+        )
+        errors.extend(
+            _kill_exact_tmux_socket(
+                context.socket_path,
+                timeout_s=grace_s,
+                server_identity=server_identity,
+            )
+        )
 
     survivors = await _wait_for_process_absence(
         context.processes,
@@ -9253,7 +9377,7 @@ async def _run_worker_group(
     runs : int
         Timed accepted calls per cell.
     seed : int
-        Deterministic per-cell measurement seed.
+        Deterministic family-order seed.
     policy : ResourcePolicy
         Runtime guard thresholds.
     latest : dict[str, PhaseMeasurement]
@@ -9273,6 +9397,37 @@ async def _run_worker_group(
         raise ValueError(message)
     topology = context.topology
 
+    strategy_names = tuple(strategies)
+    prior_phases = recorder.report.phases
+    phase_states: dict[str, PhaseReport] = {}
+
+    def publish_active(strategy: str) -> None:
+        completed = tuple(
+            phase for phase in phase_states.values() if phase.status == "completed"
+        )
+        active = phase_states[strategy]
+        active_suffix = () if active.status == "completed" else (active,)
+        recorder.report = dataclasses.replace(
+            recorder.report,
+            phases=(*prior_phases, *completed, *active_suffix),
+        )
+
+    async def on_boundary(strategy: str) -> None:
+        active_phase[0] = strategy
+        if strategy in phase_states:
+            publish_active(strategy)
+            return
+        phase_states[strategy] = PhaseReport(
+            name=strategy,
+            requested_topology=topology,
+            observed_topology=topology,
+            status="in_progress",
+            warmup=warmup,
+            runs=runs,
+        )
+        publish_active(strategy)
+        recorder.checkpoint(f"{strategy}.started")
+
     async def on_progress(
         stage: str,
         strategy: str,
@@ -9281,8 +9436,7 @@ async def _run_worker_group(
         sample: RawSample | None,
     ) -> None:
         latest[strategy] = measurement
-        phases = {phase.name: phase for phase in recorder.report.phases}
-        phase = phases[strategy]
+        phase = phase_states[strategy]
         observation = _observation_for_measurement(strategy, ordinal, measurement)
         if stage == "warmup":
             phase = dataclasses.replace(
@@ -9297,53 +9451,66 @@ async def _run_worker_group(
             )
             if ordinal == runs - 1:
                 phase = _completed_phase(phase)
-        recorder.report = _replace_phase(recorder.report, phase)
+        phase_states[strategy] = phase
         checkpoint = (
             strategy
             if sample is not None and ordinal == runs - 1
             else f"{strategy}.{stage}.{ordinal}"
         )
+        will_fail = checkpoint == strategy and fail_after == strategy
+        if not will_fail and all(
+            phase_states.get(name) is not None
+            and phase_states[name].status == "completed"
+            for name in strategy_names
+        ):
+            recorder.report = dataclasses.replace(
+                recorder.report,
+                phases=(
+                    *prior_phases,
+                    *(phase_states[name] for name in strategy_names),
+                ),
+            )
+        else:
+            publish_active(strategy)
         recorder.checkpoint(checkpoint)
-        if checkpoint == strategy and fail_after == strategy:
+        if will_fail:
             message = f"injected phase failure after {strategy}"
             raise RuntimeError(message)
 
-    for strategy_index, (name, strategy) in enumerate(strategies.items()):
-        active_phase[0] = name
-        recorder.report = _replace_phase(
-            recorder.report,
-            PhaseReport(
-                name=name,
-                requested_topology=topology,
-                observed_topology=topology,
-                status="in_progress",
-                warmup=warmup,
-                runs=runs,
-            ),
+    def retain_terminal_group(strategy: str, *, failed: bool) -> None:
+        active = phase_states[strategy]
+        if failed:
+            active = dataclasses.replace(active, status="failed", summary=None)
+        completed = tuple(
+            phase
+            for name, phase in phase_states.items()
+            if name != strategy and phase.status == "completed"
         )
-        recorder.checkpoint(f"{name}.started")
+        recorder.report = dataclasses.replace(
+            recorder.report,
+            phases=(*prior_phases, *completed, active),
+        )
+
+    try:
         result = await run_repeatable_phase(
-            {name: strategy},
+            strategies,
             warmup=warmup,
             runs=runs,
-            seed=seed + strategy_index,
+            seed=seed,
             snapshot_resources=lambda: probe_host(ProcessReader()),
             live_postcondition=lambda measurement: _worker_live_postcondition(
                 context, measurement, policy
             ),
             progress_callback=on_progress,
-            boundary_callback=lambda strategy_name: active_phase.__setitem__(
-                0, strategy_name
-            ),
+            boundary_callback=on_boundary,
         )
-        if result.failure is not None:
-            phases = {phase.name: phase for phase in recorder.report.phases}
-            failed = dataclasses.replace(
-                phases[result.failure.strategy], status="failed", summary=None
-            )
-            recorder.report = _replace_phase(recorder.report, failed)
-            recorder.checkpoint(f"{result.failure.strategy}.failed")
-            raise PhaseExecutionError(result.failure.strategy, result.failure)
+    except RuntimeCutoffError:
+        retain_terminal_group(active_phase[0], failed=False)
+        raise
+    if result.failure is not None:
+        retain_terminal_group(result.failure.strategy, failed=True)
+        recorder.checkpoint(f"{result.failure.strategy}.failed")
+        raise PhaseExecutionError(result.failure.strategy, result.failure)
 
 
 def _position_target(ids: tuple[str, ...], position: str) -> str:
@@ -10203,7 +10370,17 @@ def _recover_supervised_run(
         process_identity_matches(identity) for identity in owned
     )
     if socket_path.exists():
-        errors.extend(_kill_exact_tmux_socket(socket_path, timeout_s=grace_s))
+        server_identity = next(
+            (identity for identity in owned if identity.role == "server"),
+            None,
+        )
+        errors.extend(
+            _kill_exact_tmux_socket(
+                socket_path,
+                timeout_s=grace_s,
+                server_identity=server_identity,
+            )
+        )
     if processes_absent and socket_path.exists():
         errors.extend(_remove_proven_stale_socket(socket_path, owned))
     socket_absent = not socket_path.exists()
@@ -10416,6 +10593,7 @@ def _drain_finalizer_thread(
     callback: cabc.Callable[[], _FinalizerResult],
     *,
     initial_interrupt: KeyboardInterrupt | None = None,
+    interrupt_state: list[KeyboardInterrupt | None] | None = None,
 ) -> tuple[_FinalizerResult, KeyboardInterrupt | None]:
     """Drain independent synchronous finalization through repeated interrupts.
 
@@ -10429,6 +10607,8 @@ def _drain_finalizer_thread(
         Recovery, report, or ramp finalization that must run to completion.
     initial_interrupt : KeyboardInterrupt | None
         First interruption already translated into terminal report state.
+    interrupt_state : list[KeyboardInterrupt | None] | None
+        Optional single-item state shared with an interruption-aware callback.
 
     Returns
     -------
@@ -10440,12 +10620,21 @@ def _drain_finalizer_thread(
     BaseException
         Callback failure after its independently owned thread terminates.
     """
+    if interrupt_state is None:
+        interrupt_state = [initial_interrupt]
+    elif len(interrupt_state) != 1:
+        message = "finalizer interrupt state must contain exactly one item"
+        raise ValueError(message)
+    elif interrupt_state[0] is None:
+        interrupt_state[0] = initial_interrupt
     results: list[_FinalizerResult] = []
     failures: list[BaseException] = []
     completed = threading.Event()
+    launch_released = threading.Event()
 
     def run() -> None:
         try:
+            launch_released.wait()
             results.append(callback())
         except BaseException as error:  # noqa: BLE001
             failures.append(error)
@@ -10456,31 +10645,129 @@ def _drain_finalizer_thread(
         target=run,
         name="orchestration-finalization",
     )
-    interruption = initial_interrupt
+
+    def record_interrupt(error: KeyboardInterrupt) -> None:
+        if interrupt_state[0] is None:
+            interrupt_state[0] = error
+
+    interruption_failures: list[BaseException] = []
     launch_failure: BaseException | None = None
     blocked = frozenset({signal.SIGINT, signal.SIGTERM})
+    previous_handlers = {
+        signal_number: signal.getsignal(signal_number) for signal_number in blocked
+    }
+
+    def record_signal(
+        signal_number: int,
+        frame: types.FrameType | None,
+    ) -> None:
+        previous = previous_handlers[signal.Signals(signal_number)]
+        if previous == signal.SIG_IGN:
+            return
+        if callable(previous):
+            try:
+                previous(signal_number, frame)
+            except KeyboardInterrupt as error:
+                record_interrupt(error)
+            except BaseException as error:  # noqa: BLE001
+                interruption_failures.append(error)
+            return
+        message = f"received {signal.Signals(signal_number).name} during finalization"
+        record_interrupt(KeyboardInterrupt(message))
+
     previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+    installed_handlers: list[signal.Signals] = []
     try:
+        for signal_number in blocked:
+            signal.signal(signal_number, record_signal)
+            installed_handlers.append(signal_number)
         try:
             thread.start()
         except KeyboardInterrupt as error:
-            if interruption is None:
-                interruption = error
+            record_interrupt(error)
         except BaseException as error:  # noqa: BLE001
             launch_failure = error
     finally:
+        while True:
+            try:
+                signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+                break
+            except KeyboardInterrupt as error:
+                record_interrupt(error)
+            except BaseException as error:  # noqa: BLE001
+                if launch_failure is None:
+                    launch_failure = error
+                break
+
+    launched = False
+    while True:
         try:
-            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+            identity = thread.ident
+            alive = thread.is_alive()
+            launched = identity is not None or alive
+            break
         except KeyboardInterrupt as error:
-            if interruption is None:
-                interruption = error
-        except BaseException as error:  # noqa: BLE001
-            if launch_failure is None:
-                launch_failure = error
-    try:
-        launched = thread.ident is not None or thread.is_alive()
-    except RuntimeError:
-        launched = thread.ident is not None
+            record_interrupt(error)
+        except RuntimeError:
+            launched = thread.ident is not None
+            break
+    if launched:
+        while True:
+            try:
+                launch_released.set()
+                break
+            except KeyboardInterrupt as error:
+                record_interrupt(error)
+        while True:
+            try:
+                if completed.is_set():
+                    break
+                completed.wait(timeout=0.02)
+            except KeyboardInterrupt as error:
+                record_interrupt(error)
+        while True:
+            try:
+                alive = thread.is_alive()
+            except KeyboardInterrupt as error:
+                record_interrupt(error)
+                continue
+            except RuntimeError:
+                alive = False
+            if not alive:
+                break
+            try:
+                thread.join(timeout=0.02)
+            except KeyboardInterrupt as error:
+                record_interrupt(error)
+            except RuntimeError:
+                pass
+
+    final_result: _FinalizerResult | None = None
+    callback_failure: BaseException | None = None
+    while launched:
+        try:
+            if failures:
+                callback_failure = failures[0]
+            else:
+                final_result = results[0]
+            break
+        except KeyboardInterrupt as error:
+            record_interrupt(error)
+
+    restore_failure: BaseException | None = None
+    for signal_number in reversed(installed_handlers):
+        while True:
+            try:
+                signal.signal(signal_number, previous_handlers[signal_number])
+                break
+            except KeyboardInterrupt as error:
+                record_interrupt(error)
+            except BaseException as error:  # noqa: BLE001
+                if restore_failure is None:
+                    restore_failure = error
+                break
+
+    interruption = interrupt_state[0]
     if not launched:
         if interruption is not None:
             raise interruption
@@ -10488,31 +10775,23 @@ def _drain_finalizer_thread(
             raise launch_failure
         message = "finalization thread did not launch"
         raise RuntimeError(message)
-    while not completed.is_set():
-        try:
-            completed.wait(timeout=0.02)
-        except KeyboardInterrupt as error:  # noqa: PERF203
-            if interruption is None:
-                interruption = error
-    while thread.is_alive():
-        try:
-            thread.join(timeout=0.02)
-        except KeyboardInterrupt as error:  # noqa: PERF203
-            if interruption is None:
-                interruption = error
-        except RuntimeError:
-            pass
     if launch_failure is not None:
         if interruption is not None:
             raise interruption from launch_failure
-        if failures:
-            raise launch_failure from failures[0]
+        if callback_failure is not None:
+            raise launch_failure from callback_failure
         raise launch_failure
-    if failures:
+    if callback_failure is not None:
         if interruption is not None:
-            raise interruption from failures[0]
-        raise failures[0]
-    return results[0], interruption
+            raise interruption from callback_failure
+        raise callback_failure
+    if interruption_failures:
+        raise interruption_failures[0]
+    if restore_failure is not None:
+        if interruption is not None:
+            raise interruption from restore_failure
+        raise restore_failure
+    return t.cast(_FinalizerResult, final_result), interruption
 
 
 def _finalize_supervised_worker(
@@ -10934,35 +11213,34 @@ def supervise_worker(
         failed_phase = "supervisor"
         terminal_error = f"{type(error).__name__}: {error}"
 
-    try:
-        final_report, deferred_interruption = _drain_finalizer_thread(
-            lambda: _finalize_supervised_worker(
-                worker,
-                worker_identity,
-                progress,
-                topology=topology,
-                lane=lane,
-                mode=mode,
-                runs=runs,
-                warmup=warmup,
-                seed=seed,
-                run_id=run_id,
-                scratch=scratch,
-                socket_path=socket_path,
-                output=output,
-                markdown_output=markdown_output,
-                checkpoint_path=checkpoint_path,
-                admission_path=admission_path,
-                guard_decision=guard_decision,
-                original_guard_decision=original_guard_decision,
-                cleanup_grace_s=cleanup_grace_s,
-                supervisor_status=supervisor_status,
-                failed_phase=failed_phase,
-                terminal_error=terminal_error,
-            ),
-            initial_interrupt=interruption,
+    interrupt_state = [interruption]
+
+    def finalize_once() -> RunReport:
+        final_report = _finalize_supervised_worker(
+            worker,
+            worker_identity,
+            progress,
+            topology=topology,
+            lane=lane,
+            mode=mode,
+            runs=runs,
+            warmup=warmup,
+            seed=seed,
+            run_id=run_id,
+            scratch=scratch,
+            socket_path=socket_path,
+            output=output,
+            markdown_output=markdown_output,
+            checkpoint_path=checkpoint_path,
+            admission_path=admission_path,
+            guard_decision=guard_decision,
+            original_guard_decision=original_guard_decision,
+            cleanup_grace_s=cleanup_grace_s,
+            supervisor_status=supervisor_status,
+            failed_phase=failed_phase,
+            terminal_error=terminal_error,
         )
-        if deferred_interruption is not None and (
+        if interrupt_state[0] is not None and (
             final_report.cleanup.complete
             and not any(phase.status == "failed" for phase in final_report.phases)
             and (
@@ -10970,14 +11248,19 @@ def supervise_worker(
                 or final_report.failed_phase != "cancellation"
             )
         ):
-            final_report, deferred_interruption = _drain_finalizer_thread(
-                lambda: _publish_interrupted_supervisor_report(
-                    final_report,
-                    output,
-                    markdown_output,
-                ),
-                initial_interrupt=deferred_interruption,
+            final_report = _publish_interrupted_supervisor_report(
+                final_report,
+                output,
+                markdown_output,
             )
+        return final_report
+
+    try:
+        final_report, deferred_interruption = _drain_finalizer_thread(
+            finalize_once,
+            initial_interrupt=interruption,
+            interrupt_state=interrupt_state,
+        )
         if deferred_interruption is not None:
             raise deferred_interruption
         return final_report
@@ -11312,6 +11595,9 @@ def _finalize_ramp_aggregation(
     terminal_reason: str | None,
     output: pathlib.Path,
     markdown_output: pathlib.Path,
+    active_index: int | None = None,
+    active_child_output: pathlib.Path | None = None,
+    interrupt_state: list[KeyboardInterrupt | None] | None = None,
 ) -> RunReport:
     """Validate child cleanup and durably publish one terminal ramp aggregate.
 
@@ -11323,31 +11609,119 @@ def _finalize_ramp_aggregation(
     RunReport
         Validated aggregate retaining every declared step.
     """
-    cleanup_complete = all(
-        step.status == "not_attempted"
-        or load_run_report(pathlib.Path(t.cast(str, step.report_path))).cleanup.complete
-        for step in steps
+    state: list[KeyboardInterrupt | None] = (
+        interrupt_state if interrupt_state is not None else [None]
     )
-    cleanup = CleanupReport(
-        cleanup_complete,
-        processes_absent=cleanup_complete,
-        socket_absent=cleanup_complete,
-        scratch_absent=cleanup_complete,
-    )
-    final_status: t.Literal["completed", "refused", "failed", "cutoff"] = (
-        terminal_status or "completed"
-    )
-    terminal = dataclasses.replace(
-        report,
-        status=final_status,
-        observed_topology=last_observed,
-        cleanup=cleanup,
-        ramp=tuple(steps),
-        error=terminal_reason,
-    )
-    write_json_atomic(output, terminal)
-    validate_report(terminal)
-    render_markdown_summary(output, markdown_output)
+    resolved_steps = list(steps)
+    resolved_observed = last_observed
+
+    def record_interrupt(error: KeyboardInterrupt) -> None:
+        if state[0] is None:
+            state[0] = error
+
+    def interruption_reason(error: KeyboardInterrupt) -> str:
+        detail = str(error)
+        suffix = f": {detail}" if detail else ""
+        return f"KeyboardInterrupt: ramp bookkeeping interrupted{suffix}"
+
+    if (
+        active_index is not None
+        and active_child_output is not None
+        and active_child_output.exists()
+    ):
+        try:
+            child = load_run_report(active_child_output)
+        except ValueError:
+            child = None
+        if child is not None and child.status in {
+            "completed",
+            "refused",
+            "failed",
+            "cutoff",
+        }:
+            resolved_steps[active_index] = RampStep(
+                resolved_steps[active_index].shape,
+                child.status,
+                child.error,
+                run_id=child.run_id,
+                report_path=str(active_child_output),
+                scratch_path=child.scratch_path,
+                socket_path=child.socket_path,
+            )
+            if child.status == "completed":
+                resolved_observed = child.observed_topology
+
+    def build_terminal() -> RunReport:
+        final_status: t.Literal["completed", "refused", "failed", "cutoff"]
+        existing_terminal = next(
+            (
+                step
+                for step in resolved_steps
+                if step.status in {"refused", "failed", "cutoff"}
+            ),
+            None,
+        )
+        if existing_terminal is not None:
+            final_status = t.cast(
+                t.Literal["refused", "failed", "cutoff"],
+                existing_terminal.status,
+            )
+            final_reason = existing_terminal.reason or final_status
+        elif terminal_status is not None:
+            final_status = terminal_status
+            final_reason = terminal_reason or terminal_status
+        elif state[0] is not None:
+            final_status = "cutoff"
+            final_reason = interruption_reason(state[0])
+        else:
+            final_status = "completed"
+            final_reason = None
+        if final_status != "completed":
+            for index, step in enumerate(resolved_steps):
+                if step.status == "not_attempted":
+                    resolved_steps[index] = dataclasses.replace(
+                        step,
+                        reason=final_reason,
+                    )
+        cleanup_complete = all(
+            step.status == "not_attempted"
+            or load_run_report(
+                pathlib.Path(t.cast(str, step.report_path))
+            ).cleanup.complete
+            for step in resolved_steps
+        )
+        cleanup = CleanupReport(
+            cleanup_complete,
+            processes_absent=cleanup_complete,
+            socket_absent=cleanup_complete,
+            scratch_absent=cleanup_complete,
+        )
+        return dataclasses.replace(
+            report,
+            status=final_status,
+            observed_topology=resolved_observed,
+            cleanup=cleanup,
+            ramp=tuple(resolved_steps),
+            error=final_reason,
+        )
+
+    def publish(terminal: RunReport) -> None:
+        write_json_atomic(output, terminal)
+        validate_report(terminal)
+        render_markdown_summary(output, markdown_output)
+
+    observed_interrupt = state[0]
+    terminal = build_terminal()
+    try:
+        publish(terminal)
+    except KeyboardInterrupt as error:
+        record_interrupt(error)
+        terminal = build_terminal()
+        publish(terminal)
+    else:
+        if state[0] is not observed_interrupt:
+            terminal = build_terminal()
+            publish(terminal)
     return terminal
 
 
@@ -11442,11 +11816,6 @@ def run_ramp(
         if deferred is not None:
             raise deferred
 
-    def cancellation_reason(error: KeyboardInterrupt) -> str:
-        detail = str(error)
-        suffix = f": {detail}" if detail else ""
-        return f"KeyboardInterrupt: ramp bookkeeping interrupted{suffix}"
-
     def mark_pending(reason: str) -> None:
         for pending_index, step in enumerate(steps):
             if step.status == "not_attempted":
@@ -11499,68 +11868,28 @@ def run_ramp(
     except KeyboardInterrupt as error:
         if interruption is None:
             interruption = error
-        terminal_status = "cutoff"
-        terminal_reason = cancellation_reason(interruption)
-        if (
-            active_index is not None
-            and active_child_output is not None
-            and active_child_output.exists()
-        ):
-            try:
-                child = load_run_report(active_child_output)
-            except ValueError:
-                child = None
-            if child is not None and child.status in {
-                "completed",
-                "refused",
-                "failed",
-                "cutoff",
-            }:
-                steps[active_index] = step_from_child(
-                    active_index,
-                    child,
-                    active_child_output,
-                )
-                if child.status == "completed":
-                    last_observed = child.observed_topology
-                elif child.status == "cutoff":
-                    terminal_reason = child.error or terminal_reason
-        mark_pending(terminal_reason)
     finally:
-        while final_report is None:
-            try:
-                finalize: t.Callable[[], RunReport] = functools.partial(
-                    _finalize_ramp_aggregation,
-                    report,
-                    steps,
-                    last_observed=last_observed,
-                    terminal_status=terminal_status,
-                    terminal_reason=terminal_reason,
-                    output=output,
-                    markdown_output=markdown_output,
-                )
-                final_report, deferred_interruption = _drain_finalizer_thread(
-                    finalize,
-                    initial_interrupt=interruption,
-                )
-            except KeyboardInterrupt as error:
-                if interruption is None:
-                    interruption = error
-                terminal_status = "cutoff"
-                terminal_reason = terminal_reason or cancellation_reason(interruption)
-                mark_pending(terminal_reason)
-                continue
-            assert final_report is not None
-            if deferred_interruption is not None:
-                if interruption is None:
-                    interruption = deferred_interruption
-                if final_report.status != "cutoff":
-                    terminal_status = "cutoff"
-                    terminal_reason = terminal_reason or cancellation_reason(
-                        interruption
-                    )
-                    mark_pending(terminal_reason)
-                    final_report = None
+        interrupt_state = [interruption]
+        finalize: t.Callable[[], RunReport] = functools.partial(
+            _finalize_ramp_aggregation,
+            report,
+            steps,
+            last_observed=last_observed,
+            terminal_status=terminal_status,
+            terminal_reason=terminal_reason,
+            output=output,
+            markdown_output=markdown_output,
+            active_index=active_index,
+            active_child_output=active_child_output,
+            interrupt_state=interrupt_state,
+        )
+        final_report, deferred_interruption = _drain_finalizer_thread(
+            finalize,
+            initial_interrupt=interruption,
+            interrupt_state=interrupt_state,
+        )
+        if interruption is None:
+            interruption = deferred_interruption
     assert final_report is not None
     if interruption is not None:
         raise interruption
