@@ -788,6 +788,12 @@ def validate_report(report: RunReport) -> None:
         ):
             message = "phase summary must match accepted samples"
             raise ValueError(message)
+    ramp_kinds = {"none", "canonical", "custom"}
+    terminal_statuses = {"refused", "cutoff", "failed"}
+    attempt_statuses = {"completed", "not_attempted", *terminal_statuses}
+    if report.ramp_kind not in ramp_kinds:
+        message = "invalid ramp_kind"
+        raise ValueError(message)
     if report.ramp_kind == "none" and (report.ramp or report.requested_shapes):
         message = "none ramp kind must not carry attempts or requested shapes"
         raise ValueError(message)
@@ -803,20 +809,39 @@ def validate_report(report: RunReport) -> None:
     if report.ramp_kind != "none" and len(report.ramp) != len(report.requested_shapes):
         message = "ramp attempts must match requested shapes cardinality"
         raise ValueError(message)
-    terminal_seen = False
     for shape, step in zip(report.requested_shapes, report.ramp, strict=True):
         if step.shape != shape:
             message = "ramp attempts must match requested shapes in order"
             raise ValueError(message)
-        if report.status == "completed" and step.status != "completed":
-            message = "completed report may contain completed ramp attempts only"
+        if step.status not in attempt_statuses:
+            message = "invalid ramp attempt status"
             raise ValueError(message)
-        if terminal_seen and (step.status != "not_attempted" or step.reason is None):
+    if (
+        report.ramp_kind != "none"
+        and report.status == "completed"
+        and any(step.status != "completed" for step in report.ramp)
+    ):
+        message = "completed report may contain completed ramp attempts only"
+        raise ValueError(message)
+    if report.ramp_kind != "none" and report.status in terminal_statuses:
+        terminals = [step for step in report.ramp if step.status in terminal_statuses]
+        if len(terminals) != 1 or terminals[0].status != report.status:
+            message = "terminal report requires exactly one matching terminal attempt"
+            raise ValueError(message)
+        terminal_index = report.ramp.index(terminals[0])
+        reason = terminals[0].reason
+        if (
+            reason is None
+            or any(step.status != "completed" for step in report.ramp[:terminal_index])
+            or any(
+                step.status != "not_attempted" or step.reason != reason
+                for step in report.ramp[terminal_index + 1 :]
+            )
+        ):
             message = (
-                "ramp shapes after terminal step must be not_attempted with reason"
+                "invalid terminal ramp sequence: later attempts must be not_attempted"
             )
             raise ValueError(message)
-        terminal_seen = terminal_seen or step.status in {"refused", "failed", "cutoff"}
     maximum = Topology(100, 100, 4)
     if report.maximum_completed and (
         report.status != "completed"
