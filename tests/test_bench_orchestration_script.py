@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import importlib.util
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -816,3 +818,167 @@ def test_validate_report_accepts_in_progress_completed_prefix(
     )
 
     benchmark_module.validate_report(report)
+
+
+def test_lifecycle_marker_reader_rejects_boolean_schema_version(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A boolean schema value must not release a run as integer version one."""
+    marker = tmp_path / "marker.json"
+    marker.write_text('{"schema_version":true,"run_id":"run-7"}\n', encoding="utf-8")
+
+    assert benchmark_module._read_run_marker(marker, "run-7") is None
+
+
+def test_live_topology_setup_preserves_preexisting_scratch(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A rejected run must never delete a directory it did not create."""
+    scratch = tmp_path / "already-owned"
+    scratch.mkdir()
+    marker = scratch / "owner.txt"
+    marker.write_text("keep\n", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        benchmark_module.setup_sync(
+            benchmark_module.Topology(1, 1, 1),
+            benchmark_module.EngineLane.SUBPROCESS,
+            scratch,
+            run_id="preexisting",
+        )
+
+    assert marker.read_text(encoding="utf-8") == "keep\n"
+
+
+@pytest.mark.parametrize(
+    ("lane_name", "mode_name"),
+    (
+        ("subprocess", "sync"),
+        ("subprocess", "async"),
+        ("control", "sync"),
+        ("control", "async"),
+    ),
+)
+def test_live_topology_lifecycle_cleans_each_engine_lane(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lane_name: str,
+    mode_name: str,
+) -> None:
+    """A lane must build, activate, and remove only its isolated live topology."""
+    monkeypatch.setenv("TMUX", "ambient-server")
+    monkeypatch.setenv("TMUX_PANE", "%ambient")
+    topology = benchmark_module.Topology(2, 2, 2)
+    lane = benchmark_module.EngineLane(lane_name)
+    scratch = tmp_path / f"{lane_name}-{mode_name}"
+    socket_path = scratch / "tmux.sock"
+    run_id = f"live-{lane_name}-{mode_name}"
+    context = None
+    snapshot = None
+    cleanup = None
+    captured_activity: dict[str, str] = {}
+
+    async def exercise_async() -> None:
+        """Keep async engines on one event loop through their final close."""
+        nonlocal context, snapshot, cleanup
+        context = await benchmark_module.setup_async(
+            topology,
+            lane,
+            scratch,
+            socket_path=socket_path,
+            run_id=run_id,
+            delayed_ordinal=5,
+        )
+        try:
+            assert "TMUX" not in os.environ
+            assert "TMUX_PANE" not in os.environ
+            snapshot = await benchmark_module.snapshot_topology_async(context)
+            benchmark_module.verify_topology(context, snapshot)
+            epoch = benchmark_module.release_activity_gate(context)
+            assert await benchmark_module.verify_activity_async(context) == epoch
+            for pane_id in context.pane_ids:
+                result = context.server.cmd(
+                    "capture-pane", "-t", pane_id, "-p", "-S", "-5000"
+                )
+                assert result.returncode == 0, result.stderr
+                captured_activity[pane_id] = "\n".join(result.stdout)
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    if mode_name == "async":
+        asyncio.run(exercise_async())
+    else:
+        context = benchmark_module.setup_sync(
+            topology,
+            lane,
+            scratch,
+            socket_path=socket_path,
+            run_id=run_id,
+            delayed_ordinal=5,
+        )
+        try:
+            assert "TMUX" not in os.environ
+            assert "TMUX_PANE" not in os.environ
+            snapshot = benchmark_module.snapshot_topology_sync(context)
+            benchmark_module.verify_topology(context, snapshot)
+            epoch = benchmark_module.release_activity_gate(context)
+            assert benchmark_module.verify_activity_sync(context) == epoch
+            for pane_id in context.pane_ids:
+                result = context.server.cmd(
+                    "capture-pane", "-t", pane_id, "-p", "-S", "-5000"
+                )
+                assert result.returncode == 0, result.stderr
+                captured_activity[pane_id] = "\n".join(result.stdout)
+        finally:
+            cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+
+    assert context is not None
+    assert snapshot is not None
+    assert cleanup is not None
+    assert context.server.config_file == os.devnull
+    assert context.socket_path == socket_path
+    assert context.setup_duration_ns > 0
+    assert len(snapshot.sessions) == 2
+    assert len(snapshot.windows) == 4
+    assert len(snapshot.panes) == 8
+    assert len(context.session_ids) == len(set(context.session_ids)) == 2
+    assert len(context.window_ids) == len(set(context.window_ids)) == 4
+    assert len(context.pane_ids) == len(set(context.pane_ids)) == 8
+    assert len({pane.pid for pane in snapshot.panes}) == 8
+    assert all(pane.pid is not None and pane.pid > 0 for pane in snapshot.panes)
+    assert all(pane.fields["pane_dead"] == "0" for pane in snapshot.panes)
+    delayed = [
+        pane
+        for pane in snapshot.panes
+        if "delayed-match.log" in pane.fields["pane_start_command"]
+    ]
+    assert [pane.pane_id for pane in delayed] == [context.delayed_pane_id]
+    assert context.activity_pane_ids == context.pane_ids
+    assert context.activity_marker == (
+        f"LIBTMUX_EPOCH run={run_id} epoch={context.activity_epoch}"
+    )
+    assert set(captured_activity) == set(context.pane_ids)
+    assert all(
+        context.activity_marker in captured_activity[pane_id]
+        for pane_id in context.pane_ids
+    )
+    assert context.heartbeat_epoch >= context.activity_epoch
+
+    recorded_processes = context.processes
+    assert (
+        len([process for process in recorded_processes if process.role == "pane"]) == 8
+    )
+    assert cleanup.complete
+    assert cleanup.errors == ()
+    assert context.fuzzer.poll() is not None
+    assert all(
+        not benchmark_module.process_identity_matches(process)
+        for process in recorded_processes
+    )
+    assert not socket_path.exists()
+    assert not scratch.exists()
+    assert os.environ["TMUX"] == "ambient-server"
+    assert os.environ["TMUX_PANE"] == "%ambient"
