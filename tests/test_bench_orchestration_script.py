@@ -1258,11 +1258,13 @@ def test_pidfd_registry_rejects_an_already_mismatched_identity(
 
 def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
     benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Fallback cleanup must address one socket and preserve another daemon."""
+    """A failed helper must not hide a live exact server behind an unlinked socket."""
     target = tmp_path / "target.sock"
     unrelated = tmp_path / "unrelated.sock"
+    identities: dict[pathlib.Path, t.Any] = {}
     for socket_path in (target, unrelated):
         created = subprocess.run(
             (
@@ -1279,11 +1281,42 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
             text=True,
         )
         assert created.returncode == 0, created.stderr
+        server_pid = subprocess.run(
+            ("tmux", "-S", str(socket_path), "display-message", "-p", "#{pid}"),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert server_pid.returncode == 0, server_pid.stderr
+        identities[socket_path] = benchmark_module._record_process(
+            "server", int(server_pid.stdout.strip())
+        )
+
+    real_popen = subprocess.Popen
+
+    def unlink_without_killing_server(
+        args: t.Any,
+        **kwargs: t.Any,
+    ) -> subprocess.Popen[bytes]:
+        if tuple(args) == ("tmux", "-S", str(target), "kill-server"):
+            args = (
+                sys.executable,
+                "-c",
+                "import os, sys; os.unlink(sys.argv[1]); raise SystemExit(7)",
+                str(target),
+            )
+        return t.cast("subprocess.Popen[bytes]", real_popen(args, **kwargs))
+
+    monkeypatch.setattr(
+        benchmark_module.subprocess, "Popen", unlink_without_killing_server
+    )
     try:
         errors = benchmark_module._kill_exact_tmux_socket(target, timeout_s=1.0)
 
-        assert errors == ()
+        assert errors == ("exact socket kill-server exited 7",)
         assert not target.exists()
+        assert not benchmark_module.process_identity_matches(identities[target])
+        assert benchmark_module.process_identity_matches(identities[unrelated])
         still_alive = subprocess.run(
             ("tmux", "-S", str(unrelated), "list-sessions"),
             check=False,
@@ -1292,12 +1325,30 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
         )
         assert still_alive.returncode == 0, still_alive.stderr
     finally:
-        subprocess.run(
-            ("tmux", "-S", str(unrelated), "kill-server"),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        for socket_path in (target, unrelated):
+            real_popen(
+                ("tmux", "-S", str(socket_path), "kill-server"),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).wait(timeout=2.0)
+        registry = benchmark_module._PidfdRegistry()
+        try:
+            for identity in identities.values():
+                if registry.retain(identity):
+                    registry.signal(identity, signal.SIGKILL)
+            benchmark_module._wait_identity_absence(identities.values(), timeout_s=2.0)
+        finally:
+            registry.close()
+        for socket_path, identity in identities.items():
+            benchmark_module._remove_proven_stale_socket(socket_path, (identity,))
+
+    assert all(
+        not benchmark_module.process_identity_matches(identity)
+        for identity in identities.values()
+    )
+    assert not target.exists()
+    assert not unrelated.exists()
 
 
 def test_run_scenario_refuses_when_pidfds_are_unavailable(
@@ -3849,6 +3900,275 @@ def test_run_repeatable_phase_stops_without_appending_failed_duration(
     assert result.failure.error == "RuntimeError: live postcondition lost"
 
 
+def test_worker_group_preserves_seeded_round_robin_strategy_order(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Calling each strategy as a separate phase would restore order bias."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    calls: list[str] = []
+    repeatable_calls = 0
+    real_repeatable = benchmark_module.run_repeatable_phase
+
+    class Recorder:
+        def __init__(self) -> None:
+            self.report = benchmark_module.RunReport(topology)
+            self.checkpoints: list[str] = []
+
+        def checkpoint(self, name: str) -> None:
+            self.checkpoints.append(name)
+
+    def measured(name: str) -> t.Callable[[], t.Any]:
+        def run() -> t.Any:
+            calls.append(name)
+            return benchmark_module.SearchResult(
+                duration_ns=17,
+                family="snapshot",
+                kind="sessions",
+                scanned_count=1,
+                target="$1",
+                matched_ids=("$1",),
+                verified=True,
+            )
+
+        return run
+
+    async def count_repeatable(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal repeatable_calls
+        repeatable_calls += 1
+        return await real_repeatable(*args, **kwargs)
+
+    async def live_postcondition(*_args: t.Any, **_kwargs: t.Any) -> bool:
+        return True
+
+    monkeypatch.setattr(benchmark_module, "run_repeatable_phase", count_repeatable)
+    monkeypatch.setattr(
+        benchmark_module, "_worker_live_postcondition", live_postcondition
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "probe_host",
+        lambda _reader: benchmark_module.HostSnapshot(),
+    )
+    recorder = Recorder()
+    latest: dict[str, t.Any] = {}
+
+    asyncio.run(
+        benchmark_module._run_worker_group(
+            recorder,
+            types.SimpleNamespace(topology=topology),
+            {
+                "alpha": measured("alpha"),
+                "beta": measured("beta"),
+                "gamma": measured("gamma"),
+            },
+            warmup=1,
+            runs=2,
+            seed=11,
+            policy=benchmark_module.ResourcePolicy(),
+            latest=latest,
+            fail_after=None,
+            active_phase=["setup"],
+        )
+    )
+
+    assert repeatable_calls == 1
+    assert calls == [
+        "alpha",
+        "gamma",
+        "beta",
+        "gamma",
+        "beta",
+        "alpha",
+        "beta",
+        "alpha",
+        "gamma",
+    ]
+    assert tuple(phase.name for phase in recorder.report.phases) == (
+        "alpha",
+        "beta",
+        "gamma",
+    )
+    assert all(phase.status == "completed" for phase in recorder.report.phases)
+    assert all(
+        len(phase.warmup_observations) == 1 and len(phase.observations) == 2
+        for phase in recorder.report.phases
+    )
+
+
+def test_worker_group_failure_retains_only_invoked_terminal_prefix(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A failed interleaved strategy must not create any uninvoked phase row."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    calls: list[str] = []
+
+    class Recorder:
+        def __init__(self) -> None:
+            self.report = benchmark_module.RunReport(topology)
+
+        def checkpoint(self, _name: str) -> None:
+            return None
+
+    def measured(name: str, *, fail: bool = False) -> t.Callable[[], t.Any]:
+        def run() -> t.Any:
+            calls.append(name)
+            if fail:
+                message = f"{name} failed"
+                raise RuntimeError(message)
+            return benchmark_module.SearchResult(
+                duration_ns=19,
+                family="snapshot",
+                kind="sessions",
+                scanned_count=1,
+                target="$1",
+                matched_ids=("$1",),
+                verified=True,
+            )
+
+        return run
+
+    async def live_postcondition(*_args: t.Any, **_kwargs: t.Any) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        benchmark_module, "_worker_live_postcondition", live_postcondition
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "probe_host",
+        lambda _reader: benchmark_module.HostSnapshot(),
+    )
+    recorder = Recorder()
+
+    with pytest.raises(benchmark_module.PhaseExecutionError):
+        asyncio.run(
+            benchmark_module._run_worker_group(
+                recorder,
+                types.SimpleNamespace(topology=topology),
+                {
+                    "alpha": measured("alpha"),
+                    "beta": measured("beta"),
+                    "gamma": measured("gamma", fail=True),
+                },
+                warmup=0,
+                runs=1,
+                seed=11,
+                policy=benchmark_module.ResourcePolicy(),
+                latest={},
+                fail_after=None,
+                active_phase=["setup"],
+            )
+        )
+
+    assert calls == ["alpha", "gamma"]
+    assert tuple(phase.name for phase in recorder.report.phases) == (
+        "alpha",
+        "gamma",
+    )
+    assert tuple(phase.status for phase in recorder.report.phases) == (
+        "completed",
+        "failed",
+    )
+    terminal = dataclasses.replace(
+        recorder.report,
+        status="failed",
+        cleanup=benchmark_module.CleanupReport(False),
+        failed_phase="gamma",
+        error="RuntimeError: gamma failed",
+    )
+    report_path = tmp_path / "partial.json"
+    markdown_path = tmp_path / "partial.md"
+    benchmark_module.write_json_atomic(report_path, terminal)
+    benchmark_module.validate_report(terminal)
+    assert "gamma" in benchmark_module.render_markdown_summary(
+        report_path, markdown_path
+    )
+    assert markdown_path.exists()
+
+
+def test_worker_group_checkpoints_keep_only_one_active_interleaved_row(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation at any strategy checkpoint must leave a valid terminal view."""
+    topology = benchmark_module.Topology(1, 1, 1)
+
+    class ValidatingRecorder:
+        def __init__(self) -> None:
+            self.report = benchmark_module.RunReport(topology)
+
+        def checkpoint(self, _name: str) -> None:
+            terminal = dataclasses.replace(
+                self.report,
+                status="cutoff",
+                cleanup=benchmark_module.CleanupReport(
+                    True,
+                    processes_absent=True,
+                    socket_absent=True,
+                    scratch_absent=True,
+                ),
+                failed_phase="cancellation",
+                error="CancelledError: checkpoint cancellation",
+            )
+            benchmark_module.validate_report(terminal)
+
+    def measured(name: str) -> t.Callable[[], t.Any]:
+        def run() -> t.Any:
+            return benchmark_module.SearchResult(
+                duration_ns=23,
+                family="snapshot",
+                kind="sessions",
+                scanned_count=1,
+                target=name,
+                matched_ids=(name,),
+                verified=True,
+            )
+
+        return run
+
+    async def live_postcondition(*_args: t.Any, **_kwargs: t.Any) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        benchmark_module, "_worker_live_postcondition", live_postcondition
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "probe_host",
+        lambda _reader: benchmark_module.HostSnapshot(),
+    )
+    recorder = ValidatingRecorder()
+
+    asyncio.run(
+        benchmark_module._run_worker_group(
+            recorder,
+            types.SimpleNamespace(topology=topology),
+            {
+                "alpha": measured("alpha"),
+                "beta": measured("beta"),
+                "gamma": measured("gamma"),
+            },
+            warmup=1,
+            runs=1,
+            seed=11,
+            policy=benchmark_module.ResourcePolicy(),
+            latest={},
+            fail_after=None,
+            active_phase=["setup"],
+        )
+    )
+
+    assert tuple(phase.name for phase in recorder.report.phases) == (
+        "alpha",
+        "beta",
+        "gamma",
+    )
+    assert all(phase.status == "completed" for phase in recorder.report.phases)
+
+
 def test_cli_run_executes_every_phase_and_writes_validated_artifacts(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -4856,6 +5176,72 @@ def test_validator_accepts_partial_active_failure_after_complete_prefix(
     )
 
 
+def test_validator_accepts_cancellation_between_interleaved_strategies(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A completed interleaved subset remains valid before the next boundary."""
+    base = _failed_report_with_completed_mutation_prefix(benchmark_module)
+    topology = base.requested_topology
+
+    def completed_repeatable(name: str, *, row_count: int | None = None) -> t.Any:
+        samples = tuple(
+            benchmark_module.RawSample(
+                10 + ordinal,
+                True,
+                verified=True,
+                strategy=name,
+                ordinal=ordinal,
+            )
+            for ordinal in range(2)
+        )
+        observations = tuple(
+            benchmark_module.PhaseObservation(
+                ordinal,
+                name,
+                10 + ordinal,
+                row_count=row_count,
+            )
+            for ordinal in range(2)
+        )
+        return benchmark_module.PhaseReport(
+            name,
+            topology,
+            topology,
+            samples=samples,
+            summary=benchmark_module.summarize_ns((10, 11)),
+            status="completed",
+            warmup=2,
+            runs=2,
+            warmup_observations=tuple(
+                benchmark_module.PhaseObservation(ordinal, name, 2 + ordinal)
+                for ordinal in range(2)
+            ),
+            observations=observations,
+        )
+
+    report = dataclasses.replace(
+        base,
+        status="cutoff",
+        phases=(
+            *base.phases[:3],
+            completed_repeatable("wait.capture-poll"),
+            benchmark_module.PhaseReport(
+                "wait.control-stream",
+                topology,
+                topology,
+                status="not_applicable",
+                warmup=2,
+                runs=2,
+            ),
+            completed_repeatable("enumeration.panes", row_count=topology.panes),
+        ),
+        failed_phase="cancellation",
+        error="KeyboardInterrupt: cancelled between strategies",
+    )
+
+    benchmark_module.validate_report(report)
+
+
 def test_validator_rejects_failed_phase_that_disagrees_with_active_row(
     benchmark_module: types.ModuleType,
 ) -> None:
@@ -4967,13 +5353,25 @@ def test_cli_mid_strategy_failure_has_one_active_prefix_and_no_future_rows(
 
     assert completed.returncode != 0
     report = benchmark_module.load_run_report(report_path)
-    phase_index = _RUNNER_PHASES.index(failed_phase)
+    group_index, group = next(
+        (index, group)
+        for index, group in enumerate(benchmark_module._RUNNER_PHASE_GROUPS)
+        if failed_phase in group
+    )
+    invocation_order = list(group)
+    benchmark_module.random.Random(11 + group_index - 2).shuffle(invocation_order)
+    failed_index = invocation_order.index(failed_phase)
+    expected_phases = (
+        *(
+            name
+            for prior_group in benchmark_module._RUNNER_PHASE_GROUPS[:group_index]
+            for name in prior_group
+        ),
+        *invocation_order[: failed_index + 1],
+    )
     assert report.status == "failed"
     assert report.failed_phase == failed_phase
-    assert (
-        tuple(phase.name for phase in report.phases)
-        == _RUNNER_PHASES[: phase_index + 1]
-    )
+    assert tuple(phase.name for phase in report.phases) == expected_phases
     assert all(
         phase.status in {"completed", "not_applicable"} for phase in report.phases[:-1]
     )
@@ -5405,6 +5803,176 @@ def test_finalizer_drains_repeated_sigint_once_and_restores_real_mask(
     )
 
 
+def test_finalizer_restores_mask_before_original_sigterm_handler(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SIGTERM during handler restoration must be recorded, not delivered to DFL."""
+    original_handler = signal.getsignal(signal.SIGTERM)
+    original_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+    interruption = KeyboardInterrupt("SIGTERM during handler restoration")
+    real_signal = signal.signal
+    raised_during_restore = False
+    restore_mask: frozenset[int | signal.Signals] | None = None
+
+    def prior_sigterm(
+        _signal_number: int,
+        _frame: types.FrameType | None,
+    ) -> t.NoReturn:
+        raise interruption
+
+    real_signal(signal.SIGTERM, prior_sigterm)
+
+    def signal_with_pending_delivery(
+        signal_number: int,
+        handler: t.Any,
+    ) -> t.Any:
+        nonlocal raised_during_restore, restore_mask
+        if (
+            signal_number == signal.SIGTERM
+            and handler is prior_sigterm
+            and not raised_during_restore
+        ):
+            raised_during_restore = True
+            restore_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+            signal.raise_signal(signal.SIGTERM)
+        return real_signal(signal_number, handler)
+
+    monkeypatch.setattr(benchmark_module.signal, "signal", signal_with_pending_delivery)
+    try:
+        result, observed = benchmark_module._drain_finalizer_thread(lambda: 29)
+        restored_handler = signal.getsignal(signal.SIGTERM)
+        restored_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+    finally:
+        real_signal(signal.SIGTERM, original_handler)
+        signal.pthread_sigmask(signal.SIG_SETMASK, original_mask)
+
+    assert result == 29
+    assert observed is interruption
+    assert raised_during_restore
+    assert restore_mask == original_mask
+    assert restored_handler is prior_sigterm
+    assert restored_mask == original_mask
+
+
+@pytest.mark.parametrize("boundary", ("state", "is_alive", "join"))
+def test_finalizer_drains_injected_interrupt_at_every_post_launch_boundary(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    boundary: str,
+) -> None:
+    """Post-launch inspection cannot escape before one durable callback ends."""
+    real_thread = threading.Thread
+    real_event = threading.Event
+    interruption = KeyboardInterrupt(f"{boundary} interruption")
+    callback_count = 0
+    wrappers: list[t.Any] = []
+    output = tmp_path / f"{boundary}.json"
+    expected_handlers = {
+        signal_number: signal.getsignal(signal_number)
+        for signal_number in (signal.SIGINT, signal.SIGTERM)
+    }
+    expected_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+
+    class InterruptingEvent:
+        def __init__(self) -> None:
+            self.delegate = real_event()
+            self.interrupted = False
+
+        def set(self) -> None:
+            self.delegate.set()
+
+        def wait(self, timeout: float | None = None) -> bool:
+            return self.delegate.wait(timeout)
+
+        def is_set(self) -> bool:
+            if boundary == "state" and not self.interrupted:
+                self.interrupted = True
+                raise interruption
+            return self.delegate.is_set()
+
+    class InterruptingThread:
+        def __init__(self, *, target: t.Callable[[], None], name: str) -> None:
+            self.delegate = real_thread(target=target, name=name)
+            self.interrupted_is_alive = False
+            self.interrupted_join = False
+            self.joined = False
+            wrappers.append(self)
+
+        @property
+        def ident(self) -> int | None:
+            return self.delegate.ident
+
+        def start(self) -> None:
+            self.delegate.start()
+
+        def is_alive(self) -> bool:
+            if boundary == "is_alive" and not self.interrupted_is_alive:
+                self.interrupted_is_alive = True
+                raise interruption
+            if not self.joined:
+                return True
+            return self.delegate.is_alive()
+
+        def join(self, timeout: float | None = None) -> None:
+            if boundary == "join" and not self.interrupted_join:
+                self.interrupted_join = True
+                raise interruption
+            self.delegate.join(timeout)
+            if not self.delegate.is_alive():
+                self.joined = True
+
+    def callback() -> t.Any:
+        nonlocal callback_count
+        callback_count += 1
+        report = benchmark_module.RunReport(benchmark_module.Topology(1, 1, 1))
+        benchmark_module.write_json_atomic(output, report)
+        return report
+
+    monkeypatch.setattr(
+        benchmark_module,
+        "threading",
+        types.SimpleNamespace(
+            Thread=InterruptingThread,
+            Event=InterruptingEvent if boundary == "state" else real_event,
+        ),
+    )
+    result: t.Any = None
+    observed: KeyboardInterrupt | None = None
+    escaped: KeyboardInterrupt | None = None
+    try:
+        try:
+            result, observed = benchmark_module._drain_finalizer_thread(callback)
+        except KeyboardInterrupt as error:
+            escaped = error
+        observed_mask = frozenset(signal.pthread_sigmask(signal.SIG_BLOCK, ()))
+        observed_handlers = {
+            signal_number: signal.getsignal(signal_number)
+            for signal_number in (signal.SIGINT, signal.SIGTERM)
+        }
+    finally:
+        for signal_number, handler in expected_handlers.items():
+            signal.signal(signal_number, handler)
+        signal.pthread_sigmask(signal.SIG_SETMASK, expected_mask)
+        for wrapper in wrappers:
+            if wrapper.delegate.ident is not None:
+                wrapper.delegate.join(timeout=5.0)
+
+    assert escaped is None
+    assert observed is interruption
+    assert result == benchmark_module.load_run_report(output)
+    benchmark_module.validate_report(result)
+    assert callback_count == 1
+    assert observed_mask == expected_mask
+    assert observed_handlers == expected_handlers
+    assert all(not wrapper.delegate.is_alive() for wrapper in wrappers)
+    assert not any(
+        thread.name == "orchestration-finalization" and thread.is_alive()
+        for thread in threading.enumerate()
+    )
+
+
 def test_supervisor_cancellation_during_final_report_write_is_durable(
     benchmark_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -5416,6 +5984,13 @@ def test_supervisor_cancellation_during_final_report_write_is_durable(
     entered_write = threading.Event()
     release_write = threading.Event()
     real_write = benchmark_module.write_json_atomic
+    real_drain = benchmark_module._drain_finalizer_thread
+    drain_calls = 0
+
+    def counting_drain(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal drain_calls
+        drain_calls += 1
+        return real_drain(*args, **kwargs)
 
     def delayed_terminal_write(path: pathlib.Path, value: t.Any) -> None:
         if (
@@ -5431,6 +6006,11 @@ def test_supervisor_cancellation_during_final_report_write_is_durable(
         benchmark_module,
         "write_json_atomic",
         delayed_terminal_write,
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "_drain_finalizer_thread",
+        counting_drain,
     )
 
     def interrupt_final_write() -> None:
@@ -5475,6 +6055,7 @@ def test_supervisor_cancellation_during_final_report_write_is_durable(
         interrupter.join(timeout=5.0)
 
     assert not interrupter.is_alive()
+    assert drain_calls == 1
     durable = benchmark_module.load_run_report(report_path)
     assert isinstance(cancellation.value, KeyboardInterrupt)
     assert durable.status == "cutoff"
@@ -6316,6 +6897,107 @@ def test_ramp_reraises_same_child_cancellation_after_durable_aggregation(
     )
     assert report.ramp[0].reason == report.ramp[1].reason
     assert report.cleanup.complete
+
+
+@pytest.mark.parametrize("child_status", ("refused", "failed", "cutoff"))
+def test_ramp_late_interrupt_preserves_existing_child_terminal_state(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    child_status: str,
+) -> None:
+    """A late interrupt cannot replace an established child terminal reason."""
+    real_thread = threading.Thread
+    real_finalize = benchmark_module._finalize_ramp_aggregation
+    interruption = KeyboardInterrupt("late ramp interruption")
+    output = tmp_path / f"late-{child_status}.json"
+    markdown = output.with_suffix(".md")
+    thread_count = 0
+    finalizer_calls = 0
+
+    class InterruptingThread:
+        def __init__(self, *, target: t.Callable[[], None], name: str) -> None:
+            nonlocal thread_count
+            thread_count += 1
+            self.ordinal = thread_count
+            self.delegate = real_thread(target=target, name=name)
+            self.interrupted = False
+
+        @property
+        def ident(self) -> int | None:
+            return self.delegate.ident
+
+        def start(self) -> None:
+            self.delegate.start()
+
+        def join(self, timeout: float | None = None) -> None:
+            self.delegate.join(timeout)
+
+        def is_alive(self) -> bool:
+            if self.ordinal == 2 and not self.interrupted:
+                self.interrupted = True
+                raise interruption
+            return self.delegate.is_alive()
+
+    def terminal_child(shape: t.Any, **kwargs: t.Any) -> t.Any:
+        reason = f"existing {child_status} reason"
+        scratch_path = None if child_status == "refused" else f"{child_status}-scratch"
+        child = benchmark_module.RunReport(
+            shape,
+            status=child_status,
+            cleanup=benchmark_module.CleanupReport(
+                True,
+                processes_absent=True,
+                socket_absent=True,
+                scratch_absent=True,
+            ),
+            error=reason,
+            run_id=f"child-{child_status}",
+            scratch_path=scratch_path,
+            socket_path=(None if scratch_path is None else f"{scratch_path}/tmux.sock"),
+        )
+        benchmark_module.write_json_atomic(kwargs["output"], child)
+        return child
+
+    def count_finalize(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal finalizer_calls
+        finalizer_calls += 1
+        return real_finalize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        benchmark_module,
+        "threading",
+        types.SimpleNamespace(Thread=InterruptingThread, Event=threading.Event),
+    )
+    monkeypatch.setattr(benchmark_module, "run_scenario", terminal_child)
+    monkeypatch.setattr(benchmark_module, "_finalize_ramp_aggregation", count_finalize)
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        benchmark_module.run_ramp(
+            (
+                benchmark_module.Topology(1, 1, 1),
+                benchmark_module.Topology(2, 1, 1),
+            ),
+            runs=1,
+            warmup=0,
+            output=output,
+            markdown_output=markdown,
+        )
+
+    assert raised.value is interruption
+    report = benchmark_module.load_run_report(output)
+    assert report.status == child_status
+    assert tuple(step.status for step in report.ramp) == (
+        child_status,
+        "not_attempted",
+    )
+    assert report.error == f"existing {child_status} reason"
+    assert report.ramp[0].reason == report.error
+    assert report.ramp[1].reason == report.error
+    assert finalizer_calls == 1
+    benchmark_module.validate_report(report)
+    assert child_status in benchmark_module.render_markdown_summary(output)
+    assert markdown.exists()
 
 
 def test_cli_ramp_predictive_refusal_never_executes_tmux_binary(
