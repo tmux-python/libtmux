@@ -189,8 +189,41 @@ def test_render_frame_uses_only_its_mode_epoch_and_seeded_corpus(
         seed=11,
     )
 
-    assert editor.text == "[editor epoch=4] src/libtmux/zeta.py:2: zeta\n"
-    assert installer.text == "[installer epoch=4] install phase=install unit=5/8\n"
+    assert editor.text == (
+        "[editor epoch=4] src/libtmux/zeta.py:2: zeta\nLIBTMUX_EPOCH epoch=4\n"
+    )
+    assert installer.text == (
+        "[installer epoch=4] install phase=install unit=5/8\nLIBTMUX_EPOCH epoch=4\n"
+    )
+
+
+def test_render_frame_bounds_multibyte_activity_and_emits_exact_epoch_pulse(
+    fuzzer_module: types.ModuleType,
+) -> None:
+    """A long Unicode source line cannot evict the adjacent shallow epoch pulse."""
+    corpus = ("src/libtmux/huge.py:1: " + "é" * 4_096,)
+
+    frame = fuzzer_module.render_frame(
+        fuzzer_module.StreamMode.EDITOR,
+        epoch=7,
+        corpus=corpus,
+        seed=0,
+    )
+
+    ordinary, pulse = frame.text.splitlines(keepends=True)
+    assert len(ordinary.encode("utf-8")) <= 2_048
+    assert pulse == "LIBTMUX_EPOCH epoch=7\n"
+    assert len(pulse.encode("ascii")) <= 64
+    assert len(frame.text.encode("utf-8")) <= 2_112
+    assert len(fuzzer_module._epoch_pulse(10**20).encode("ascii")) <= 64
+
+
+def test_bounded_activity_record_rejects_unterminated_input(
+    fuzzer_module: types.ModuleType,
+) -> None:
+    """The byte-bound helper never returns an unterminated ordinary record."""
+    with pytest.raises(ValueError, match="newline-terminated"):
+        fuzzer_module._bounded_activity_record("unterminated")
 
 
 @pytest.mark.parametrize(
@@ -322,6 +355,7 @@ def run_direct_serve(
     request_ids: tuple[str, ...],
     *,
     after_prepare: t.Callable[[], None] | None = None,
+    gate_epoch: int = 0,
 ) -> int:
     """Run the service against deterministic prepublished requests."""
     original_prepare_output = fuzzer_module.prepare_output
@@ -334,10 +368,12 @@ def run_direct_serve(
 
     def prepare_requests(options: t.Any) -> t.Any:
         paths = original_prepare_output(options)
-        fuzzer_module.write_json_atomic(
-            paths.gate,
-            {"schema_version": 1, "run_id": options.run_id},
-        )
+        gate = {
+            "schema_version": 1,
+            "run_id": options.run_id,
+            "epoch": gate_epoch,
+        }
+        fuzzer_module.write_json_atomic(paths.gate, gate)
         for ordinal, request_id in enumerate(request_ids):
             fuzzer_module.write_json_atomic(
                 paths.requests / f"{request_id}.json",
@@ -399,6 +435,89 @@ def test_run_serve_consumes_three_requests_after_persisting_evidence(
         item["emitted_monotonic_ns"] for item in evidence
     )
     assert not tuple((output_dir / "requests").glob("*.json"))
+
+
+def test_run_serve_appends_each_activity_record_and_pulse_together(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No reader may observe an ordinary frame without its matching epoch pulse."""
+    output_dir = tmp_path / "atomic-pulses"
+    appended: list[str] = []
+    original_append = fuzzer_module._append_text
+
+    def record_append(
+        path: pathlib.Path,
+        text: str,
+        *,
+        durable: bool = False,
+    ) -> int:
+        if not durable:
+            appended.append(text)
+        return t.cast(int, original_append(path, text, durable=durable))
+
+    monkeypatch.setattr(fuzzer_module, "_append_text", record_append)
+
+    assert run_direct_serve(fuzzer_module, monkeypatch, output_dir, ()) == 0
+    assert appended
+    for text in appended:
+        ordinary, pulse = text.splitlines(keepends=True)
+        epoch = ordinary.partition(" epoch=")[2].partition("]")[0]
+        assert pulse == f"LIBTMUX_EPOCH epoch={epoch}\n"
+
+
+def test_run_serve_begins_at_the_released_gate_epoch(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first completed pulse must meet the benchmark's frozen gate target."""
+    output_dir = tmp_path / "gate-epoch"
+
+    assert (
+        run_direct_serve(
+            fuzzer_module,
+            monkeypatch,
+            output_dir,
+            (),
+            gate_epoch=7,
+        )
+        == 0
+    )
+    for stream in (output_dir / "streams").glob("*.log"):
+        assert stream.read_text(encoding="utf-8").splitlines()[1] == (
+            "LIBTMUX_EPOCH epoch=7"
+        )
+
+
+def test_run_serve_heartbeat_names_last_completed_pulse(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frozen heartbeat epoch must already exist in every emitted stream."""
+    output_dir = tmp_path / "completed-heartbeat"
+
+    assert (
+        run_direct_serve(
+            fuzzer_module,
+            monkeypatch,
+            output_dir,
+            (),
+            gate_epoch=7,
+        )
+        == 0
+    )
+    completed_epochs = [
+        max(
+            int(line.removeprefix("LIBTMUX_EPOCH epoch="))
+            for line in stream.read_text(encoding="utf-8").splitlines()
+            if line.startswith("LIBTMUX_EPOCH epoch=")
+        )
+        for stream in (output_dir / "streams").glob("*.log")
+    ]
+    assert read_json(output_dir / "heartbeat.json")["epoch"] == min(completed_epochs)
 
 
 def test_run_serve_publishes_evidence_before_request_unlink_and_directory_fsync(
@@ -645,7 +764,10 @@ def test_serve_evidence_preserves_request_delay_and_lateness(
 
     try:
         wait_for(lambda: (output_dir / "ready.json").exists())
-        write_marker(output_dir / "gate.json", {"schema_version": 1, "run_id": "run-7"})
+        write_marker(
+            output_dir / "gate.json",
+            {"schema_version": 1, "run_id": "run-7", "epoch": 0},
+        )
         requested = time.monotonic_ns()
         write_marker(
             output_dir / "requests" / "sample-delay.json",
@@ -702,13 +824,32 @@ def test_serve_ignores_boolean_and_float_schema_versions(
         for invalid_version in (True, 1.0):
             write_marker(
                 output_dir / "gate.json",
-                {"schema_version": invalid_version, "run_id": "run-7"},
+                {
+                    "schema_version": invalid_version,
+                    "run_id": "run-7",
+                    "epoch": 0,
+                },
             )
             time.sleep(0.05)
             assert all(path.read_bytes() == b"" for path in stream_paths)
 
-        write_marker(output_dir / "gate.json", {"schema_version": 1, "run_id": "run-7"})
+        for invalid_epoch in (None, True, -1, 10**43):
+            marker = {"schema_version": 1, "run_id": "run-7"}
+            if invalid_epoch is not None:
+                marker["epoch"] = invalid_epoch
+            write_marker(output_dir / "gate.json", marker)
+            time.sleep(0.05)
+            assert all(path.read_bytes() == b"" for path in stream_paths)
+
+        write_marker(
+            output_dir / "gate.json",
+            {"schema_version": 1, "run_id": "run-7", "epoch": 7},
+        )
         wait_for(lambda: all(path.read_bytes() for path in stream_paths))
+        for path in stream_paths:
+            assert path.read_text(encoding="utf-8").splitlines()[1] == (
+                "LIBTMUX_EPOCH epoch=7"
+            )
 
         for invalid_version, request_id in (
             (True, "bool-request"),
@@ -776,7 +917,10 @@ def test_serve_pauses_until_a_matching_gate_and_handles_repeated_requests(
         time.sleep(0.05)
         assert all(path.read_bytes() == b"" for path in stream_paths)
 
-        write_marker(output_dir / "gate.json", {"schema_version": 1, "run_id": "run-7"})
+        write_marker(
+            output_dir / "gate.json",
+            {"schema_version": 1, "run_id": "run-7", "epoch": 0},
+        )
         wait_for(lambda: all(path.read_bytes() for path in stream_paths))
 
         write_marker(
@@ -854,7 +998,10 @@ def test_serve_processes_sorted_requests_sequentially_and_rejects_duplicate(
 
     try:
         wait_for(lambda: (output_dir / "ready.json").exists())
-        write_marker(output_dir / "gate.json", {"schema_version": 1, "run_id": "run-7"})
+        write_marker(
+            output_dir / "gate.json",
+            {"schema_version": 1, "run_id": "run-7", "epoch": 0},
+        )
         requested = time.monotonic_ns()
         for request_id in ("z-last", "a-first"):
             write_marker(
