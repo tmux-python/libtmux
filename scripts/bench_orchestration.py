@@ -73,6 +73,11 @@ _PROGRESS_SCHEMA_VERSION = 2
 # history rows retain 120 ordinary delayed frames plus the 422-byte sentinel
 # with ample wrapping headroom in the required active 1x2x2 topology.
 _WAIT_CAPTURE_HISTORY_LINES = 5_000
+_MIN_PANE_WIDTH = 64
+_PANE_CAPTURE_CHUNK_SIZE = 64
+_READINESS_CAPTURE_HISTORY_LINES = 8
+_MEASURED_CAPTURE_HISTORY_LINES = 64
+_EPOCH_PULSE_MAX_BYTES = 64
 _SEARCH_POSITIONS = ("first", "middle", "last")
 _ENUMERATION_KINDS = ("sessions", "windows", "panes")
 _SEARCH_FAMILIES = ("classic", "snapshot", "end-to-end")
@@ -243,6 +248,55 @@ def _validated_pane_epoch_timing(
             raise ValueError(message)
         validated.append(seconds)
     return validated[0], validated[1], validated[2]
+
+
+def _validated_watchdog_seconds(value: object) -> float:
+    """Return one exact finite positive supervisor watchdog interval.
+
+    >>> _validated_watchdog_seconds(12)
+    12.0
+
+    Raises
+    ------
+    ValueError
+        If the value cannot form a finite positive interval.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        message = "watchdog interval must be finite and positive"
+        raise ValueError(message)  # noqa: TRY004
+    try:
+        seconds = float(value)
+    except OverflowError as error:
+        message = "watchdog interval must be finite and positive"
+        raise ValueError(message) from error
+    if not math.isfinite(seconds) or seconds <= 0:
+        message = "watchdog interval must be finite and positive"
+        raise ValueError(message)
+    return seconds
+
+
+def _pane_epoch_overall_timeout_s(pane_count: int, watchdog_s: object) -> float:
+    """Bound pane readiness by chunk scale and the supervisor watchdog.
+
+    >>> _pane_epoch_overall_timeout_s(130, 120.0)
+    9.0
+
+    Raises
+    ------
+    ValueError
+        If the pane count or watchdog cannot form a bounded deadline.
+    """
+    if type(pane_count) is not int or pane_count <= 0:
+        message = "pane epoch wait requires a positive pane count"
+        raise ValueError(message)
+    watchdog_seconds = _validated_watchdog_seconds(watchdog_s)
+    chunk_count = (
+        pane_count + _PANE_CAPTURE_CHUNK_SIZE - 1
+    ) // _PANE_CAPTURE_CHUNK_SIZE
+    scaled_seconds = max(8, chunk_count * 3)
+    if scaled_seconds >= watchdog_seconds:
+        return watchdog_seconds
+    return float(scaled_seconds)
 
 
 class EngineLane(str, enum.Enum):
@@ -2179,6 +2233,8 @@ class RunContext:
         Declared window-name to session-name ownership pairs.
     setup_duration_ns : int
         Timed construction duration excluding activity stabilization.
+    watchdog_s : float
+        Finite supervisor progress interval bounding pane readiness.
     processes : tuple[ProcessIdentity, ...]
         Fuzzer, server, and pane-follower identities.
     socket_ownership : _SocketOwnership | None
@@ -2240,6 +2296,7 @@ class RunContext:
     expected_window_names: tuple[str, ...]
     expected_window_parents: tuple[tuple[str, str], ...]
     setup_duration_ns: int
+    watchdog_s: float
     processes: tuple[ProcessIdentity, ...]
     socket_ownership: _SocketOwnership | None = None
     session_ids: tuple[str, ...] = ()
@@ -5668,6 +5725,7 @@ def _prepare_context(
     run_id: str,
     delayed_ordinal: int,
     fuzzer_duration_s: float = 300.0,
+    watchdog_s: float = 120.0,
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
@@ -5702,6 +5760,8 @@ def _prepare_context(
         Unique pane assigned the delayed stream.
     fuzzer_duration_s : float
         Active-service lifetime; supervised runs pass their derived budget.
+    watchdog_s : float
+        Supervisor progress interval used to cap pane readiness.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
 
@@ -5724,6 +5784,7 @@ def _prepare_context(
     if not 0 <= delayed_ordinal < topology.panes:
         message = "delayed pane ordinal must identify a requested pane"
         raise ValueError(message)
+    watchdog_seconds = _validated_watchdog_seconds(watchdog_s)
     if not _is_terminal_safe_component(run_id):
         message = (
             f"run_id must be a 1-{_SENTINEL_COMPONENT_MAX_BYTES} byte "
@@ -5833,6 +5894,7 @@ def _prepare_context(
                 for window_index in range(topology.windows_per_session)
             ),
             setup_duration_ns=0,
+            watchdog_s=watchdog_seconds,
             processes=(fuzzer_identity,),
             ambient_tmux_environment=ambient_tmux_environment,
             process_identity_callback=publish_identities,
@@ -5884,6 +5946,7 @@ def setup_sync(
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
     fuzzer_duration_s: float = 300.0,
+    watchdog_s: float = 120.0,
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
@@ -5922,6 +5985,8 @@ def setup_sync(
         Unique pane assigned the delayed stream.
     fuzzer_duration_s : float
         Active-service lifetime; supervised runs pass their derived budget.
+    watchdog_s : float
+        Supervisor progress interval used to cap pane readiness.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
     _socket_ownership_callback : collections.abc.Callable | None
@@ -5964,6 +6029,7 @@ def setup_sync(
         run_id=run_id,
         delayed_ordinal=delayed_ordinal,
         fuzzer_duration_s=fuzzer_duration_s,
+        watchdog_s=watchdog_s,
         _process_identity_callback=_process_identity_callback,
     )
     engine = t.cast("TmuxEngine", context.engine)
@@ -6056,6 +6122,7 @@ async def setup_async(
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
     fuzzer_duration_s: float = 300.0,
+    watchdog_s: float = 120.0,
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
@@ -6092,6 +6159,8 @@ async def setup_async(
         Unique pane assigned the delayed stream.
     fuzzer_duration_s : float
         Active-service lifetime; supervised runs pass their derived budget.
+    watchdog_s : float
+        Supervisor progress interval used to cap pane readiness.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
     _socket_ownership_callback : collections.abc.Callable | None
@@ -6137,6 +6206,7 @@ async def setup_async(
         run_id=run_id,
         delayed_ordinal=delayed_ordinal,
         fuzzer_duration_s=fuzzer_duration_s,
+        watchdog_s=watchdog_s,
         _process_identity_callback=_process_identity_callback,
     )
     engine = t.cast("AsyncTmuxEngine", context.engine)
@@ -6401,6 +6471,10 @@ def verify_topology(
         pane_counts[pane.window_id] += 1
     if set(pane_counts.values()) != {context.topology.panes_per_window}:
         fail("a window has the wrong pane count")
+    if any(
+        pane.width is None or pane.width < _MIN_PANE_WIDTH for pane in snapshot.panes
+    ):
+        fail(f"pane width is below {_MIN_PANE_WIDTH} columns")
 
     pane_pids = tuple(pane.pid for pane in snapshot.panes)
     if any(pid is None or pid <= 0 for pid in pane_pids):
@@ -6562,17 +6636,11 @@ def release_activity_gate(context: RunContext) -> int:
         return context.activity_epoch
     _state, observed_epoch = _heartbeat_epoch(context)
     epoch = max(context.heartbeat_epoch, observed_epoch or 0) + 1
-    marker = f"LIBTMUX_EPOCH run={context.run_id} epoch={epoch}"
+    marker = f"LIBTMUX_EPOCH epoch={epoch}"
     write_json_atomic(
         context.scratch / "fuzzer" / "gate.json",
         {"schema_version": 1, "run_id": context.run_id, "epoch": epoch},
     )
-    encoded = f"{marker}\n".encode()
-    for stream in context.streams:
-        with stream.open("ab") as destination:
-            destination.write(encoded)
-            destination.flush()
-            os.fsync(destination.fileno())
     context.activity_epoch = epoch
     context.activity_marker = marker
     context.heartbeat_epoch = observed_epoch or 0
@@ -6582,11 +6650,11 @@ def release_activity_gate(context: RunContext) -> int:
 def verify_activity_sync(
     context: RunContext,
     *,
-    timeout_s: float = 8.0,
+    timeout_s: float | None = None,
     no_progress_timeout_s: float = 3.0,
     poll_interval_s: float = 0.02,
 ) -> int:
-    """Poll typed pane captures until every pane contains the released marker.
+    """Wait until every pane and the heartbeat expose the released epoch.
 
     >>> try:
     ...     verify_activity_sync(types.SimpleNamespace(mode=ExecutionMode.ASYNC))
@@ -6598,8 +6666,8 @@ def verify_activity_sync(
     ----------
     context : RunContext
         Released synchronous live run.
-    timeout_s : float
-        Overall stabilization deadline.
+    timeout_s : float or None
+        Overall stabilization deadline, derived from pane scale when omitted.
     no_progress_timeout_s : float
         Deadline reset whenever another pane verifies.
     poll_interval_s : float
@@ -6619,62 +6687,70 @@ def verify_activity_sync(
     TimeoutError
         If overall or no-progress stabilization expires.
     """
-    from libtmux.experimental.ops import CapturePane, PaneId, run
-
     if context.mode is not ExecutionMode.SYNC:
         message = "sync activity verification requires a synchronous context"
         raise ValueError(message)
     if context.activity_epoch is None or context.activity_marker is None:
         message = "activity gate has not been released"
         raise RuntimeError(message)
-    if timeout_s <= 0 or no_progress_timeout_s <= 0 or poll_interval_s <= 0:
-        message = "activity verification timeouts and cadence must be positive"
-        raise ValueError(message)
-    engine = t.cast("TmuxEngine", context.engine)
-    remaining = set(context.pane_ids)
+    if timeout_s is None:
+        timeout_s = _pane_epoch_overall_timeout_s(
+            len(context.pane_ids), context.watchdog_s
+        )
+    timeout_s, no_progress_timeout_s, poll_interval_s = _validated_pane_epoch_timing(
+        timeout_s,
+        no_progress_timeout_s,
+        poll_interval_s,
+    )
     deadline = time.monotonic() + timeout_s
-    progress_deadline = time.monotonic() + no_progress_timeout_s
-    heartbeat_active = False
-    while remaining or not heartbeat_active:
+    _wait_pane_epoch_sync(
+        context,
+        context.activity_epoch,
+        timeout_s=timeout_s,
+        no_progress_timeout_s=no_progress_timeout_s,
+        poll_interval_s=poll_interval_s,
+    )
+    progress_deadline = min(
+        deadline,
+        time.monotonic() + no_progress_timeout_s,
+    )
+    observed_epoch = context.heartbeat_epoch
+    while True:
         if context.fuzzer.poll() is not None:
             message = "fuzzer exited during activity stabilization"
             raise RuntimeError(message)
         state, heartbeat_epoch = _heartbeat_epoch(context)
+        heartbeat_advanced = False
         if heartbeat_epoch is not None:
-            if heartbeat_epoch < context.heartbeat_epoch:
+            if heartbeat_epoch < observed_epoch:
                 message = "fuzzer heartbeat epoch moved backwards"
                 raise RuntimeError(message)
-            context.heartbeat_epoch = heartbeat_epoch
-        heartbeat_active = (
+            if heartbeat_epoch > observed_epoch:
+                observed_epoch = heartbeat_epoch
+                heartbeat_advanced = True
+        now = time.monotonic()
+        if now >= deadline:
+            message = "activity stabilization timed out waiting for heartbeat"
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = "activity stabilization heartbeat made no progress"
+            raise TimeoutError(message)
+        if heartbeat_advanced:
+            progress_deadline = now + no_progress_timeout_s
+        if (
             state == "active"
             and heartbeat_epoch is not None
             and heartbeat_epoch >= context.activity_epoch
-        )
-        before = len(remaining)
-        for pane_id in tuple(remaining):
-            result = run(
-                CapturePane(target=PaneId(pane_id), start=-5000),
-                engine,
-            ).raise_for_status()
-            if context.activity_marker in "\n".join(result.lines):
-                remaining.remove(pane_id)
-        now = time.monotonic()
-        if len(remaining) < before:
-            progress_deadline = now + no_progress_timeout_s
-        if not remaining and heartbeat_active:
+        ):
+            heartbeat = _current_activity_heartbeat(
+                context,
+                max_age_s=no_progress_timeout_s,
+            )
+            if heartbeat.epoch < context.activity_epoch:
+                message = "fuzzer heartbeat did not reach released activity epoch"
+                raise RuntimeError(message)
             break
-        if now >= deadline:
-            message = (
-                f"activity stabilization timed out with {len(remaining)} panes pending"
-            )
-            raise TimeoutError(message)
-        if now >= progress_deadline:
-            message = (
-                "activity stabilization made no progress with "
-                f"{len(remaining)} panes pending"
-            )
-            raise TimeoutError(message)
-        time.sleep(poll_interval_s)
+        time.sleep(min(poll_interval_s, deadline - now, progress_deadline - now))
     context.activity_pane_ids = context.pane_ids
     return context.activity_epoch
 
@@ -6682,7 +6758,7 @@ def verify_activity_sync(
 async def verify_activity_async(
     context: RunContext,
     *,
-    timeout_s: float = 8.0,
+    timeout_s: float | None = None,
     no_progress_timeout_s: float = 3.0,
     poll_interval_s: float = 0.02,
 ) -> int:
@@ -6699,8 +6775,8 @@ async def verify_activity_async(
     ----------
     context : RunContext
         Released asynchronous live run.
-    timeout_s : float
-        Overall stabilization deadline.
+    timeout_s : float or None
+        Overall stabilization deadline, derived from pane scale when omitted.
     no_progress_timeout_s : float
         Deadline reset whenever another pane verifies.
     poll_interval_s : float
@@ -6720,65 +6796,70 @@ async def verify_activity_async(
     TimeoutError
         If overall or no-progress stabilization expires.
     """
-    from libtmux.experimental.ops import CapturePane, PaneId, arun
-
     if context.mode is not ExecutionMode.ASYNC:
         message = "async activity verification requires an asynchronous context"
         raise ValueError(message)
     if context.activity_epoch is None or context.activity_marker is None:
         message = "activity gate has not been released"
         raise RuntimeError(message)
-    if timeout_s <= 0 or no_progress_timeout_s <= 0 or poll_interval_s <= 0:
-        message = "activity verification timeouts and cadence must be positive"
-        raise ValueError(message)
-    engine = t.cast("AsyncTmuxEngine", context.engine)
-    remaining = set(context.pane_ids)
+    if timeout_s is None:
+        timeout_s = _pane_epoch_overall_timeout_s(
+            len(context.pane_ids), context.watchdog_s
+        )
+    timeout_s, no_progress_timeout_s, poll_interval_s = _validated_pane_epoch_timing(
+        timeout_s,
+        no_progress_timeout_s,
+        poll_interval_s,
+    )
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_s
-    progress_deadline = loop.time() + no_progress_timeout_s
-    heartbeat_active = False
-    while remaining or not heartbeat_active:
+    await _wait_pane_epoch_async(
+        context,
+        context.activity_epoch,
+        timeout_s=timeout_s,
+        no_progress_timeout_s=no_progress_timeout_s,
+        poll_interval_s=poll_interval_s,
+    )
+    progress_deadline = min(deadline, loop.time() + no_progress_timeout_s)
+    observed_epoch = context.heartbeat_epoch
+    while True:
         if context.fuzzer.poll() is not None:
             message = "fuzzer exited during activity stabilization"
             raise RuntimeError(message)
         state, heartbeat_epoch = _heartbeat_epoch(context)
+        heartbeat_advanced = False
         if heartbeat_epoch is not None:
-            if heartbeat_epoch < context.heartbeat_epoch:
+            if heartbeat_epoch < observed_epoch:
                 message = "fuzzer heartbeat epoch moved backwards"
                 raise RuntimeError(message)
-            context.heartbeat_epoch = heartbeat_epoch
-        heartbeat_active = (
+            if heartbeat_epoch > observed_epoch:
+                observed_epoch = heartbeat_epoch
+                heartbeat_advanced = True
+        now = loop.time()
+        if now >= deadline:
+            message = "activity stabilization timed out waiting for heartbeat"
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = "activity stabilization heartbeat made no progress"
+            raise TimeoutError(message)
+        if heartbeat_advanced:
+            progress_deadline = now + no_progress_timeout_s
+        if (
             state == "active"
             and heartbeat_epoch is not None
             and heartbeat_epoch >= context.activity_epoch
-        )
-        before = len(remaining)
-        for pane_id in tuple(remaining):
-            result = (
-                await arun(
-                    CapturePane(target=PaneId(pane_id), start=-5000),
-                    engine,
-                )
-            ).raise_for_status()
-            if context.activity_marker in "\n".join(result.lines):
-                remaining.remove(pane_id)
-        now = loop.time()
-        if len(remaining) < before:
-            progress_deadline = now + no_progress_timeout_s
-        if not remaining and heartbeat_active:
+        ):
+            heartbeat = _current_activity_heartbeat(
+                context,
+                max_age_s=no_progress_timeout_s,
+            )
+            if heartbeat.epoch < context.activity_epoch:
+                message = "fuzzer heartbeat did not reach released activity epoch"
+                raise RuntimeError(message)
             break
-        if now >= deadline:
-            message = (
-                f"activity stabilization timed out with {len(remaining)} panes pending"
-            )
-            raise TimeoutError(message)
-        if now >= progress_deadline:
-            message = (
-                "activity stabilization made no progress with "
-                f"{len(remaining)} panes pending"
-            )
-            raise TimeoutError(message)
-        await asyncio.sleep(poll_interval_s)
+        await asyncio.sleep(
+            min(poll_interval_s, deadline - now, progress_deadline - now)
+        )
     context.activity_pane_ids = context.pane_ids
     return context.activity_epoch
 
@@ -8708,6 +8789,7 @@ def _capture_plan(
     context: RunContext,
     *,
     pane_ids: tuple[str, ...] | None = None,
+    history_lines: int = _MEASURED_CAPTURE_HISTORY_LINES,
 ) -> LazyPlan:
     """Build the transport-independent all-pane capture operation graph.
 
@@ -8725,6 +8807,8 @@ def _capture_plan(
         Verified stable pane ID authority.
     pane_ids : tuple[str, ...] or None
         Ordered subset to capture, or every stable pane when omitted.
+    history_lines : int
+        Positive number of trailing rows requested from each pane.
 
     Returns
     -------
@@ -8733,9 +8817,12 @@ def _capture_plan(
     """
     from libtmux.experimental.ops import CapturePane, LazyPlan, PaneId
 
+    if type(history_lines) is not int or history_lines <= 0:
+        message = "capture history line bound must be a positive integer"
+        raise ValueError(message)
     plan = LazyPlan()
     for pane_id in context.pane_ids if pane_ids is None else pane_ids:
-        plan.add(CapturePane(target=PaneId(pane_id), start=-5000))
+        plan.add(CapturePane(target=PaneId(pane_id), start=-history_lines))
     return plan
 
 
@@ -8775,7 +8862,7 @@ def _capture_planner(strategy: CaptureStrategy) -> object:
 def _activity_frame_epochs(lines: tuple[str, ...]) -> tuple[int, ...]:
     """Extract fuzzer frame epochs from retained pane lines.
 
-    >>> _activity_frame_epochs(("[editor epoch=3] x", "other"))
+    >>> _activity_frame_epochs(("LIBTMUX_EPOCH epoch=3", "other"))
     (3,)
 
     Parameters
@@ -8786,13 +8873,17 @@ def _activity_frame_epochs(lines: tuple[str, ...]) -> tuple[int, ...]:
     Returns
     -------
     tuple[int, ...]
-        Nonnegative epochs from complete bracketed fuzzer frame prefixes.
+        Nonnegative epochs from exact pulse lines.
     """
     epochs: list[int] = []
     for line in lines:
-        prefix, separator, remainder = line.partition(" epoch=")
-        epoch_text, closing, _tail = remainder.partition("]")
-        if prefix.startswith("[") and separator and closing and epoch_text.isdigit():
+        prefix = "LIBTMUX_EPOCH epoch="
+        epoch_text = line[len(prefix) :] if line.startswith(prefix) else ""
+        if (
+            epoch_text.isascii()
+            and epoch_text.isdecimal()
+            and len(f"{line}\n".encode("ascii")) <= _EPOCH_PULSE_MAX_BYTES
+        ):
             epochs.append(int(epoch_text))
     return tuple(epochs)
 
@@ -8866,7 +8957,7 @@ def _pane_ids_before_epoch(
 
     >>> _pane_ids_before_epoch(
     ...     ("%1", "%2"),
-    ...     (("[editor epoch=7] ready",), ("[editor epoch=6] lagging",)),
+    ...     (("LIBTMUX_EPOCH epoch=7",), ("LIBTMUX_EPOCH epoch=6",)),
     ...     7,
     ... )
     ('%2',)
@@ -8904,7 +8995,7 @@ def _wait_pane_epoch_sync(
     context: RunContext,
     epoch: int,
     *,
-    timeout_s: float = 8.0,
+    timeout_s: float | None = None,
     no_progress_timeout_s: float = 3.0,
     poll_interval_s: float = 0.005,
 ) -> None:
@@ -8922,8 +9013,8 @@ def _wait_pane_epoch_sync(
         Active synchronous run owning the stable pane IDs and engine.
     epoch : int
         Frozen heartbeat epoch every pane must expose.
-    timeout_s : float
-        Overall pane-consumption deadline.
+    timeout_s : float or None
+        Overall pane-consumption deadline, derived from pane scale when omitted.
     no_progress_timeout_s : float
         Deadline reset whenever another pane reaches ``epoch``.
     poll_interval_s : float
@@ -8940,6 +9031,10 @@ def _wait_pane_epoch_sync(
     """
     from libtmux.experimental.ops import BatchingPlanner
 
+    if timeout_s is None:
+        timeout_s = _pane_epoch_overall_timeout_s(
+            len(context.pane_ids), context.watchdog_s
+        )
     timeout_s, no_progress_timeout_s, poll_interval_s = _validated_pane_epoch_timing(
         timeout_s,
         no_progress_timeout_s,
@@ -8962,31 +9057,60 @@ def _wait_pane_epoch_sync(
         if context.fuzzer.poll() is not None:
             message = "fuzzer exited before panes consumed capture epoch"
             raise RuntimeError(message)
-        plan = _capture_plan(context, pane_ids=pending)
-        result = plan.execute(engine, planner=BatchingPlanner())
-        result.raise_for_status()
-        before = len(pending)
-        pending = _pane_ids_before_epoch(
-            pending,
-            _captured_lines_for_panes(pending, result),
-            epoch,
-        )
-        now = time.monotonic()
-        if context.fuzzer.poll() is not None:
-            message = "fuzzer exited before panes consumed capture epoch"
-            raise RuntimeError(message)
-        if now >= deadline:
-            message = f"pane epoch wait timed out with {len(pending)} panes pending"
-            raise TimeoutError(message)
-        if now >= progress_deadline:
-            message = (
-                f"pane epoch wait made no progress with {len(pending)} panes pending"
+        next_pending: list[str] = []
+        for offset in range(0, len(pending), _PANE_CAPTURE_CHUNK_SIZE):
+            chunk = pending[offset : offset + _PANE_CAPTURE_CHUNK_SIZE]
+            now = time.monotonic()
+            pending_count = len(next_pending) + len(pending) - offset
+            if now >= deadline:
+                message = (
+                    f"pane epoch wait timed out with {pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if now >= progress_deadline:
+                message = (
+                    "pane epoch wait made no progress with "
+                    f"{pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if context.fuzzer.poll() is not None:
+                message = "fuzzer exited before panes consumed capture epoch"
+                raise RuntimeError(message)
+            plan = _capture_plan(
+                context,
+                pane_ids=chunk,
+                history_lines=_READINESS_CAPTURE_HISTORY_LINES,
             )
-            raise TimeoutError(message)
+            result = plan.execute(engine, planner=BatchingPlanner())
+            result.raise_for_status()
+            stale = _pane_ids_before_epoch(
+                chunk,
+                _captured_lines_for_panes(chunk, result),
+                epoch,
+            )
+            now = time.monotonic()
+            made_progress = len(stale) < len(chunk)
+            next_pending.extend(stale)
+            pending_count = len(next_pending) + len(pending) - offset - len(chunk)
+            if context.fuzzer.poll() is not None:
+                message = "fuzzer exited before panes consumed capture epoch"
+                raise RuntimeError(message)
+            if now >= deadline:
+                message = (
+                    f"pane epoch wait timed out with {pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if now >= progress_deadline:
+                message = (
+                    "pane epoch wait made no progress with "
+                    f"{pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if made_progress:
+                progress_deadline = now + no_progress_timeout_s
+        pending = tuple(next_pending)
         if not pending:
             return
-        if len(pending) < before:
-            progress_deadline = now + no_progress_timeout_s
         time.sleep(
             min(
                 poll_interval_s,
@@ -9000,7 +9124,7 @@ async def _wait_pane_epoch_async(
     context: RunContext,
     epoch: int,
     *,
-    timeout_s: float = 8.0,
+    timeout_s: float | None = None,
     no_progress_timeout_s: float = 3.0,
     poll_interval_s: float = 0.005,
 ) -> None:
@@ -9022,8 +9146,8 @@ async def _wait_pane_epoch_async(
         Active asynchronous run owning the stable pane IDs and engine.
     epoch : int
         Frozen heartbeat epoch every pane must expose.
-    timeout_s : float
-        Overall pane-consumption deadline.
+    timeout_s : float or None
+        Overall pane-consumption deadline, derived from pane scale when omitted.
     no_progress_timeout_s : float
         Deadline reset whenever another pane reaches ``epoch``.
     poll_interval_s : float
@@ -9040,6 +9164,10 @@ async def _wait_pane_epoch_async(
     """
     from libtmux.experimental.ops import BatchingPlanner
 
+    if timeout_s is None:
+        timeout_s = _pane_epoch_overall_timeout_s(
+            len(context.pane_ids), context.watchdog_s
+        )
     timeout_s, no_progress_timeout_s, poll_interval_s = _validated_pane_epoch_timing(
         timeout_s,
         no_progress_timeout_s,
@@ -9063,31 +9191,60 @@ async def _wait_pane_epoch_async(
         if context.fuzzer.poll() is not None:
             message = "fuzzer exited before panes consumed capture epoch"
             raise RuntimeError(message)
-        plan = _capture_plan(context, pane_ids=pending)
-        result = await plan.aexecute(engine, planner=BatchingPlanner())
-        result.raise_for_status()
-        before = len(pending)
-        pending = _pane_ids_before_epoch(
-            pending,
-            _captured_lines_for_panes(pending, result),
-            epoch,
-        )
-        now = loop.time()
-        if context.fuzzer.poll() is not None:
-            message = "fuzzer exited before panes consumed capture epoch"
-            raise RuntimeError(message)
-        if now >= deadline:
-            message = f"pane epoch wait timed out with {len(pending)} panes pending"
-            raise TimeoutError(message)
-        if now >= progress_deadline:
-            message = (
-                f"pane epoch wait made no progress with {len(pending)} panes pending"
+        next_pending: list[str] = []
+        for offset in range(0, len(pending), _PANE_CAPTURE_CHUNK_SIZE):
+            chunk = pending[offset : offset + _PANE_CAPTURE_CHUNK_SIZE]
+            now = loop.time()
+            pending_count = len(next_pending) + len(pending) - offset
+            if now >= deadline:
+                message = (
+                    f"pane epoch wait timed out with {pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if now >= progress_deadline:
+                message = (
+                    "pane epoch wait made no progress with "
+                    f"{pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if context.fuzzer.poll() is not None:
+                message = "fuzzer exited before panes consumed capture epoch"
+                raise RuntimeError(message)
+            plan = _capture_plan(
+                context,
+                pane_ids=chunk,
+                history_lines=_READINESS_CAPTURE_HISTORY_LINES,
             )
-            raise TimeoutError(message)
+            result = await plan.aexecute(engine, planner=BatchingPlanner())
+            result.raise_for_status()
+            stale = _pane_ids_before_epoch(
+                chunk,
+                _captured_lines_for_panes(chunk, result),
+                epoch,
+            )
+            now = loop.time()
+            made_progress = len(stale) < len(chunk)
+            next_pending.extend(stale)
+            pending_count = len(next_pending) + len(pending) - offset - len(chunk)
+            if context.fuzzer.poll() is not None:
+                message = "fuzzer exited before panes consumed capture epoch"
+                raise RuntimeError(message)
+            if now >= deadline:
+                message = (
+                    f"pane epoch wait timed out with {pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if now >= progress_deadline:
+                message = (
+                    "pane epoch wait made no progress with "
+                    f"{pending_count} panes pending"
+                )
+                raise TimeoutError(message)
+            if made_progress:
+                progress_deadline = now + no_progress_timeout_s
+        pending = tuple(next_pending)
         if not pending:
             return
-        if len(pending) < before:
-            progress_deadline = now + no_progress_timeout_s
         await asyncio.sleep(
             min(
                 poll_interval_s,
@@ -9111,7 +9268,7 @@ def _accepted_capture(
     >>> operation = CapturePane(target=PaneId("%1"))
     >>> _ = plan.add(operation)
     >>> raw = operation.build_result(
-    ...     returncode=0, stdout=("[editor epoch=2] current",)
+    ...     returncode=0, stdout=("LIBTMUX_EPOCH epoch=2",)
     ... )
     >>> context = types.SimpleNamespace(
     ...     pane_ids=("%1",), activity_marker="epoch", activity_epoch=2,
@@ -11068,6 +11225,7 @@ async def run_worker(
     original_guard_decision: GuardDecision,
     policy: ResourcePolicy,
     fuzzer_duration_s: float,
+    watchdog_s: float,
     stall_after: str | None = None,
     fail_after: str | None = None,
     extra_identity: ProcessIdentity | None = None,
@@ -11092,6 +11250,7 @@ async def run_worker(
     ...             original_guard_decision=GuardDecision(
     ...                 True, "ok", None, None, None, False, HostSnapshot()
     ...             ), policy=ResourcePolicy(), fuzzer_duration_s=300.0,
+    ...             watchdog_s=120.0,
     ...         )
     ...     except ValueError as error:
     ...         return str(error)
@@ -11130,6 +11289,8 @@ async def run_worker(
         Runtime guard thresholds.
     fuzzer_duration_s : float
         Exact finite active-service lifetime derived by the supervisor.
+    watchdog_s : float
+        Exact finite supervisor progress interval bounding pane readiness.
     stall_after : str | None
         Private test checkpoint that stops emitting progress.
     fail_after : str | None
@@ -11148,6 +11309,7 @@ async def run_worker(
     if not guard_decision.allowed:
         message = "worker cannot start after predictive refusal"
         raise ValueError(message)
+    watchdog_seconds = _validated_watchdog_seconds(watchdog_s)
     if (
         isinstance(fuzzer_duration_s, bool)
         or not isinstance(fuzzer_duration_s, (int, float))
@@ -11226,6 +11388,7 @@ async def run_worker(
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
                 fuzzer_duration_s=float(fuzzer_duration_s),
+                watchdog_s=watchdog_seconds,
                 _process_identity_callback=recorder.record_identities,
                 _socket_ownership_callback=recorder.record_socket_ownership,
             )
@@ -11238,6 +11401,7 @@ async def run_worker(
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
                 fuzzer_duration_s=float(fuzzer_duration_s),
+                watchdog_s=watchdog_seconds,
                 _process_identity_callback=recorder.record_identities,
                 _socket_ownership_callback=recorder.record_socket_ownership,
             )
@@ -12576,16 +12740,14 @@ def supervise_worker(
     ...     )
     ... except ValueError as error:
     ...     print(error)
-    supervisor watchdog must be positive
+    watchdog interval must be finite and positive
 
     Returns
     -------
     RunReport
         Supervisor-owned terminal report.
     """
-    if watchdog_s <= 0:
-        message = "supervisor watchdog must be positive"
-        raise ValueError(message)
+    watchdog_seconds = _validated_watchdog_seconds(watchdog_s)
     if cleanup_grace_s <= 0:
         message = "supervisor cleanup grace must be positive"
         raise ValueError(message)
@@ -12594,7 +12756,7 @@ def supervise_worker(
         mode=mode,
         runs=runs,
         warmup=warmup,
-        watchdog_s=watchdog_s,
+        watchdog_s=watchdog_seconds,
         cleanup_grace_s=cleanup_grace_s,
     )
     progress_path = output.with_name(f"{output.stem}.{run_id}.progress.jsonl")
@@ -12638,6 +12800,8 @@ def supervise_worker(
         ),
         "--service-duration-seconds",
         str(fuzzer_duration_s),
+        "--watchdog-seconds",
+        str(watchdog_seconds),
     ]
     if _test_stall_after is not None:
         command.extend(("--_test-stall-after", _test_stall_after))
@@ -12674,7 +12838,7 @@ def supervise_worker(
         run_id,
         handles,
     )
-    deadline = time.monotonic() + watchdog_s
+    deadline = time.monotonic() + watchdog_seconds
     supervisor_status: t.Literal["failed", "cutoff"] | None = None
     failed_phase: str | None = None
     terminal_error: str | None = None
@@ -12744,11 +12908,13 @@ def supervise_worker(
         while worker.poll() is None:
             advanced = progress.drain()
             if advanced:
-                deadline = time.monotonic() + watchdog_s
+                deadline = time.monotonic() + watchdog_seconds
             if time.monotonic() >= deadline:
                 supervisor_status = "cutoff"
                 failed_phase = "watchdog"
-                terminal_error = f"progress watchdog expired after {watchdog_s} seconds"
+                terminal_error = (
+                    f"progress watchdog expired after {watchdog_seconds} seconds"
+                )
                 break
             time.sleep(0.02)
     except KeyboardInterrupt as error:
@@ -13873,6 +14039,7 @@ def _run_hidden_worker(arguments: argparse.Namespace) -> int:
             original_guard_decision=original,
             policy=policy,
             fuzzer_duration_s=arguments.service_duration_seconds,
+            watchdog_s=arguments.watchdog_seconds,
             stall_after=arguments.test_stall_after,
             fail_after=arguments.test_fail_after,
             extra_identity=_parse_extra_identity(arguments.test_extra_identity),
@@ -14009,6 +14176,7 @@ def _hidden_worker_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pid-reserve", required=True)
     parser.add_argument("--memory-floor-bytes", required=True)
     parser.add_argument("--service-duration-seconds", required=True, type=float)
+    parser.add_argument("--watchdog-seconds", required=True, type=float)
     parser.add_argument(
         "--_test-stall-after", dest="test_stall_after", help=argparse.SUPPRESS
     )

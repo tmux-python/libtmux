@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import dataclasses
 import errno
@@ -4003,6 +4004,93 @@ def test_supervisor_hands_exact_fuzzer_budget_to_hidden_worker(
     command = worker_commands[0]
     flag_index = command.index("--service-duration-seconds")
     assert command[flag_index + 1] == "2190.5"
+    watchdog_index = command.index("--watchdog-seconds")
+    assert command[watchdog_index + 1] == "10.0"
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    (True, 0, -1, float("nan"), float("inf"), 10**400),
+    ids=("bool", "zero", "negative", "nan", "inf", "huge-int"),
+)
+def test_watchdog_interval_rejects_unbounded_values(
+    benchmark_module: types.ModuleType,
+    invalid: object,
+) -> None:
+    """No supervisor or pane barrier may inherit an unbounded watchdog."""
+    with pytest.raises(ValueError, match=r"watchdog.*finite and positive"):
+        benchmark_module._validated_watchdog_seconds(invalid)
+
+
+def test_pane_epoch_overall_timeout_scales_by_chunks_but_not_past_watchdog(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Readiness gets three seconds per chunk with an eight-second floor."""
+    assert benchmark_module._pane_epoch_overall_timeout_s(1, 120.0) == 8.0
+    assert benchmark_module._pane_epoch_overall_timeout_s(130, 120.0) == 9.0
+    assert benchmark_module._pane_epoch_overall_timeout_s(1_600, 120.0) == 75.0
+    assert benchmark_module._pane_epoch_overall_timeout_s(1_600, 10.0) == 10.0
+    assert benchmark_module._pane_epoch_overall_timeout_s(10**400, 120.0) == 120.0
+
+
+def test_hidden_worker_passes_exact_watchdog_to_worker(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The private CLI decoder preserves the supervisor's watchdog interval."""
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    admission = tmp_path / "admission.json"
+    benchmark_module.write_json_atomic(
+        admission,
+        {
+            "guard_decision": decision,
+            "original_guard_decision": decision,
+        },
+    )
+    observed: dict[str, t.Any] = {}
+
+    async def record_worker(**kwargs: t.Any) -> t.Any:
+        observed.update(kwargs)
+        return types.SimpleNamespace(status="completed")
+
+    monkeypatch.setattr(
+        benchmark_module,
+        "_run_worker_with_signals",
+        record_worker,
+    )
+    arguments = argparse.Namespace(
+        admission=admission,
+        shape="1x1x1",
+        lane="control",
+        mode="async",
+        runs=1,
+        warmup=0,
+        seed=11,
+        run_id="watchdog-handoff",
+        scratch=tmp_path / "scratch",
+        socket_path=tmp_path / "scratch" / "tmux.sock",
+        checkpoint=tmp_path / "checkpoint.json",
+        progress=tmp_path / "progress.jsonl",
+        pid_reserve="dynamic",
+        memory_floor_bytes="dynamic",
+        service_duration_seconds=300.0,
+        watchdog_seconds=17.5,
+        test_stall_after=None,
+        test_fail_after=None,
+        test_extra_identity=None,
+    )
+
+    assert benchmark_module._run_hidden_worker(arguments) == 0
+    assert observed["watchdog_s"] == 17.5
 
 
 def test_prepare_context_passes_exact_service_duration_to_fuzzer(
@@ -4636,6 +4724,65 @@ def test_verify_topology_rejects_pane_session_parent_mismatch(
 
 
 @pytest.mark.parametrize(
+    ("width", "accepted"),
+    ((None, False), (63, False), (64, True)),
+)
+def test_verify_topology_requires_pulse_safe_pane_width(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    width: int | None,
+    accepted: bool,
+) -> None:
+    """Every verified pane must retain one unwrapped 64-column epoch pulse."""
+    stream = pathlib.Path("delayed-match.log")
+    context = types.SimpleNamespace(
+        topology=benchmark_module.Topology(1, 1, 1),
+        expected_session_names=("bench-s000",),
+        expected_window_names=("bench-s000-w000",),
+        expected_window_parents=(("bench-s000-w000", "bench-s000"),),
+        streams=(stream,),
+        processes=(),
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        process_identity_callback=None,
+        topology_verified=False,
+    )
+    snapshot = benchmark_module.TopologySnapshot(
+        sessions=(SessionSnapshot(session_id="$0", name="bench-s000"),),
+        windows=(
+            WindowSnapshot(window_id="@0", name="bench-s000-w000", session_id="$0"),
+        ),
+        panes=(
+            PaneSnapshot(
+                pane_id="%0",
+                window_id="@0",
+                session_id="$0",
+                width=width,
+                pid=9_999_991,
+                fields={
+                    "pane_dead": "0",
+                    "pane_start_command": ("exec tail -n 0 -f delayed-match.log"),
+                },
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "_record_process",
+        lambda role, pid: benchmark_module.ProcessIdentity(role, pid, 1),
+    )
+
+    if accepted:
+        assert benchmark_module.verify_topology(context, snapshot) is snapshot
+        assert context.topology_verified
+    else:
+        with pytest.raises(
+            benchmark_module.TopologyVerificationError,
+            match="pane width",
+        ):
+            benchmark_module.verify_topology(context, snapshot)
+
+
+@pytest.mark.parametrize(
     ("lane_name", "mode_name"),
     (
         ("subprocess", "sync"),
@@ -4662,7 +4809,7 @@ def test_live_topology_lifecycle_cleans_each_engine_lane(
     context = None
     snapshot = None
     cleanup = None
-    captured_activity: dict[str, str] = {}
+    captured_activity: dict[str, tuple[str, ...]] = {}
 
     async def exercise_async() -> None:
         """Keep async engines on one event loop through their final close."""
@@ -4684,10 +4831,10 @@ def test_live_topology_lifecycle_cleans_each_engine_lane(
             assert await benchmark_module.verify_activity_async(context) == epoch
             for pane_id in context.pane_ids:
                 result = context.server.cmd(
-                    "capture-pane", "-t", pane_id, "-p", "-S", "-5000"
+                    "capture-pane", "-t", pane_id, "-p", "-S", "-8"
                 )
                 assert result.returncode == 0, result.stderr
-                captured_activity[pane_id] = "\n".join(result.stdout)
+                captured_activity[pane_id] = result.stdout
         finally:
             cleanup = await benchmark_module.cleanup_run(context)
 
@@ -4711,10 +4858,10 @@ def test_live_topology_lifecycle_cleans_each_engine_lane(
             assert benchmark_module.verify_activity_sync(context) == epoch
             for pane_id in context.pane_ids:
                 result = context.server.cmd(
-                    "capture-pane", "-t", pane_id, "-p", "-S", "-5000"
+                    "capture-pane", "-t", pane_id, "-p", "-S", "-8"
                 )
                 assert result.returncode == 0, result.stderr
-                captured_activity[pane_id] = "\n".join(result.stdout)
+                captured_activity[pane_id] = result.stdout
         finally:
             cleanup = asyncio.run(benchmark_module.cleanup_run(context))
 
@@ -4740,12 +4887,11 @@ def test_live_topology_lifecycle_cleans_each_engine_lane(
     ]
     assert [pane.pane_id for pane in delayed] == [context.delayed_pane_id]
     assert context.activity_pane_ids == context.pane_ids
-    assert context.activity_marker == (
-        f"LIBTMUX_EPOCH run={run_id} epoch={context.activity_epoch}"
-    )
+    assert context.activity_marker == f"LIBTMUX_EPOCH epoch={context.activity_epoch}"
     assert set(captured_activity) == set(context.pane_ids)
     assert all(
-        context.activity_marker in captured_activity[pane_id]
+        max(_capture_frame_epochs(captured_activity[pane_id]), default=-1)
+        >= context.activity_epoch
         for pane_id in context.pane_ids
     )
     assert context.heartbeat_epoch >= context.activity_epoch
@@ -4829,14 +4975,91 @@ def _checksum_ids(ids: tuple[str, ...]) -> str:
 
 
 def _capture_frame_epochs(lines: tuple[str, ...]) -> tuple[int, ...]:
-    """Parse literal fuzzer frame epochs without benchmark implementation help."""
+    """Parse exact bounded pulse epochs without benchmark implementation help."""
+    pulse_prefix = "LIBTMUX_EPOCH epoch="
     epochs: list[int] = []
     for line in lines:
-        prefix, separator, remainder = line.partition(" epoch=")
-        epoch_text, closing, _tail = remainder.partition("]")
-        if prefix.startswith("[") and separator and closing and epoch_text.isdigit():
+        if not line.startswith(pulse_prefix):
+            continue
+        epoch_text = line.removeprefix(pulse_prefix)
+        try:
+            encoded_length = len(f"{line}\n".encode("ascii"))
+        except UnicodeEncodeError:
+            continue
+        if epoch_text.isascii() and epoch_text.isdecimal() and encoded_length <= 64:
             epochs.append(int(epoch_text))
     return tuple(epochs)
+
+
+def test_live_capture_epoch_oracle_rejects_ordinary_frame_prefixes() -> None:
+    """The independent live oracle accepts only bounded exact pulse records."""
+    assert _capture_frame_epochs(
+        (
+            "[editor epoch=8] ordinary frame",
+            "LIBTMUX_EPOCH epoch=7",
+            "LIBTMUX_EPOCH epoch=8 trailing",
+            "LIBTMUX_EPOCH epoch=\N{ARABIC-INDIC DIGIT SEVEN}",
+            "LIBTMUX_EPOCH epoch=" + "1" * 44,
+        )
+    ) == (7,)
+
+
+def test_activity_epoch_parser_accepts_only_exact_pulse_lines(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Old frame prefixes and decorated pulse lookalikes cannot prove readiness."""
+    assert benchmark_module._activity_frame_epochs(
+        (
+            "LIBTMUX_EPOCH epoch=7",
+            "[editor epoch=8] old grammar",
+            "LIBTMUX_EPOCH run=other epoch=9",
+            "LIBTMUX_EPOCH epoch=10 trailing",
+            "LIBTMUX_EPOCH epoch=-1",
+            "LIBTMUX_EPOCH epoch=\N{ARABIC-INDIC DIGIT SEVEN}",
+            "LIBTMUX_EPOCH epoch=" + "1" * 44,
+        )
+    ) == (7,)
+
+
+def test_release_activity_gate_only_publishes_control_marker(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Only the fuzzer may append activity records and epoch pulses to streams."""
+    fuzzer_root = tmp_path / "fuzzer"
+    streams_root = fuzzer_root / "streams"
+    streams_root.mkdir(parents=True)
+    streams = tuple(streams_root / f"stream-{ordinal}.log" for ordinal in range(2))
+    for stream in streams:
+        stream.write_bytes(b"existing\n")
+    benchmark_module.write_json_atomic(
+        fuzzer_root / "heartbeat.json",
+        {
+            "schema_version": 1,
+            "run_id": "release-run",
+            "state": "paused",
+            "epoch": 0,
+        },
+    )
+    context = types.SimpleNamespace(
+        topology_verified=True,
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        activity_epoch=None,
+        activity_marker=None,
+        heartbeat_epoch=-1,
+        scratch=tmp_path,
+        run_id="release-run",
+        streams=streams,
+    )
+
+    assert benchmark_module.release_activity_gate(context) == 1
+    assert [stream.read_bytes() for stream in streams] == [b"existing\n"] * 2
+    assert context.activity_marker == "LIBTMUX_EPOCH epoch=1"
+    assert json.loads((fuzzer_root / "gate.json").read_text(encoding="utf-8")) == {
+        "epoch": 1,
+        "run_id": "release-run",
+        "schema_version": 1,
+    }
 
 
 @pytest.mark.parametrize("mode_name", ("sync", "async"))
@@ -5311,7 +5534,7 @@ def test_capture_waits_for_each_pane_to_reach_frozen_epoch(
     """Both modes time capture only after every pane consumes frozen epoch H."""
     from libtmux.experimental.engines.base import CommandResult
 
-    marker = "LIBTMUX_EPOCH run=lagging-pane epoch=1"
+    marker = "LIBTMUX_EPOCH epoch=1"
     dispatch_targets: list[tuple[str, ...]] = []
 
     def record(requests: tuple[t.Any, ...]) -> list[CommandResult]:
@@ -5326,7 +5549,7 @@ def test_capture_waits_for_each_pane_to_reach_frozen_epoch(
             results.append(
                 CommandResult(
                     cmd=("tmux", *request.args),
-                    stdout=(marker, f"[editor epoch={epoch}] pane={target}"),
+                    stdout=(marker, f"LIBTMUX_EPOCH epoch={epoch}"),
                 )
             )
         return results
@@ -5378,6 +5601,7 @@ def test_capture_waits_for_each_pane_to_reach_frozen_epoch(
         fuzzer=types.SimpleNamespace(poll=lambda: None),
         scratch=scratch,
         run_id="lagging-pane",
+        watchdog_s=120.0,
     )
 
     if mode == "sync":
@@ -5393,6 +5617,158 @@ def test_capture_waits_for_each_pane_to_reach_frozen_epoch(
         ("%2",),
         ("%1", "%2"),
     ]
+
+
+@pytest.mark.parametrize("mode", ("sync", "async"))
+def test_pane_epoch_wait_chunks_large_topology_and_retries_only_stale_pane(
+    benchmark_module: types.ModuleType,
+    mode: str,
+) -> None:
+    """A 130-pane sweep dispatches 64/64/2 and retries one laggard via run."""
+    from libtmux.experimental.engines.base import CommandResult
+
+    pane_ids = tuple(f"%{ordinal}" for ordinal in range(1, 131))
+    dispatches: list[tuple[str, tuple[str, ...]]] = []
+    starts: list[int] = []
+    seen_last = False
+
+    def record(kind: str, requests: tuple[t.Any, ...]) -> list[CommandResult]:
+        nonlocal seen_last
+        targets = tuple(
+            request.args[request.args.index("-t") + 1] for request in requests
+        )
+        dispatches.append((kind, targets))
+        results: list[CommandResult] = []
+        for request, target in zip(requests, targets, strict=True):
+            starts.append(int(request.args[request.args.index("-S") + 1]))
+            stale = target == pane_ids[-1] and not seen_last
+            if target == pane_ids[-1]:
+                seen_last = True
+            epoch = 6 if stale else 7
+            results.append(
+                CommandResult(
+                    cmd=("tmux", *request.args),
+                    stdout=(
+                        f"[editor epoch={epoch}] pane={target}",
+                        f"LIBTMUX_EPOCH epoch={epoch}",
+                    ),
+                )
+            )
+        return results
+
+    class SyncEngine:
+        """Record synchronous scalar and batched readiness dispatches."""
+
+        def run(self, request: t.Any) -> CommandResult:
+            return record("run", (request,))[0]
+
+        def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return record("batch", tuple(requests))
+
+    class AsyncEngine:
+        """Record asynchronous scalar and batched readiness dispatches."""
+
+        async def run(self, request: t.Any) -> CommandResult:
+            return record("run", (request,))[0]
+
+        async def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return record("batch", tuple(requests))
+
+    context = types.SimpleNamespace(
+        pane_ids=pane_ids,
+        engine=SyncEngine() if mode == "sync" else AsyncEngine(),
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        watchdog_s=120.0,
+    )
+
+    if mode == "sync":
+        benchmark_module._wait_pane_epoch_sync(context, 7)
+    else:
+        asyncio.run(benchmark_module._wait_pane_epoch_async(context, 7))
+
+    assert dispatches == [
+        ("batch", pane_ids[:64]),
+        ("batch", pane_ids[64:128]),
+        ("batch", pane_ids[128:]),
+        ("run", (pane_ids[-1],)),
+    ]
+    assert starts == [-8] * 131
+    measured = benchmark_module._capture_plan(context)
+    assert [operation.render()[-2:] for operation in measured.operations] == [
+        ("-S", "-64")
+    ] * 130
+
+
+@pytest.mark.parametrize("mode", ("sync", "async"))
+def test_verify_activity_uses_shared_pane_epoch_barrier(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    mode: str,
+) -> None:
+    """Initial stabilization and measured capture share one chunked barrier."""
+    calls: list[tuple[str, int]] = []
+
+    def wait_sync(_context: t.Any, epoch: int, **_kwargs: t.Any) -> None:
+        calls.append(("sync", epoch))
+
+    async def wait_async(_context: t.Any, epoch: int, **_kwargs: t.Any) -> None:
+        calls.append(("async", epoch))
+
+    monkeypatch.setattr(benchmark_module, "_wait_pane_epoch_sync", wait_sync)
+    monkeypatch.setattr(benchmark_module, "_wait_pane_epoch_async", wait_async)
+    monkeypatch.setattr(
+        benchmark_module,
+        "_current_activity_heartbeat",
+        lambda _context, *, max_age_s: benchmark_module.HeartbeatObservation(
+            7,
+            1,
+            2,
+        ),
+    )
+
+    class RejectLegacyEngine:
+        """Fail if stabilization dispatches outside the shared barrier."""
+
+        def run(self, _request: t.Any) -> t.NoReturn:
+            pytest.fail("legacy per-pane stabilization dispatch")
+
+        async def arun(self, _request: t.Any) -> t.NoReturn:
+            pytest.fail("legacy per-pane stabilization dispatch")
+
+    fuzzer_root = tmp_path / "fuzzer"
+    fuzzer_root.mkdir()
+    benchmark_module.write_json_atomic(
+        fuzzer_root / "heartbeat.json",
+        {
+            "schema_version": 1,
+            "run_id": "shared-barrier",
+            "state": "active",
+            "epoch": 7,
+        },
+    )
+    pane_ids = ("%1", "%2")
+    context = types.SimpleNamespace(
+        mode=benchmark_module.ExecutionMode(mode),
+        engine=RejectLegacyEngine(),
+        activity_epoch=7,
+        activity_marker="LIBTMUX_EPOCH epoch=7",
+        activity_pane_ids=(),
+        pane_ids=pane_ids,
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        scratch=tmp_path,
+        run_id="shared-barrier",
+        heartbeat_epoch=6,
+        watchdog_s=120.0,
+    )
+
+    if mode == "sync":
+        assert benchmark_module.verify_activity_sync(context) == 7
+    else:
+        assert asyncio.run(benchmark_module.verify_activity_async(context)) == 7
+
+    assert calls == [(mode, 7)]
+    assert context.activity_pane_ids == pane_ids
 
 
 @pytest.mark.parametrize("mode", ("sync", "async"))
@@ -5455,7 +5831,7 @@ def test_pane_epoch_wait_rechecks_liveness_after_capture_dispatch(
             state["fuzzer_exited"] = True
         return CommandResult(
             cmd=("tmux", *request.args),
-            stdout=("[editor epoch=7] ready",),
+            stdout=("LIBTMUX_EPOCH epoch=7",),
         )
 
     class SyncEngine:
@@ -5506,6 +5882,82 @@ def test_pane_epoch_wait_rechecks_liveness_after_capture_dispatch(
 
 
 @pytest.mark.parametrize("mode", ("sync", "async"))
+def test_pane_epoch_wait_rejects_progress_arriving_after_no_progress_deadline(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    """Late productive capture cannot retroactively erase a missed deadline."""
+    from libtmux.experimental.engines.base import CommandResult
+
+    now = [0.0]
+
+    def ready_result(request: t.Any) -> CommandResult:
+        now[0] = 4.0
+        return CommandResult(
+            cmd=("tmux", *request.args),
+            stdout=("LIBTMUX_EPOCH epoch=7",),
+        )
+
+    class SyncEngine:
+        """Cross the no-progress deadline before returning a ready pane."""
+
+        def run(self, request: t.Any) -> CommandResult:
+            return ready_result(request)
+
+        def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return [ready_result(request) for request in requests]
+
+    class AsyncEngine:
+        """Asynchronous twin of the late productive capture engine."""
+
+        async def run(self, request: t.Any) -> CommandResult:
+            return ready_result(request)
+
+        async def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return [ready_result(request) for request in requests]
+
+    context = types.SimpleNamespace(
+        pane_ids=("%1",),
+        engine=SyncEngine() if mode == "sync" else AsyncEngine(),
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        watchdog_s=120.0,
+    )
+
+    with pytest.raises(TimeoutError, match="made no progress"):
+        if mode == "sync":
+            monkeypatch.setattr(benchmark_module.time, "monotonic", lambda: now[0])
+            benchmark_module._wait_pane_epoch_sync(
+                context,
+                7,
+                timeout_s=8.0,
+                no_progress_timeout_s=3.0,
+            )
+        else:
+
+            class FakeLoop:
+                """Expose the deterministic post-dispatch clock."""
+
+                def time(self) -> float:
+                    return now[0]
+
+            async def exercise() -> None:
+                monkeypatch.setattr(
+                    benchmark_module.asyncio,
+                    "get_running_loop",
+                    lambda: FakeLoop(),
+                )
+                await benchmark_module._wait_pane_epoch_async(
+                    context,
+                    7,
+                    timeout_s=8.0,
+                    no_progress_timeout_s=3.0,
+                )
+
+            asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("mode", ("sync", "async"))
 @pytest.mark.parametrize("boundary", ("overall", "no-progress"))
 def test_pane_epoch_wait_checks_deadline_before_redispatch(
     benchmark_module: types.ModuleType,
@@ -5521,7 +5973,7 @@ def test_pane_epoch_wait_checks_deadline_before_redispatch(
     def stale_result(request: t.Any) -> CommandResult:
         return CommandResult(
             cmd=("tmux", *request.args),
-            stdout=("[editor epoch=6] stale",),
+            stdout=("LIBTMUX_EPOCH epoch=6",),
         )
 
     class SyncEngine:
@@ -5624,7 +6076,7 @@ def test_capture_rejects_unattributed_typed_results(
 
     context = types.SimpleNamespace(
         pane_ids=("%1", "%2"),
-        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        activity_marker="LIBTMUX_EPOCH epoch=1",
         activity_epoch=1,
         heartbeat_epoch=8,
         lane=benchmark_module.EngineLane.CONTROL,
@@ -5635,7 +6087,7 @@ def test_capture_rejects_unattributed_typed_results(
             returncode=0,
             stdout=(
                 context.activity_marker,
-                "[editor epoch=8] current",
+                "LIBTMUX_EPOCH epoch=8",
             ),
         )
         for pane_id in result_targets
@@ -5660,16 +6112,16 @@ def test_capture_accepts_current_epoch_after_initial_marker_eviction(
     context = types.SimpleNamespace(
         pane_ids=("%1",),
         activity_pane_ids=("%1",),
-        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        activity_marker="LIBTMUX_EPOCH epoch=1",
         activity_epoch=1,
         heartbeat_epoch=8,
         lane=benchmark_module.EngineLane.CONTROL,
     )
     plan = benchmark_module._capture_plan(context)
-    operation = CapturePane(target=PaneId("%1"), start=-5000)
+    operation = CapturePane(target=PaneId("%1"), start=-64)
     result = operation.build_result(
         returncode=0,
-        stdout=("[editor epoch=8] current after marker eviction",),
+        stdout=("LIBTMUX_EPOCH epoch=8",),
     )
 
     accepted = benchmark_module._accepted_capture(
@@ -5698,7 +6150,7 @@ def test_active_phase_rejects_incomplete_initial_activity_stabilization(
         mode=execution_mode,
         topology_verified=True,
         activity_epoch=1,
-        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        activity_marker="LIBTMUX_EPOCH epoch=1",
         pane_ids=("%1", "%2"),
         activity_pane_ids=("%1",),
     )
@@ -5716,14 +6168,17 @@ def test_capture_rejects_missing_current_epoch_after_marker_eviction(
     context = types.SimpleNamespace(
         pane_ids=("%1",),
         activity_pane_ids=("%1",),
-        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        activity_marker="LIBTMUX_EPOCH epoch=1",
         activity_epoch=1,
         heartbeat_epoch=8,
         lane=benchmark_module.EngineLane.CONTROL,
     )
     plan = benchmark_module._capture_plan(context)
-    operation = CapturePane(target=PaneId("%1"), start=-5000)
-    result = operation.build_result(returncode=0, stdout=("[editor epoch=7] stale",))
+    operation = CapturePane(target=PaneId("%1"), start=-64)
+    result = operation.build_result(
+        returncode=0,
+        stdout=("LIBTMUX_EPOCH epoch=7",),
+    )
 
     with pytest.raises(RuntimeError, match="current activity epoch"):
         benchmark_module._accepted_capture(
@@ -9337,7 +9792,10 @@ def test_worker_reports_the_exact_active_stabilization_boundary(
         activity_pane_ids=(),
     )
 
-    async def fake_setup(*_args: t.Any, **_kwargs: t.Any) -> t.Any:
+    observed_watchdogs: list[float] = []
+
+    async def fake_setup(*_args: t.Any, **kwargs: t.Any) -> t.Any:
+        observed_watchdogs.append(kwargs["watchdog_s"])
         return context
 
     async def fake_cleanup(_context: t.Any) -> t.Any:
@@ -9382,9 +9840,11 @@ def test_worker_reports_the_exact_active_stabilization_boundary(
             original_guard_decision=decision,
             policy=benchmark_module.ResourcePolicy(),
             fuzzer_duration_s=300.0,
+            watchdog_s=17.5,
         )
     )
 
+    assert observed_watchdogs == [17.5]
     assert report.status == "failed"
     assert report.failed_phase == "stabilization"
     assert "injected stabilization boundary failure" in t.cast(str, report.error)
@@ -9493,6 +9953,7 @@ def test_worker_drains_cleanup_through_repeated_cancellation(
                 original_guard_decision=decision,
                 policy=benchmark_module.ResourcePolicy(),
                 fuzzer_duration_s=300.0,
+                watchdog_s=120.0,
             ),
             name="worker-cancellation-test",
         )
