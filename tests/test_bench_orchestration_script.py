@@ -2152,7 +2152,7 @@ def test_write_json_atomic_replaces_complete_report(
     benchmark_module.write_json_atomic(report_path, report)
 
     payload = json.loads(report_path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["status"] == "completed"
     assert payload["requested_topology"] == {
         "sessions": 100,
@@ -4138,6 +4138,7 @@ def test_hidden_worker_passes_exact_watchdog_to_worker(
         memory_floor_bytes="dynamic",
         service_duration_seconds=300.0,
         watchdog_seconds=17.5,
+        orm=False,
         test_stall_after=None,
         test_fail_after=None,
         test_extra_identity=None,
@@ -5471,6 +5472,33 @@ def test_async_mutation_shields_restoration_through_repeated_cancellation(
         assert cleanup.complete, cleanup.errors
 
     asyncio.run(exercise())
+
+
+def test_orm_declaration_decides_the_required_phase_graph(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A report declaring the reference must carry its cells, and vice versa."""
+    base = benchmark_module.runner_phases(orm=False)
+    with_orm = benchmark_module.runner_phases(orm=True)
+
+    assert len(with_orm) - len(base) == 3
+    assert set(with_orm) - set(base) == {
+        "enumeration.orm.sessions",
+        "enumeration.orm.windows",
+        "enumeration.orm.panes",
+    }
+    # The reference cells sit with the typed enumeration they are compared to.
+    assert with_orm.index("enumeration.orm.sessions") == (
+        with_orm.index("enumeration.panes") + 1
+    )
+    assert benchmark_module.runner_phase_groups(orm=True)[4] == (
+        "enumeration.sessions",
+        "enumeration.windows",
+        "enumeration.panes",
+        "enumeration.orm.sessions",
+        "enumeration.orm.windows",
+        "enumeration.orm.panes",
+    )
 
 
 def test_live_orm_enumeration_matches_the_typed_operation_rows(
