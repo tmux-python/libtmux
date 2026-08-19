@@ -106,6 +106,16 @@ $ uv run python scripts/orchestration_matrix.py \
     --render-only
 ```
 
+Find where the workload buckles and on which dimension. This is a pressure
+test, not a comparison: each rung is a single invocation, so only the outcome
+means anything:
+
+```console
+$ env -u TMUX -u TMUX_PANE uv run python scripts/orchestration_stress.py \
+    --axis all \
+    --budget-seconds 2400
+```
+
 Validate a finished artifact tree. `validate` is read-only and contacts no tmux
 server:
 
@@ -148,6 +158,12 @@ Configured delay is not waiter overhead. Each delayed-text sample reports the
 configured delay, the generator's scheduling lateness, and the detection overhead
 separately, so a deliberate wait is never presented as library cost. Compare
 detection overhead between the two wait strategies, not total elapsed time.
+
+A small difference is not a difference. Phase timings here are heavy tailed and
+their run-to-run spread does not shrink much with more samples, so the matrix
+report claims a ratio only when the two confidence intervals separate, and marks
+everything else unresolved. Treat an unresolved row as "these lanes are the same
+for this phase", not as a missing measurement.
 
 In-memory filtering is not an end-to-end query. `QueryList` filtering over an
 already materialized snapshot is reported in its own cells and is not equivalent
