@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import hashlib
 import importlib.util
+import io
 import json
 import math
 import os
@@ -29,6 +31,49 @@ def fuzzer_module() -> types.ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _help_text(fuzzer_module: types.ModuleType, *arguments: str) -> str:
+    """Return the real parser's rendered help for one command path."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), pytest.raises(SystemExit) as exit_info:
+        fuzzer_module.main([*arguments, "--help"])
+    assert exit_info.value.code == 0
+    return buffer.getvalue()
+
+
+def test_cli_help_documents_the_workload_contract(
+    fuzzer_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An operator must learn the stream contract from ``--help`` alone."""
+    # argparse wraps at the terminal width, and textwrap breaks hyphenated
+    # names, so pin the width instead of asserting against the host's size.
+    monkeypatch.setenv("COLUMNS", "200")
+
+    top = _help_text(fuzzer_module)
+    serve = _help_text(fuzzer_module, "serve")
+    preview = _help_text(fuzzer_module, "preview")
+
+    for mode in ("editor", "dev-server", "installer", "delayed-match"):
+        assert mode in top, mode
+    assert "ready marker" in serve
+    assert "activity gate" in serve
+    assert "interactively" in preview
+
+    for option, description in (
+        ("--output-dir", "append-only streams"),
+        ("--run-id", "control marker"),
+        ("--source-root", "src/libtmux"),
+        ("--seed", "corpus and frame selection"),
+        ("--frame-rate", "frames emitted"),
+        ("--duration", "serving duration"),
+        ("--delayed-match-after", "sentinel emission"),
+        ("--sentinel-prefix", "unique sentinel"),
+        ("--heartbeat-interval", "heartbeat marker"),
+    ):
+        assert option in serve, option
+        assert description in serve, option
 
 
 def test_stream_for_pane_reserves_only_selected_ordinal(
