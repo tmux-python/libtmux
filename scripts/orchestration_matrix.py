@@ -584,6 +584,7 @@ def run_cell(
     seed: int,
     evidence_root: pathlib.Path,
     timeout_s: float,
+    orm: bool = False,
 ) -> dict[str, object]:
     """Run one cell to completion and return its summary.
 
@@ -645,6 +646,7 @@ def run_cell(
         str(out / "report.md"),
         "--scratch-root",
         str(scratch),
+        *(("--with-orm",) if orm else ()),
     )
     started = time.monotonic()
     returncode: int | None = None
@@ -741,6 +743,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="continue past non-fatal preflight blockers",
     )
     parser.add_argument(
+        "--with-orm",
+        action="store_true",
+        help="also measure the classic ORM enumeration reference in every cell",
+    )
+    parser.add_argument(
         "--render-only",
         action="store_true",
         help="re-render an existing evidence root without running any cell",
@@ -814,6 +821,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
                 seed=arguments.seed,
                 evidence_root=arguments.evidence_root,
                 timeout_s=arguments.cell_timeout_seconds,
+                orm=arguments.with_orm,
             )
             summaries.append(summary)
             print(
