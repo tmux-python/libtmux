@@ -30,6 +30,7 @@ Examples
 from __future__ import annotations
 
 import argparse
+import collections.abc as cabc
 import contextlib
 import dataclasses
 import fcntl
@@ -39,6 +40,7 @@ import os
 import pathlib
 import shutil
 import signal
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -385,6 +387,56 @@ def _quantile(ordered: list[float], percentile: int) -> float:
     return ordered[rank - 1]
 
 
+def median_interval(
+    samples: cabc.Sequence[float],
+    *,
+    confidence: float = 0.95,
+) -> tuple[float, float]:
+    """Return a distribution-free confidence interval for the median.
+
+    Uses the order-statistic (sign-test) interval, which assumes nothing about
+    the shape of the distribution. That matters here: phase timings are heavy
+    tailed, so an interval derived from a standard deviation would understate
+    the spread badly.
+
+    Parameters
+    ----------
+    samples : Sequence[float]
+        Accepted observations for one phase.
+    confidence : float
+        Two-sided coverage, 0.95 by default.
+
+    Returns
+    -------
+    tuple[float, float]
+        Lower and upper bound. Fewer than six observations cannot bound a
+        median at all, so the interval is unbounded and every comparison
+        against it is reported as unresolved rather than guessed.
+
+    Examples
+    --------
+    >>> median_interval([5.0] * 10)
+    (5.0, 5.0)
+    >>> low, high = median_interval([1.0, 2.0, 3.0, 40.0, 50.0, 60.0])
+    >>> low < high
+    True
+    >>> median_interval([1.0, 2.0])
+    (0.0, inf)
+    """
+    ordered = sorted(samples)
+    count = len(ordered)
+    if count == 0:
+        return (0.0, 0.0)
+    if count < 6:
+        return (0.0, math.inf)
+    # Nearest-rank bounds from the binomial quantiles of the sign test.
+    spread = statistics.NormalDist().inv_cdf(1 - (1 - confidence) / 2)
+    half = spread * math.sqrt(count) / 2
+    lower = max(0, math.floor(count / 2 - half))
+    upper = min(count - 1, math.ceil(count / 2 + half) - 1)
+    return (ordered[lower], ordered[upper])
+
+
 def load_cells(root: pathlib.Path) -> dict[str, dict[str, object]]:
     """Return every cell artifact found under *root*, keyed by ``lane/mode``.
 
@@ -535,10 +587,24 @@ def render_matrix(root: pathlib.Path, *, baseline: str | None = None) -> str:
         fastest, spread = "n/a", "n/a"
         if medians:
             winner = min(medians, key=lambda label: medians[label])
+            loser = max(medians, key=lambda label: medians[label])
             fastest = f"`{winner}`"
             best = medians[winner]
             if best > 0 and len(medians) > 1:
-                spread = f"{max(medians.values()) / best:.1f}x"
+                # Only claim a ratio the run-to-run spread can actually
+                # separate. Overlapping intervals mean the difference is
+                # inside this benchmark's noise, not a finding.
+                _, best_high = median_interval(
+                    t.cast("dict", completed[winner]["phases"])[name]
+                )
+                worst_low, _ = median_interval(
+                    t.cast("dict", completed[loser]["phases"])[name]
+                )
+                if worst_low > best_high:
+                    spread = f"{medians[loser] / best:.1f}x"
+                else:
+                    fastest = "unresolved"
+                    spread = "unresolved"
         lines.append(
             f"| `{name}` | " + " | ".join(cells_row) + f" | {fastest} | {spread} |"
         )

@@ -132,6 +132,76 @@ def test_render_matrix_reports_per_phase_ratios_not_whole_iteration(
     assert "sum of timed phases" not in rendered.lower()
 
 
+def test_median_interval_widens_as_samples_shrink(
+    matrix_module: types.ModuleType,
+) -> None:
+    """A noisy phase must report a wider interval than a steady one."""
+    steady = [100.0] * 12
+    noisy = [10.0, 200.0, 15.0, 180.0, 20.0, 190.0, 12.0, 175.0, 30.0, 160.0]
+
+    steady_lo, steady_hi = matrix_module.median_interval(steady)
+    noisy_lo, noisy_hi = matrix_module.median_interval(noisy)
+
+    assert steady_hi - steady_lo == 0.0
+    assert noisy_hi - noisy_lo > 50.0
+
+
+def test_render_matrix_refuses_a_ratio_inside_the_noise(
+    matrix_module: types.ModuleType, tmp_path: pathlib.Path
+) -> None:
+    """A difference smaller than run-to-run spread must not be claimed.
+
+    Marginal per-phase ratios do not survive this benchmark's variance, so a
+    spread whose confidence intervals overlap is reported as unresolved rather
+    than as a number a reader would quote.
+    """
+    root = tmp_path / "matrix"
+    # Two cells whose medians differ by ~10% but whose samples overlap heavily.
+    noisy_a = [90, 110, 85, 115, 95, 105, 88, 112, 92, 108]
+    noisy_b = [99, 121, 94, 127, 105, 116, 97, 123, 101, 119]
+    for lane, mode, values in (
+        ("subprocess", "sync", noisy_a),
+        ("control", "async", noisy_b),
+    ):
+        (root / f"{lane}-{mode}").mkdir(parents=True)
+        _cell_report(
+            root / f"{lane}-{mode}" / "report.json",
+            lane=lane,
+            mode=mode,
+            durations={"search.classic.panes.middle": [v * 1_000_000 for v in values]},
+        )
+
+    rendered = matrix_module.render_matrix(root)
+
+    assert "unresolved" in rendered.lower()
+
+
+def test_render_matrix_still_claims_a_ratio_far_outside_the_noise(
+    matrix_module: types.ModuleType, tmp_path: pathlib.Path
+) -> None:
+    """A large, separated effect must still be reported as a ratio."""
+    root = tmp_path / "matrix"
+    for lane, mode, base in (
+        ("subprocess", "sync", 700),
+        ("control", "async", 5),
+    ):
+        (root / f"{lane}-{mode}").mkdir(parents=True)
+        _cell_report(
+            root / f"{lane}-{mode}" / "report.json",
+            lane=lane,
+            mode=mode,
+            durations={
+                "mutation.bulk": [(base + offset) * 1_000_000 for offset in range(10)]
+            },
+        )
+
+    rendered = matrix_module.render_matrix(root)
+
+    assert "mutation.bulk" in rendered
+    assert "x" in rendered
+    assert "unresolved" not in rendered.split("mutation.bulk")[1].split("\n")[0]
+
+
 def test_render_matrix_marks_a_cell_that_did_not_complete(
     matrix_module: types.ModuleType, tmp_path: pathlib.Path
 ) -> None:
