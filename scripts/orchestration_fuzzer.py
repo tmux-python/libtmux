@@ -327,7 +327,7 @@ def _bounded_activity_record(
     *,
     max_bytes: int = ACTIVITY_RECORD_MAX_BYTES,
 ) -> str:
-    r"""Return one newline-terminated record within the encoded byte ceiling.
+    r"""Return one printable newline-terminated record within the byte ceiling.
 
     >>> len(_bounded_activity_record("é" * 2_048 + "\n").encode("utf-8")) <= 2_048
     True
@@ -335,6 +335,8 @@ def _bounded_activity_record(
     127
     >>> _bounded_activity_record("short\n")
     'short\n'
+    >>> _bounded_activity_record("tab\tπ\n")
+    'tab\\tπ\n'
 
     Parameters
     ----------
@@ -354,6 +356,13 @@ def _bounded_activity_record(
     if type(max_bytes) is not int or max_bytes <= 0:
         message = "activity record byte ceiling must be a positive integer"
         raise ValueError(message)
+    body = "".join(
+        character
+        if character.isprintable()
+        else character.encode("unicode_escape").decode("ascii")
+        for character in text[:-1]
+    )
+    text = f"{body}\n"
     encoded = text.encode("utf-8")
     if len(encoded) <= max_bytes:
         return text

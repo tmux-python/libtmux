@@ -8953,7 +8953,7 @@ def _content_capture_plan(context: RunContext) -> tuple[LazyPlan, Planner]:
                 start=(
                     -_WAIT_CAPTURE_HISTORY_LINES
                     if delayed
-                    else -_READINESS_CAPTURE_HISTORY_LINES
+                    else -_MEASURED_CAPTURE_HISTORY_LINES
                 ),
                 join_wrapped=delayed,
             )
@@ -9916,7 +9916,8 @@ def _accepted_content_captures(
     token : str
         Exact fresh sentinel required once in the delayed pane only.
     epoch : int
-        Frozen pre-request heartbeat pulse required in every pane.
+        Frozen pre-request heartbeat epoch that every pane's latest exact
+        parsed pulse must meet or exceed.
 
     Returns
     -------
@@ -9984,7 +9985,7 @@ def _accepted_content_captures(
         expected_start = (
             -_WAIT_CAPTURE_HISTORY_LINES
             if index == 0
-            else -_READINESS_CAPTURE_HISTORY_LINES
+            else -_MEASURED_CAPTURE_HISTORY_LINES
         )
         if operation.start != expected_start or operation.join_wrapped is not (
             index == 0
@@ -9992,7 +9993,6 @@ def _accepted_content_captures(
             message = "content snapshot operation flags differ from retention plan"
             raise RuntimeError(message)
     captures_by_id: dict[str, PaneCapture] = {}
-    pulse = f"LIBTMUX_EPOCH epoch={epoch}"
     sentinel_counts: dict[str, int] = {}
     for operation, pane_id, result in zip(
         operations,
@@ -10007,8 +10007,10 @@ def _accepted_content_captures(
             message = "content snapshot result order or target attribution differed"
             raise RuntimeError(message)
         result.raise_for_status()
-        if pulse not in result.lines:
-            message = f"content snapshot for {pane_id} lacks frozen epoch pulse"
+        if max(_activity_frame_epochs(result.lines), default=-1) < epoch:
+            message = (
+                f"content snapshot for {pane_id} lacks current or newer epoch pulse"
+            )
             raise RuntimeError(message)
         sentinel_counts[pane_id] = result.lines.count(token)
         captures_by_id[pane_id] = PaneCapture(pane_id, tuple(result.lines))

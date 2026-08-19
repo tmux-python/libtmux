@@ -5786,10 +5786,19 @@ def test_content_capture_plan_prioritizes_delayed_pane_and_bounds_batches(
         delayed_pane_id,
         *tuple(pane_id for pane_id in pane_ids if pane_id != delayed_pane_id),
     )
-    assert operations[0].start == -512
-    assert operations[0].join_wrapped is True
-    assert all(operation.start == -8 for operation in operations[1:])
-    assert all(operation.join_wrapped is False for operation in operations[1:])
+    assert operations[0].render() == (
+        "capture-pane",
+        "-t",
+        delayed_pane_id,
+        "-p",
+        "-S",
+        "-512",
+        "-J",
+    )
+    assert [operation.render() for operation in operations[1:]] == [
+        ("capture-pane", "-t", pane_id, "-p", "-S", "-64")
+        for pane_id in target_order[1:]
+    ]
     assert [len(step.indices) for step in planner.plan(operations)] == [1, 64, 64, 2]
 
 
@@ -7316,7 +7325,7 @@ def test_content_search_preparation_is_request_relative_and_immutable(
             events.append(f"control-output:{request.args[-1]}")
             return CommandResult(cmd=("tmux", *request.args))
         target = request.args[request.args.index("-t") + 1]
-        lines = (token, pulse) if target == "%2" else (pulse,)
+        lines = (token, pulse) if target == "%2" else ("LIBTMUX_EPOCH epoch=8",)
         return CommandResult(cmd=("tmux", *request.args), stdout=lines)
 
     def run(request: t.Any) -> CommandResult:
@@ -7596,6 +7605,86 @@ def test_content_capture_rejects_invalid_attribution_and_retention_evidence(
             token=token,
             epoch=7,
         )
+
+
+def test_content_capture_bound_retains_latest_completed_pulse(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """A maximum in-flight ordinary line cannot evict the completed H+1 pulse."""
+    token = "LIBTMUX_SENTINEL run=content request=boundary value=READY"
+    context = types.SimpleNamespace(
+        pane_ids=("%1", "%2"),
+        delayed_pane_id="%1",
+    )
+    plan, _planner = benchmark_module._content_capture_plan(context)
+    delayed, ordinary = plan.operations
+    maximum_ordinary_rows = (*("x" * 64 for _ in range(31)), "x" * 63)
+    capture_boundary = (
+        "LIBTMUX_EPOCH epoch=8",
+        *maximum_ordinary_rows,
+    )[ordinary.start :]
+
+    assert sum(len(row) for row in maximum_ordinary_rows) == 2_047
+    assert "LIBTMUX_EPOCH epoch=8" in capture_boundary
+    results = (
+        delayed.build_result(
+            returncode=0,
+            stdout=(token, "LIBTMUX_EPOCH epoch=7"),
+        ),
+        ordinary.build_result(returncode=0, stdout=capture_boundary),
+    )
+
+    captures = benchmark_module._accepted_content_captures(
+        context,
+        plan,
+        types.SimpleNamespace(results=results),
+        token=token,
+        epoch=7,
+    )
+
+    assert captures[1].lines == capture_boundary
+
+
+@pytest.mark.parametrize(
+    ("evidence", "accepted"),
+    (
+        (("LIBTMUX_EPOCH epoch=7",), True),
+        (("LIBTMUX_EPOCH epoch=8",), True),
+        (("LIBTMUX_EPOCH epoch=6",), False),
+        (("LIBTMUX_EPOCH epoch=7 extra",), False),
+        (("ordinary",), False),
+    ),
+    ids=("literal-h", "newer-h-plus-one", "stale-h-minus-one", "malformed", "absent"),
+)
+def test_content_capture_requires_exact_current_or_newer_pulse(
+    benchmark_module: types.ModuleType,
+    evidence: tuple[str, ...],
+    accepted: bool,
+) -> None:
+    """Only exact bounded pulses at or beyond frozen H prove retention."""
+    token = "LIBTMUX_SENTINEL run=content request=pulse-table value=READY"
+    context = types.SimpleNamespace(pane_ids=("%1",), delayed_pane_id="%1")
+    plan, _planner = benchmark_module._content_capture_plan(context)
+    result = plan.operations[0].build_result(
+        returncode=0,
+        stdout=(token, *evidence),
+    )
+
+    def accept() -> t.Any:
+        """Validate the table row against the production capture contract."""
+        return benchmark_module._accepted_content_captures(
+            context,
+            plan,
+            types.SimpleNamespace(results=(result,)),
+            token=token,
+            epoch=7,
+        )
+
+    if accepted:
+        assert accept()[0].lines == (token, *evidence)
+    else:
+        with pytest.raises(RuntimeError, match="epoch pulse"):
+            accept()
 
 
 @pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
