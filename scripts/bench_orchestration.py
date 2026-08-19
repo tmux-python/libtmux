@@ -12024,6 +12024,11 @@ async def run_worker(
             context,
             request_id=next_request_id("search.contents"),
         )
+        if lane is EngineLane.CONTROL and mode is ExecutionMode.ASYNC:
+            from libtmux.experimental.engines import AsyncControlModeEngine
+
+            control_engine = t.cast(AsyncControlModeEngine, context.engine)
+            await control_engine.disable_output_notifications()
         await _run_worker_group(
             recorder,
             context,
