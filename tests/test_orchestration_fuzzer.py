@@ -315,6 +315,261 @@ def test_durable_stream_append_flushes_and_fsyncs_exact_bytes(
     assert observed == [b"sentinel\n"]
 
 
+def run_direct_serve(
+    fuzzer_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    output_dir: pathlib.Path,
+    request_ids: tuple[str, ...],
+    *,
+    after_prepare: t.Callable[[], None] | None = None,
+) -> int:
+    """Run the service against deterministic prepublished requests."""
+    original_prepare_output = fuzzer_module.prepare_output
+    clock_ns = 0
+
+    def monotonic_ns() -> int:
+        nonlocal clock_ns
+        clock_ns += 1_000_000
+        return clock_ns
+
+    def prepare_requests(options: t.Any) -> t.Any:
+        paths = original_prepare_output(options)
+        fuzzer_module.write_json_atomic(
+            paths.gate,
+            {"schema_version": 1, "run_id": options.run_id},
+        )
+        for ordinal, request_id in enumerate(request_ids):
+            fuzzer_module.write_json_atomic(
+                paths.requests / f"{request_id}.json",
+                {
+                    "schema_version": 1,
+                    "run_id": options.run_id,
+                    "request_id": request_id,
+                    "requested_monotonic_ns": ordinal,
+                    "value": "READY",
+                },
+            )
+        if after_prepare is not None:
+            after_prepare()
+        return paths
+
+    monkeypatch.setattr(fuzzer_module, "prepare_output", prepare_requests)
+    monkeypatch.setattr(fuzzer_module.time, "monotonic_ns", monotonic_ns)
+    monkeypatch.setattr(fuzzer_module.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        fuzzer_module.signal,
+        "signal",
+        lambda _signal_number, _handler: None,
+    )
+    return t.cast(
+        int,
+        fuzzer_module.run_serve(
+            fuzzer_module.WorkloadOptions(
+                output_dir,
+                "run-7",
+                output_dir.parent,
+                0,
+                1000.0,
+                0.05,
+                0.0,
+                "READY",
+                0.01,
+            )
+        ),
+    )
+
+
+def test_run_serve_consumes_three_requests_after_persisting_evidence(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Durable evidence replaces each processed request marker."""
+    output_dir = tmp_path / "consumed-requests"
+    request_ids = ("sample-00", "sample-01", "sample-02")
+
+    assert run_direct_serve(fuzzer_module, monkeypatch, output_dir, request_ids) == 0
+
+    evidence = [
+        read_json(output_dir / "sentinels" / f"{request_id}.json")
+        for request_id in request_ids
+    ]
+    assert [item["request_id"] for item in evidence] == list(request_ids)
+    assert [item["emitted_monotonic_ns"] for item in evidence] == sorted(
+        item["emitted_monotonic_ns"] for item in evidence
+    )
+    assert not tuple((output_dir / "requests").glob("*.json"))
+
+
+def test_run_serve_publishes_evidence_before_request_unlink_and_directory_fsync(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Request consumption follows durable matching evidence in exact order."""
+    output_dir = tmp_path / "consumption-order"
+    request_path = output_dir / "requests" / "sample-00.json"
+    evidence_path = output_dir / "sentinels" / "sample-00.json"
+    events: list[str] = []
+    recording = False
+    original_write_json_atomic = fuzzer_module.write_json_atomic
+    original_unlink = pathlib.Path.unlink
+    original_fsync_directory = fuzzer_module._fsync_directory
+
+    def start_recording() -> None:
+        nonlocal recording
+        recording = True
+
+    def record_atomic_write(path: pathlib.Path, data: t.Mapping[str, t.Any]) -> None:
+        original_write_json_atomic(path, data)
+        if path == evidence_path:
+            events.append("evidence-published")
+
+    def record_unlink(path: pathlib.Path) -> None:
+        original_unlink(path)
+        if path == request_path:
+            events.append("request-unlinked")
+
+    def record_fsync_directory(path: pathlib.Path) -> None:
+        original_fsync_directory(path)
+        if recording and path == request_path.parent:
+            events.append("request-directory-fsynced")
+
+    monkeypatch.setattr(fuzzer_module, "write_json_atomic", record_atomic_write)
+    monkeypatch.setattr(fuzzer_module.pathlib.Path, "unlink", record_unlink)
+    monkeypatch.setattr(
+        fuzzer_module,
+        "_fsync_directory",
+        record_fsync_directory,
+    )
+
+    assert (
+        run_direct_serve(
+            fuzzer_module,
+            monkeypatch,
+            output_dir,
+            ("sample-00",),
+            after_prepare=start_recording,
+        )
+        == 0
+    )
+
+    assert events == [
+        "evidence-published",
+        "request-unlinked",
+        "request-directory-fsynced",
+    ]
+    assert evidence_path.exists()
+    assert not request_path.exists()
+
+
+@pytest.mark.parametrize("disposition", ("absent", "replacement"))
+def test_run_serve_rejects_removed_or_replaced_accepted_request(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    disposition: str,
+) -> None:
+    """A delayed request pathname must still name its accepted marker."""
+    output_dir = tmp_path / f"request-{disposition}"
+    request_path = output_dir / "requests" / "sample-00.json"
+    evidence_path = output_dir / "sentinels" / "sample-00.json"
+    original_request_from_marker = fuzzer_module._request_from_marker
+    disposition_applied = False
+
+    def apply_disposition_after_accept(
+        marker: dict[str, t.Any],
+        path: pathlib.Path,
+        options: t.Any,
+        *,
+        seen_request_ids: t.Container[str] = (),
+    ) -> tuple[str, int, str] | None:
+        nonlocal disposition_applied
+        request = t.cast(
+            tuple[str, int, str] | None,
+            original_request_from_marker(
+                marker,
+                path,
+                options,
+                seen_request_ids=seen_request_ids,
+            ),
+        )
+        if request is not None and not disposition_applied:
+            disposition_applied = True
+            if disposition == "replacement":
+                write_marker(
+                    path,
+                    {
+                        "schema_version": 1,
+                        "run_id": options.run_id,
+                        "request_id": "sample-00",
+                        "requested_monotonic_ns": 99,
+                        "value": "REPLACEMENT",
+                    },
+                )
+            else:
+                path.unlink()
+        return request
+
+    monkeypatch.setattr(
+        fuzzer_module,
+        "_request_from_marker",
+        apply_disposition_after_accept,
+    )
+
+    expected_error = "removed" if disposition == "absent" else "replaced"
+    with pytest.raises(
+        RuntimeError,
+        match=rf"accepted request marker {expected_error}",
+    ):
+        run_direct_serve(
+            fuzzer_module,
+            monkeypatch,
+            output_dir,
+            ("sample-00",),
+        )
+
+    assert read_json(evidence_path)["request_id"] == "sample-00"
+    if disposition == "replacement":
+        assert read_json(request_path)["value"] == "REPLACEMENT"
+    else:
+        assert not request_path.exists()
+
+
+def test_run_serve_retains_request_when_evidence_publication_fails(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed evidence publication leaves the accepted request retryable."""
+    output_dir = tmp_path / "failed-evidence"
+    request_path = output_dir / "requests" / "sample-00.json"
+    evidence_path = output_dir / "sentinels" / "sample-00.json"
+    original_write_json_atomic = fuzzer_module.write_json_atomic
+
+    def fail_evidence_write(
+        path: pathlib.Path,
+        data: t.Mapping[str, t.Any],
+    ) -> None:
+        if path == evidence_path:
+            message = "evidence publication failed"
+            raise OSError(message)
+        original_write_json_atomic(path, data)
+
+    monkeypatch.setattr(fuzzer_module, "write_json_atomic", fail_evidence_write)
+
+    with pytest.raises(OSError, match="evidence publication failed"):
+        run_direct_serve(
+            fuzzer_module,
+            monkeypatch,
+            output_dir,
+            ("sample-00",),
+        )
+
+    assert read_json(request_path)["value"] == "READY"
+    assert not evidence_path.exists()
+
+
 def write_marker(path: pathlib.Path, data: dict[str, t.Any]) -> None:
     """Publish one complete marker without exposing a partial JSON document."""
     temporary = path.with_name(f".{path.name}.tmp")
