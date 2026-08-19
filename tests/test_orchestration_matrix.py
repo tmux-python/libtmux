@@ -65,6 +65,27 @@ def _cell_report(
     )
 
 
+def test_defaults_are_the_combination_measured_to_fit_the_budget(
+    matrix_module: types.ModuleType,
+) -> None:
+    """Running with no arguments must stay inside the outer-loop budget.
+
+    A four-cell matrix is dominated by the subprocess lanes, whose per-iteration
+    cost grows superlinearly with pane count: about 9 seconds at 800 panes
+    against roughly 49 at 1,600. The defaults below were measured end to end at
+    just under 24 minutes; raising either one pushes a plain invocation past an
+    hour, which is why they are pinned rather than left to taste.
+    """
+    defaults = matrix_module.build_parser().parse_args([])
+
+    assert defaults.shape == "40x20x1"
+    assert matrix_module.pane_count(matrix_module.parse_shape(defaults.shape)) == 800
+    assert defaults.runs == 20
+    assert defaults.warmup == 2
+    # Twenty samples is the point where p90 and p95 become reportable at all.
+    assert matrix_module.reportable_percentiles(defaults.runs) == (90, 95)
+
+
 def test_reportable_percentiles_track_sample_count(
     matrix_module: types.ModuleType,
 ) -> None:

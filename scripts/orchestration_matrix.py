@@ -778,9 +778,13 @@ def build_parser() -> argparse.ArgumentParser:
             "timing they produce."
         ),
     )
-    parser.add_argument("--shape", default="80x20x1", help="topology in SxWxP notation")
+    # Defaults are the combination measured end to end at just under 24
+    # minutes for four cells. Subprocess per-iteration cost grows
+    # superlinearly with panes -- about 9 seconds at 800 against roughly 49 at
+    # 1,600 -- so raising either value pushes a plain invocation past an hour.
+    parser.add_argument("--shape", default="40x20x1", help="topology in SxWxP notation")
     parser.add_argument(
-        "--runs", type=int, default=15, help="timed invocations per repeatable phase"
+        "--runs", type=int, default=20, help="timed invocations per repeatable phase"
     )
     parser.add_argument(
         "--warmup", type=int, default=2, help="untimed invocations before each phase"
