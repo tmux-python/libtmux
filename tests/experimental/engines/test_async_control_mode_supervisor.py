@@ -138,6 +138,196 @@ def test_desired_subscriptions_recorded_idempotently() -> None:
     assert engine._desired_subscriptions == ["agentstate:%*:#{@agent_state}"]
 
 
+def test_no_output_state_changes_every_later_spawn_argv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Muted reconnects must never attach before their client flag applies."""
+    commands: list[tuple[object, ...]] = []
+
+    class _Probe(AsyncControlModeEngine):
+        async def _find_attach_target(self) -> str | None:
+            return "$0"
+
+        async def _consume_startup(self) -> None:
+            return None
+
+        async def run(self, request: CommandRequest) -> CommandResult:
+            assert self._desired_no_output
+            assert request.args == ("refresh-client", "-f", "no-output")
+            return CommandResult(cmd=("tmux", *request.args))
+
+    async def _fake_exec(*args: object, **_kwargs: object) -> _StartupProcess:
+        commands.append(args)
+        return _StartupProcess()
+
+    async def main() -> None:
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        engine = _Probe(tmux_bin="tmux")
+        await engine._spawn()
+        await engine._spawn()
+        await engine.disable_output_notifications()
+        await engine._spawn()
+        await engine._spawn()
+        await engine.aclose()
+
+    asyncio.run(main())
+    assert commands[:2] == [
+        ("tmux", "-C", "attach-session", "-E", "-t", "$0"),
+        ("tmux", "-C", "attach-session", "-E", "-t", "$0"),
+    ]
+    assert commands[2:] == [
+        (
+            "tmux",
+            "-C",
+            "attach-session",
+            "-f",
+            "no-output",
+            "-E",
+            "-t",
+            "$0",
+        ),
+        (
+            "tmux",
+            "-C",
+            "attach-session",
+            "-f",
+            "no-output",
+            "-E",
+            "-t",
+            "$0",
+        ),
+    ]
+
+
+def test_no_output_state_linearizes_with_process_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A process cannot be created from stale desired client flags."""
+    creation_started = asyncio.Event()
+    release_creation = asyncio.Event()
+    mute_entered = asyncio.Event()
+    observations: list[tuple[tuple[object, ...], bool]] = []
+
+    class _Probe(AsyncControlModeEngine):
+        async def _find_attach_target(self) -> str | None:
+            return "$0"
+
+        async def _consume_startup(self) -> None:
+            return None
+
+        async def disable_output_notifications(self) -> None:
+            mute_entered.set()
+            await super().disable_output_notifications()
+
+        async def run(self, request: CommandRequest) -> CommandResult:
+            assert request.args == ("refresh-client", "-f", "no-output")
+            return CommandResult(cmd=("tmux", *request.args))
+
+    async def _fake_exec(*args: object, **_kwargs: object) -> _StartupProcess:
+        creation_started.set()
+        await release_creation.wait()
+        observations.append((args, engine._desired_no_output))
+        return _StartupProcess()
+
+    async def main() -> None:
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        spawn = asyncio.create_task(engine._spawn())
+        await creation_started.wait()
+        mute = asyncio.create_task(engine.disable_output_notifications())
+        await mute_entered.wait()
+        release_creation.set()
+        await spawn
+        await mute
+        await engine.aclose()
+
+    engine = _Probe(tmux_bin="tmux")
+    asyncio.run(asyncio.wait_for(main(), timeout=1.0))
+    assert observations == [(("tmux", "-C", "attach-session", "-E", "-t", "$0"), False)]
+    assert engine._desired_no_output
+
+
+def test_no_output_waiter_cannot_change_state_after_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mute request queued behind process creation cannot outlive close."""
+    creation_started = asyncio.Event()
+    release_creation = asyncio.Event()
+    mute_entered = asyncio.Event()
+    close_transitioned = asyncio.Event()
+
+    class _Probe(AsyncControlModeEngine):
+        async def _find_attach_target(self) -> str | None:
+            return "$0"
+
+        async def disable_output_notifications(self) -> None:
+            mute_entered.set()
+            await super().disable_output_notifications()
+
+        async def _close_locked(self) -> None:
+            close_transitioned.set()
+            await super()._close_locked()
+
+    async def _fake_exec(*_args: object, **_kwargs: object) -> _StartupProcess:
+        creation_started.set()
+        await release_creation.wait()
+        return _StartupProcess()
+
+    async def main() -> tuple[object, object]:
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        start = asyncio.create_task(engine.start())
+        await creation_started.wait()
+        mute = asyncio.create_task(engine.disable_output_notifications())
+        await mute_entered.wait()
+        close = asyncio.create_task(engine.aclose())
+        await close_transitioned.wait()
+        release_creation.set()
+        start_result = (await asyncio.gather(start, return_exceptions=True))[0]
+        mute_result = (await asyncio.gather(mute, return_exceptions=True))[0]
+        await close
+        return start_result, mute_result
+
+    engine = _Probe(tmux_bin="tmux")
+    start_result, mute_result = asyncio.run(asyncio.wait_for(main(), timeout=1.0))
+    assert isinstance(start_result, ControlModeError)
+    assert isinstance(mute_result, ControlModeError)
+    assert not engine._desired_no_output
+    assert engine._proc is None
+    assert not engine._started
+
+
+@pytest.mark.parametrize("failure", ("nonzero", "connection"))
+def test_no_output_records_desired_state_before_live_failure(failure: str) -> None:
+    """A failed acknowledgement must retain reconnect-safe desired state."""
+    requests: list[tuple[str, ...]] = []
+
+    class _Probe(AsyncControlModeEngine):
+        async def run(self, request: CommandRequest) -> CommandResult:
+            assert self._desired_no_output
+            requests.append(request.args)
+            if failure == "connection":
+                message = "connection lost before acknowledgement"
+                raise ControlModeError(message)
+            return CommandResult(
+                cmd=("tmux", *request.args),
+                stderr=("client rejected flag",),
+                returncode=1,
+            )
+
+    async def main() -> bool:
+        engine = _Probe()
+        match = (
+            "client rejected flag"
+            if failure == "nonzero"
+            else "connection lost before acknowledgement"
+        )
+        with pytest.raises(ControlModeError, match=match):
+            await engine.disable_output_notifications()
+        return engine._desired_no_output
+
+    assert asyncio.run(main())
+    assert requests == [("refresh-client", "-f", "no-output")]
+
+
 def test_command_waits_for_reconnect_generation_before_writing() -> None:
     """A reconnect-window command writes only to the replacement process."""
 

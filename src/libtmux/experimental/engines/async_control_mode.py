@@ -276,6 +276,9 @@ class AsyncControlModeEngine:
         self._stderr_task: asyncio.Task[None] | None = None
         self._start_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
+        # Keep desired client flags and process creation atomic. This lock must
+        # never cover run(), whose readiness may depend on the process it guards.
+        self._client_flags_lock = asyncio.Lock()
         self._started = False
         self._dead: BaseException | None = None
         self._bootstrap = AsyncSubprocessEngine(
@@ -286,6 +289,7 @@ class AsyncControlModeEngine:
         # Desired (declarative) state, replayed on every (re)connect.
         self._desired_subscriptions: list[str] = []
         self._desired_attach: list[str] = []
+        self._desired_no_output = False
         self._attached_session: str | None = None
         # Supervisor / reconnect bookkeeping.
         self._generation = 0
@@ -375,6 +379,55 @@ class AsyncControlModeEngine:
         ['$0', '$1']
         """
         self._desired_attach = list(ids)
+
+    async def disable_output_notifications(self) -> None:
+        """Permanently suppress pane-output notifications for this client.
+
+        Desired state is recorded before the live ``refresh-client`` command.
+        Every later control-process attach therefore starts with the same
+        ``no-output`` client flag, including a reconnect after command failure.
+        Repeated calls are safe and re-acknowledge the current generation.
+
+        Returns
+        -------
+        None
+            After the current control client acknowledges ``no-output``.
+
+        Raises
+        ------
+        ControlModeError
+            If the connection fails or tmux rejects the client flag.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines.base import CommandRequest
+        >>> async def quiesce_client():
+        ...     engine = AsyncControlModeEngine.for_server(session.server)
+        ...     async with engine:
+        ...         await engine.disable_output_notifications()
+        ...         flags = await engine.run(
+        ...             CommandRequest.from_args(
+        ...                 "list-clients", "-F", "#{client_flags}"
+        ...             )
+        ...         )
+        ...     return all("no-output" in line for line in flags.stdout)
+        >>> asyncio.run(quiesce_client())
+        True
+        """
+        lifecycle_generation = self._lifecycle_generation
+        async with self._client_flags_lock:
+            if lifecycle_generation != self._lifecycle_generation:
+                msg = "control-mode engine closed"
+                raise ControlModeError(msg)
+            self._desired_no_output = True
+        # A reconnect can be required to acknowledge this command, so do not
+        # hold _client_flags_lock while entering the ordinary dispatch path.
+        request = CommandRequest.from_args("refresh-client", "-f", "no-output")
+        result = await self.run(request)
+        if result.returncode != 0:
+            detail = "; ".join(result.stderr) or f"return code {result.returncode}"
+            msg = f"tmux refresh-client -f no-output failed: {detail}"
+            raise ControlModeError(msg)
 
     async def start(self) -> None:
         """Launch the supervisor once and wait for current connection readiness.
@@ -469,28 +522,31 @@ class AsyncControlModeEngine:
                 "destroy-unattached option is off"
             )
             raise ControlModeError(msg)
-        cmd = self._conn.argv(
-            "-C",
-            "attach-session",
-            "-E",
-            "-t",
-            target,
-        )
-        creation = asyncio.create_task(
-            asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            ),
-            name="libtmux-async-control-process-start",
-        )
-        cancelled = await self._wait_for_owned_task(creation)
-        try:
-            proc = creation.result()
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        self._proc = proc
+        async with self._client_flags_lock:
+            client_flags = ("-f", "no-output") if self._desired_no_output else ()
+            cmd = self._conn.argv(
+                "-C",
+                "attach-session",
+                *client_flags,
+                "-E",
+                "-t",
+                target,
+            )
+            creation = asyncio.create_task(
+                asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                ),
+                name="libtmux-async-control-process-start",
+            )
+            cancelled = await self._wait_for_owned_task(creation)
+            try:
+                proc = creation.result()
+            except FileNotFoundError:
+                raise exc.TmuxCommandNotFound from None
+            self._proc = proc
         # Keep the death sentinel set through startup. The supervisor clears it
         # only after replay, when it resolves this generation's readiness.
         try:
