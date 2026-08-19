@@ -88,6 +88,24 @@ $ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py ramp \
     --output ramp.json
 ```
 
+Compare every execution lane at one shape. Cells run strictly one at a time,
+because overlapping scale runs perturb the timings they produce:
+
+```console
+$ env -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
+    --shape 80x20x1 \
+    --runs 20 \
+    --warmup 2 \
+    --with-orm
+```
+
+Re-render a finished matrix without running anything:
+
+```console
+$ uv run python scripts/orchestration_matrix.py \
+    --render-only
+```
+
 Validate a finished artifact tree. `validate` is read-only and contacts no tmux
 server:
 
@@ -230,10 +248,21 @@ control-mode engines. All lanes use the same typed operations and validate the
 same live postconditions. The default large run uses async control mode because
 it can keep one persistent client and attribute pipelined requests individually.
 
-The classic ORM remains an optional reference for small or explicitly selected
-large shapes. It is not mixed into engine speedup claims when its request graph
-differs. Setup reports planner steps, engine batches, tmux requests, and known
-process starts separately.
+The classic ORM is an optional reference, requested with `--with-orm`. It adds
+`enumeration.orm.sessions`, `enumeration.orm.windows`, and
+`enumeration.orm.panes`, interleaved with the typed enumeration cells they are
+compared against, and each sample must return exactly the rows the typed
+operation returns before it is accepted. The reference is never a fifth lane:
+{class}`~libtmux.Server` reaches tmux through its own request graph whichever
+engine a run measures, so its timing is not mixed into engine speedup claims.
+An artifact records the choice, and a validator derives the phase graph it
+requires from that declaration.
+
+Setup reports planner steps, engine batches, tmux requests, and known process
+starts separately.
+
+Take care with one name: the `classic` *search* family means tmux server-side
+format filtering, not the classic ORM.
 
 Activity files feed pane processes directly, so the fuzzer does not use the
 engine under measurement. The tmux server still bears the intended PTY output
