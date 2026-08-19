@@ -1041,19 +1041,85 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     The real ``serve`` command is invoked through ``sys.executable`` in the
     dedicated functional test file so its process lifecycle stays observable.
     """
-    parser = argparse.ArgumentParser(prog="orchestration_fuzzer.py")
+    parser = argparse.ArgumentParser(
+        prog="orchestration_fuzzer.py",
+        description=(
+            "Render deterministic frames into append-only stream files. One "
+            "process serves every stream, and benchmark panes follow one "
+            "stream each, so a large topology stays active under a single "
+            "workload clock."
+        ),
+        epilog=(
+            "Modes are assigned round-robin by stable pane ordinal: editor, "
+            "dev-server, installer, and delayed-match. The delayed-match "
+            "stream appends a unique sentinel after each request's monotonic "
+            "delay."
+        ),
+    )
     commands = parser.add_subparsers(dest="command", required=True)
+    descriptions = {
+        "serve": (
+            "Start paused, publish a ready marker, and emit frames only after "
+            "the benchmark releases its activity gate."
+        ),
+        "preview": "Render the same frames interactively without serving them.",
+    }
     for command in ("serve", "preview"):
-        command_parser = commands.add_parser(command)
-        command_parser.add_argument("--output-dir", default="orchestration-fuzzer")
-        command_parser.add_argument("--run-id", default="run-0")
-        command_parser.add_argument("--source-root", default=".")
-        command_parser.add_argument("--seed", type=int, default=0)
-        command_parser.add_argument("--frame-rate", type=float, default=10.0)
-        command_parser.add_argument("--duration", type=float, default=60.0)
-        command_parser.add_argument("--delayed-match-after", type=float, default=1.0)
-        command_parser.add_argument("--sentinel-prefix", default="READY")
-        command_parser.add_argument("--heartbeat-interval", type=float, default=0.25)
+        command_parser = commands.add_parser(
+            command,
+            help=descriptions[command],
+            description=descriptions[command],
+        )
+        command_parser.add_argument(
+            "--output-dir",
+            default="orchestration-fuzzer",
+            help="directory used for markers and append-only streams",
+        )
+        command_parser.add_argument(
+            "--run-id",
+            default="run-0",
+            help="run identity carried by every control marker",
+        )
+        command_parser.add_argument(
+            "--source-root",
+            default=".",
+            help="repository root containing src/libtmux source files",
+        )
+        command_parser.add_argument(
+            "--seed",
+            type=int,
+            default=0,
+            help="seed that fixes corpus and frame selection",
+        )
+        command_parser.add_argument(
+            "--frame-rate",
+            type=float,
+            default=10.0,
+            help="number of frames emitted per stream each second",
+        )
+        command_parser.add_argument(
+            "--duration",
+            type=float,
+            default=60.0,
+            help="maximum serving duration after activation",
+        )
+        command_parser.add_argument(
+            "--delayed-match-after",
+            type=float,
+            default=1.0,
+            help="delay between an accepted request and its sentinel emission",
+        )
+        command_parser.add_argument(
+            "--sentinel-prefix",
+            default="READY",
+            help="human-readable prefix for each unique sentinel",
+        )
+        command_parser.add_argument(
+            "--heartbeat-interval",
+            type=float,
+            default=0.25,
+            help="maximum interval between heartbeat marker updates",
+        )
     arguments = parser.parse_args(argv)
     options = _options_from_namespace(arguments)
     if arguments.command == "serve":
