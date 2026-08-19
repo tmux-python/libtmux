@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["rich>=13"]
 # ///
-"""Plan and report hermetic active-tmux orchestration benchmark runs.
+"""Plan, run, validate, and render hermetic active-tmux benchmark evidence.
 
 The ``plan`` command intentionally depends only on host files.  It does not
 import libtmux or start a tmux server.
@@ -19,6 +19,7 @@ import dataclasses
 import enum
 import functools
 import hashlib
+import html
 import inspect
 import json
 import math
@@ -26,6 +27,7 @@ import os
 import pathlib
 import platform
 import random
+import re
 import resource
 import shlex
 import shutil
@@ -2579,9 +2581,13 @@ def _cleanup_from_json(value: object) -> CleanupReport:
     True
     """
     row = _json_mapping(value, "cleanup")
+    errors = row.get("errors", [])
+    if not isinstance(errors, list):
+        message = "cleanup errors must be a JSON array"
+        raise ValueError(message)  # noqa: TRY004
     return CleanupReport(
         complete=t.cast(bool, row.get("complete")),
-        errors=tuple(t.cast(t.Iterable[str], row.get("errors", []))),
+        errors=tuple(t.cast(list[str], errors)),
         processes_absent=t.cast(bool | None, row.get("processes_absent")),
         socket_absent=t.cast(bool | None, row.get("socket_absent")),
         scratch_absent=t.cast(bool | None, row.get("scratch_absent")),
@@ -2695,12 +2701,16 @@ def _environment_from_json(value: object | None) -> EnvironmentReport | None:
     if value is None:
         return None
     row = _json_mapping(value, "environment")
+    command_line = row.get("command_line", [])
+    if not isinstance(command_line, list):
+        message = "environment command_line must be a JSON array"
+        raise ValueError(message)  # noqa: TRY004
     return EnvironmentReport(
         python_version=t.cast(str, row.get("python_version")),
         tmux_version=t.cast(str | None, row.get("tmux_version")),
         cpu_count=t.cast(int | None, row.get("cpu_count")),
         seed=t.cast(int, row.get("seed")),
-        command_line=tuple(t.cast(t.Iterable[str], row.get("command_line", []))),
+        command_line=tuple(t.cast(list[str], command_line)),
         git_revision=t.cast(str | None, row.get("git_revision")),
     )
 
@@ -2801,10 +2811,14 @@ def load_run_report(path: pathlib.Path) -> RunReport:
     """
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, json.JSONDecodeError, RecursionError) as error:
         message = f"report is not complete JSON: {path}"
         raise ValueError(message) from error
-    return run_report_from_json(value)
+    try:
+        return run_report_from_json(value)
+    except TypeError as error:
+        message = f"report has invalid JSON structure: {path}"
+        raise ValueError(message) from error
 
 
 def validate_report(report: RunReport) -> None:
@@ -3037,6 +3051,13 @@ def validate_report(report: RunReport) -> None:
     ):
         message = "completed report may contain completed ramp attempts only"
         raise ValueError(message)
+    if (
+        report.ramp_kind != "none"
+        and report.status == "completed"
+        and (report.error is not None or report.failed_phase is not None)
+    ):
+        message = "completed ramp cannot carry terminal failure metadata"
+        raise ValueError(message)
     if report.ramp_kind != "none" and report.status in terminal_statuses:
         terminals = [step for step in report.ramp if step.status in terminal_statuses]
         aggregate_cutoff = report.status == "cutoff" and not terminals
@@ -3059,6 +3080,9 @@ def validate_report(report: RunReport) -> None:
         else:
             terminal_index = report.ramp.index(terminals[0])
             reason = terminals[0].reason
+            if report.error != reason:
+                message = "aggregate terminal reason must match its terminal attempt"
+                raise ValueError(message)
             if (
                 reason is None
                 or any(
@@ -3086,6 +3110,375 @@ def validate_report(report: RunReport) -> None:
         _validate_executable_report(report)
     if report.ramp_kind != "none" and report.environment is not None:
         _validate_executable_ramp(report)
+
+
+def _validate_artifact_scalar_types(report: RunReport) -> None:
+    """Reject decoded scalar values outside their declared JSON domains.
+
+    Pure in-memory validation remains independent from this path boundary.
+
+    >>> invalid = RunReport(
+    ...     Topology(1, 1, 1), status="failed", error=t.cast(str, {"x": 1})
+    ... )
+    >>> _validate_artifact_scalar_types(invalid)
+    Traceback (most recent call last):
+    ...
+    ValueError: report error must be a string or None
+
+    Parameters
+    ----------
+    report : RunReport
+        Report decoded from a JSON artifact.
+
+    Returns
+    -------
+    None
+        After every rendered string and cleanup scalar has an exact type.
+
+    Raises
+    ------
+    ValueError
+        If a decoded scalar is outside its declared domain.
+    """
+    required_strings: list[tuple[str, object]] = [
+        ("status", report.status),
+        ("ramp_kind", report.ramp_kind),
+    ]
+    optional_strings: list[tuple[str, object]] = [
+        ("run_id", report.run_id),
+        ("lane", report.lane),
+        ("mode", report.mode),
+        ("failed_phase", report.failed_phase),
+        ("error", report.error),
+        ("scratch_path", report.scratch_path),
+        ("socket_path", report.socket_path),
+        ("progress_path", report.progress_path),
+    ]
+    for phase in report.phases:
+        required_strings.extend(
+            (("phase name", phase.name), ("phase status", phase.status))
+        )
+        optional_strings.extend(
+            ("sample error", sample.error) for sample in phase.samples
+        )
+    required_strings.extend(
+        ("process role", identity.role) for identity in report.processes
+    )
+    for step in report.ramp:
+        required_strings.append(("ramp step status", step.status))
+        optional_strings.extend(
+            (
+                ("ramp step reason", step.reason),
+                ("ramp step run_id", step.run_id),
+                ("ramp step report_path", step.report_path),
+                ("ramp step scratch_path", step.scratch_path),
+                ("ramp step socket_path", step.socket_path),
+            )
+        )
+    for decision in (report.guard_decision, report.original_guard_decision):
+        if decision is not None:
+            required_strings.append(("guard kind", decision.kind))
+            optional_strings.append(("guard rule", decision.rule))
+    for label, value in required_strings:
+        if not isinstance(value, str):
+            message = f"report {label} must be a string"
+            raise ValueError(message)  # noqa: TRY004
+    for label, value in optional_strings:
+        if value is not None and not isinstance(value, str):
+            message = f"report {label} must be a string or None"
+            raise ValueError(message)
+
+    if type(report.maximum_completed) is not bool:
+        message = "report maximum_completed must be a bool"
+        raise ValueError(message)
+    for phase in report.phases:
+        for sample in phase.samples:
+            for label, value in (
+                ("accepted", sample.accepted),
+                ("verified", sample.verified),
+            ):
+                if type(value) is not bool:
+                    message = f"raw sample {label} must be a bool"
+                    raise ValueError(message)
+            for label, value in (
+                ("duration_ns", sample.duration_ns),
+                ("ordinal", sample.ordinal),
+            ):
+                if value is not None and type(value) is not int:
+                    message = f"raw sample {label} must be an int or None"
+                    raise ValueError(message)
+        for observation in (*phase.warmup_observations, *phase.observations):
+            if type(observation.verified) is not bool:
+                message = "phase observation verified must be a bool"
+                raise ValueError(message)
+
+    cleanup = report.cleanup
+    if type(cleanup.complete) is not bool:
+        message = "cleanup complete must be a bool"
+        raise ValueError(message)
+    for label, value in (
+        ("processes_absent", cleanup.processes_absent),
+        ("socket_absent", cleanup.socket_absent),
+        ("scratch_absent", cleanup.scratch_absent),
+    ):
+        if value is not None and type(value) is not bool:
+            message = f"cleanup {label} must be a bool or None"
+            raise ValueError(message)
+    if any(not isinstance(error, str) for error in cleanup.errors):
+        message = "cleanup errors must contain strings"
+        raise ValueError(message)
+
+    environment = report.environment
+    if environment is not None:
+        if not isinstance(environment.python_version, str):
+            message = "environment python_version must be a string"
+            raise ValueError(message)
+        for label, value in (
+            ("tmux_version", environment.tmux_version),
+            ("git_revision", environment.git_revision),
+        ):
+            if value is not None and not isinstance(value, str):
+                message = f"environment {label} must be a string or None"
+                raise ValueError(message)
+        if environment.cpu_count is not None and type(environment.cpu_count) is not int:
+            message = "environment cpu_count must be an int or None"
+            raise ValueError(message)
+        if type(environment.seed) is not int:
+            message = "environment seed must be an int"
+            raise ValueError(message)
+        if any(not isinstance(argument, str) for argument in environment.command_line):
+            message = "environment command_line must contain strings"
+            raise ValueError(message)
+
+
+def _aggregate_ramp_cleanup(
+    children: t.Sequence[tuple[Topology, CleanupReport]],
+) -> CleanupReport:
+    """Combine child cleanup evidence without collapsing independent facts.
+
+    >>> cleanup = CleanupReport(
+    ...     False, ("socket remains",), processes_absent=True,
+    ...     socket_absent=False, scratch_absent=None,
+    ... )
+    >>> combined = _aggregate_ramp_cleanup(((Topology(1, 1, 1), cleanup),))
+    >>> combined.errors
+    ('1x1x1: socket remains',)
+    >>> combined.processes_absent, combined.socket_absent, combined.scratch_absent
+    (True, False, None)
+
+    Parameters
+    ----------
+    children : collections.abc.Sequence[tuple[Topology, CleanupReport]]
+        Attempted child shapes and their validated cleanup evidence.
+
+    Returns
+    -------
+    CleanupReport
+        Deterministic aggregate with shape-scoped errors and tri-state facts.
+    """
+
+    def aggregate_fact(attribute: str) -> bool | None:
+        values = tuple(getattr(cleanup, attribute) for _shape, cleanup in children)
+        if all(value is True for value in values):
+            return True
+        if any(value is False for value in values):
+            return False
+        return None
+
+    return CleanupReport(
+        complete=all(cleanup.complete is True for _shape, cleanup in children),
+        errors=tuple(
+            f"{shape}: {error}"
+            for shape, cleanup in children
+            for error in cleanup.errors
+        ),
+        processes_absent=aggregate_fact("processes_absent"),
+        socket_absent=aggregate_fact("socket_absent"),
+        scratch_absent=aggregate_fact("scratch_absent"),
+    )
+
+
+def validate_report_artifact(path: pathlib.Path) -> RunReport:
+    """Load and validate one complete report artifact tree exactly once.
+
+    Ramp children must use parent-relative paths beneath the aggregate's
+    sibling ``<stem>.runs`` directory.  The pure :func:`validate_report`
+    contract remains usable for in-memory checkpoints and fixtures.
+
+    >>> with tempfile.TemporaryDirectory() as directory:
+    ...     path = pathlib.Path(directory) / "report.json"
+    ...     report = RunReport(
+    ...         Topology(1, 1, 1), status="refused",
+    ...         cleanup=CleanupReport(
+    ...             True, processes_absent=True, socket_absent=True,
+    ...             scratch_absent=True,
+    ...         ),
+    ...         run_id="run-7", lane="control", mode="async", warmup=0,
+    ...         runs=1, failed_phase="preflight", error="predictive refusal",
+    ...         guard_decision=GuardDecision(
+    ...             False, "predictive_refusal", "pid_reserve", 2, 1, True,
+    ...             HostSnapshot(),
+    ...         ),
+    ...     )
+    ...     write_json_atomic(path, report)
+    ...     validate_report_artifact(path).status
+    'refused'
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Root JSON report to load and validate.
+
+    Returns
+    -------
+    RunReport
+        Validated root report.
+
+    Raises
+    ------
+    ValueError
+        If the root or any referenced child is missing, malformed, unsafe, or
+        inconsistent with the aggregate.
+    """
+    try:
+        aggregate_path = path.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        message = f"report is missing or inaccessible: {path}"
+        raise ValueError(message) from error
+    aggregate = load_run_report(aggregate_path)
+    _validate_artifact_scalar_types(aggregate)
+    validate_report(aggregate)
+    if aggregate.ramp_kind == "none":
+        if aggregate.status != "in_progress" and aggregate.run_id is None:
+            message = "terminal artifact requires executable run identity"
+            raise ValueError(message)
+        return aggregate
+
+    if aggregate.lane not in {lane.value for lane in EngineLane}:
+        message = "ramp aggregate requires a valid lane"
+        raise ValueError(message)
+    if aggregate.mode not in {mode.value for mode in ExecutionMode}:
+        message = "ramp aggregate requires a valid mode"
+        raise ValueError(message)
+    if type(aggregate.runs) is not int or aggregate.runs <= 0:
+        message = "ramp aggregate requires positive runs"
+        raise ValueError(message)
+    if type(aggregate.warmup) is not int or aggregate.warmup < 0:
+        message = "ramp aggregate requires nonnegative warmup"
+        raise ValueError(message)
+    if aggregate.environment is None or type(aggregate.environment.seed) is not int:
+        message = "ramp aggregate requires an integer seed"
+        raise ValueError(message)
+
+    for step in aggregate.ramp:
+        if step.status == "not_attempted" and any(
+            value is not None
+            for value in (
+                step.run_id,
+                step.report_path,
+                step.scratch_path,
+                step.socket_path,
+            )
+        ):
+            message = (
+                "not_attempted ramp step cannot carry a child artifact or "
+                "resource identity"
+            )
+            raise ValueError(message)
+    attempted_steps = tuple(
+        step for step in aggregate.ramp if step.status != "not_attempted"
+    )
+    resolved_child_root: pathlib.Path | None = None
+    if attempted_steps:
+        child_root = aggregate_path.with_name(f"{aggregate_path.stem}.runs")
+        try:
+            resolved_child_root = child_root.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            message = f"ramp child directory is missing: {child_root.name}"
+            raise ValueError(message) from error
+        if child_root.is_symlink() or not resolved_child_root.is_dir():
+            message = "ramp child directory must be a real sibling directory"
+            raise ValueError(message)
+
+    seen: set[pathlib.Path] = set()
+    loaded_children: list[tuple[RampStep, RunReport]] = []
+    for step_index, step in enumerate(aggregate.ramp):
+        if step.status == "not_attempted":
+            continue
+        if not isinstance(step.report_path, str) or not step.report_path:
+            message = "attempted ramp step requires a string child report_path"
+            raise ValueError(message)
+        serialized = pathlib.Path(step.report_path)
+        if serialized.is_absolute() or ".." in serialized.parts:
+            message = "ramp child report path escapes the sibling ramp runs directory"
+            raise ValueError(message)
+        candidate = aggregate_path.parent / serialized
+        try:
+            child_path = candidate.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            message = f"ramp child report is missing: {step.report_path}"
+            raise ValueError(message) from error
+        if child_path == aggregate_path:
+            message = "artifact cycle detected"
+            raise ValueError(message)
+        assert resolved_child_root is not None
+        if not child_path.is_relative_to(resolved_child_root):
+            message = (
+                "ramp child report path is outside the sibling ramp runs directory"
+            )
+            raise ValueError(message)
+        if child_path in seen:
+            message = "duplicate canonical ramp child report path"
+            raise ValueError(message)
+        seen.add(child_path)
+        child = load_run_report(child_path)
+        _validate_artifact_scalar_types(child)
+        validate_report(child)
+        if child.ramp_kind != "none":
+            message = "nested ramp child reports are not allowed"
+            raise ValueError(message)
+        if child.status not in {"completed", "refused", "failed", "cutoff"}:
+            message = "ramp child report must be terminal"
+            raise ValueError(message)
+        if child.requested_topology != step.shape:
+            message = "ramp child topology differs from its aggregate step"
+            raise ValueError(message)
+        if child.status != step.status:
+            message = "ramp child status differs from its aggregate step"
+            raise ValueError(message)
+        if child.error != step.reason:
+            message = "ramp child reason differs from its aggregate step"
+            raise ValueError(message)
+        for attribute in ("run_id", "scratch_path", "socket_path"):
+            if getattr(child, attribute) != getattr(step, attribute):
+                message = f"ramp child {attribute} differs from its aggregate step"
+                raise ValueError(message)
+        for attribute in ("lane", "mode", "runs", "warmup"):
+            if getattr(child, attribute) != getattr(aggregate, attribute):
+                message = f"ramp child {attribute} differs from its aggregate"
+                raise ValueError(message)
+        expected_seed = aggregate.environment.seed + step_index
+        if child.environment is None or child.environment.seed != expected_seed:
+            message = "ramp child seed differs from its aggregate step"
+            raise ValueError(message)
+        loaded_children.append((step, child))
+
+    completed_children = tuple(
+        child for step, child in loaded_children if step.status == "completed"
+    )
+    expected_observed = (
+        completed_children[-1].observed_topology if completed_children else None
+    )
+    if aggregate.observed_topology != expected_observed:
+        message = "aggregate observed topology differs from completed child evidence"
+        raise ValueError(message)
+    expected_cleanup = _aggregate_ramp_cleanup(
+        tuple((step.shape, child.cleanup) for step, child in loaded_children)
+    )
+    if aggregate.cleanup != expected_cleanup:
+        message = "aggregate cleanup differs from child cleanup evidence"
+        raise ValueError(message)
+    return aggregate
 
 
 def _reachable_group_signatures(
@@ -12074,6 +12467,100 @@ def _format_ns(value: float) -> str:
     return f"{float(value) / 1_000_000:.3f} ms"
 
 
+def _format_cleanup_fact(value: bool | None) -> str:
+    """Render one cleanup fact without conflating unknown with false.
+
+    >>> _format_cleanup_fact(True)
+    'true'
+    >>> _format_cleanup_fact(None)
+    'unknown'
+
+    Parameters
+    ----------
+    value : bool | None
+        Verified absence fact or unavailable evidence.
+
+    Returns
+    -------
+    str
+        Lowercase truth value or ``unknown``.
+    """
+    return "unknown" if value is None else str(value).lower()
+
+
+def _redact_owned_paths(value: str | None, report: RunReport) -> str:
+    """Remove known or explicit absolute local paths from summary prose.
+
+    >>> report = RunReport(Topology(1, 1, 1), scratch_path="/tmp/private")
+    >>> _redact_owned_paths("failed at /tmp/private", report)
+    'failed at [owned path]'
+
+    Parameters
+    ----------
+    value : str | None
+        Terminal or ramp-step reason intended for Markdown.
+    report : RunReport
+        Root report carrying known owned resource identities.
+
+    Returns
+    -------
+    str
+        Reason with owned and remaining absolute path tokens redacted.
+    """
+    if value is None:
+        return ""
+    owned_paths = {
+        path
+        for path in (report.scratch_path, report.socket_path, report.progress_path)
+        if path
+    }
+    owned_paths.update(
+        path
+        for step in report.ramp
+        for path in (step.scratch_path, step.socket_path)
+        if path
+    )
+    redacted = value
+    for owned_path in sorted(owned_paths, key=len, reverse=True):
+        redacted = redacted.replace(owned_path, "[owned path]")
+    redacted = re.sub(
+        r"(?P<quote>['\"])/[^'\"\r\n]+(?P=quote)",
+        lambda match: f"{match.group('quote')}[owned path]{match.group('quote')}",
+        redacted,
+    )
+    redacted = re.sub(r"`/[^`\r\n]+`", "`[owned path]`", redacted)
+    return re.sub(r"(?<![\w.])/(?:[^\r\n|`]+)", "[owned path]", redacted)
+
+
+def _markdown_cell(value: str | None, report: RunReport) -> str:
+    r"""Return redacted single-line text safe inside a Markdown table cell.
+
+    >>> report = RunReport(Topology(1, 1, 1), scratch_path="/tmp/private path")
+    >>> _markdown_cell("bad | row\n`/tmp/private path`", report)
+    'bad \\| row<br>&#96;[owned path]&#96;'
+
+    Parameters
+    ----------
+    value : str | None
+        Reason, error, or relative artifact reference intended for Markdown.
+    report : RunReport
+        Root report carrying modeled owned paths.
+
+    Returns
+    -------
+    str
+        Redacted text with row delimiters and newlines neutralized.
+    """
+    redacted = html.escape(_redact_owned_paths(value, report), quote=False)
+    return (
+        redacted.replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("\n", "<br>")
+        .replace("|", r"\|")
+        .replace("`", "&#96;")
+    )
+
+
 def render_markdown_summary(
     report_path: pathlib.Path,
     output_path: pathlib.Path | None = None,
@@ -12116,11 +12603,28 @@ def render_markdown_summary(
     ValueError
         If JSON or its recomputed report contract is invalid.
     """
-    report = load_run_report(report_path)
-    validate_report(report)
+    report = validate_report_artifact(report_path)
     if report.status == "in_progress":
         message = "cannot render an in-progress report"
         raise ValueError(message)
+    if output_path is not None:
+        try:
+            aggregate_path = report_path.resolve()
+            artifact_paths = {aggregate_path}
+            artifact_paths.update(
+                (aggregate_path.parent / step.report_path).resolve()
+                for step in report.ramp
+                if step.report_path is not None
+            )
+            resolved_output = output_path.resolve()
+        except (OSError, RuntimeError) as error:
+            message = f"Markdown output is missing or inaccessible: {output_path}"
+            raise ValueError(message) from error
+        if resolved_output in artifact_paths:
+            message = (
+                "Markdown output cannot replace the same file in the JSON artifact tree"
+            )
+            raise ValueError(message)
     lines = [
         "# Active orchestration benchmark",
         "",
@@ -12138,19 +12642,41 @@ def render_markdown_summary(
         lines.extend((f"Observed topology: `{report.observed_topology}`", ""))
     if report.lane is not None and report.mode is not None:
         lines.extend((f"Lane: `{report.lane}/{report.mode}`", ""))
+    if report.runs is not None:
+        lines.extend((f"Runs: `{report.runs}`", ""))
+    if report.warmup is not None:
+        lines.extend((f"Warmup: `{report.warmup}`", ""))
+    if report.environment is not None:
+        python_version = _markdown_cell(report.environment.python_version, report)
+        tmux_version = _markdown_cell(report.environment.tmux_version or "n/a", report)
+        revision = _markdown_cell(report.environment.git_revision or "n/a", report)
+        lines.extend(
+            (
+                f"Seed: `{report.environment.seed}`",
+                "",
+                f"Python: `{python_version}`",
+                "",
+                f"tmux: `{tmux_version}`",
+                "",
+                f"Revision: `{revision}`",
+                "",
+            )
+        )
     if report.error is not None:
-        lines.extend((f"Terminal reason: {report.error}", ""))
+        lines.extend((f"Terminal reason: {_markdown_cell(report.error, report)}", ""))
     if report.ramp:
         lines.extend(
             (
                 "## Ramp attempts",
                 "",
-                "| Shape | Status | Reason |",
-                "| --- | --- | --- |",
+                "| Shape | Status | Reason | Child report |",
+                "| --- | --- | --- | --- |",
             )
         )
         lines.extend(
-            f"| `{step.shape}` | `{step.status}` | {step.reason or ''} |"
+            f"| `{step.shape}` | `{step.status}` | "
+            f"{_markdown_cell(step.reason, report)} | "
+            f"{_markdown_cell(step.report_path, report)} |"
             for step in report.ramp
         )
         lines.append("")
@@ -12159,39 +12685,76 @@ def render_markdown_summary(
             (
                 "## Phase timings",
                 "",
-                "| Phase | Status | Samples | Median | p95 |",
-                "| --- | --- | ---: | ---: | ---: |",
+                (
+                    "| Phase | Status | Count | Min | Mean | Median | p90 | p95 | "
+                    "p99 | Max |"
+                ),
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
             )
         )
+        setup_observations: tuple[str, ...] = ()
         for phase in report.phases:
+            accepted = tuple(
+                t.cast(int, sample.duration_ns)
+                for sample in phase.samples
+                if sample.accepted
+            )
             if phase.name == "setup":
-                values = ", ".join(
+                setup_observations = tuple(
                     _format_ns(t.cast(int, sample.duration_ns))
                     for sample in phase.samples
                     if sample.accepted
                 )
                 lines.append(
                     f"| `{phase.name}` | `{phase.status}` | "
-                    f"{len(phase.samples)} individual: {values} | n/a | n/a |"
+                    f"{len(accepted)} | n/a | n/a | n/a | "
+                    "n/a | n/a | n/a | n/a |"
                 )
-            elif phase.summary is None:
-                lines.append(f"| `{phase.name}` | `{phase.status}` | 0 | n/a | n/a |")
-            else:
+            elif accepted:
+                summary = summarize_ns(accepted)
                 lines.append(
                     f"| `{phase.name}` | `{phase.status}` | "
-                    f"{phase.summary['count']} | "
-                    f"{_format_ns(phase.summary['median_ns'])} | "
-                    f"{_format_ns(phase.summary['p95_ns'])} |"
+                    f"{summary['count']} | "
+                    f"{_format_ns(summary['min_ns'])} | "
+                    f"{_format_ns(summary['mean_ns'])} | "
+                    f"{_format_ns(summary['median_ns'])} | "
+                    f"{_format_ns(summary['p90_ns'])} | "
+                    f"{_format_ns(summary['p95_ns'])} | "
+                    f"{_format_ns(summary['p99_ns'])} | "
+                    f"{_format_ns(summary['max_ns'])} |"
+                )
+            else:
+                lines.append(
+                    f"| `{phase.name}` | `{phase.status}` | 0 | n/a | n/a | "
+                    "n/a | n/a | n/a | n/a | n/a |"
                 )
         lines.append("")
+        if setup_observations:
+            values = ", ".join(f"`{value}`" for value in setup_observations)
+            lines.extend((f"Setup individual observations: {values}", ""))
     lines.extend(
         (
             "## Cleanup",
             "",
             f"Verified complete: `{str(report.cleanup.complete).lower()}`",
             "",
+            (
+                "Processes absent: "
+                f"`{_format_cleanup_fact(report.cleanup.processes_absent)}`"
+            ),
+            "",
+            f"Socket absent: `{_format_cleanup_fact(report.cleanup.socket_absent)}`",
+            "",
+            f"Scratch absent: `{_format_cleanup_fact(report.cleanup.scratch_absent)}`",
+            "",
         )
     )
+    if report.cleanup.errors:
+        lines.extend(("Cleanup errors:", ""))
+        lines.extend(
+            f"- {_markdown_cell(error, report)}" for error in report.cleanup.errors
+        )
+        lines.append("")
     rendered = "\n".join(lines)
     if output_path is not None:
         _write_text_atomic(output_path, rendered)
@@ -12316,6 +12879,14 @@ def run_scenario(
                 if capability_error is not None and decision.rule == "pidfd_capability"
                 else f"predictive refusal: {original.rule or 'unknown'}"
             ),
+            environment=EnvironmentReport(
+                python_version=platform.python_version(),
+                tmux_version=None,
+                cpu_count=os.cpu_count(),
+                seed=seed,
+                command_line=("run", "--shape", str(topology)),
+                git_revision=None,
+            ),
         )
         write_json_atomic(output, report)
         validate_report(report)
@@ -12405,7 +12976,7 @@ def _finalize_ramp_aggregation(
                 child.status,
                 child.error,
                 run_id=child.run_id,
-                report_path=str(active_child_output),
+                report_path=active_child_output.relative_to(output.parent).as_posix(),
                 scratch_path=child.scratch_path,
                 socket_path=child.socket_path,
             )
@@ -12444,19 +13015,17 @@ def _finalize_ramp_aggregation(
                         step,
                         reason=final_reason,
                     )
-        cleanup_complete = all(
-            step.status == "not_attempted"
-            or load_run_report(
-                pathlib.Path(t.cast(str, step.report_path))
-            ).cleanup.complete
+        child_cleanups = tuple(
+            (
+                step.shape,
+                load_run_report(
+                    output.parent / pathlib.Path(t.cast(str, step.report_path))
+                ).cleanup,
+            )
             for step in resolved_steps
+            if step.status != "not_attempted"
         )
-        cleanup = CleanupReport(
-            cleanup_complete,
-            processes_absent=cleanup_complete,
-            socket_absent=cleanup_complete,
-            scratch_absent=cleanup_complete,
-        )
+        cleanup = _aggregate_ramp_cleanup(child_cleanups)
         return dataclasses.replace(
             report,
             status=final_status,
@@ -12536,6 +13105,10 @@ def run_ramp(
         ramp=attempts,
         requested_shapes=declared,
         ramp_kind="canonical" if canonical else "custom",
+        lane=lane.value,
+        mode=mode.value,
+        warmup=warmup,
+        runs=runs,
         environment=_collect_environment(
             seed=seed,
             command_line=("ramp", "--shapes", ",".join(map(str, declared))),
@@ -12565,7 +13138,7 @@ def run_ramp(
             ),
             child.error,
             run_id=child.run_id,
-            report_path=str(child_output),
+            report_path=child_output.relative_to(output.parent).as_posix(),
             scratch_path=child.scratch_path,
             socket_path=child.socket_path,
         )
@@ -12919,22 +13492,71 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
     2
     """
     parser.add_argument(
-        "--lane", choices=tuple(lane.value for lane in EngineLane), default="control"
+        "--lane",
+        choices=tuple(lane.value for lane in EngineLane),
+        default="control",
+        help="transport lane; combine with --mode for one of four execution lanes",
     )
     parser.add_argument(
-        "--mode", choices=tuple(mode.value for mode in ExecutionMode), default="async"
+        "--mode",
+        choices=tuple(mode.value for mode in ExecutionMode),
+        default="async",
+        help="dispatch mode paired with --lane",
     )
-    parser.add_argument("--runs", type=int, default=100)
-    parser.add_argument("--warmup", type=int, default=3)
-    parser.add_argument("--seed", type=int, default=11)
-    parser.add_argument("--output", type=pathlib.Path)
-    parser.add_argument("--markdown-output", type=pathlib.Path)
-    parser.add_argument("--scratch-root", type=pathlib.Path)
-    parser.add_argument("--force-extreme", action="store_true")
-    parser.add_argument("--pid-reserve", type=int)
-    parser.add_argument("--memory-floor-bytes", type=int)
-    parser.add_argument("--watchdog-seconds", type=float, default=120.0)
-    parser.add_argument("--cleanup-grace-seconds", type=float, default=2.0)
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=100,
+        help="timed invocations retained per repeatable phase",
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=3,
+        help="untimed invocations before each repeatable phase",
+    )
+    parser.add_argument("--seed", type=int, default=11, help="schedule seed")
+    parser.add_argument(
+        "--output",
+        type=pathlib.Path,
+        help="machine-readable JSON artifact destination",
+    )
+    parser.add_argument(
+        "--markdown-output",
+        type=pathlib.Path,
+        help="local Markdown summary destination",
+    )
+    parser.add_argument(
+        "--scratch-root",
+        type=pathlib.Path,
+        help="parent for private per-run state",
+    )
+    parser.add_argument(
+        "--force-extreme",
+        action="store_true",
+        help=(
+            "relax predictive refusal only; never runtime cutoff, correctness, "
+            "or cleanup"
+        ),
+    )
+    parser.add_argument("--pid-reserve", type=int, help="minimum free PID reserve")
+    parser.add_argument(
+        "--memory-floor-bytes",
+        type=int,
+        help="minimum free memory reserve",
+    )
+    parser.add_argument(
+        "--watchdog-seconds",
+        type=float,
+        default=120.0,
+        help="maximum interval without progress",
+    )
+    parser.add_argument(
+        "--cleanup-grace-seconds",
+        type=float,
+        default=2.0,
+        help="grace interval before exact process escalation",
+    )
     parser.add_argument(
         "--_test-host-snapshot",
         dest="test_host_snapshot",
@@ -13003,7 +13625,7 @@ def _hidden_worker_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: t.Sequence[str] | None = None) -> int:
-    """Run planning, one supervised scenario, a ramp, or the hidden worker.
+    """Plan, run, validate, or render active orchestration evidence.
 
     >>> import contextlib, io
     >>> captured = io.StringIO()
@@ -13035,21 +13657,114 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     if raw_arguments[:1] == ("_worker",):
         worker_arguments = _hidden_worker_parser().parse_args(raw_arguments[1:])
         return _run_hidden_worker(worker_arguments)
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Topology syntax: SxWxP means sessions x windows per session x "
+            "panes per window.\n"
+            "Ramp --shapes accepts comma-separated SxWxP values. --runs retains "
+            "timed samples; --warmup performs untimed calls.\n"
+            "Execution lanes: subprocess/sync, subprocess/async, control/sync, "
+            "and control/async.\n"
+            "Run and ramp write JSON evidence and optional Markdown summaries; "
+            "validate and render consume that evidence.\n"
+            "--force-extreme relaxes predictive refusal only, never runtime "
+            "cutoff, correctness, or cleanup."
+        ),
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     plan_parser = commands.add_parser("plan", help="inspect topology and host limits")
-    plan_parser.add_argument("--shape", required=True)
-    plan_parser.add_argument("--output", type=pathlib.Path)
-    plan_parser.add_argument("--force-extreme", action="store_true")
+    plan_parser.add_argument(
+        "--shape",
+        required=True,
+        help="topology in SxWxP notation",
+    )
+    plan_parser.add_argument(
+        "--output",
+        type=pathlib.Path,
+        help="optional JSON plan destination",
+    )
+    plan_parser.add_argument(
+        "--force-extreme",
+        action="store_true",
+        help="show predictive-refusal override without changing runtime safety",
+    )
     run_parser = commands.add_parser("run", help="run one active topology")
-    run_parser.add_argument("--shape", required=True)
+    run_parser.add_argument(
+        "--shape",
+        required=True,
+        help="topology in SxWxP notation",
+    )
     _add_execution_arguments(run_parser)
     ramp_parser = commands.add_parser("ramp", help="run fresh topologies in order")
-    ramp_parser.add_argument("--shapes")
+    ramp_parser.add_argument(
+        "--shapes",
+        help="comma-separated SxWxP shapes; default is the canonical ramp",
+    )
     _add_execution_arguments(ramp_parser)
+    validate_parser = commands.add_parser(
+        "validate",
+        help="validate a complete JSON artifact tree",
+        description=(
+            "Read-only validation of a complete artifact tree without contacting tmux."
+        ),
+        epilog="Ramp child references are checked without modifying any artifact.",
+    )
+    validate_parser.add_argument(
+        "--input",
+        required=True,
+        type=pathlib.Path,
+        help="complete JSON report artifact",
+    )
+    render_parser = commands.add_parser(
+        "render",
+        help="render a complete JSON artifact tree as Markdown",
+        description="Validate a complete artifact tree before rendering Markdown.",
+        epilog=(
+            "With --output, Markdown is replaced atomically only after validation; "
+            "without it, Markdown is written to stdout."
+        ),
+    )
+    render_parser.add_argument(
+        "--input",
+        required=True,
+        type=pathlib.Path,
+        help="complete JSON report artifact",
+    )
+    render_parser.add_argument(
+        "--output",
+        type=pathlib.Path,
+        help="atomic Markdown destination; omit for stdout",
+    )
     arguments = parser.parse_args(raw_arguments)
     if arguments.command == "plan":
         return run_plan(arguments.shape, arguments.output, arguments.force_extreme)
+    if arguments.command == "validate":
+        try:
+            report = validate_report_artifact(arguments.input)
+        except (OSError, TypeError, ValueError) as error:
+            print(f"invalid benchmark artifact: {error}", file=sys.stderr)
+            return 2
+        if report.status == "in_progress":
+            print(
+                "invalid benchmark artifact: report is still in-progress",
+                file=sys.stderr,
+            )
+            return 2
+        print(f"Status: {report.status}")
+        print(f"Requested topology: {report.requested_topology}")
+        print(f"Observed topology: {report.observed_topology or 'n/a'}")
+        return 0
+    if arguments.command == "render":
+        try:
+            rendered = render_markdown_summary(arguments.input, arguments.output)
+        except (OSError, TypeError, ValueError) as error:
+            print(f"invalid benchmark artifact: {error}", file=sys.stderr)
+            return 2
+        if arguments.output is None:
+            print(rendered)
+        return 0
     policy = ResourcePolicy(
         persistent_clients=(1 if arguments.lane == "control" else 0),
         pid_reserve=arguments.pid_reserve,
