@@ -101,6 +101,46 @@ def _run_cli(*arguments: str, cwd: pathlib.Path) -> subprocess.CompletedProcess[
     )
 
 
+def _run_pep723_script(
+    script: pathlib.Path,
+    *arguments: str,
+    cwd: pathlib.Path,
+) -> subprocess.CompletedProcess[str]:
+    """Run one PEP 723 script without project or virtual-environment state."""
+    environment = os.environ.copy()
+    for name in (
+        "CONDA_PREFIX",
+        "PYTHONPATH",
+        "TMUX",
+        "TMUX_PANE",
+        "UV_CONFIG_FILE",
+        "UV_ENV_FILE",
+        "UV_PROJECT_ENVIRONMENT",
+        "UV_WORKSPACE",
+        "VIRTUAL_ENV",
+    ):
+        environment.pop(name, None)
+    return subprocess.run(
+        (
+            "uv",
+            "run",
+            "--no-config",
+            "--no-env-file",
+            "--isolated",
+            "--no-project",
+            "--script",
+            str(script),
+            *arguments,
+        ),
+        cwd=cwd,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+
+
 def _start_cli(*arguments: str, cwd: pathlib.Path) -> subprocess.Popen[str]:
     """Start the real benchmark so a test can interrupt its supervisor."""
     environment = os.environ.copy()
@@ -378,6 +418,1534 @@ def completed_report(benchmark_module: types.ModuleType) -> t.Any:
         ),
         maximum_completed=True,
     )
+
+
+def _completed_executable_report(
+    benchmark_module: types.ModuleType,
+    shape: t.Any,
+    ordinal: int,
+    *,
+    seed: int = 11,
+    lane: str = "subprocess",
+    mode: str = "sync",
+) -> t.Any:
+    """Build one fully schema-valid completed executable child artifact."""
+    run_id = f"child-{ordinal}"
+    scratch_path = f"scratch-{ordinal}"
+    socket_path = f"{scratch_path}/tmux.sock"
+    owner = benchmark_module.ProcessIdentity(
+        "server",
+        200_000 + ordinal,
+        300_000 + ordinal,
+    )
+    ownership = benchmark_module._SocketOwnership(
+        owner,
+        benchmark_module.SocketIdentity(
+            7,
+            10 + ordinal,
+            os.getuid(),
+            stat.S_IFSOCK | 0o600,
+            20 + ordinal,
+        ),
+    )
+    setup = benchmark_module.PhaseReport(
+        "setup",
+        shape,
+        shape,
+        samples=(
+            benchmark_module.RawSample(
+                1_000_000,
+                True,
+                verified=True,
+                strategy="setup",
+                ordinal=0,
+            ),
+        ),
+        status="completed",
+        runs=1,
+        observations=(benchmark_module.PhaseObservation(0, "setup", 1_000_000),),
+    )
+    stabilization = benchmark_module.PhaseReport(
+        "stabilization",
+        shape,
+        shape,
+        status="completed",
+        observations=(
+            benchmark_module.PhaseObservation(
+                0,
+                "stabilization",
+                2_000_000,
+                pane_count=shape.panes,
+            ),
+        ),
+    )
+
+    def completed_phase(name: str) -> t.Any:
+        observation_kwargs: dict[str, int] = {}
+        if name.startswith("enumeration."):
+            kind = name.removeprefix("enumeration.")
+            observation_kwargs["row_count"] = {
+                "sessions": shape.sessions,
+                "windows": shape.windows,
+                "panes": shape.panes,
+            }[kind]
+        elif name.startswith("capture."):
+            observation_kwargs.update(
+                pane_count=shape.panes,
+                line_count=shape.panes,
+                byte_count=shape.panes,
+            )
+        elif name.startswith("search."):
+            observation_kwargs.update(scanned_count=1, matched_count=1)
+        return benchmark_module.PhaseReport(
+            name,
+            shape,
+            shape,
+            samples=(
+                benchmark_module.RawSample(
+                    3_000_000,
+                    True,
+                    verified=True,
+                    strategy=name,
+                    ordinal=0,
+                ),
+            ),
+            summary={
+                "count": 1,
+                "min_ns": 3_000_000,
+                "mean_ns": 3_000_000,
+                "median_ns": 3_000_000,
+                "p90_ns": 3_000_000,
+                "p95_ns": 3_000_000,
+                "p99_ns": 3_000_000,
+                "max_ns": 3_000_000,
+            },
+            status="completed",
+            warmup=0,
+            runs=1,
+            observations=(
+                benchmark_module.PhaseObservation(
+                    0,
+                    name,
+                    3_000_000,
+                    **observation_kwargs,
+                ),
+            ),
+        )
+
+    phases = tuple(
+        (
+            setup
+            if name == "setup"
+            else stabilization
+            if name == "stabilization"
+            else benchmark_module.PhaseReport(
+                name,
+                shape,
+                shape,
+                status="not_applicable",
+                warmup=0,
+                runs=1,
+            )
+            if name == "wait.control-stream" and (lane, mode) != ("control", "async")
+            else completed_phase(name)
+        )
+        for name in _RUNNER_PHASES
+    )
+    report = benchmark_module.RunReport(
+        shape,
+        observed_topology=shape,
+        status="completed",
+        phases=phases,
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        run_id=run_id,
+        lane=lane,
+        mode=mode,
+        warmup=0,
+        runs=1,
+        processes=(owner,),
+        socket_ownership=ownership,
+        scratch_path=scratch_path,
+        socket_path=socket_path,
+        progress_path=f"progress-{ordinal}.jsonl",
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, seed, ("run",), None
+        ),
+    )
+    benchmark_module.validate_report(report)
+    return report
+
+
+def _terminal_executable_report(
+    benchmark_module: types.ModuleType,
+    shape: t.Any,
+    ordinal: int,
+    status: str,
+    *,
+    reason: str | None = None,
+    lane: str = "subprocess",
+    mode: str = "sync",
+    warmup: int = 0,
+    runs: int = 1,
+    seed: int = 11,
+) -> t.Any:
+    """Build one fully schema-valid unsuccessful executable child artifact."""
+    reason = reason or f"{status} child {ordinal}"
+    cleanup = benchmark_module.CleanupReport(
+        True,
+        processes_absent=True,
+        socket_absent=True,
+        scratch_absent=True,
+    )
+    if status == "refused":
+        report = benchmark_module.RunReport(
+            shape,
+            status="refused",
+            cleanup=cleanup,
+            guard_decision=benchmark_module.GuardDecision(
+                False,
+                "predictive_refusal",
+                "pid_reserve",
+                2,
+                1,
+                True,
+                benchmark_module.HostSnapshot(),
+            ),
+            run_id=f"child-{ordinal}",
+            lane=lane,
+            mode=mode,
+            warmup=warmup,
+            runs=runs,
+            failed_phase="preflight",
+            error=reason,
+            environment=benchmark_module.EnvironmentReport(
+                "3.10", None, 1, seed, ("run",), None
+            ),
+        )
+    else:
+        report = benchmark_module.RunReport(
+            shape,
+            status=status,
+            cleanup=cleanup,
+            run_id=f"child-{ordinal}",
+            lane=lane,
+            mode=mode,
+            warmup=warmup,
+            runs=runs,
+            failed_phase="cancellation" if status == "cutoff" else "setup",
+            error=reason,
+            scratch_path=f"scratch-{ordinal}",
+            socket_path=f"scratch-{ordinal}/tmux.sock",
+            progress_path=f"progress-{ordinal}.jsonl",
+            environment=benchmark_module.EnvironmentReport(
+                "3.10", None, 1, seed, ("run",), None
+            ),
+        )
+    benchmark_module.validate_report(report)
+    return report
+
+
+def _write_completed_ramp_artifact(
+    benchmark_module: types.ModuleType,
+    output: pathlib.Path,
+    shapes: tuple[t.Any, ...],
+) -> tuple[t.Any, tuple[pathlib.Path, ...]]:
+    """Write one completed aggregate and fully valid relative child reports."""
+    child_root = output.with_name(f"{output.stem}.runs")
+    children: list[t.Any] = []
+    child_paths: list[pathlib.Path] = []
+    steps: list[t.Any] = []
+    for ordinal, shape in enumerate(shapes, start=1):
+        child = _completed_executable_report(
+            benchmark_module,
+            shape,
+            ordinal,
+            seed=11 + ordinal - 1,
+        )
+        child_path = child_root / f"{ordinal - 1:02d}-{shape}.json"
+        benchmark_module.write_json_atomic(child_path, child)
+        relative = child_path.relative_to(output.parent).as_posix()
+        children.append(child)
+        child_paths.append(child_path)
+        steps.append(
+            benchmark_module.RampStep(
+                shape,
+                "completed",
+                run_id=child.run_id,
+                report_path=relative,
+                scratch_path=child.scratch_path,
+                socket_path=child.socket_path,
+            )
+        )
+    aggregate = benchmark_module.RunReport(
+        shapes[-1],
+        observed_topology=children[-1].observed_topology,
+        status="completed",
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        ramp=tuple(steps),
+        requested_shapes=shapes,
+        ramp_kind="custom",
+        lane="subprocess",
+        mode="sync",
+        warmup=0,
+        runs=1,
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("ramp",), None
+        ),
+    )
+    benchmark_module.write_json_atomic(output, aggregate)
+    return aggregate, tuple(child_paths)
+
+
+def test_validate_report_artifact_loads_complete_relative_child_tree_once(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Skipping, rereading, or misresolving a child would weaken the evidence tree."""
+    output = tmp_path / "ramp.json"
+    aggregate, child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (
+            benchmark_module.Topology(1, 1, 1),
+            benchmark_module.Topology(2, 1, 1),
+        ),
+    )
+    reads: dict[pathlib.Path, int] = {}
+    real_read_text = pathlib.Path.read_text
+
+    def count_read(path: pathlib.Path, *args: t.Any, **kwargs: t.Any) -> str:
+        canonical = path.resolve()
+        reads[canonical] = reads.get(canonical, 0) + 1
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", count_read)
+
+    loaded = benchmark_module.validate_report_artifact(output)
+
+    assert loaded == aggregate
+    assert reads == {
+        output.resolve(): 1,
+        **{child.resolve(): 1 for child in child_paths},
+    }
+
+
+def test_validate_report_artifact_rejects_nonexecutable_terminal_report(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Artifact validation must not publish a generic in-memory terminal value."""
+    report = completed_report(benchmark_module)
+    output = tmp_path / "generic.json"
+    benchmark_module.validate_report(report)
+    benchmark_module.write_json_atomic(output, report)
+
+    with pytest.raises(ValueError, match="executable"):
+        benchmark_module.validate_report_artifact(output)
+
+
+def test_validate_report_artifact_rejects_traversal_and_invalid_child(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A ramp reference cannot escape its sibling tree or admit malformed JSON."""
+    root = tmp_path / "evidence"
+    output = root / "ramp.json"
+    aggregate, child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (benchmark_module.Topology(1, 1, 1),),
+    )
+    outside = tmp_path / "outside.json"
+    child_paths[0].replace(outside)
+    escaped = dataclasses.replace(
+        aggregate,
+        ramp=(
+            dataclasses.replace(
+                aggregate.ramp[0],
+                report_path="../outside.json",
+            ),
+        ),
+    )
+    benchmark_module.write_json_atomic(output, escaped)
+
+    with pytest.raises(ValueError, match=r"outside.*ramp.*runs|escape"):
+        benchmark_module.validate_report_artifact(output)
+
+    invalid_child = output.with_name(f"{output.stem}.runs") / "bad.json"
+    invalid_child.parent.mkdir(parents=True, exist_ok=True)
+    invalid_child.write_text("{not-json\n", encoding="utf-8")
+    invalid = dataclasses.replace(
+        aggregate,
+        ramp=(
+            dataclasses.replace(
+                aggregate.ramp[0],
+                report_path=invalid_child.relative_to(output.parent).as_posix(),
+            ),
+        ),
+    )
+    benchmark_module.write_json_atomic(output, invalid)
+
+    with pytest.raises(ValueError, match="complete JSON"):
+        benchmark_module.validate_report_artifact(output)
+
+
+@pytest.mark.parametrize("location", ("root", "child", "output"))
+def test_validate_report_artifact_normalizes_python310_symlink_loop(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    location: str,
+) -> None:
+    """A Python 3.10 resolve loop must become a stable artifact error."""
+    output = tmp_path / "ramp.json"
+    _aggregate, child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (benchmark_module.Topology(1, 1, 1),),
+    )
+    markdown = tmp_path / "summary.md"
+    trigger = (
+        output
+        if location == "root"
+        else child_paths[0]
+        if location == "child"
+        else markdown
+    )
+    real_resolve = pathlib.Path.resolve
+
+    def raise_python310_loop(
+        path: pathlib.Path,
+        strict: bool = False,
+    ) -> pathlib.Path:
+        if path == trigger:
+            message = "Symlink loop from '/evidence'"
+            raise RuntimeError(message)
+        return real_resolve(path, strict=strict)
+
+    monkeypatch.setattr(pathlib.Path, "resolve", raise_python310_loop)
+
+    with pytest.raises(ValueError, match=r"missing|inaccessible"):
+        if location == "output":
+            benchmark_module.render_markdown_summary(output, markdown)
+        else:
+            benchmark_module.validate_report_artifact(output)
+
+
+def test_public_validate_and_render_fail_concisely_and_preserve_output(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Invalid public evidence must return two without traceback or replacement."""
+    invalid = tmp_path / "invalid.json"
+    destination = tmp_path / "summary.md"
+    invalid.write_text("{not-json\n", encoding="utf-8")
+    destination.write_text("retained\n", encoding="utf-8")
+
+    validated = _run_cli("validate", "--input", str(invalid), cwd=tmp_path)
+    rendered = _run_cli(
+        "render",
+        "--input",
+        str(invalid),
+        "--output",
+        str(destination),
+        cwd=tmp_path,
+    )
+
+    for completed in (validated, rendered):
+        assert completed.returncode == 2
+        assert "invalid benchmark artifact" in completed.stderr
+        assert "Traceback" not in completed.stderr
+    assert destination.read_text(encoding="utf-8") == "retained\n"
+
+
+def test_markdown_phase_table_has_full_statistics_and_partial_count(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Dropping a statistic or accepted partial row would misstate local evidence."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    setup = benchmark_module.PhaseReport(
+        "setup",
+        shape,
+        shape,
+        samples=(
+            benchmark_module.RawSample(
+                1_000_000,
+                True,
+                verified=True,
+                strategy="setup",
+                ordinal=0,
+            ),
+        ),
+        status="completed",
+        runs=1,
+        observations=(benchmark_module.PhaseObservation(0, "setup", 1_000_000),),
+    )
+    stabilization = benchmark_module.PhaseReport(
+        "stabilization",
+        shape,
+        shape,
+        status="completed",
+        observations=(
+            benchmark_module.PhaseObservation(
+                0,
+                "stabilization",
+                1_500_000,
+                pane_count=shape.panes,
+            ),
+        ),
+    )
+    partial = benchmark_module.PhaseReport(
+        "mutation.bulk",
+        shape,
+        shape,
+        samples=tuple(
+            benchmark_module.RawSample(
+                duration,
+                True,
+                verified=True,
+                strategy="mutation.bulk",
+                ordinal=ordinal,
+            )
+            for ordinal, duration in enumerate((2_000_000, 4_000_000))
+        ),
+        status="failed",
+        runs=3,
+        observations=tuple(
+            benchmark_module.PhaseObservation(
+                ordinal,
+                "mutation.bulk",
+                duration,
+            )
+            for ordinal, duration in enumerate((2_000_000, 4_000_000))
+        ),
+    )
+    report = benchmark_module.RunReport(
+        shape,
+        observed_topology=shape,
+        status="failed",
+        phases=(setup, stabilization, partial),
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        run_id="partial-1",
+        lane="subprocess",
+        mode="sync",
+        warmup=0,
+        runs=3,
+        failed_phase="mutation.bulk",
+        error="injected partial phase",
+        scratch_path="scratch-partial-1",
+        socket_path="scratch-partial-1/tmux.sock",
+        progress_path="progress-partial-1.jsonl",
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("run",), None
+        ),
+    )
+    report_path = tmp_path / "partial.json"
+    benchmark_module.write_json_atomic(report_path, report)
+
+    markdown = benchmark_module.render_markdown_summary(report_path)
+
+    assert (
+        "| Phase | Status | Count | Min | Mean | Median | p90 | p95 | p99 | Max |"
+        in markdown
+    )
+    assert (
+        "| `setup` | `completed` | 1 | n/a | n/a | n/a | n/a | n/a | n/a | n/a |"
+    ) in markdown
+    assert "Setup individual observations: `1.000 ms`" in markdown
+    assert (
+        "| `mutation.bulk` | `failed` | 2 | 2.000 ms | 3.000 ms | 3.000 ms | "
+        "4.000 ms | 4.000 ms | 4.000 ms | 4.000 ms |"
+    ) in markdown
+
+
+def test_validate_report_artifact_accepts_all_not_attempted_without_child_dir(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A pre-child interruption has no child directory to resolve or require."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    reason = "KeyboardInterrupt: before first child"
+    report = benchmark_module.RunReport(
+        shape,
+        status="cutoff",
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        ramp=(benchmark_module.RampStep(shape, "not_attempted", reason),),
+        requested_shapes=(shape,),
+        ramp_kind="custom",
+        lane="subprocess",
+        mode="sync",
+        warmup=0,
+        runs=1,
+        error=reason,
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("ramp",), None
+        ),
+    )
+    output = tmp_path / "ramp.json"
+    benchmark_module.write_json_atomic(output, report)
+
+    assert benchmark_module.validate_report_artifact(output) == report
+    assert not output.with_name("ramp.runs").exists()
+
+
+def test_public_validate_rejects_non_string_child_path_without_traceback(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A malformed JSON path type must remain a concise artifact error."""
+    output = tmp_path / "ramp.json"
+    _aggregate, _children = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (benchmark_module.Topology(1, 1, 1),),
+    )
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    payload["ramp"][0]["report_path"] = 42
+    output.write_text(json.dumps(payload), encoding="utf-8")
+
+    completed = _run_cli("validate", "--input", str(output), cwd=tmp_path)
+
+    assert completed.returncode == 2
+    assert "invalid benchmark artifact" in completed.stderr
+    assert "report_path" in completed.stderr
+    assert "Traceback" not in completed.stderr
+
+
+def test_public_render_rejects_output_aliasing_input_without_overwrite(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Markdown output must never atomically replace its source JSON evidence."""
+    report_path = tmp_path / "report.json"
+    benchmark_module.write_json_atomic(
+        report_path,
+        _completed_executable_report(
+            benchmark_module,
+            benchmark_module.Topology(1, 1, 1),
+            1,
+        ),
+    )
+    original = report_path.read_bytes()
+
+    completed = _run_cli(
+        "render",
+        "--input",
+        str(report_path),
+        "--output",
+        str(report_path),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 2
+    assert "same file" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert report_path.read_bytes() == original
+
+
+def test_public_render_rejects_output_aliasing_child_json_without_overwrite(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Markdown output cannot replace any child in the validated JSON tree."""
+    report_path = tmp_path / "ramp.json"
+    _aggregate, child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        report_path,
+        (benchmark_module.Topology(1, 1, 1),),
+    )
+    child_path = child_paths[0]
+    original = child_path.read_bytes()
+
+    completed = _run_cli(
+        "render",
+        "--input",
+        str(report_path),
+        "--output",
+        str(child_path),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 2
+    assert "JSON artifact tree" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert child_path.read_bytes() == original
+
+
+def test_ramp_markdown_retains_relative_child_references_only(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A ramp summary must stay auditable without leaking local absolute paths."""
+    output = tmp_path / "ramp.json"
+    aggregate, _children = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (benchmark_module.Topology(1, 1, 1),),
+    )
+
+    markdown = benchmark_module.render_markdown_summary(output)
+
+    assert "| Shape | Status | Reason | Child report |" in markdown
+    assert t.cast(str, aggregate.ramp[0].report_path) in markdown
+    assert str(tmp_path) not in markdown
+
+
+def test_markdown_includes_run_environment_and_exact_cleanup_without_owned_paths(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A summary must identify the run and cleanup without leaking owned paths."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    report = dataclasses.replace(
+        _completed_executable_report(benchmark_module, shape, 1),
+        scratch_path=str(tmp_path / "owned-scratch"),
+        socket_path=str(tmp_path / "owned-scratch" / "tmux.sock"),
+        progress_path=str(tmp_path / "progress.jsonl"),
+    )
+    report_path = tmp_path / "run.json"
+    benchmark_module.write_json_atomic(report_path, report)
+
+    markdown = benchmark_module.render_markdown_summary(report_path)
+
+    for expected in (
+        "Runs: `1`",
+        "Warmup: `0`",
+        "Seed: `11`",
+        "Python: `3.10`",
+        "tmux: `n/a`",
+        "Revision: `n/a`",
+        "Processes absent: `true`",
+        "Socket absent: `true`",
+        "Scratch absent: `true`",
+    ):
+        assert expected in markdown
+    assert str(tmp_path / "owned-scratch") not in markdown
+    assert str(tmp_path / "progress.jsonl") not in markdown
+
+
+def test_markdown_escapes_environment_metadata(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Environment strings cannot terminate inline code or inject raw HTML."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    hostile = "v`|\n<script>&"
+    report = _completed_executable_report(benchmark_module, shape, 1)
+    assert report.environment is not None
+    report = dataclasses.replace(
+        report,
+        environment=dataclasses.replace(
+            report.environment,
+            python_version=hostile,
+            tmux_version=hostile,
+            git_revision=hostile,
+        ),
+    )
+    report_path = tmp_path / "run.json"
+    benchmark_module.write_json_atomic(report_path, report)
+
+    markdown = benchmark_module.render_markdown_summary(report_path)
+
+    assert markdown.count(r"v&#96;\|<br>&lt;script&gt;&amp;") == 3
+    assert "<script>" not in markdown
+
+
+def test_markdown_uses_unknown_for_unverified_cleanup_facts(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Missing cleanup evidence must say unknown instead of spelling Python None."""
+    report = dataclasses.replace(
+        _terminal_executable_report(
+            benchmark_module,
+            benchmark_module.Topology(1, 1, 1),
+            1,
+            "failed",
+        ),
+        cleanup=benchmark_module.CleanupReport(False),
+    )
+    report_path = tmp_path / "failed.json"
+    benchmark_module.write_json_atomic(report_path, report)
+
+    markdown = benchmark_module.render_markdown_summary(report_path)
+
+    assert markdown.count("`unknown`") == 3
+    assert "`none`" not in markdown
+
+
+def test_markdown_redacts_owned_paths_from_terminal_and_step_reasons(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Failure prose cannot leak owned local paths already modeled as evidence."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    output = tmp_path / "ramp.json"
+    child_path = output.with_name("ramp.runs") / "00-1x1x1.json"
+    scratch = str(tmp_path / "private scratch")
+    socket_path = str(tmp_path / "private scratch" / "tmux.sock")
+    progress = str(tmp_path / "private progress.jsonl")
+    unknown = str(tmp_path / "unmodeled evidence" / "detail.json")
+    reason = (
+        f"failed | pipe\n| forged | `{scratch}` socket={socket_path} "
+        f"progress={progress} unknown='{unknown}'"
+    )
+    child = dataclasses.replace(
+        _terminal_executable_report(
+            benchmark_module,
+            shape,
+            1,
+            "failed",
+            reason=reason,
+        ),
+        scratch_path=scratch,
+        socket_path=socket_path,
+        progress_path=progress,
+    )
+    benchmark_module.write_json_atomic(child_path, child)
+    report = benchmark_module.RunReport(
+        shape,
+        status="failed",
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        ramp=(
+            benchmark_module.RampStep(
+                shape,
+                "failed",
+                reason,
+                run_id=child.run_id,
+                report_path=child_path.relative_to(output.parent).as_posix(),
+                scratch_path=scratch,
+                socket_path=socket_path,
+            ),
+        ),
+        requested_shapes=(shape,),
+        ramp_kind="custom",
+        lane="subprocess",
+        mode="sync",
+        warmup=0,
+        runs=1,
+        error=reason,
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("ramp",), None
+        ),
+    )
+    benchmark_module.write_json_atomic(output, report)
+
+    markdown = benchmark_module.render_markdown_summary(output)
+
+    assert "[owned path]" in markdown
+    assert r"failed \| pipe<br>\| forged \| &#96;[owned path]&#96;" in markdown
+    assert "\n| forged |" not in markdown
+    for owned_path in (scratch, socket_path, progress, unknown):
+        assert owned_path not in markdown
+    assert t.cast(str, report.ramp[0].report_path) in markdown
+
+
+def test_validate_report_artifact_rejects_duplicate_canonical_child_paths(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Distinct serialized aliases cannot reuse one canonical child artifact."""
+    output = tmp_path / "ramp.json"
+    aggregate, child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (
+            benchmark_module.Topology(1, 1, 1),
+            benchmark_module.Topology(2, 1, 1),
+        ),
+    )
+    alias = child_paths[0].with_name("alias.json")
+    alias.symlink_to(child_paths[0].name)
+    duplicate = dataclasses.replace(
+        aggregate,
+        ramp=(
+            aggregate.ramp[0],
+            dataclasses.replace(
+                aggregate.ramp[1],
+                report_path=alias.relative_to(output.parent).as_posix(),
+            ),
+        ),
+    )
+    benchmark_module.write_json_atomic(output, duplicate)
+
+    with pytest.raises(ValueError, match="duplicate canonical"):
+        benchmark_module.validate_report_artifact(output)
+
+
+def test_validate_report_artifact_rejects_cycle_nested_and_nonterminal_children(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A child must be one terminal scenario, never a cycle or another ramp."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    for kind in ("cycle", "nested", "nonterminal"):
+        case_root = tmp_path / kind
+        output = case_root / "ramp.json"
+        _aggregate, child_paths = _write_completed_ramp_artifact(
+            benchmark_module,
+            output,
+            (shape,),
+        )
+        child_path = child_paths[0]
+        if kind == "cycle":
+            child_path.unlink()
+            child_path.symlink_to(output)
+            expected = "cycle"
+        elif kind == "nested":
+            reason = "KeyboardInterrupt: nested"
+            nested = benchmark_module.RunReport(
+                shape,
+                status="cutoff",
+                cleanup=benchmark_module.CleanupReport(
+                    True,
+                    processes_absent=True,
+                    socket_absent=True,
+                    scratch_absent=True,
+                ),
+                ramp=(benchmark_module.RampStep(shape, "not_attempted", reason),),
+                requested_shapes=(shape,),
+                ramp_kind="custom",
+                error=reason,
+                environment=benchmark_module.EnvironmentReport(
+                    "3.10", None, 1, 11, ("ramp",), None
+                ),
+            )
+            benchmark_module.write_json_atomic(child_path, nested)
+            expected = "nested ramp"
+        else:
+            benchmark_module.write_json_atomic(
+                child_path,
+                benchmark_module.RunReport(shape),
+            )
+            expected = "terminal"
+
+        with pytest.raises(ValueError, match=expected):
+            benchmark_module.validate_report_artifact(output)
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "topology",
+        "status",
+        "reason",
+        "run_id",
+        "scratch_path",
+        "socket_path",
+        "observed_topology",
+    ),
+)
+def test_validate_report_artifact_crosschecks_child_and_aggregate_fields(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    field: str,
+) -> None:
+    """A copied or stale child field cannot disagree with its aggregate row."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    output = tmp_path / "ramp.json"
+    aggregate, child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (shape,),
+    )
+    child = _completed_executable_report(benchmark_module, shape, 1)
+    if field == "topology":
+        child = _completed_executable_report(
+            benchmark_module,
+            benchmark_module.Topology(2, 1, 1),
+            1,
+        )
+    elif field == "status":
+        child = _terminal_executable_report(
+            benchmark_module,
+            shape,
+            1,
+            "cutoff",
+        )
+    elif field == "observed_topology":
+        aggregate = dataclasses.replace(
+            aggregate,
+            observed_topology=benchmark_module.Topology(2, 1, 1),
+        )
+    else:
+        aggregate = dataclasses.replace(
+            aggregate,
+            ramp=(dataclasses.replace(aggregate.ramp[0], **{field: "stale"}),),
+        )
+    benchmark_module.write_json_atomic(child_paths[0], child)
+    benchmark_module.write_json_atomic(output, aggregate)
+
+    expected = "observed topology" if field == "observed_topology" else field
+    with pytest.raises(ValueError, match=expected):
+        benchmark_module.validate_report_artifact(output)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("lane", "control"),
+        ("mode", "async"),
+        ("runs", 2),
+        ("warmup", 1),
+        ("seed", 10),
+    ),
+)
+def test_validate_report_artifact_crosschecks_child_execution_metadata(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    field: str,
+    value: str | int,
+) -> None:
+    """A valid child cannot be attributed to a different aggregate execution."""
+    output = tmp_path / "ramp.json"
+    aggregate, _child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (benchmark_module.Topology(1, 1, 1),),
+    )
+    if field == "seed":
+        assert aggregate.environment is not None
+        aggregate = dataclasses.replace(
+            aggregate,
+            environment=dataclasses.replace(aggregate.environment, seed=value),
+        )
+    else:
+        aggregate = dataclasses.replace(aggregate, **{field: value})
+    benchmark_module.write_json_atomic(output, aggregate)
+
+    with pytest.raises(ValueError, match=field):
+        benchmark_module.validate_report_artifact(output)
+
+
+@pytest.mark.parametrize("field", ("error", "failed_phase"))
+def test_validate_report_rejects_completed_ramp_failure_metadata(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    field: str,
+) -> None:
+    """A completed aggregate cannot retain stale terminal-failure metadata."""
+    output = tmp_path / "ramp.json"
+    aggregate, _child_paths = _write_completed_ramp_artifact(
+        benchmark_module,
+        output,
+        (benchmark_module.Topology(1, 1, 1),),
+    )
+    invalid = dataclasses.replace(aggregate, **{field: "stale failure"})
+
+    with pytest.raises(ValueError, match="completed ramp"):
+        benchmark_module.validate_report(invalid)
+
+
+def test_public_render_rejects_deeply_nested_json_without_traceback(
+    tmp_path: pathlib.Path,
+) -> None:
+    """JSON recursion limits remain a concise error and preserve the destination."""
+    report_path = tmp_path / "deep.json"
+    markdown_path = tmp_path / "summary.md"
+    report_path.write_text("[" * 2_000 + "]" * 2_000, encoding="utf-8")
+    markdown_path.write_text("retained\n", encoding="utf-8")
+
+    completed = _run_cli(
+        "render",
+        "--input",
+        str(report_path),
+        "--output",
+        str(markdown_path),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 2
+    assert "invalid benchmark artifact" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert markdown_path.read_text(encoding="utf-8") == "retained\n"
+
+
+def test_validate_report_artifact_rejects_not_attempted_resource_identity(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An unattempted step cannot claim a run, artifact, scratch, or socket."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    reason = "KeyboardInterrupt: before child"
+    report = benchmark_module.RunReport(
+        shape,
+        status="cutoff",
+        cleanup=benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        ),
+        ramp=(
+            benchmark_module.RampStep(
+                shape,
+                "not_attempted",
+                reason,
+                run_id="invented",
+            ),
+        ),
+        requested_shapes=(shape,),
+        ramp_kind="custom",
+        lane="subprocess",
+        mode="sync",
+        warmup=0,
+        runs=1,
+        error=reason,
+        environment=benchmark_module.EnvironmentReport(
+            "3.10", None, 1, 11, ("ramp",), None
+        ),
+    )
+    output = tmp_path / "ramp.json"
+    benchmark_module.write_json_atomic(output, report)
+
+    with pytest.raises(ValueError, match=r"not_attempted.*resource identity"):
+        benchmark_module.validate_report_artifact(output)
+
+
+def test_run_ramp_serializes_parent_relative_child_report_paths(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Relocating a complete ramp tree must not retain its original parent path."""
+    output = tmp_path / "ramp.json"
+    real_write = benchmark_module.write_json_atomic
+
+    def complete_child(shape: t.Any, **kwargs: t.Any) -> t.Any:
+        return _write_completed_ramp_child(
+            benchmark_module,
+            shape,
+            kwargs["output"],
+            1,
+            real_write,
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
+            seed=kwargs["seed"],
+        )
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", complete_child)
+
+    report = benchmark_module.run_ramp(
+        (benchmark_module.Topology(1, 1, 1),),
+        runs=1,
+        warmup=0,
+        output=output,
+    )
+
+    assert report.ramp[0].report_path == "ramp.runs/00-1x1x1.json"
+    assert (report.lane, report.mode, report.runs, report.warmup) == (
+        "control",
+        "async",
+        1,
+        0,
+    )
+    assert benchmark_module.validate_report_artifact(output) == report
+
+
+def test_run_ramp_preserves_componentwise_child_cleanup_evidence(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Aggregate cleanup must retain each proven fact and scoped child error."""
+    output = tmp_path / "ramp.json"
+    child_socket = tmp_path / "scratch-1" / "tmux.sock"
+    child_error = f"socket remains at {child_socket}"
+
+    def fail_child(shape: t.Any, **kwargs: t.Any) -> t.Any:
+        child = dataclasses.replace(
+            _terminal_executable_report(
+                benchmark_module,
+                shape,
+                1,
+                "failed",
+                reason="injected failure",
+            ),
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
+            warmup=kwargs["warmup"],
+            runs=kwargs["runs"],
+            scratch_path=str(child_socket.parent),
+            socket_path=str(child_socket),
+            environment=benchmark_module.EnvironmentReport(
+                "3.10", None, 1, kwargs["seed"], ("run",), None
+            ),
+            cleanup=benchmark_module.CleanupReport(
+                False,
+                (child_error,),
+                processes_absent=True,
+                socket_absent=False,
+                scratch_absent=False,
+            ),
+        )
+        benchmark_module.validate_report(child)
+        benchmark_module.write_json_atomic(kwargs["output"], child)
+        return child
+
+    monkeypatch.setattr(benchmark_module, "run_scenario", fail_child)
+
+    report = benchmark_module.run_ramp(
+        (benchmark_module.Topology(1, 1, 1),),
+        runs=1,
+        warmup=0,
+        output=output,
+    )
+
+    assert report.cleanup == benchmark_module.CleanupReport(
+        False,
+        (f"1x1x1: {child_error}",),
+        processes_absent=True,
+        socket_absent=False,
+        scratch_absent=False,
+    )
+    markdown = output.with_suffix(".md").read_text(encoding="utf-8")
+    assert "1x1x1: socket remains at [owned path]" in markdown
+    assert str(tmp_path) not in markdown
+
+
+@pytest.mark.parametrize("status", ("completed", "refused", "failed", "cutoff"))
+def test_public_validate_accepts_truthful_terminal_statuses(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    status: str,
+) -> None:
+    """Validation reports every truthful terminal status and topology explicitly."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    report = (
+        _completed_executable_report(benchmark_module, shape, 1)
+        if status == "completed"
+        else _terminal_executable_report(benchmark_module, shape, 1, status)
+    )
+    report_path = tmp_path / f"{status}.json"
+    benchmark_module.write_json_atomic(report_path, report)
+
+    completed = _run_cli("validate", "--input", str(report_path), cwd=tmp_path)
+
+    assert completed.returncode == 0, completed.stderr
+    assert f"Status: {status}" in completed.stdout
+    assert "Requested topology: 1x1x1" in completed.stdout
+    assert "Observed topology:" in completed.stdout
+
+
+def test_public_validate_and_render_reject_in_progress_artifact(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A checkpoint cannot be presented as terminal validation or Markdown."""
+    report_path = tmp_path / "checkpoint.json"
+    benchmark_module.write_json_atomic(
+        report_path,
+        benchmark_module.RunReport(benchmark_module.Topology(1, 1, 1)),
+    )
+
+    for command in ("validate", "render"):
+        completed = _run_cli(command, "--input", str(report_path), cwd=tmp_path)
+        assert completed.returncode == 2
+        assert "in-progress" in completed.stderr
+        assert "Traceback" not in completed.stderr
+
+
+@pytest.mark.parametrize("field", ("ramp", "requested_shapes", "phases", "processes"))
+def test_public_validate_rejects_malformed_json_container_without_traceback(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    field: str,
+) -> None:
+    """Wrong JSON container types stay inside the public artifact-error boundary."""
+    report_path = tmp_path / f"invalid-{field}.json"
+    payload = benchmark_module._json_value(completed_report(benchmark_module))
+    assert isinstance(payload, dict)
+    payload[field] = 42
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    completed = _run_cli("validate", "--input", str(report_path), cwd=tmp_path)
+
+    assert completed.returncode == 2
+    assert "invalid benchmark artifact" in completed.stderr
+    assert "Traceback" not in completed.stderr
+
+
+def test_public_artifact_apis_normalize_malformed_json_container(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Direct validation and rendering expose malformed evidence as ValueError."""
+    report_path = tmp_path / "invalid-ramp.json"
+    payload = benchmark_module._json_value(completed_report(benchmark_module))
+    assert isinstance(payload, dict)
+    payload["ramp"] = 42
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid JSON structure"):
+        benchmark_module.validate_report_artifact(report_path)
+    with pytest.raises(ValueError, match="invalid JSON structure"):
+        benchmark_module.render_markdown_summary(report_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("error", {"detail": "boom"}),
+        ("scratch_path", 42),
+        ("environment.python_version", ["3.10"]),
+        ("environment.command_line", "run"),
+        ("cleanup.errors", [{"detail": "socket remains"}]),
+        ("cleanup.errors", "socket remains"),
+        ("cleanup.complete", "yes"),
+        ("cleanup.processes_absent", "yes"),
+    ),
+)
+def test_public_render_rejects_malformed_rendered_scalar_without_traceback(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    field: str,
+    value: object,
+) -> None:
+    """Malformed rendered values must return two without replacing Markdown."""
+    shape = benchmark_module.Topology(1, 1, 1)
+    report_path = tmp_path / "failed.json"
+    markdown_path = tmp_path / "failed.md"
+    payload = benchmark_module._json_value(
+        _terminal_executable_report(benchmark_module, shape, 1, "failed")
+    )
+    assert isinstance(payload, dict)
+    target = payload
+    pieces = field.split(".")
+    for piece in pieces[:-1]:
+        nested = target[piece]
+        assert isinstance(nested, dict)
+        target = nested
+    target[pieces[-1]] = value
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+    markdown_path.write_text("retained\n", encoding="utf-8")
+
+    completed = _run_cli(
+        "render",
+        "--input",
+        str(report_path),
+        "--output",
+        str(markdown_path),
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 2
+    assert "invalid benchmark artifact" in completed.stderr
+    assert "Traceback" not in completed.stderr
+    assert markdown_path.read_text(encoding="utf-8") == "retained\n"
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "maximum_completed",
+        "sample.accepted",
+        "sample.verified",
+        "sample.duration_ns",
+        "observation.verified",
+    ),
+)
+def test_artifact_validation_rejects_non_exact_execution_scalars(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    case: str,
+) -> None:
+    """JSON truthiness cannot impersonate bool or integer execution evidence."""
+    shape = benchmark_module.Topology(100, 100, 4)
+    report = _completed_executable_report(benchmark_module, shape, 1)
+    if case == "sample.duration_ns":
+        failed = _terminal_executable_report(
+            benchmark_module,
+            shape,
+            1,
+            "failed",
+            reason="setup failed",
+        )
+        failed_phase = benchmark_module.PhaseReport(
+            "setup",
+            shape,
+            None,
+            samples=(
+                benchmark_module.RawSample(
+                    True,
+                    False,
+                    error="setup failed",
+                    strategy="setup",
+                    ordinal=0,
+                ),
+            ),
+            status="failed",
+            runs=1,
+        )
+        report = dataclasses.replace(failed, phases=(failed_phase,))
+    payload = benchmark_module._json_value(report)
+    assert isinstance(payload, dict)
+    if case == "maximum_completed":
+        payload[case] = "yes"
+    elif case == "sample.duration_ns":
+        phase = payload["phases"][0]
+        phase["samples"][0]["duration_ns"] = True
+    else:
+        phase = payload["phases"][2]
+        kind, field = case.split(".")
+        collection = "samples" if kind == "sample" else "observations"
+        phase[collection][0][field] = "yes"
+    report_path = tmp_path / f"invalid-{case}.json"
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be"):
+        benchmark_module.validate_report_artifact(report_path)
+
+
+def test_public_render_writes_stdout_or_atomic_output(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Rendering supports terminal stdout and explicit durable file workflows."""
+    report_path = tmp_path / "completed.json"
+    markdown_path = tmp_path / "completed.md"
+    benchmark_module.write_json_atomic(
+        report_path,
+        _completed_executable_report(
+            benchmark_module,
+            benchmark_module.Topology(1, 1, 1),
+            1,
+        ),
+    )
+
+    stdout = _run_cli("render", "--input", str(report_path), cwd=tmp_path)
+    output = _run_cli(
+        "render",
+        "--input",
+        str(report_path),
+        "--output",
+        str(markdown_path),
+        cwd=tmp_path,
+    )
+
+    assert stdout.returncode == 0, stdout.stderr
+    assert stdout.stdout.startswith("# Active orchestration benchmark")
+    assert output.returncode == 0, output.stderr
+    assert output.stdout == ""
+    assert markdown_path.read_text(encoding="utf-8").startswith(
+        "# Active orchestration benchmark"
+    )
+
+
+def test_public_help_describes_evidence_and_execution_contract(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Help must expose every public choice without leaking private protocols."""
+    help_by_command = {
+        arguments: _run_cli(*arguments, cwd=tmp_path).stdout
+        for arguments in (
+            ("--help",),
+            ("run", "--help"),
+            ("ramp", "--help"),
+            ("validate", "--help"),
+            ("render", "--help"),
+        )
+    }
+    help_text = "\n".join(help_by_command.values())
+
+    for expected in (
+        "SxWxP",
+        "comma-separated",
+        "--runs",
+        "--warmup",
+        "subprocess/sync",
+        "subprocess/async",
+        "control/sync",
+        "control/async",
+        "JSON",
+        "Markdown",
+        "predictive refusal",
+        "runtime cutoff",
+        "correctness",
+        "cleanup",
+    ):
+        assert expected in help_text
+    assert "_worker" not in help_text
+    assert "_test-" not in help_text
+    validate_help = help_by_command[("validate", "--help")].lower()
+    render_help = help_by_command[("render", "--help")].lower()
+    assert "read-only" in validate_help
+    assert "complete artifact tree" in validate_help
+    assert "atomic" in render_help
+    assert "after validation" in render_help
+
+
+def test_benchmark_plan_runs_as_clean_isolated_pep723_script(
+    tmp_path: pathlib.Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The standalone plan path must not need a checkout environment or write state."""
+    poison_root = tmp_path_factory.mktemp("pep723-poison")
+    config_path = poison_root / "uv.toml"
+    config_path.write_text("not valid uv configuration", encoding="utf-8")
+    env_path = poison_root / ".env"
+    env_path.write_text("TMUX=poison\nTMUX_PANE=%9\n", encoding="utf-8")
+    monkeypatch.setenv("UV_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("UV_ENV_FILE", str(env_path))
+    monkeypatch.setenv("TMUX", "poison")
+    monkeypatch.setenv("TMUX_PANE", "%9")
+
+    completed = _run_pep723_script(
+        _benchmark_script(),
+        "plan",
+        "--shape",
+        "1x1x1",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Sessions" in completed.stdout
+    assert tuple(tmp_path.iterdir()) == ()
+
+
+def test_fuzzer_preview_runs_as_clean_isolated_pep723_script(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A zero-duration preview must resolve PEP 723 dependencies without state."""
+    fuzzer = _benchmark_script().with_name("orchestration_fuzzer.py")
+
+    completed = _run_pep723_script(
+        fuzzer,
+        "preview",
+        "--duration",
+        "0",
+        cwd=tmp_path,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert tuple(tmp_path.iterdir()) == ()
 
 
 def test_write_json_atomic_replaces_complete_report(
@@ -713,6 +2281,7 @@ def test_validate_report_rejects_contradictory_ramp_terminal_sequence(
     report = dataclasses.replace(
         completed_report(benchmark_module),
         status="cutoff",
+        error="pid_reserve",
         maximum_completed=False,
         ramp_kind="custom",
         requested_shapes=shapes,
@@ -794,6 +2363,7 @@ def test_validate_report_accepts_exact_terminal_ramp_sequence(
     report = dataclasses.replace(
         completed_report(benchmark_module),
         status=status,
+        error=reason,
         maximum_completed=False,
         ramp_kind="custom",
         requested_shapes=shapes,
@@ -805,6 +2375,31 @@ def test_validate_report_accepts_exact_terminal_ramp_sequence(
     )
 
     benchmark_module.validate_report(report)
+
+
+@pytest.mark.parametrize("aggregate_error", (None, "different reason"))
+def test_validate_report_rejects_terminal_ramp_reason_mismatch(
+    benchmark_module: types.ModuleType,
+    aggregate_error: str | None,
+) -> None:
+    """A ramp aggregate cannot contradict its terminal child reason."""
+    shapes = tuple(benchmark_module.Topology(1, 1, panes) for panes in (1, 2))
+    reason = "failed child"
+    report = dataclasses.replace(
+        completed_report(benchmark_module),
+        status="failed",
+        error=aggregate_error,
+        maximum_completed=False,
+        ramp_kind="custom",
+        requested_shapes=shapes,
+        ramp=(
+            benchmark_module.RampStep(shapes[0], "failed", reason),
+            benchmark_module.RampStep(shapes[1], "not_attempted", reason),
+        ),
+    )
+
+    with pytest.raises(ValueError, match=r"aggregate.*reason"):
+        benchmark_module.validate_report(report)
 
 
 def test_validate_report_rejects_invalid_runtime_attempt_status(
@@ -4788,7 +6383,6 @@ def test_worker_group_preserves_seeded_round_robin_strategy_order(
 def test_worker_group_failure_retains_only_invoked_terminal_prefix(
     benchmark_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: pathlib.Path,
 ) -> None:
     """A failed interleaved strategy must not create any uninvoked phase row."""
     topology = benchmark_module.Topology(1, 1, 1)
@@ -4868,14 +6462,7 @@ def test_worker_group_failure_retains_only_invoked_terminal_prefix(
         failed_phase="gamma",
         error="RuntimeError: gamma failed",
     )
-    report_path = tmp_path / "partial.json"
-    markdown_path = tmp_path / "partial.md"
-    benchmark_module.write_json_atomic(report_path, terminal)
     benchmark_module.validate_report(terminal)
-    assert "gamma" in benchmark_module.render_markdown_summary(
-        report_path, markdown_path
-    )
-    assert markdown_path.exists()
 
 
 def test_worker_group_checkpoints_keep_only_one_active_interleaved_row(
@@ -5325,7 +6912,9 @@ def test_cli_ramp_uses_fresh_owned_resources_for_every_shape(
     assert all(not pathlib.Path(path).exists() for path in scratch_paths)
     assert all(not pathlib.Path(path).exists() for path in socket_paths)
     child_reports = [
-        json.loads(pathlib.Path(step["report_path"]).read_text(encoding="utf-8"))
+        json.loads(
+            (report_path.parent / step["report_path"]).read_text(encoding="utf-8")
+        )
         for step in payload["ramp"]
     ]
     assert [child["run_id"] for child in child_reports] == run_ids
@@ -8165,29 +9754,19 @@ def _write_completed_ramp_child(
     output: pathlib.Path,
     ordinal: int,
     write: t.Callable[[pathlib.Path, t.Any], None],
+    *,
+    lane: str,
+    mode: str,
+    seed: int,
 ) -> t.Any:
     """Write one complete fake child artifact while keeping aggregation real."""
-    child = benchmark_module.RunReport(
+    child = _completed_executable_report(
+        benchmark_module,
         shape,
-        observed_topology=shape,
-        status="completed",
-        cleanup=benchmark_module.CleanupReport(
-            True,
-            processes_absent=True,
-            socket_absent=True,
-            scratch_absent=True,
-        ),
-        run_id=f"child-{ordinal}",
-        lane="control",
-        mode="async",
-        warmup=0,
-        runs=1,
-        scratch_path=f"scratch-{ordinal}",
-        socket_path=f"scratch-{ordinal}/tmux.sock",
-        progress_path=f"progress-{ordinal}.jsonl",
-        environment=benchmark_module.EnvironmentReport(
-            "3.10", None, 1, 11, ("run",), None
-        ),
+        ordinal,
+        seed=seed,
+        lane=lane,
+        mode=mode,
     )
     write(output, child)
     return child
@@ -8267,6 +9846,9 @@ def test_ramp_interrupt_between_child_return_and_step_mutation_preserves_child(
             kwargs["output"],
             1,
             real_write,
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
+            seed=kwargs["seed"],
         )
         return InterruptingChild(child)
 
@@ -8319,6 +9901,9 @@ def test_ramp_interrupt_during_child_checkpoint_write_preserves_completed_prefix
             kwargs["output"],
             child_ordinal,
             real_write,
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
+            seed=kwargs["seed"],
         )
 
     def interrupt_checkpoint(path: pathlib.Path, value: t.Any) -> None:
@@ -8385,6 +9970,9 @@ def test_ramp_interrupt_after_last_child_preserves_every_completed_attempt(
             kwargs["output"],
             child_ordinal,
             real_write,
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
+            seed=kwargs["seed"],
         )
 
     def interrupt_render(
@@ -8437,27 +10025,13 @@ def test_ramp_cancellation_during_aggregation_is_durable(
     def fake_run_scenario(shape: t.Any, **kwargs: t.Any) -> t.Any:
         nonlocal next_run
         next_run += 1
-        child = benchmark_module.RunReport(
+        child = _completed_executable_report(
+            benchmark_module,
             shape,
-            observed_topology=shape,
-            status="completed",
-            cleanup=benchmark_module.CleanupReport(
-                True,
-                processes_absent=True,
-                socket_absent=True,
-                scratch_absent=True,
-            ),
-            run_id=f"child-{next_run}",
-            lane="control",
-            mode="async",
-            warmup=0,
-            runs=1,
-            scratch_path=f"scratch-{next_run}",
-            socket_path=f"scratch-{next_run}/tmux.sock",
-            progress_path=f"progress-{next_run}.jsonl",
-            environment=benchmark_module.EnvironmentReport(
-                "3.10", None, 1, 11, ("run",), None
-            ),
+            next_run,
+            seed=kwargs["seed"],
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
         )
         real_write(kwargs["output"], child)
         return child
@@ -8525,28 +10099,17 @@ def test_ramp_reraises_same_child_cancellation_after_durable_aggregation(
     def cancel_child(shape: t.Any, **kwargs: t.Any) -> t.NoReturn:
         nonlocal child_output
         child_output = kwargs["output"]
-        child = benchmark_module.RunReport(
+        child = _terminal_executable_report(
+            benchmark_module,
             shape,
-            status="cutoff",
-            cleanup=benchmark_module.CleanupReport(
-                True,
-                processes_absent=True,
-                socket_absent=True,
-                scratch_absent=True,
-            ),
-            run_id="child-cancelled",
-            lane="control",
-            mode="async",
-            warmup=0,
-            runs=1,
-            failed_phase="cancellation",
-            error="KeyboardInterrupt: child cancellation",
-            scratch_path="child-scratch",
-            socket_path="child-scratch/tmux.sock",
-            progress_path="child-progress.jsonl",
-            environment=benchmark_module.EnvironmentReport(
-                "3.10", None, 1, 11, ("run",), None
-            ),
+            1,
+            "cutoff",
+            reason="KeyboardInterrupt: child cancellation",
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
+            warmup=kwargs["warmup"],
+            runs=kwargs["runs"],
+            seed=kwargs["seed"],
         )
         benchmark_module.write_json_atomic(child_output, child)
         raise interruption
@@ -8619,20 +10182,17 @@ def test_ramp_late_interrupt_preserves_existing_child_terminal_state(
 
     def terminal_child(shape: t.Any, **kwargs: t.Any) -> t.Any:
         reason = f"existing {child_status} reason"
-        scratch_path = None if child_status == "refused" else f"{child_status}-scratch"
-        child = benchmark_module.RunReport(
+        child = _terminal_executable_report(
+            benchmark_module,
             shape,
-            status=child_status,
-            cleanup=benchmark_module.CleanupReport(
-                True,
-                processes_absent=True,
-                socket_absent=True,
-                scratch_absent=True,
-            ),
-            error=reason,
-            run_id=f"child-{child_status}",
-            scratch_path=scratch_path,
-            socket_path=(None if scratch_path is None else f"{scratch_path}/tmux.sock"),
+            1,
+            child_status,
+            reason=reason,
+            lane=kwargs["lane"].value,
+            mode=kwargs["mode"].value,
+            warmup=kwargs["warmup"],
+            runs=kwargs["runs"],
+            seed=kwargs["seed"],
         )
         benchmark_module.write_json_atomic(kwargs["output"], child)
         return child
@@ -8865,7 +10425,9 @@ def test_cli_ramp_phase_failure_marks_later_shapes_not_attempted(
     ]
     assert payload["ramp"][0]["reason"] == payload["ramp"][1]["reason"]
     child = json.loads(
-        pathlib.Path(payload["ramp"][0]["report_path"]).read_text(encoding="utf-8")
+        (report_path.parent / payload["ramp"][0]["report_path"]).read_text(
+            encoding="utf-8"
+        )
     )
     assert child["failed_phase"] == "setup"
     _assert_terminal_cleanup(child)
