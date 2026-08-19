@@ -74,32 +74,40 @@ and 2,000 panes at an identical 87 lines per pane.
 Raising the ceiling needs harness changes, not a larger machine: timeouts scaled
 to topology, and a capture phase that does not require one round trip per pane.
 
-## Open defect: stale-socket check rejects on mtime
+## Fixed: stale-socket check rejected on tmux's own mode churn
 
-`SocketIdentity` carries `st_mtime_ns`, and `_remove_proven_stale_socket`
-compares whole identity values. Modification time is not an identity attribute —
-it advances whenever the socket is used — so a socket whose device, inode, owner,
-and mode are unchanged is still reported as
-`configured socket ownership changed`, and the stale node is left in place.
+The cleanup defect was upstream behaviour, not a race, and not the timestamp it
+first appeared to be.
 
-Deterministic reproduction, no tmux required: bind a Unix socket, capture its
-identity, advance its mtime by one millisecond with `os.utime`, then call
-`_remove_proven_stale_socket` with an ownership record whose process is provably
-absent. It returns `configured socket ownership changed` and leaves the socket
-present, while device, inode, owner, and mode all compare equal.
+`server_update_socket()` in tmux sets the socket's execute bits while any
+session is attached and clears them when none is. Measured directly: a socket is
+mode 0600 with no client, 0700 while a control client is attached, and 0600
+again after it detaches, with **mtime unchanged throughout** — only ctime moves,
+because the mechanism is `chmod`, not `utimes`. `SocketIdentity` compared the
+complete mode, so an ordinary attach or detach read as a different socket and
+cleanup refused to remove a node it owned. That is why control lanes, which hold
+a persistent client, were the ones affected, and why the incidence tracked run
+length rather than filesystem.
 
-Observed effect on real runs: an intermittent terminal `failed` status with
-`failed_phase` of `cleanup`, in an artifact whose own retained `cleanup` object
-simultaneously reports `complete` true and `socket_absent` true. That
-self-contradiction is the signature. It struck roughly half of the longer runs
-and is independent of whether the scratch root sits under `/tmp` or a home
-directory; an early guess that the filesystem mattered came from a single
-observation per location and does not survive the full tally.
+Two earlier readings were wrong and are recorded because both were plausible:
 
-Suggested fix, not yet implemented: compare the stable inode identity — device,
-inode, owner, and mode — and keep `st_mtime_ns` as retained evidence rather than
-as an equality key. Any change here needs a red test first, since this code
-guards against deleting a socket the run does not own.
+- *"It is an mtime race."* A synthetic probe advancing mtime did reproduce the
+  rejection, but only because mtime was one member of an over-specified tuple.
+  In real runs mtime never moved.
+- *"Put scratch under `/tmp`."* Across the full tally `/tmp` failed once in four
+  and a home directory failed three times in seven. The location never mattered;
+  that conclusion came from one observation per location.
+
+The fix compares device, inode, owner, file type, and modification time, and
+excludes permission bits alone. Modification time stays load-bearing: the
+retained inode-reuse regressions distinguish an original node from a later
+replacement by timestamp only, and dropping it broke them. Both directions have
+red proofs — comparing whole modes breaks the attach case, dropping mtime breaks
+reuse detection — so the exclusion is exactly minimal.
+
+This finding is about tmux rather than libtmux and is worth carrying into the
+tmux notes: any tool that fingerprints a tmux socket by whole mode will see
+phantom ownership changes whenever a client attaches or detaches.
 
 ## First cross-lane result
 
@@ -143,13 +151,25 @@ Search families differ by three orders of magnitude — 1.8 ms for in-memory
 snapshot filtering, tens of milliseconds server-side, and roughly a second
 end-to-end — which is why the report must never present them as one number.
 
-## Not implemented: the classic ORM reference
+## Implemented: the classic ORM reference
 
-The design promises optional ORM cells measuring `server.sessions`,
-`server.windows`, and `server.panes` as a reference alongside the typed
-operations. No such cells exist in the runner. Note the naming trap: the
-`classic` search family means tmux server-side format filtering, not the classic
-ORM, so the presence of `search.classic.*` does not satisfy this.
+`--with-orm` adds `enumeration.orm.sessions`, `enumeration.orm.windows`, and
+`enumeration.orm.panes`, interleaved with the typed enumeration cells they are
+compared against. Every sample must return exactly the rows the typed operation
+returns, which is the only reason the reference is comparable at all.
+
+The reference is not a fifth lane. `Server` reaches tmux through its own request
+graph whichever engine a run measures, so its timing is never folded into an
+engine speedup claim.
+
+An artifact records the choice as `orm`, and the required phase graph,
+interleaving groups, and fuzzer service budget are all derived from that
+declaration rather than from a fixed 38-phase constant. The report schema moved
+to 3 for this reason.
+
+The naming trap that hid the gap: the `classic` *search* family means tmux
+server-side format filtering, not the classic ORM, so `search.classic.*` looked
+like the promise was already kept.
 
 ## How to run this safely
 
@@ -179,23 +199,35 @@ A cost model taken from single-run cells underestimated the subprocess lanes by
 about 80 percent, because warmup iterations cost more than steady-state ones.
 Project matrix wall time from a real matrix, not from single-run timings.
 
-## Outstanding before this is a reliable estate-wide benchmark
+## What the lane comparison may claim
 
-1. **Fix the stale-socket mtime comparison.** Until then roughly half of longer
-   cells terminate `failed` on cleanup despite completing every phase, which
-   corrupts any matrix summary that keys off overall status. Red test first.
-2. **Implement the ORM reference cells**, or delete the promise from the design
-   document. Today the third comparison cannot be made at all.
-3. **Raise the sample count for the lane comparison.** Two samples cannot
-   support the percentile columns the renderer prints. A four-lane cell at 15
-   runs projects to roughly 44 minutes from per-iteration cost, but that
-   projection is unreliable in the direction of underestimating, so measure it.
-4. **Decide what the lane comparison is allowed to claim.** The subprocess lanes
-   spend most of their time in capture, so a whole-iteration ratio mostly
-   reports capture. Per-phase ratios are the defensible unit.
-5. **Add a matrix-level renderer.** `matrix.json` currently holds per-cell
-   summaries; there is no rendered cross-lane artifact equivalent to the
-   single-cell Markdown report.
-6. **Re-establish raw evidence durably.** The published n=100 raw JSON was lost
+The unit is the individual phase, never a summed iteration. Capture dominates
+every lane's iteration, so a summed ratio is mostly a report about capture
+wearing a label about transports.
+
+The first four-cell evidence shows why that matters. Async control mode wins
+`mutation.bulk` by roughly 140 times and `capture.batched` by roughly 20, while
+the subprocess lanes win every enumeration and every search phase by 1.1 to 3.2
+times. Both halves are true, and a single number reports neither. The rendered
+report therefore names the winning cell per phase, reports slowest over fastest
+as spread, and states that a per-phase ratio speaks only about that phase's
+request pattern on that transport, on this host, at this topology.
+
+Percentile columns are gated on sample count: a percentile at quantile `q` needs
+at least `1 / (1 - q)` observations before it is anything other than the maximum
+relabelled. Two samples render a median alone.
+
+## Still outstanding
+
+1. **Publish a high-sample lane comparison.** A four-cell run at 20 timed
+   samples is the first that can support p90 and p95; p99 needs 100 and is far
+   more expensive. Project its wall time from a real matrix — a model built from
+   single-run cells underestimated the subprocess lanes by about 80 percent,
+   because warmup iterations cost more than steady-state ones.
+2. **Re-establish raw evidence durably.** The published n=100 raw JSON was lost
    to a host restart because it lived in a temporary directory. Only the
-   committed renderer output survives.
+   committed renderer output survives, and it still hashes to the value recorded
+   when the artifact validated.
+3. **Consider gating percentiles in the single-cell renderer too.** The matrix
+   renderer now suppresses percentiles the sample count cannot support; the
+   per-cell Markdown report still prints p95 and p99 unconditionally.
