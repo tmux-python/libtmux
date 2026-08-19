@@ -4760,6 +4760,7 @@ def test_verify_topology_requires_pulse_safe_pane_width(
                 pid=9_999_991,
                 fields={
                     "pane_dead": "0",
+                    "history_limit": "512",
                     "pane_start_command": ("exec tail -n 0 -f delayed-match.log"),
                 },
             ),
@@ -4778,6 +4779,73 @@ def test_verify_topology_requires_pulse_safe_pane_width(
         with pytest.raises(
             benchmark_module.TopologyVerificationError,
             match="pane width",
+        ):
+            benchmark_module.verify_topology(context, snapshot)
+
+
+@pytest.mark.parametrize(
+    ("history_limit", "accepted"),
+    (
+        (None, False),
+        (False, False),
+        ("invalid", False),
+        ("511", False),
+        ("512", True),
+    ),
+)
+def test_verify_topology_requires_exact_retained_history_limit(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    history_limit: object,
+    accepted: bool,
+) -> None:
+    """Every pane must expose at least the closed 512-row retention bound."""
+    stream = pathlib.Path("delayed-match.log")
+    context = types.SimpleNamespace(
+        topology=benchmark_module.Topology(1, 1, 1),
+        expected_session_names=("bench-s000",),
+        expected_window_names=("bench-s000-w000",),
+        expected_window_parents=(("bench-s000-w000", "bench-s000"),),
+        streams=(stream,),
+        processes=(),
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        process_identity_callback=None,
+        topology_verified=False,
+    )
+    fields: dict[str, t.Any] = {
+        "pane_dead": "0",
+        "pane_start_command": "exec tail -n 0 -f delayed-match.log",
+    }
+    if history_limit is not None:
+        fields["history_limit"] = history_limit
+    snapshot = benchmark_module.TopologySnapshot(
+        sessions=(SessionSnapshot(session_id="$0", name="bench-s000"),),
+        windows=(
+            WindowSnapshot(window_id="@0", name="bench-s000-w000", session_id="$0"),
+        ),
+        panes=(
+            PaneSnapshot(
+                pane_id="%0",
+                window_id="@0",
+                session_id="$0",
+                width=64,
+                pid=9_999_991,
+                fields=fields,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "_record_process",
+        lambda role, pid: benchmark_module.ProcessIdentity(role, pid, 1),
+    )
+
+    if accepted:
+        assert benchmark_module.verify_topology(context, snapshot) is snapshot
+    else:
+        with pytest.raises(
+            benchmark_module.TopologyVerificationError,
+            match="history limit",
         ):
             benchmark_module.verify_topology(context, snapshot)
 
@@ -5697,6 +5765,48 @@ def test_pane_epoch_wait_chunks_large_topology_and_retries_only_stale_pane(
     assert [operation.render()[-2:] for operation in measured.operations] == [
         ("-S", "-64")
     ] * 130
+
+
+def test_content_capture_plan_prioritizes_delayed_pane_and_bounds_batches(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """The retention-critical pane must finish before bounded ordinary chunks."""
+    pane_ids = tuple(f"%{ordinal}" for ordinal in range(131))
+    delayed_pane_id = pane_ids[65]
+    context = types.SimpleNamespace(
+        pane_ids=pane_ids,
+        delayed_pane_id=delayed_pane_id,
+    )
+
+    plan, planner = benchmark_module._content_capture_plan(context)
+    operations = plan.operations
+    target_order = tuple(operation.target.value for operation in operations)
+
+    assert target_order == (
+        delayed_pane_id,
+        *tuple(pane_id for pane_id in pane_ids if pane_id != delayed_pane_id),
+    )
+    assert operations[0].start == -512
+    assert operations[0].join_wrapped is True
+    assert all(operation.start == -8 for operation in operations[1:])
+    assert all(operation.join_wrapped is False for operation in operations[1:])
+    assert [len(step.indices) for step in planner.plan(operations)] == [1, 64, 64, 2]
+
+
+def test_wait_retention_constants_prove_exact_closed_history_bound(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Worst-case wrapping and production cadence must fit retained history."""
+    assert benchmark_module._WAIT_CAPTURE_HISTORY_LINES == 512
+    assert benchmark_module._WAIT_SENTINEL_ROWS_MAX == 7
+    assert benchmark_module._WAIT_DELAYED_RECORD_ROWS_MAX == 2
+    assert benchmark_module._WAIT_EPOCH_PULSE_ROWS == 1
+    assert benchmark_module._WAIT_POST_SENTINEL_RECORDS_MAX == 121
+    assert benchmark_module._WAIT_RETENTION_ROWS_REQUIRED == 370
+    assert (
+        benchmark_module._WAIT_RETENTION_ROWS_REQUIRED
+        < benchmark_module._WAIT_CAPTURE_HISTORY_LINES
+    )
 
 
 @pytest.mark.parametrize("mode", ("sync", "async"))
@@ -7155,39 +7265,6 @@ def test_repeated_wait_async_strategies_use_one_active_topology(
     assert cleanup.complete, cleanup.errors
 
 
-def _request_content_sentinel(
-    benchmark_module: types.ModuleType,
-    context: t.Any,
-    request_id: str,
-) -> str:
-    """Request one Task 1 sentinel and wait outside content-search timing."""
-    requested_ns = time.monotonic_ns()
-    benchmark_module.write_json_atomic(
-        context.scratch / "fuzzer" / "requests" / f"{request_id}.json",
-        {
-            "schema_version": 1,
-            "run_id": context.run_id,
-            "request_id": request_id,
-            "requested_monotonic_ns": requested_ns,
-            "value": "CONTENT-ONLY",
-        },
-    )
-    evidence_path = context.scratch / "fuzzer" / "sentinels" / f"{request_id}.json"
-    deadline = time.monotonic() + 3.0
-    while time.monotonic() < deadline:
-        try:
-            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            time.sleep(0.01)
-            continue
-        assert evidence["run_id"] == context.run_id
-        assert evidence["request_id"] == request_id
-        assert evidence["requested_monotonic_ns"] == requested_ns
-        return t.cast(str, evidence["sentinel"])
-    message = "Task 1 sentinel evidence did not arrive"
-    raise AssertionError(message)
-
-
 @pytest.mark.parametrize(
     ("lane_name", "mode_name", "wait_event"),
     (
@@ -7197,31 +7274,90 @@ def _request_content_sentinel(
         ("control", "async", "wait.control-stream"),
     ),
 )
-def test_content_search_preparation_refreshes_adjacent_wait_and_capture(
+def test_content_search_preparation_is_request_relative_and_immutable(
     benchmark_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     lane_name: str,
     mode_name: str,
     wait_event: str,
 ) -> None:
-    """Content search must bind a fresh sentinel and its adjacent snapshot."""
+    """Every lane must freeze readiness before one fresh wait and snapshot."""
+    from libtmux.experimental.engines.base import CommandResult
+
     token = "LIBTMUX_SENTINEL run=content request=fresh value=READY"
-    wait_result = types.SimpleNamespace(token=token)
-    capture = benchmark_module.CaptureResult(
+    pulse = "LIBTMUX_EPOCH epoch=7"
+    requested_ns = time.monotonic_ns()
+    wait_result = benchmark_module.WaitResult(
+        "control-stream" if wait_event == "wait.control-stream" else "capture-poll",
+        "search-contents-fresh",
+        token,
+        "%2",
+        0,
+        requested_ns,
+        requested_ns,
+        requested_ns,
+        requested_ns,
+        0,
+        0,
         1,
-        benchmark_module.ExecutionMetrics(2, 1, 1, 2, 0),
-        "batched",
-        (),
-        (
-            benchmark_module.PaneCapture("%1", (token,)),
-            benchmark_module.PaneCapture("%2", ("ordinary",)),
-        ),
-        2,
-        len(token) + len("ordinary"),
-        7,
+        0,
+        3.0,
+        False,
+        0,
         True,
     )
     events: list[str] = []
+
+    def result_for(request: t.Any) -> CommandResult:
+        if request.args[0] == "switch-client":
+            events.append(f"control-session:{request.args[-1]}")
+            return CommandResult(cmd=("tmux", *request.args))
+        if request.args[0] == "refresh-client":
+            events.append(f"control-output:{request.args[-1]}")
+            return CommandResult(cmd=("tmux", *request.args))
+        target = request.args[request.args.index("-t") + 1]
+        lines = (token, pulse) if target == "%2" else (pulse,)
+        return CommandResult(cmd=("tmux", *request.args), stdout=lines)
+
+    def run(request: t.Any) -> CommandResult:
+        if request.args[0] in {"refresh-client", "switch-client"}:
+            return result_for(request)
+        target = request.args[request.args.index("-t") + 1]
+        events.append(f"content.snapshot:{target}")
+        return result_for(request)
+
+    def run_batch(requests: t.Any) -> list[CommandResult]:
+        requests = tuple(requests)
+        targets = tuple(
+            request.args[request.args.index("-t") + 1] for request in requests
+        )
+        events.append(f"content.snapshot:{','.join(targets)}")
+        return [result_for(request) for request in requests]
+
+    async def arun(request: t.Any) -> CommandResult:
+        return run(request)
+
+    async def arun_batch(requests: t.Any) -> list[CommandResult]:
+        return run_batch(requests)
+
+    engine = (
+        types.SimpleNamespace(run=run, run_batch=run_batch)
+        if mode_name == "sync"
+        else types.SimpleNamespace(run=arun, run_batch=arun_batch)
+    )
+
+    def heartbeat(_context: t.Any, *, max_age_s: float) -> t.Any:
+        assert max_age_s == 2.0
+        events.append("heartbeat")
+        return benchmark_module.HeartbeatObservation(7, 90, 95)
+
+    def ready_sync(_context: t.Any, epoch: int) -> None:
+        assert epoch == 7
+        events.append("readiness.sync")
+
+    async def ready_async(_context: t.Any, epoch: int) -> None:
+        assert epoch == 7
+        events.append("readiness.async")
 
     def wait_sync(_context: t.Any, *, request_id: str) -> t.Any:
         assert request_id == "search-contents-fresh"
@@ -7238,32 +7374,28 @@ def test_content_search_preparation_refreshes_adjacent_wait_and_capture(
         events.append("wait.control-stream")
         return wait_result
 
-    def capture_sync(_context: t.Any, *, strategy: str) -> t.Any:
-        assert strategy == "batched"
-        events.append("capture.batched")
-        return capture
-
-    async def capture_async(_context: t.Any, *, strategy: str) -> t.Any:
-        assert strategy == "batched"
-        events.append("capture.batched")
-        return capture
-
     real_search = benchmark_module.search_contents
 
     def search(*args: t.Any, **kwargs: t.Any) -> t.Any:
         events.append("search.contents")
         return real_search(*args, **kwargs)
 
+    monkeypatch.setattr(benchmark_module, "_current_activity_heartbeat", heartbeat)
+    monkeypatch.setattr(benchmark_module, "_wait_pane_epoch_sync", ready_sync)
+    monkeypatch.setattr(benchmark_module, "_wait_pane_epoch_async", ready_async)
     monkeypatch.setattr(benchmark_module, "wait_capture_poll_sync", wait_sync)
     monkeypatch.setattr(benchmark_module, "wait_capture_poll_async", wait_async)
     monkeypatch.setattr(benchmark_module, "wait_control_stream", wait_control)
-    monkeypatch.setattr(benchmark_module, "capture_all_sync", capture_sync)
-    monkeypatch.setattr(benchmark_module, "capture_all_async", capture_async)
     monkeypatch.setattr(benchmark_module, "search_contents", search)
     context = types.SimpleNamespace(
         mode=benchmark_module.ExecutionMode(mode_name),
         lane=benchmark_module.EngineLane(lane_name),
-        delayed_pane_id="%1",
+        delayed_pane_id="%2",
+        delayed_ordinal=1,
+        pane_ids=("%1", "%2"),
+        session_ids=("$1",),
+        topology=benchmark_module.Topology(1, 1, 2),
+        engine=engine,
     )
 
     strategy = asyncio.run(
@@ -7273,16 +7405,201 @@ def test_content_search_preparation_refreshes_adjacent_wait_and_capture(
         )
     )
 
-    assert events == [wait_event, "capture.batched", "search.contents"]
-    result = strategy()
-    assert events == [
-        wait_event,
-        "capture.batched",
-        "search.contents",
-        "search.contents",
+    expected_events: list[str] = []
+    if lane_name == "control" and mode_name == "async":
+        expected_events.extend(("control-session:$1", 'control-output:"%2:on"'))
+    expected_events.extend(("heartbeat", f"readiness.{mode_name}"))
+    expected_events.extend(
+        (
+            wait_event,
+            "content.snapshot:%2",
+            "content.snapshot:%1",
+            "search.contents",
+        )
+    )
+    assert events == expected_events
+    first = strategy()
+    second = strategy()
+    assert events[-2:] == ["search.contents", "search.contents"]
+    assert first.token == second.token == token
+    assert first.matched_ids == second.matched_ids == ("%2",)
+
+
+@pytest.mark.parametrize("mode_name", ("sync", "async"))
+@pytest.mark.parametrize("completion_offset_ns", (0, 1), ids=("exact", "late"))
+def test_content_delayed_capture_enforces_request_deadline_before_later_batches(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    mode_name: str,
+    completion_offset_ns: int,
+) -> None:
+    """Completion at D is valid, while D+1 stops before a later pane dispatch."""
+    from libtmux.experimental.engines.base import CommandResult
+
+    token = "LIBTMUX_SENTINEL run=content request=deadline value=READY"
+    pulse = "LIBTMUX_EPOCH epoch=7"
+    wait_result = benchmark_module.WaitResult(
+        "capture-poll",
+        "deadline",
+        token,
+        "%1",
+        0,
+        100,
+        100,
+        100,
+        100,
+        0,
+        0,
+        1,
+        0,
+        3.0,
+        False,
+        0,
+        True,
+    )
+    completion_ns = 3_000_000_100 + completion_offset_ns
+    dispatches: list[str] = []
+
+    def result_for(request: t.Any) -> CommandResult:
+        target = request.args[request.args.index("-t") + 1]
+        dispatches.append(target)
+        lines = (token, pulse) if target == "%1" else (pulse,)
+        return CommandResult(cmd=("tmux", *request.args), stdout=lines)
+
+    async def aresult_for(request: t.Any) -> CommandResult:
+        return result_for(request)
+
+    def batch_results(requests: t.Any) -> list[CommandResult]:
+        return [result_for(request) for request in requests]
+
+    async def abatch_results(requests: t.Any) -> list[CommandResult]:
+        return batch_results(requests)
+
+    engine = (
+        types.SimpleNamespace(run=result_for, run_batch=batch_results)
+        if mode_name == "sync"
+        else types.SimpleNamespace(run=aresult_for, run_batch=abatch_results)
+    )
+    monkeypatch.setattr(
+        benchmark_module,
+        "_current_activity_heartbeat",
+        lambda _context, *, max_age_s: benchmark_module.HeartbeatObservation(7, 1, 2),
+    )
+    monkeypatch.setattr(benchmark_module, "_wait_pane_epoch_sync", lambda *_args: None)
+
+    async def ready_async(*_args: t.Any) -> None:
+        return None
+
+    async def wait_async(*_args: t.Any, **_kwargs: t.Any) -> t.Any:
+        return wait_result
+
+    monkeypatch.setattr(benchmark_module, "_wait_pane_epoch_async", ready_async)
+    monkeypatch.setattr(
+        benchmark_module,
+        "wait_capture_poll_sync",
+        lambda *_args, **_kwargs: wait_result,
+    )
+    monkeypatch.setattr(benchmark_module, "wait_capture_poll_async", wait_async)
+    monkeypatch.setattr(benchmark_module.time, "monotonic_ns", lambda: completion_ns)
+    context = types.SimpleNamespace(
+        mode=benchmark_module.ExecutionMode(mode_name),
+        lane=benchmark_module.EngineLane.SUBPROCESS,
+        delayed_pane_id="%1",
+        pane_ids=("%1", "%2"),
+        engine=engine,
+    )
+
+    prepare = benchmark_module._prepare_content_search_strategy(
+        context,
+        request_id="deadline",
+    )
+    if completion_offset_ns == 0:
+        strategy = asyncio.run(prepare)
+        assert strategy().matched_ids == ("%1",)
+        assert dispatches == ["%1", "%2"]
+    else:
+        with pytest.raises(TimeoutError, match="deadline"):
+            asyncio.run(prepare)
+        assert dispatches == ["%1"]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "wrong-order",
+        "cardinality",
+        "untyped",
+        "wrong-target",
+        "duplicate-target",
+        "stale-pulse",
+        "malformed-pulse",
+        "missing-sentinel",
+        "duplicate-sentinel",
+        "wrong-pane-sentinel",
+    ),
+)
+def test_content_capture_rejects_invalid_attribution_and_retention_evidence(
+    benchmark_module: types.ModuleType,
+    failure: str,
+) -> None:
+    """Only exact ordered typed current-epoch delayed-pane evidence is valid."""
+    from libtmux.experimental.ops import CapturePane, PaneId
+
+    token = "LIBTMUX_SENTINEL run=content request=fresh value=READY"
+    pulse = "LIBTMUX_EPOCH epoch=7"
+    context = types.SimpleNamespace(
+        pane_ids=("%1", "%2"),
+        delayed_pane_id="%2",
+    )
+    plan, _planner = benchmark_module._content_capture_plan(context)
+    operations = plan.operations
+    lines = {"%2": (token, pulse), "%1": (pulse,)}
+    results: list[t.Any] = [
+        operation.build_result(returncode=0, stdout=lines[operation.target.value])
+        for operation in operations
     ]
-    assert result.token == token
-    assert result.matched_ids == ("%1",)
+    if failure == "wrong-order":
+        results.reverse()
+    elif failure == "cardinality":
+        results.pop()
+    elif failure == "untyped":
+        results[1] = types.SimpleNamespace()
+    elif failure in {"wrong-target", "duplicate-target"}:
+        target = "%9" if failure == "wrong-target" else "%2"
+        wrong = CapturePane(target=PaneId(target), start=-8)
+        results[1] = wrong.build_result(returncode=0, stdout=(pulse,))
+    elif failure == "stale-pulse":
+        results[0] = operations[0].build_result(
+            returncode=0,
+            stdout=(token, "LIBTMUX_EPOCH epoch=6"),
+        )
+    elif failure == "malformed-pulse":
+        results[0] = operations[0].build_result(
+            returncode=0,
+            stdout=(token, "LIBTMUX_EPOCH epoch=7 extra"),
+        )
+    elif failure == "missing-sentinel":
+        results[0] = operations[0].build_result(returncode=0, stdout=(pulse,))
+    elif failure == "duplicate-sentinel":
+        results[0] = operations[0].build_result(
+            returncode=0,
+            stdout=(token, token, pulse),
+        )
+    elif failure == "wrong-pane-sentinel":
+        results[0] = operations[0].build_result(returncode=0, stdout=(pulse,))
+        results[1] = operations[1].build_result(
+            returncode=0,
+            stdout=(token, pulse),
+        )
+
+    with pytest.raises((RuntimeError, TypeError)):
+        benchmark_module._accepted_content_captures(
+            context,
+            plan,
+            types.SimpleNamespace(results=tuple(results)),
+            token=token,
+            epoch=7,
+        )
 
 
 @pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
@@ -7388,25 +7705,11 @@ def test_live_search_phase_keeps_server_snapshot_end_to_end_and_content_distinct
             await benchmark_module.verify_activity_async(context)
             snapshot = await benchmark_module.snapshot_topology_async(context)
             exercise_metadata(snapshot)
-            sentinel = _request_content_sentinel(
-                benchmark_module, context, f"content-{target_position}"
+            content_strategy = await benchmark_module._prepare_content_search_strategy(
+                context,
+                request_id=f"content-{target_position}",
             )
-            deadline = time.monotonic() + 3.0
-            captures = None
-            while time.monotonic() < deadline:
-                candidate = await benchmark_module.capture_all_async(
-                    context, strategy="batched"
-                )
-                if any(sentinel in capture.lines for capture in candidate.captures):
-                    captures = candidate
-                    break
-                await asyncio.sleep(0.01)
-            assert captures is not None
-            content = benchmark_module.search_contents(
-                captures,
-                token=sentinel,
-                expected_pane_id=context.pane_ids[delayed_ordinal],
-            )
+            content = content_strategy()
             observed["contents", "panes", target_position] = (
                 content.scanned_count,
                 content.matched_ids,
@@ -7420,12 +7723,6 @@ def test_live_search_phase_keeps_server_snapshot_end_to_end_and_content_distinct
             )
             assert (
                 tuple(row.pane_id for row in final_snapshot.panes) == context.pane_ids
-            )
-            assert (
-                benchmark_module._current_activity_heartbeat(
-                    context, max_age_s=2.0
-                ).epoch
-                >= captures.epoch
             )
             assert_explicit_expectations()
         finally:
@@ -7446,25 +7743,13 @@ def test_live_search_phase_keeps_server_snapshot_end_to_end_and_content_distinct
             benchmark_module.verify_activity_sync(context)
             snapshot = benchmark_module.snapshot_topology_sync(context)
             exercise_metadata(snapshot)
-            sentinel = _request_content_sentinel(
-                benchmark_module, context, f"content-{target_position}"
-            )
-            deadline = time.monotonic() + 3.0
-            captures = None
-            while time.monotonic() < deadline:
-                candidate = benchmark_module.capture_all_sync(
-                    context, strategy="batched"
+            content_strategy = asyncio.run(
+                benchmark_module._prepare_content_search_strategy(
+                    context,
+                    request_id=f"content-{target_position}",
                 )
-                if any(sentinel in capture.lines for capture in candidate.captures):
-                    captures = candidate
-                    break
-                time.sleep(0.01)
-            assert captures is not None
-            content = benchmark_module.search_contents(
-                captures,
-                token=sentinel,
-                expected_pane_id=context.pane_ids[delayed_ordinal],
             )
+            content = content_strategy()
             observed["contents", "panes", target_position] = (
                 content.scanned_count,
                 content.matched_ids,
@@ -7479,17 +7764,12 @@ def test_live_search_phase_keeps_server_snapshot_end_to_end_and_content_distinct
             assert (
                 tuple(row.pane_id for row in final_snapshot.panes) == context.pane_ids
             )
-            assert (
-                benchmark_module._current_activity_heartbeat(
-                    context, max_age_s=2.0
-                ).epoch
-                >= captures.epoch
-            )
             assert_explicit_expectations()
         finally:
             cleanup = asyncio.run(benchmark_module.cleanup_run(context))
     assert cleanup is not None
     assert cleanup.complete, cleanup.errors
+    assert not scratch.exists()
 
 
 def test_run_repeatable_phase_interleaves_and_accepts_only_verified_samples(

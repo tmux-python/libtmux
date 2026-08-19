@@ -69,15 +69,20 @@ _WAIT_TIMEOUT_MAX_S = 3.0
 _WAIT_FRAME_RATE_MAX_HZ = 40.0
 _REPORT_SCHEMA_VERSION = 2
 _PROGRESS_SCHEMA_VERSION = 2
-# At the maximum supported producer rate and wait duration, 5,000 joined
-# history rows retain 120 ordinary delayed frames plus the 422-byte sentinel
-# with ample wrapping headroom in the required active 1x2x2 topology.
-_WAIT_CAPTURE_HISTORY_LINES = 5_000
 _MIN_PANE_WIDTH = 64
 _PANE_CAPTURE_CHUNK_SIZE = 64
 _READINESS_CAPTURE_HISTORY_LINES = 8
 _MEASURED_CAPTURE_HISTORY_LINES = 64
 _EPOCH_PULSE_MAX_BYTES = 64
+_WAIT_SENTINEL_ROWS_MAX = 7
+_WAIT_DELAYED_RECORD_ROWS_MAX = 2
+_WAIT_EPOCH_PULSE_ROWS = 1
+_WAIT_POST_SENTINEL_RECORDS_MAX = int(_WAIT_TIMEOUT_MAX_S * _WAIT_FRAME_RATE_MAX_HZ) + 1
+_WAIT_RETENTION_ROWS_REQUIRED = _WAIT_SENTINEL_ROWS_MAX + (
+    _WAIT_POST_SENTINEL_RECORDS_MAX
+    * (_WAIT_DELAYED_RECORD_ROWS_MAX + _WAIT_EPOCH_PULSE_ROWS)
+)
+_WAIT_CAPTURE_HISTORY_LINES = 512
 _SEARCH_POSITIONS = ("first", "middle", "last")
 _ENUMERATION_KINDS = ("sessions", "windows", "panes")
 _SEARCH_FAMILIES = ("classic", "snapshot", "end-to-end")
@@ -6475,6 +6480,32 @@ def verify_topology(
         pane.width is None or pane.width < _MIN_PANE_WIDTH for pane in snapshot.panes
     ):
         fail(f"pane width is below {_MIN_PANE_WIDTH} columns")
+    for pane in snapshot.panes:
+        history_limit = pane.fields.get("history_limit")
+        if (
+            type(history_limit) is not str
+            or not history_limit.isascii()
+            or not history_limit.isdecimal()
+        ):
+            fail(
+                "pane history limit is not an exact integer of at least "
+                f"{_WAIT_CAPTURE_HISTORY_LINES}"
+            )
+        try:
+            parsed_history_limit = int(history_limit)
+        except ValueError:
+            fail(
+                "pane history limit is not an exact integer of at least "
+                f"{_WAIT_CAPTURE_HISTORY_LINES}"
+            )
+        if (
+            str(parsed_history_limit) != history_limit
+            or parsed_history_limit < _WAIT_CAPTURE_HISTORY_LINES
+        ):
+            fail(
+                "pane history limit is not an exact integer of at least "
+                f"{_WAIT_CAPTURE_HISTORY_LINES}"
+            )
 
     pane_pids = tuple(pane.pid for pane in snapshot.panes)
     if any(pid is None or pid <= 0 for pid in pane_pids):
@@ -8826,6 +8857,84 @@ def _capture_plan(
     return plan
 
 
+def _content_capture_plan(context: RunContext) -> tuple[LazyPlan, Planner]:
+    """Build the delayed-first bounded plan for one content snapshot.
+
+    >>> context = types.SimpleNamespace(
+    ...     pane_ids=("%1", "%2", "%3"), delayed_pane_id="%2"
+    ... )
+    >>> plan, planner = _content_capture_plan(context)
+    >>> [operation.target.value for operation in plan.operations]
+    ['%2', '%1', '%3']
+    >>> [step.indices for step in planner.plan(plan.operations)]
+    [(0,), (1, 2)]
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified stable pane IDs and unique delayed-pane identity.
+
+    Returns
+    -------
+    tuple[LazyPlan, Planner]
+        Capture graph and bounded batching policy with operation zero isolated.
+
+    Raises
+    ------
+    ValueError
+        If stable pane IDs are empty, malformed, duplicated, or do not contain
+        exactly one delayed pane.
+    """
+    from libtmux.experimental.ops import (
+        BatchingPlanner,
+        BoundedPlanner,
+        CapturePane,
+        LazyPlan,
+        PaneId,
+    )
+
+    pane_ids = tuple(context.pane_ids)
+    if (
+        not pane_ids
+        or any(type(pane_id) is not str or not pane_id for pane_id in pane_ids)
+        or len(set(pane_ids)) != len(pane_ids)
+    ):
+        message = "content snapshot requires nonempty unique stable pane IDs"
+        raise ValueError(message)
+    delayed_pane_id = context.delayed_pane_id
+    if type(delayed_pane_id) is not str or pane_ids.count(delayed_pane_id) != 1:
+        message = "content snapshot requires exactly one stable delayed pane ID"
+        raise ValueError(message)
+    target_order = (
+        delayed_pane_id,
+        *(pane_id for pane_id in pane_ids if pane_id != delayed_pane_id),
+    )
+    plan = LazyPlan()
+    for index, pane_id in enumerate(target_order):
+        delayed = index == 0
+        plan.add(
+            CapturePane(
+                target=PaneId(pane_id),
+                start=(
+                    -_WAIT_CAPTURE_HISTORY_LINES
+                    if delayed
+                    else -_READINESS_CAPTURE_HISTORY_LINES
+                ),
+                join_wrapped=delayed,
+            )
+        )
+    boundaries = frozenset(
+        (
+            0,
+            *range(
+                _PANE_CAPTURE_CHUNK_SIZE, len(target_order), _PANE_CAPTURE_CHUNK_SIZE
+            ),
+        )
+    )
+    planner = BoundedPlanner(BatchingPlanner(), boundaries)
+    return plan, planner
+
+
 def _capture_planner(strategy: CaptureStrategy) -> object:
     """Return the planner policy named by one capture strategy.
 
@@ -9739,18 +9848,156 @@ def search_end_to_end(
     )
 
 
+def _accepted_content_captures(
+    context: RunContext,
+    plan: LazyPlan,
+    plan_result: object,
+    *,
+    token: str,
+    epoch: int,
+) -> tuple[PaneCapture, ...]:
+    """Validate and canonically order one dedicated content snapshot.
+
+    >>> context = types.SimpleNamespace(pane_ids=("%1",), delayed_pane_id="%1")
+    >>> plan, _planner = _content_capture_plan(context)
+    >>> result = plan.operations[0].build_result(
+    ...     returncode=0,
+    ...     stdout=("token", "LIBTMUX_EPOCH epoch=7"),
+    ... )
+    >>> _accepted_content_captures(
+    ...     context, plan, types.SimpleNamespace(results=(result,)),
+    ...     token="token", epoch=7,
+    ... )
+    (PaneCapture(pane_id='%1', lines=('token', 'LIBTMUX_EPOCH epoch=7')),)
+
+    Parameters
+    ----------
+    context : RunContext
+        Stable canonical pane order and unique delayed-pane identity.
+    plan : LazyPlan
+        Executed delayed-first content plan.
+    plan_result : object
+        Result sequence returned by the plan execution.
+    token : str
+        Exact fresh sentinel required once in the delayed pane only.
+    epoch : int
+        Frozen pre-request heartbeat pulse required in every pane.
+
+    Returns
+    -------
+    tuple[PaneCapture, ...]
+        Immutable typed captures reordered to canonical stable pane order.
+
+    Raises
+    ------
+    ValueError
+        If the token or epoch is invalid.
+    TypeError
+        If an operation result is not a typed capture result.
+    RuntimeError
+        If cardinality, order, attribution, status, pulse, or sentinel evidence
+        differs from the dedicated plan contract.
+    """
+    from libtmux.experimental.ops import CapturePane, CapturePaneResult, PaneId
+
+    if not token:
+        message = "content snapshot token must be nonempty"
+        raise ValueError(message)
+    if type(epoch) is not int or epoch < 0:
+        message = "content snapshot epoch must be a nonnegative integer"
+        raise ValueError(message)
+    pane_ids = tuple(context.pane_ids)
+    delayed_pane_id = context.delayed_pane_id
+    if (
+        not pane_ids
+        or any(type(pane_id) is not str or not pane_id for pane_id in pane_ids)
+        or len(set(pane_ids)) != len(pane_ids)
+    ):
+        message = "content snapshot requires nonempty unique stable pane IDs"
+        raise ValueError(message)
+    if type(delayed_pane_id) is not str or pane_ids.count(delayed_pane_id) != 1:
+        message = "content snapshot requires exactly one stable delayed pane ID"
+        raise ValueError(message)
+    expected_targets = (
+        delayed_pane_id,
+        *(pane_id for pane_id in pane_ids if pane_id != delayed_pane_id),
+    )
+    operations = tuple(plan.operations)
+    results = tuple(t.cast(t.Any, plan_result).results)
+    if (
+        len(operations) != len(pane_ids)
+        or len(results) != len(operations)
+        or not operations
+    ):
+        message = "content snapshot result count did not match stable pane IDs"
+        raise RuntimeError(message)
+    operation_targets = tuple(
+        operation.target.value
+        if isinstance(operation, CapturePane) and isinstance(operation.target, PaneId)
+        else None
+        for operation in operations
+    )
+    if operation_targets != expected_targets or len(set(operation_targets)) != len(
+        operation_targets
+    ):
+        message = "content snapshot operation order did not match stable pane IDs"
+        raise RuntimeError(message)
+    for index, operation in enumerate(operations):
+        if not isinstance(operation, CapturePane):
+            message = "content snapshot operation was not a typed pane capture"
+            raise TypeError(message)
+        expected_start = (
+            -_WAIT_CAPTURE_HISTORY_LINES
+            if index == 0
+            else -_READINESS_CAPTURE_HISTORY_LINES
+        )
+        if operation.start != expected_start or operation.join_wrapped is not (
+            index == 0
+        ):
+            message = "content snapshot operation flags differ from retention plan"
+            raise RuntimeError(message)
+    captures_by_id: dict[str, PaneCapture] = {}
+    pulse = f"LIBTMUX_EPOCH epoch={epoch}"
+    sentinel_counts: dict[str, int] = {}
+    for operation, pane_id, result in zip(
+        operations,
+        expected_targets,
+        results,
+        strict=True,
+    ):
+        if not isinstance(result, CapturePaneResult):
+            message = f"content snapshot for {pane_id} did not return typed lines"
+            raise TypeError(message)
+        if result.operation != operation:
+            message = "content snapshot result order or target attribution differed"
+            raise RuntimeError(message)
+        result.raise_for_status()
+        if pulse not in result.lines:
+            message = f"content snapshot for {pane_id} lacks frozen epoch pulse"
+            raise RuntimeError(message)
+        sentinel_counts[pane_id] = result.lines.count(token)
+        captures_by_id[pane_id] = PaneCapture(pane_id, tuple(result.lines))
+    if sentinel_counts.get(delayed_pane_id) != 1 or any(
+        count != 0
+        for pane_id, count in sentinel_counts.items()
+        if pane_id != delayed_pane_id
+    ):
+        message = "content snapshot sentinel is not unique to the delayed pane"
+        raise RuntimeError(message)
+    return tuple(captures_by_id[pane_id] for pane_id in pane_ids)
+
+
 def search_contents(
-    captures: CaptureResult,
+    captures: tuple[PaneCapture, ...],
     *,
     token: str,
     expected_pane_id: str | None,
 ) -> SearchResult:
     """Search retained typed capture lines for one exact sentinel token.
 
-    >>> captures = CaptureResult(
-    ...     1, ExecutionMetrics(1, 1, 1, 1, 0), "serial", (),
-    ...     (PaneCapture("%1", ("token",)), PaneCapture("%2", ("other",))),
-    ...     2, 10, 1, True,
+    >>> captures = (
+    ...     PaneCapture("%1", ("token",)),
+    ...     PaneCapture("%2", ("other",)),
     ... )
     >>> search_contents(
     ...     captures, token="token", expected_pane_id="%1"
@@ -9759,8 +10006,8 @@ def search_contents(
 
     Parameters
     ----------
-    captures : CaptureResult
-        Prematerialized typed pane lines; no tmux I/O occurs here.
+    captures : tuple[PaneCapture, ...]
+        Immutable prematerialized typed pane lines; no tmux I/O occurs here.
     token : str
         Exact sentinel line to match.
     expected_pane_id : str | None
@@ -9785,12 +10032,12 @@ def search_contents(
         message = "content search requires a concrete expected pane ID"
         raise ValueError(message)
     started_ns = time.perf_counter_ns()
-    matches = tuple(capture for capture in captures.captures if token in capture.lines)
+    matches = tuple(capture for capture in captures if token in capture.lines)
     duration_ns = time.perf_counter_ns() - started_ns
     return _search_result(
         family="contents",
         kind="panes",
-        scanned_count=len(captures.captures),
+        scanned_count=len(captures),
         target=expected_pane_id,
         matches=matches,
         duration_ns=duration_ns,
@@ -9834,12 +10081,46 @@ async def _prepare_content_search_strategy(
     RuntimeError
         If the fresh sentinel is not retained by exactly its delayed pane.
     """
+    from libtmux.experimental.ops import CapturePane, CapturePaneResult, PaneId
+
+    if context.mode not in (ExecutionMode.SYNC, ExecutionMode.ASYNC):
+        message = "content search preparation requires a benchmark execution mode"
+        raise ValueError(message)
+    if context.mode is ExecutionMode.ASYNC and context.lane is EngineLane.CONTROL:
+        from libtmux.experimental.engines.base import CommandRequest
+
+        # Control clients emit only their attached session. The pane:state
+        # argument also needs explicit quotes for tmux's control-mode parser.
+        engine = t.cast("AsyncTmuxEngine", context.engine)
+        panes_per_session = (
+            context.topology.windows_per_session * context.topology.panes_per_window
+        )
+        delayed_session_id = context.session_ids[
+            context.delayed_ordinal // panes_per_session
+        ]
+        switched = await engine.run(
+            CommandRequest.from_args("switch-client", "-t", delayed_session_id)
+        )
+        if switched.returncode != 0:
+            message = "control stream could not select the delayed-pane session"
+            raise RuntimeError(message)
+        enabled = await engine.run(
+            CommandRequest.from_args(
+                "refresh-client",
+                "-A",
+                f'"{context.delayed_pane_id}:on"',
+            )
+        )
+        if enabled.returncode != 0:
+            message = "control stream could not enable delayed-pane output"
+            raise RuntimeError(message)
+    heartbeat = _current_activity_heartbeat(context, max_age_s=2.0)
     wait_result: WaitResult
-    capture: CaptureResult
     if context.mode is ExecutionMode.SYNC:
+        _wait_pane_epoch_sync(context, heartbeat.epoch)
         wait_result = wait_capture_poll_sync(context, request_id=request_id)
-        capture = capture_all_sync(context, strategy="batched")
-    elif context.mode is ExecutionMode.ASYNC:
+    else:
+        await _wait_pane_epoch_async(context, heartbeat.epoch)
         if context.lane is EngineLane.CONTROL:
             wait_result = await wait_control_stream(context, request_id=request_id)
         else:
@@ -9847,13 +10128,74 @@ async def _prepare_content_search_strategy(
                 context,
                 request_id=request_id,
             )
-        capture = await capture_all_async(context, strategy="batched")
+    if not isinstance(wait_result, WaitResult):
+        message = "content search wait did not return typed evidence"
+        raise TypeError(message)
+    if wait_result.pane_id != context.delayed_pane_id:
+        message = "content search wait did not target the delayed pane"
+        raise RuntimeError(message)
+    deadline_ns = wait_result.requested_monotonic_ns + int(
+        wait_result.timeout_s * 1_000_000_000
+    )
+    plan, planner = _content_capture_plan(context)
+    first_step_completed = False
+
+    def accept_first_step(report: t.Any) -> None:
+        """Validate and timestamp the isolated delayed-pane planner step."""
+        nonlocal first_step_completed
+        if first_step_completed:
+            return
+        if report.step.indices != (0,) or len(report.results) != 1:
+            message = "content snapshot first planner step was not operation zero"
+            raise RuntimeError(message)
+        result = report.results[0]
+        operation = plan.operations[0]
+        if (
+            not isinstance(operation, CapturePane)
+            or not isinstance(operation.target, PaneId)
+            or operation.target.value != context.delayed_pane_id
+            or not isinstance(result, CapturePaneResult)
+            or result.operation != operation
+        ):
+            message = "content snapshot first result was not the delayed pane"
+            raise RuntimeError(message)
+        result.raise_for_status()
+        completed_ns = time.monotonic_ns()
+        if completed_ns > deadline_ns:
+            message = "content snapshot delayed pane completed after request deadline"
+            raise TimeoutError(message)
+        first_step_completed = True
+
+    if context.mode is ExecutionMode.SYNC:
+        plan_result = plan.execute(
+            t.cast("TmuxEngine", context.engine),
+            planner=planner,
+            on_step=accept_first_step,
+        )
     else:
-        message = "content search preparation requires a benchmark execution mode"
-        raise ValueError(message)
+
+        async def accept_first_step_async(report: t.Any) -> None:
+            """Awaitable adapter for the shared first-step deadline validator."""
+            accept_first_step(report)
+
+        plan_result = await plan.aexecute(
+            t.cast("AsyncTmuxEngine", context.engine),
+            planner=planner,
+            on_step=accept_first_step_async,
+        )
+    if not first_step_completed:
+        message = "content snapshot did not complete its delayed-pane step"
+        raise RuntimeError(message)
+    captures = _accepted_content_captures(
+        context,
+        plan,
+        plan_result,
+        token=wait_result.token,
+        epoch=heartbeat.epoch,
+    )
     search = functools.partial(
         search_contents,
-        capture,
+        captures,
         token=wait_result.token,
         expected_pane_id=context.delayed_pane_id,
     )
