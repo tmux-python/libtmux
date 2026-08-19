@@ -8855,6 +8855,57 @@ def enumerate_sync(
     )
 
 
+def enumerate_orm(
+    context: RunContext,
+    *,
+    kind: EnumerationKind,
+) -> EnumerationResult:
+    """Execute and validate one classic ORM hierarchy read.
+
+    This is the reference cell, not a fifth lane. :class:`~libtmux.Server`
+    reaches tmux through its own request graph regardless of which engine the
+    run is measuring, so its timing is never folded into an engine speedup
+    claim. It is comparable only because it is required to return exactly the
+    rows the typed operations return, which this validates on every sample.
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified active topology carrying the bound classic server.
+    kind : {"sessions", "windows", "panes"}
+        One hierarchy cell to enumerate.
+
+    Returns
+    -------
+    EnumerationResult
+        Exact row count, concrete IDs, checksum, and timing.
+
+    Examples
+    --------
+    >>> try:
+    ...     enumerate_orm(types.SimpleNamespace(server=None), kind="panes")
+    ... except ValueError as error:
+    ...     print(error)
+    orm phase requires a bound classic server
+    """
+    server = getattr(context, "server", None)
+    if server is None:
+        message = "orm phase requires a bound classic server"
+        raise ValueError(message)
+    _enumeration_expected(context, kind)
+    attribute = {"sessions": "sessions", "windows": "windows", "panes": "panes"}[kind]
+    identifier = {
+        "sessions": "session_id",
+        "windows": "window_id",
+        "panes": "pane_id",
+    }[kind]
+    started_ns = time.perf_counter_ns()
+    rows = list(getattr(server, attribute))
+    ids = tuple(str(getattr(row, identifier)) for row in rows)
+    duration_ns = time.perf_counter_ns() - started_ns
+    return _accepted_enumeration(context, kind, ids, duration_ns)
+
+
 async def enumerate_async(
     context: RunContext,
     *,
