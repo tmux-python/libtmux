@@ -109,47 +109,61 @@ This finding is about tmux rather than libtmux and is worth carrying into the
 tmux notes: any tool that fingerprints a tmux socket by whole mode will see
 phantom ownership changes whenever a client attaches or detaches.
 
-## First cross-lane result
+## Cross-lane result at twenty samples
 
-All four lanes complete at `80x20x1`. The subprocess lanes report 37 of 38
-phases because `wait.control-stream` is `not_applicable` outside control/async,
-which is the documented ruling rather than a failure; control/sync reports 37 for
-the same reason.
+Four cells, 800 live panes (`40x20x1`), 20 timed samples and 2 warmups each,
+23m46s wall. All four completed; the reference cells were included. Ratios below
+are rendered only where the intervals separate — anything inside the run-to-run
+spread is reported as unresolved rather than as a number.
 
-Medians from a four-cell matrix at two timed runs and one warmup, same shape,
-same seed. Treat these as directional: two samples support a median, not a
-percentile.
+| Phase | control/async | control/sync | subprocess/async | subprocess/sync | Spread |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `mutation.bulk` | 3.1 ms | 3.3 ms | 185.0 ms | 186.2 ms | 59.1x |
+| `capture.batched` | 154.7 ms | 156.6 ms | 3548.4 ms | 3638.2 ms | 23.5x |
+| `capture.serial` | 1046.5 ms | 975.9 ms | 3565.2 ms | 3677.1 ms | 3.8x |
+| `enumeration.panes` | 256.2 ms | 251.9 ms | 232.8 ms | 236.4 ms | unresolved |
+| `enumeration.sessions` | 14.2 ms | 14.2 ms | 16.2 ms | 15.3 ms | unresolved |
+| `wait.capture-poll` | 7.0 ms | 6.5 ms | 8.6 ms | 6.2 ms | unresolved |
 
-| Phase (median) | subprocess/sync | subprocess/async | control/sync | control/async |
-| --- | ---: | ---: | ---: | ---: |
-| `mutation.bulk` | 750 ms | 913 ms | 5.9 ms | 6.2 ms |
-| `capture.serial` | 21.1 s | 23.3 s | 13.7 s | 11.9 s |
-| `capture.batched` | 20.7 s | 20.9 s | 1.03 s | 1.10 s |
-| `search.classic.panes.middle` | 21.6 ms | 26.3 ms | 52.2 ms | 94.5 ms |
-| `search.end-to-end.panes.middle` | 804 ms | 779 ms | 1124 ms | 1333 ms |
-| Sum of timed phases | 49.2 s | 51.3 s | 24.6 s | 22.9 s |
+**This corrects an earlier claim.** A two-sample matrix appeared to show the
+subprocess lanes winning every enumeration and search phase by 1.1x to 3.2x.
+At twenty samples those differences are unresolved: they were noise, and the
+renderer now refuses to print them. Control mode wins where the request pattern
+rewards a persistent client, and ties elsewhere. It does not lose.
 
-Three readings, all of which need confirming at a real sample count:
+### Strategy comparisons
 
-1. **Control mode wins on many-small-command work.** `mutation.bulk` is roughly
-   130 times faster on control lanes, because it issues many small commands and
-   the subprocess lanes pay a fork for each one.
-2. **Batching pays only where a persistent client exists.** Batched capture is
-   11 to 13 times faster than serial on control lanes and within noise of serial
-   on subprocess lanes, since a subprocess batch still starts one process per
-   request. An earlier single-sample reading suggested batched was *slower* than
-   serial on subprocess; at two samples it is parity, so that was noise.
-3. **Control mode loses on single-shot queries.** Both `search.classic` and
-   `search.end-to-end` are two to four times slower on control lanes. One
-   isolated query does not amortize the persistent connection, and the connection
-   is competing with the pane-output stream.
+| Comparison | control/async | subprocess/sync |
+| --- | ---: | ---: |
+| serial capture over batched capture | 6.6x | 1.0x |
+| capture polling over the notification stream | 5.3x | not applicable |
 
-The wait comparison only exists on control/async: 6.8 ms for
-`wait.control-stream` against 13.9 ms for `wait.capture-poll` in the same cell.
+Batching pays only where a persistent client can pipeline. On the subprocess
+transport a batch still starts one process per request, so it buys nothing.
 
-Search families differ by three orders of magnitude — 1.8 ms for in-memory
-snapshot filtering, tens of milliseconds server-side, and roughly a second
-end-to-end — which is why the report must never present them as one number.
+### The classic ORM reference
+
+Enumerating panes through `Server.panes` costs 0.91x the typed operation on
+control/async and 1.11x on subprocess/sync — inside the noise on both. The typed
+seam is therefore free at the enumeration level while being dramatically cheaper
+where request patterns matter. That is the answer the third comparison exists to
+give.
+
+## Where each axis buckles
+
+A separate ladder escalates one dimension at a time at a single timed
+invocation, because only the outcome matters. Nine minutes for all three axes.
+
+| Axis | Last completed | First failure | Surrendered at |
+| --- | --- | --- | --- |
+| panes per window | `80x20x1`, 1,600 | `80x20x2`, 3,200 | `wait.capture-poll` |
+| windows per session | `80x20x1`, 1,600 | `80x30x1`, 2,400 | `capture.serial` |
+| sessions | `100x20x1`, 2,000 | `140x20x1`, 2,800 | `wait.capture-poll` |
+
+The ceiling is roughly two thousand panes on every axis, but the failure mode
+differs. Adding windows survives nine of ten phases before serial capture gives
+out, while adding panes per window or sessions dies early in the wait phase.
+Attributing a ceiling to "panes" alone would have missed that.
 
 ## Implemented: the classic ORM reference
 
@@ -219,15 +233,35 @@ relabelled. Two samples render a median alone.
 
 ## Still outstanding
 
-1. **Publish a high-sample lane comparison.** A four-cell run at 20 timed
-   samples is the first that can support p90 and p95; p99 needs 100 and is far
-   more expensive. Project its wall time from a real matrix — a model built from
-   single-run cells underestimated the subprocess lanes by about 80 percent,
-   because warmup iterations cost more than steady-state ones.
-2. **Re-establish raw evidence durably.** The published n=100 raw JSON was lost
+1. **Re-establish raw evidence durably.** The published n=100 raw JSON was lost
    to a host restart because it lived in a temporary directory. Only the
    committed renderer output survives, and it still hashes to the value recorded
    when the artifact validated.
-3. **Consider gating percentiles in the single-cell renderer too.** The matrix
-   renderer now suppresses percentiles the sample count cannot support; the
-   per-cell Markdown report still prints p95 and p99 unconditionally.
+2. **Consider gating percentiles in the single-cell renderer too.** The matrix
+   renderer suppresses percentiles the sample count cannot support and refuses
+   ratios inside the noise; the per-cell Markdown report still prints p95 and
+   p99 unconditionally.
+3. **Raise the harness ceiling if larger shapes matter.** That needs timeouts
+   scaled to topology and a capture phase that is not one round trip per pane.
+   No sample count or larger machine substitutes for it.
+
+## Sizing runs
+
+Sample counts are chosen from measured variance, not from taste.
+
+Bootstrapping the retained fifteen-sample cell shows the median's spread barely
+improves past ten observations on the noisy phases: bulk mutation stays near 85
+percent and session enumeration near 43. The variance is run-to-run, not
+sampling noise that averages away, so raising the count buys very little. Twenty
+observations is the point where p90 and p95 become reportable at all; p99 needs
+one hundred and is not worth its wall time here.
+
+Cost is superlinear in panes, so shape is the cheaper lever. Subprocess costs
+9.2 seconds per iteration at 800 panes and about 49 at 1,600. The comparison
+therefore runs at 800 panes, where four cells at twenty samples finish in under
+half an hour, while the pressure ladder runs at whatever shape the rung
+requires because each rung is a single invocation.
+
+Project wall time from a real matrix. A model built from single-run cells
+underestimated the subprocess lanes by about 80 percent, because warmup
+iterations cost more than steady-state ones.
