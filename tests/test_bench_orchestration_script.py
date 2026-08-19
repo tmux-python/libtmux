@@ -7430,6 +7430,215 @@ def test_content_search_preparation_is_request_relative_and_immutable(
     assert first.matched_ids == second.matched_ids == ("%2",)
 
 
+def _patch_worker_to_observe_output_quiescence(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    lane_name: str,
+    mode_name: str,
+    events: list[str],
+    mute_fails: bool = False,
+) -> None:
+    """Replace unrelated worker phases while retaining its real phase graph."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    applicable = lane_name == "control" and mode_name == "async"
+
+    class Engine:
+        async def disable_output_notifications(self) -> None:
+            if not applicable:
+                message = "output quiescence requested for an inapplicable cell"
+                raise AssertionError(message)
+            events.append("output.disabled")
+            if mute_fails:
+                message = "output quiescence failed"
+                raise RuntimeError(message)
+
+    context = types.SimpleNamespace(
+        topology=topology,
+        lane=benchmark_module.EngineLane(lane_name),
+        mode=benchmark_module.ExecutionMode(mode_name),
+        engine=Engine(),
+        setup_duration_ns=1,
+        setup_metrics=None,
+        activity_pane_ids=("%1",),
+        session_ids=("$1",),
+        window_ids=("@1",),
+        pane_ids=("%1",),
+        delayed_pane_id="%1",
+    )
+    snapshot = types.SimpleNamespace(sessions=(), windows=(), panes=())
+
+    def setup_sync(*_args: t.Any, **_kwargs: t.Any) -> t.Any:
+        return context
+
+    async def setup_async(*_args: t.Any, **_kwargs: t.Any) -> t.Any:
+        return context
+
+    async def verify_activity_async(_context: t.Any) -> None:
+        return None
+
+    async def run_group(
+        _recorder: t.Any,
+        _context: t.Any,
+        strategies: t.Mapping[str, t.Callable[[], object]],
+        **_kwargs: t.Any,
+    ) -> None:
+        if "search.contents" in strategies:
+            events.append("search.timed")
+
+    async def prepare_content(
+        *_args: t.Any, **_kwargs: t.Any
+    ) -> t.Callable[[], object]:
+        events.append("content.prepared")
+        return lambda: object()
+
+    async def cleanup(_context: t.Any) -> t.Any:
+        return benchmark_module.CleanupReport(
+            True,
+            processes_absent=True,
+            socket_absent=True,
+            scratch_absent=True,
+        )
+
+    monkeypatch.setattr(benchmark_module, "setup_sync", setup_sync)
+    monkeypatch.setattr(benchmark_module, "setup_async", setup_async)
+    monkeypatch.setattr(benchmark_module, "release_activity_gate", lambda _ctx: None)
+    monkeypatch.setattr(benchmark_module, "verify_activity_sync", lambda _ctx: None)
+    monkeypatch.setattr(
+        benchmark_module, "verify_activity_async", verify_activity_async
+    )
+    monkeypatch.setattr(benchmark_module, "_run_worker_group", run_group)
+    monkeypatch.setattr(
+        benchmark_module,
+        "_prepare_content_search_strategy",
+        prepare_content,
+    )
+    monkeypatch.setattr(
+        benchmark_module, "snapshot_topology_sync", lambda _ctx: snapshot
+    )
+
+    async def snapshot_async(_context: t.Any) -> t.Any:
+        return snapshot
+
+    monkeypatch.setattr(benchmark_module, "snapshot_topology_async", snapshot_async)
+    monkeypatch.setattr(benchmark_module, "verify_topology", lambda *_args: snapshot)
+    monkeypatch.setattr(benchmark_module, "cleanup_run", cleanup)
+    monkeypatch.setattr(
+        benchmark_module,
+        "probe_host",
+        lambda _reader: benchmark_module.HostSnapshot(),
+    )
+
+
+@pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
+def test_worker_quiesces_output_only_after_content_freeze_before_search(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    lane_name: str,
+    mode_name: str,
+) -> None:
+    """Only async control search may cross the terminal output boundary."""
+    events: list[str] = []
+    _patch_worker_to_observe_output_quiescence(
+        benchmark_module,
+        monkeypatch,
+        lane_name=lane_name,
+        mode_name=mode_name,
+        events=events,
+    )
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+
+    report = asyncio.run(
+        benchmark_module.run_worker(
+            benchmark_module.Topology(1, 1, 1),
+            lane=benchmark_module.EngineLane(lane_name),
+            mode=benchmark_module.ExecutionMode(mode_name),
+            runs=1,
+            warmup=0,
+            seed=11,
+            run_id=f"quiescence-{lane_name}-{mode_name}",
+            scratch=tmp_path / "scratch",
+            socket_path=tmp_path / "scratch" / "tmux.sock",
+            checkpoint_path=tmp_path / "checkpoint.json",
+            progress_path=tmp_path / "progress.jsonl",
+            guard_decision=decision,
+            original_guard_decision=decision,
+            policy=benchmark_module.ResourcePolicy(),
+            fuzzer_duration_s=300.0,
+            watchdog_s=30.0,
+        )
+    )
+
+    assert report.status == "completed"
+    expected = ["content.prepared", "search.timed"]
+    if lane_name == "control" and mode_name == "async":
+        expected.insert(1, "output.disabled")
+    assert events == expected
+
+
+def test_worker_output_quiescence_failure_stops_before_timed_search(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A missing mute acknowledgement cannot start or fabricate search work."""
+    events: list[str] = []
+    _patch_worker_to_observe_output_quiescence(
+        benchmark_module,
+        monkeypatch,
+        lane_name="control",
+        mode_name="async",
+        events=events,
+        mute_fails=True,
+    )
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+
+    report = asyncio.run(
+        benchmark_module.run_worker(
+            benchmark_module.Topology(1, 1, 1),
+            lane=benchmark_module.EngineLane.CONTROL,
+            mode=benchmark_module.ExecutionMode.ASYNC,
+            runs=1,
+            warmup=0,
+            seed=11,
+            run_id="quiescence-failure",
+            scratch=tmp_path / "scratch",
+            socket_path=tmp_path / "scratch" / "tmux.sock",
+            checkpoint_path=tmp_path / "checkpoint.json",
+            progress_path=tmp_path / "progress.jsonl",
+            guard_decision=decision,
+            original_guard_decision=decision,
+            policy=benchmark_module.ResourcePolicy(),
+            fuzzer_duration_s=300.0,
+            watchdog_s=30.0,
+        )
+    )
+
+    assert events == ["content.prepared", "output.disabled"]
+    assert report.status == "failed"
+    assert report.failed_phase == "search.contents"
+    assert "output quiescence failed" in t.cast(str, report.error)
+    assert "search.contents" not in {phase.name for phase in report.phases}
+    assert report.cleanup.complete
+
+
 @pytest.mark.parametrize("mode_name", ("sync", "async"))
 @pytest.mark.parametrize("completion_offset_ns", (0, 1), ids=("exact", "late"))
 def test_content_delayed_capture_enforces_request_deadline_before_later_batches(
@@ -7855,6 +8064,137 @@ def test_live_search_phase_keeps_server_snapshot_end_to_end_and_content_distinct
     assert cleanup is not None
     assert cleanup.complete, cleanup.errors
     assert not scratch.exists()
+
+
+def test_live_no_output_survives_reconnect_without_stopping_followers(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Client output muting must preserve both active follower workloads."""
+    from libtmux.experimental.engines.async_control_mode import (
+        AsyncControlModeEngine,
+    )
+    from libtmux.experimental.engines.base import CommandRequest
+
+    topology = benchmark_module.Topology(1, 2, 1)
+    scratch = tmp_path / "no-output-reconnect"
+    context: t.Any = None
+    cleanup: t.Any = None
+
+    async def client_flags(engine: AsyncControlModeEngine) -> tuple[str, ...]:
+        result = await engine.run(
+            CommandRequest.from_args("list-clients", "-F", "#{client_flags}")
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout
+        return result.stdout
+
+    async def exercise() -> None:
+        nonlocal context, cleanup
+        context = await benchmark_module.setup_async(
+            topology,
+            benchmark_module.EngineLane.CONTROL,
+            scratch,
+            run_id="no-output-reconnect",
+            delayed_ordinal=1,
+        )
+        try:
+            benchmark_module.release_activity_gate(context)
+            await benchmark_module.verify_activity_async(context)
+            strategy = await benchmark_module._prepare_content_search_strategy(
+                context,
+                request_id="no-output-content",
+            )
+            assert strategy().matched_ids == (context.delayed_pane_id,)
+
+            before = await benchmark_module.snapshot_topology_async(context)
+            follower_identities = tuple(
+                (pane.pane_id, t.cast(int, pane.pid), _process_start_time(pane.pid))
+                for pane in before.panes
+                if pane.pid is not None
+            )
+            assert len(follower_identities) == 2
+            engine = t.cast(AsyncControlModeEngine, context.engine)
+            await engine.disable_output_notifications()
+            assert all("no-output" in line for line in await client_flags(engine))
+
+            muted_baseline = benchmark_module._current_activity_heartbeat(
+                context,
+                max_age_s=2.0,
+            )
+            advanced = await benchmark_module._wait_activity_advance_async(
+                context,
+                muted_baseline,
+            )
+            assert advanced.epoch > muted_baseline.epoch
+            await benchmark_module._wait_pane_epoch_async(context, advanced.epoch)
+            after = await benchmark_module.snapshot_topology_async(context)
+            assert (
+                tuple(
+                    (pane.pane_id, pane.pid, _process_start_time(t.cast(int, pane.pid)))
+                    for pane in after.panes
+                )
+                == follower_identities
+            )
+
+            generation = engine._generation
+            proc = engine._proc
+            assert proc is not None
+            proc.terminate()
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 5.0
+            while engine._dead is None and engine._generation == generation:
+                if loop.time() >= deadline:
+                    message = "control process death was not observed"
+                    raise TimeoutError(message)
+                await asyncio.sleep(0)
+            assert engine._dead is not None
+            read_only = asyncio.create_task(
+                engine.run(CommandRequest.from_args("list-sessions"))
+            )
+            await asyncio.sleep(0)
+            assert not read_only.done()
+            result = await asyncio.wait_for(read_only, timeout=5.0)
+            assert result.returncode == 0, result.stderr
+            assert engine._generation > generation
+            assert all("no-output" in line for line in await client_flags(engine))
+
+            reconnected_baseline = benchmark_module._current_activity_heartbeat(
+                context,
+                max_age_s=2.0,
+            )
+            reconnected_advanced = await benchmark_module._wait_activity_advance_async(
+                context,
+                reconnected_baseline,
+            )
+            assert reconnected_advanced.epoch > reconnected_baseline.epoch
+            await benchmark_module._wait_pane_epoch_async(
+                context,
+                reconnected_advanced.epoch,
+            )
+            final = await benchmark_module.snapshot_topology_async(context)
+            benchmark_module.verify_topology(context, final)
+            assert (
+                tuple(
+                    (pane.pane_id, pane.pid, _process_start_time(t.cast(int, pane.pid)))
+                    for pane in final.panes
+                )
+                == follower_identities
+            )
+        finally:
+            cleanup = await benchmark_module.cleanup_run(context)
+
+    asyncio.run(asyncio.wait_for(exercise(), timeout=30.0))
+    assert cleanup is not None
+    assert cleanup.complete, cleanup.errors
+    assert cleanup.processes_absent
+    assert cleanup.socket_absent
+    assert cleanup.scratch_absent
+    assert not scratch.exists()
+    assert all(
+        not benchmark_module.process_identity_matches(identity)
+        for identity in context.processes
+    )
 
 
 def test_run_repeatable_phase_interleaves_and_accepts_only_verified_samples(
