@@ -67,7 +67,7 @@ _SENTINEL_COMPONENT_MAX_BYTES = 128
 _SENTINEL_RECORD_MAX_BYTES = 422
 _WAIT_TIMEOUT_MAX_S = 3.0
 _WAIT_FRAME_RATE_MAX_HZ = 40.0
-_REPORT_SCHEMA_VERSION = 2
+_REPORT_SCHEMA_VERSION = 3
 _PROGRESS_SCHEMA_VERSION = 2
 _MIN_PANE_WIDTH = 64
 _PANE_CAPTURE_CHUNK_SIZE = 64
@@ -100,6 +100,9 @@ _RUNNER_REPEATABLE_PHASES = (
     ),
     "search.contents",
 )
+_ORM_ENUMERATION_PHASES = tuple(
+    f"enumeration.orm.{kind}" for kind in _ENUMERATION_KINDS
+)
 _RUNNER_PHASES = (
     "setup",
     "stabilization",
@@ -108,6 +111,48 @@ _RUNNER_PHASES = (
     "wait.control-stream",
     *_RUNNER_REPEATABLE_PHASES[2:],
 )
+
+
+def runner_repeatable_phases(*, orm: bool) -> tuple[str, ...]:
+    """Return the repeatable phase names for a run, honouring the ORM opt-in.
+
+    Examples
+    --------
+    >>> runner_repeatable_phases(orm=False) == _RUNNER_REPEATABLE_PHASES
+    True
+    >>> "enumeration.orm.panes" in runner_repeatable_phases(orm=True)
+    True
+    """
+    if not orm:
+        return _RUNNER_REPEATABLE_PHASES
+    index = _RUNNER_REPEATABLE_PHASES.index("enumeration.panes") + 1
+    return (
+        *_RUNNER_REPEATABLE_PHASES[:index],
+        *_ORM_ENUMERATION_PHASES,
+        *_RUNNER_REPEATABLE_PHASES[index:],
+    )
+
+
+def runner_phases(*, orm: bool) -> tuple[str, ...]:
+    """Return the complete phase graph for a run, honouring the ORM opt-in.
+
+    Examples
+    --------
+    >>> runner_phases(orm=False) == _RUNNER_PHASES
+    True
+    >>> len(runner_phases(orm=True)) - len(runner_phases(orm=False))
+    3
+    """
+    if not orm:
+        return _RUNNER_PHASES
+    index = _RUNNER_PHASES.index("enumeration.panes") + 1
+    return (
+        *_RUNNER_PHASES[:index],
+        *_ORM_ENUMERATION_PHASES,
+        *_RUNNER_PHASES[index:],
+    )
+
+
 _RUNNER_PHASE_GROUPS = (
     ("setup",),
     ("stabilization",),
@@ -125,6 +170,29 @@ _RUNNER_PHASE_GROUPS = (
         "search.contents",
     ),
 )
+
+
+def runner_phase_groups(*, orm: bool) -> tuple[tuple[str, ...], ...]:
+    """Return the interleaving groups for a run, honouring the ORM opt-in.
+
+    The reference cells join the enumeration group, because they are
+    interleaved against the typed cells they are compared with.
+
+    Examples
+    --------
+    >>> runner_phase_groups(orm=False) == _RUNNER_PHASE_GROUPS
+    True
+    >>> len(runner_phase_groups(orm=True)[4])
+    6
+    """
+    if not orm:
+        return _RUNNER_PHASE_GROUPS
+    return tuple(
+        (*group, *_ORM_ENUMERATION_PHASES)
+        if group == _RUNNER_PHASE_GROUPS[4]
+        else group
+        for group in _RUNNER_PHASE_GROUPS
+    )
 
 
 def _is_terminal_safe_component(value: object) -> bool:
@@ -338,6 +406,7 @@ def _fuzzer_duration_budget_s(
     warmup: int,
     watchdog_s: float,
     cleanup_grace_s: float,
+    orm: bool = False,
 ) -> float:
     """Return the finite active-service budget allowed by the supervisor.
 
@@ -400,7 +469,7 @@ def _fuzzer_duration_budget_s(
         message = "fuzzer service budget requires finite positive timeouts"
         raise ValueError(message)
     control_applicable = lane is EngineLane.CONTROL and mode is ExecutionMode.ASYNC
-    cell_count = len(_RUNNER_REPEATABLE_PHASES) + int(control_applicable)
+    cell_count = len(runner_repeatable_phases(orm=orm)) + int(control_applicable)
     progress_gaps = (
         2 * (runs + warmup) * cell_count + 1 + int(not control_applicable) + 1 + 1
     )
@@ -2464,6 +2533,9 @@ class RunReport:
         Highest worker sequence incorporated into this checkpoint.
     environment : EnvironmentReport | None
         Descriptive local environment; never a causal performance claim.
+    orm : bool
+        Whether the optional classic ORM reference cells were measured. The
+        phase graph a validator requires depends on this declaration.
     """
 
     requested_topology: Topology
@@ -2494,6 +2566,7 @@ class RunReport:
     progress_path: str | None = None
     progress_sequence: int = -1
     environment: EnvironmentReport | None = None
+    orm: bool = False
 
 
 def _json_value(value: object) -> object:
@@ -2949,7 +3022,7 @@ def run_report_from_json(value: object) -> RunReport:
     """Decode a JSON-native report into immutable typed evidence.
 
     >>> report = run_report_from_json({
-    ...     "schema_version": 2,
+    ...     "schema_version": 3,
     ...     "requested_topology": {
     ...         "sessions": 1, "windows_per_session": 1, "panes_per_window": 1
     ...     },
@@ -3027,6 +3100,7 @@ def run_report_from_json(value: object) -> RunReport:
         progress_path=row.get("progress_path"),
         progress_sequence=row.get("progress_sequence", -1),
         environment=_environment_from_json(row.get("environment")),
+        orm=bool(row.get("orm", False)),
     )
 
 
@@ -3996,17 +4070,17 @@ def _validate_executable_report(report: RunReport) -> None:
         raise ValueError(message)
     terminal_unsuccessful = report.status in {"failed", "cutoff"}
     phase_names = tuple(phase.name for phase in report.phases)
-    canonical_prefix = phase_names == _RUNNER_PHASES[: len(phase_names)]
+    expected_graph = runner_phases(orm=report.orm)
+    canonical_prefix = phase_names == expected_graph[: len(phase_names)]
     interleaved_candidate = False
     interleaved_reachable = False
     if terminal_unsuccessful:
-        for group_index, group in enumerate(_RUNNER_PHASE_GROUPS):
+        groups = runner_phase_groups(orm=report.orm)
+        for group_index, group in enumerate(groups):
             if len(group) <= 1:
                 continue
             prior_names = tuple(
-                name
-                for prior_group in _RUNNER_PHASE_GROUPS[:group_index]
-                for name in prior_group
+                name for prior_group in groups[:group_index] for name in prior_group
             )
             active_suffix = report.phases[len(prior_names) :]
             active_names = tuple(phase.name for phase in active_suffix)
@@ -4043,7 +4117,8 @@ def _validate_executable_report(report: RunReport) -> None:
         if report.observed_topology != report.requested_topology:
             message = "completed report requires exact observed topology"
             raise ValueError(message)
-        if tuple(phase.name for phase in report.phases) != _RUNNER_PHASES:
+        expected_phases = runner_phases(orm=report.orm)
+        if tuple(phase.name for phase in report.phases) != expected_phases:
             message = "completed report has an incomplete phase graph"
             raise ValueError(message)
     phases = {phase.name: phase for phase in report.phases}
@@ -4113,7 +4188,7 @@ def _validate_executable_report(report: RunReport) -> None:
     if failed_rows and report.failed_phase != failed_rows[0].name:
         message = "failed_phase must match the active failed phase"
         raise ValueError(message)
-    repeatable_names = set(_RUNNER_REPEATABLE_PHASES)
+    repeatable_names = set(runner_repeatable_phases(orm=report.orm))
     if control_applicable:
         repeatable_names.add("wait.control-stream")
     for name in repeatable_names:
@@ -4218,7 +4293,7 @@ def _validate_executable_report(report: RunReport) -> None:
     elif control_phase is not None and control_phase.status != "not_applicable":
         message = "control-stream must be not_applicable outside async control"
         raise ValueError(message)
-    for name in _RUNNER_REPEATABLE_PHASES:
+    for name in runner_repeatable_phases(orm=report.orm):
         phase = phases[name]
         if phase.status != "completed":
             message = f"repeatable phase {name} has incomplete raw evidence"
@@ -11682,6 +11757,7 @@ async def run_worker(
     stall_after: str | None = None,
     fail_after: str | None = None,
     extra_identity: ProcessIdentity | None = None,
+    orm: bool = False,
 ) -> RunReport:
     """Execute one complete worker phase graph with cleanup in ``finally``.
 
@@ -11802,6 +11878,7 @@ async def run_worker(
         socket_path=str(socket_path),
         progress_path=str(progress_path),
         environment=environment,
+        orm=orm,
     )
     recorder = _WorkerRecorder(
         initial,
@@ -12035,6 +12112,13 @@ async def run_worker(
                     enumerate_async,
                     context,
                     kind=enumeration_kind,
+                )
+        if orm:
+            for kind in _ENUMERATION_KINDS:
+                enumeration_strategies[f"enumeration.orm.{kind}"] = functools.partial(
+                    enumerate_orm,
+                    context,
+                    kind=t.cast("EnumerationKind", kind),
                 )
         await _run_worker_group(
             recorder,
@@ -13168,6 +13252,7 @@ def supervise_worker(
     policy: ResourcePolicy,
     watchdog_s: float,
     cleanup_grace_s: float,
+    orm: bool = False,
     _test_stall_after: str | None = None,
     _test_fail_after: str | None = None,
     _test_extra_identity: ProcessIdentity | None = None,
@@ -13216,6 +13301,7 @@ def supervise_worker(
         warmup=warmup,
         watchdog_s=watchdog_seconds,
         cleanup_grace_s=cleanup_grace_s,
+        orm=orm,
     )
     progress_path = output.with_name(f"{output.stem}.{run_id}.progress.jsonl")
     checkpoint_path = output.with_name(f".{output.name}.{run_id}.worker.json")
@@ -13261,6 +13347,8 @@ def supervise_worker(
         "--watchdog-seconds",
         str(watchdog_seconds),
     ]
+    if orm:
+        command.append("--with-orm")
     if _test_stall_after is not None:
         command.extend(("--_test-stall-after", _test_stall_after))
     if _test_fail_after is not None:
@@ -13798,6 +13886,7 @@ def run_scenario(
     host_snapshot: HostSnapshot | None = None,
     watchdog_s: float = 120.0,
     cleanup_grace_s: float = 2.0,
+    orm: bool = False,
     _test_stall_after: str | None = None,
     _test_fail_after: str | None = None,
     _test_extra_identity: ProcessIdentity | None = None,
@@ -13933,6 +14022,7 @@ def run_scenario(
         policy=policy,
         watchdog_s=watchdog_s,
         cleanup_grace_s=cleanup_grace_s,
+        orm=orm,
         _test_stall_after=_test_stall_after,
         _test_fail_after=_test_fail_after,
         _test_extra_identity=_test_extra_identity,
@@ -14498,6 +14588,7 @@ def _run_hidden_worker(arguments: argparse.Namespace) -> int:
             policy=policy,
             fuzzer_duration_s=arguments.service_duration_seconds,
             watchdog_s=arguments.watchdog_seconds,
+            orm=arguments.orm,
             stall_after=arguments.test_stall_after,
             fail_after=arguments.test_fail_after,
             extra_identity=_parse_extra_identity(arguments.test_extra_identity),
@@ -14581,6 +14672,15 @@ def _add_execution_arguments(parser: argparse.ArgumentParser) -> None:
         help="grace interval before exact process escalation",
     )
     parser.add_argument(
+        "--with-orm",
+        dest="orm",
+        action="store_true",
+        help=(
+            "also measure the classic ORM enumeration reference; its own "
+            "request graph differs, so it is never an engine speedup claim"
+        ),
+    )
+    parser.add_argument(
         "--_test-host-snapshot",
         dest="test_host_snapshot",
         type=pathlib.Path,
@@ -14635,6 +14735,7 @@ def _hidden_worker_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-floor-bytes", required=True)
     parser.add_argument("--service-duration-seconds", required=True, type=float)
     parser.add_argument("--watchdog-seconds", required=True, type=float)
+    parser.add_argument("--with-orm", dest="orm", action="store_true")
     parser.add_argument(
         "--_test-stall-after", dest="test_stall_after", help=argparse.SUPPRESS
     )
@@ -14815,6 +14916,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
                 host_snapshot=host_snapshot,
                 watchdog_s=arguments.watchdog_seconds,
                 cleanup_grace_s=arguments.cleanup_grace_seconds,
+                orm=arguments.orm,
                 _test_stall_after=arguments.test_stall_after,
                 _test_fail_after=arguments.test_fail_after,
                 _test_extra_identity=extra_identity,
