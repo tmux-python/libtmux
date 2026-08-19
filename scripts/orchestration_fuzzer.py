@@ -29,6 +29,8 @@ _TERMINAL_SAFE_COMPONENT_ALPHABET = frozenset(
 )
 SENTINEL_COMPONENT_MAX_BYTES = 128
 SENTINEL_RECORD_MAX_BYTES = 422
+ACTIVITY_RECORD_MAX_BYTES = 2_048
+EPOCH_PULSE_MAX_BYTES = 64
 
 
 class StreamMode(str, enum.Enum):
@@ -113,7 +115,7 @@ class WorkloadPaths:
 
 @dataclasses.dataclass(frozen=True)
 class Frame:
-    """One rendered stream record.
+    """One rendered stream record and its adjacent activity pulse.
 
     Attributes
     ----------
@@ -122,7 +124,7 @@ class Frame:
     epoch : int
         Monotonic frame sequence number.
     text : str
-        Newline-terminated record appended to the stream.
+        Bounded newline-terminated ordinary record followed by its epoch pulse.
     """
 
     mode: StreamMode
@@ -319,6 +321,48 @@ def source_lines(source_root: pathlib.Path, seed: int) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def _bounded_activity_record(text: str) -> str:
+    r"""Return one newline-terminated record within the encoded byte ceiling.
+
+    >>> len(_bounded_activity_record("é" * 2_048 + "\n").encode("utf-8")) <= 2_048
+    True
+    >>> _bounded_activity_record("short\n")
+    'short\n'
+    """
+    if not text.endswith("\n"):
+        message = "activity record must be newline-terminated"
+        raise ValueError(message)
+    encoded = text.encode("utf-8")
+    if len(encoded) <= ACTIVITY_RECORD_MAX_BYTES:
+        return text
+    payload = encoded[: ACTIVITY_RECORD_MAX_BYTES - 1].decode(
+        "utf-8",
+        errors="ignore",
+    )
+    return f"{payload}\n"
+
+
+def _epoch_pulse(epoch: int) -> str:
+    r"""Return one exact bounded ASCII pulse for a completed activity epoch.
+
+    >>> _epoch_pulse(7)
+    'LIBTMUX_EPOCH epoch=7\n'
+
+    Raises
+    ------
+    ValueError
+        If ``epoch`` is not a nonnegative integer or its pulse exceeds 64 bytes.
+    """
+    if type(epoch) is not int or epoch < 0:
+        message = "activity epoch must be a nonnegative integer"
+        raise ValueError(message)
+    pulse = f"LIBTMUX_EPOCH epoch={epoch}\n"
+    if len(pulse.encode("ascii")) > EPOCH_PULSE_MAX_BYTES:
+        message = f"activity epoch pulse must be at most {EPOCH_PULSE_MAX_BYTES} bytes"
+        raise ValueError(message)
+    return pulse
+
+
 def render_frame(
     mode: StreamMode,
     epoch: int,
@@ -328,7 +372,7 @@ def render_frame(
     r"""Render one deterministic newline-terminated activity record.
 
     >>> render_frame(StreamMode.DEV_SERVER, 4, (), 11).text
-    '[dev-server epoch=4] recovery service=api state=ready\n'
+    '[dev-server epoch=4] recovery service=api state=ready\nLIBTMUX_EPOCH epoch=4\n'
     """
     if mode is StreamMode.EDITOR:
         source = corpus[(seed + epoch) % len(corpus)] if corpus else "<empty source>"
@@ -347,7 +391,11 @@ def render_frame(
         text = f"[installer epoch={epoch}] install phase={phase} unit={epoch + 1}/8\n"
     else:
         text = f"[delayed-match epoch={epoch}] scan state=waiting cursor={epoch}\n"
-    return Frame(mode=mode, epoch=epoch, text=text)
+    return Frame(
+        mode=mode,
+        epoch=epoch,
+        text=_bounded_activity_record(text) + _epoch_pulse(epoch),
+    )
 
 
 def prepare_output(options: WorkloadOptions) -> WorkloadPaths:
@@ -462,6 +510,26 @@ def read_control_marker(path: pathlib.Path, run_id: str) -> dict[str, t.Any] | N
     if type(version) is not int or version != 1 or marker.get("run_id") != run_id:
         return None
     return marker
+
+
+def _gate_epoch(marker: dict[str, t.Any] | None) -> int | None:
+    """Return the exact bounded epoch carried by a valid gate marker.
+
+    >>> _gate_epoch({"epoch": 7})
+    7
+    >>> _gate_epoch({"epoch": True}) is None
+    True
+    """
+    if marker is None:
+        return None
+    epoch = marker.get("epoch")
+    if type(epoch) is not int or epoch < 0:
+        return None
+    try:
+        _epoch_pulse(epoch)
+    except ValueError:
+        return None
+    return epoch
 
 
 def _stream_path(paths: WorkloadPaths, mode: StreamMode) -> pathlib.Path:
@@ -671,7 +739,7 @@ def run_serve(options: WorkloadOptions) -> int:
     ...             time.sleep(0.001)
     ...         write_json_atomic(
     ...             options.output_dir / "gate.json",
-    ...             {"schema_version": 1, "run_id": "run-7"},
+    ...             {"schema_version": 1, "run_id": "run-7", "epoch": 0},
     ...         )
     ...     release = threading.Thread(target=release_gate)
     ...     release.start()
@@ -731,13 +799,14 @@ def run_serve(options: WorkloadOptions) -> int:
             and bytes_since_heartbeat < 65536
         ):
             return
+        completed_epoch = epoch if activated_at_ns is None else max(0, epoch - 1)
         write_json_atomic(
             paths.heartbeat,
             {
                 "schema_version": 1,
                 "run_id": options.run_id,
                 "state": state,
-                "epoch": epoch,
+                "epoch": completed_epoch,
                 "monotonic_ns": now_ns,
                 "bytes_written": bytes_since_heartbeat,
             },
@@ -752,7 +821,10 @@ def run_serve(options: WorkloadOptions) -> int:
                 break
 
             if activated_at_ns is None:
-                if read_control_marker(paths.gate, options.run_id) is not None:
+                gate = read_control_marker(paths.gate, options.run_id)
+                released_epoch = _gate_epoch(gate)
+                if released_epoch is not None:
+                    epoch = released_epoch
                     activated_at_ns = now_ns
                     next_frame_ns = now_ns
                 else:
@@ -769,7 +841,8 @@ def run_serve(options: WorkloadOptions) -> int:
                 for mode in StreamMode:
                     frame = render_frame(mode, epoch, corpus, options.seed)
                     bytes_since_heartbeat += _append_text(
-                        _stream_path(paths, mode), frame.text
+                        _stream_path(paths, mode),
+                        frame.text,
                     )
                 epoch += 1
                 next_frame_ns += frame_interval_ns
