@@ -6,6 +6,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import pathlib
 import subprocess
@@ -216,6 +217,45 @@ def test_render_frame_bounds_multibyte_activity_and_emits_exact_epoch_pulse(
     assert len(pulse.encode("ascii")) <= 64
     assert len(frame.text.encode("utf-8")) <= 2_112
     assert len(fuzzer_module._epoch_pulse(10**20).encode("ascii")) <= 64
+
+
+@pytest.mark.parametrize(
+    ("unsafe", "escaped"),
+    (
+        ("\t", r"\t"),
+        ("\r", r"\r"),
+        ("\x08", r"\x08"),
+        ("\x1b", r"\x1b"),
+        ("\n", r"\n"),
+        ("\u202e", r"\u202e"),
+    ),
+    ids=("tab", "carriage-return", "backspace", "escape", "newline", "bidi"),
+)
+def test_bounded_activity_record_escapes_terminal_controls_before_byte_ceiling(
+    fuzzer_module: types.ModuleType,
+    unsafe: str,
+    escaped: str,
+) -> None:
+    """Ordinary stream data is one printable line with Unicode preserved."""
+    record = fuzzer_module._bounded_activity_record(
+        f"π漢{unsafe}{'x' * 4_096}\n",
+    )
+    body = record[:-1]
+
+    assert record.endswith("\n")
+    assert "\n" not in body
+    assert all(character.isprintable() for character in body)
+    assert escaped in body
+    assert body.startswith("π漢")
+    assert len(record.encode("utf-8")) <= 2_048
+
+
+def test_ordinary_record_and_pulse_fit_measured_capture_history(
+    fuzzer_module: types.ModuleType,
+) -> None:
+    """One maximum ordinary record plus one pulse stays below 64 rows."""
+    assert fuzzer_module.ACTIVITY_RECORD_MAX_BYTES == 2_048
+    assert math.ceil((2_048 - 1) / 64) + 1 < 64
 
 
 def test_delayed_record_has_its_own_multibyte_safe_retention_bound(
