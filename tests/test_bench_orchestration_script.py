@@ -8,6 +8,7 @@ import errno
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import pathlib
 import signal
@@ -428,6 +429,7 @@ def _completed_executable_report(
     seed: int = 11,
     lane: str = "subprocess",
     mode: str = "sync",
+    warmup: int = 0,
 ) -> t.Any:
     """Build one fully schema-valid completed executable child artifact."""
     run_id = f"child-{ordinal}"
@@ -495,6 +497,8 @@ def _completed_executable_report(
                 line_count=shape.panes,
                 byte_count=shape.panes,
             )
+        elif name == "wait.control-stream":
+            observation_kwargs["dropped_notification_delta"] = 0
         elif name.startswith("search."):
             observation_kwargs.update(scanned_count=1, matched_count=1)
         return benchmark_module.PhaseReport(
@@ -521,8 +525,17 @@ def _completed_executable_report(
                 "max_ns": 3_000_000,
             },
             status="completed",
-            warmup=0,
+            warmup=warmup,
             runs=1,
+            warmup_observations=tuple(
+                benchmark_module.PhaseObservation(
+                    warmup_ordinal,
+                    name,
+                    2_000_000,
+                    **observation_kwargs,
+                )
+                for warmup_ordinal in range(warmup)
+            ),
             observations=(
                 benchmark_module.PhaseObservation(
                     0,
@@ -544,7 +557,7 @@ def _completed_executable_report(
                 shape,
                 shape,
                 status="not_applicable",
-                warmup=0,
+                warmup=warmup,
                 runs=1,
             )
             if name == "wait.control-stream" and (lane, mode) != ("control", "async")
@@ -566,7 +579,7 @@ def _completed_executable_report(
         run_id=run_id,
         lane=lane,
         mode=mode,
-        warmup=0,
+        warmup=warmup,
         runs=1,
         processes=(owner,),
         socket_ownership=ownership,
@@ -1821,6 +1834,185 @@ def test_artifact_validation_rejects_non_exact_execution_scalars(
 
     with pytest.raises(ValueError, match="must be"):
         benchmark_module.validate_report_artifact(report_path)
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("missing", "null", "bool", "float", "string", "positive"),
+)
+@pytest.mark.parametrize("collection", ("warmup_observations", "observations"))
+def test_public_validate_rejects_untrusted_control_wait_drop_delta(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    case: str,
+    collection: str,
+) -> None:
+    """Accepted control-stream evidence requires a present exact integer zero."""
+    report = _completed_executable_report(
+        benchmark_module,
+        benchmark_module.Topology(1, 1, 1),
+        1,
+        lane="control",
+        mode="async",
+        warmup=1,
+    )
+    payload = benchmark_module._json_value(report)
+    assert isinstance(payload, dict)
+    phases = payload["phases"]
+    assert isinstance(phases, list)
+    control = next(
+        phase
+        for phase in phases
+        if isinstance(phase, dict) and phase.get("name") == "wait.control-stream"
+    )
+    observations = control[collection]
+    assert isinstance(observations, list)
+    observation = observations[0]
+    assert isinstance(observation, dict)
+    if case == "missing":
+        observation.pop("dropped_notification_delta")
+    else:
+        observation["dropped_notification_delta"] = {
+            "null": None,
+            "bool": True,
+            "float": 0.0,
+            "string": "0",
+            "positive": 1,
+        }[case]
+    report_path = tmp_path / "invalid-control-wait-drop.json"
+    report_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    completed = _run_cli("validate", "--input", str(report_path), cwd=tmp_path)
+
+    assert completed.returncode == 2
+    assert "drop" in completed.stderr
+    assert "Traceback" not in completed.stderr
+
+
+def test_public_validate_accepts_exact_zero_control_wait_drop_delta(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A real integer zero remains publishable control-stream evidence."""
+    report = _completed_executable_report(
+        benchmark_module,
+        benchmark_module.Topology(1, 1, 1),
+        1,
+        lane="control",
+        mode="async",
+        warmup=1,
+    )
+    report_path = tmp_path / "valid-control-wait-drop.json"
+    benchmark_module.write_json_atomic(report_path, report)
+
+    completed = _run_cli("validate", "--input", str(report_path), cwd=tmp_path)
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def _partial_control_wait_report(
+    benchmark_module: types.ModuleType,
+    *,
+    report_status: str,
+    phase_status: str,
+    drop_delta: object,
+    warmup: bool,
+) -> t.Any:
+    """Build generic retained control-stream evidence without run metadata."""
+    topology = benchmark_module.Topology(1, 1, 1)
+    observation = benchmark_module.PhaseObservation(
+        0,
+        "wait.control-stream",
+        10,
+        dropped_notification_delta=t.cast(int | None, drop_delta),
+    )
+    samples = (
+        ()
+        if warmup
+        else (
+            benchmark_module.RawSample(
+                10,
+                True,
+                verified=True,
+                strategy="wait.control-stream",
+                ordinal=0,
+            ),
+        )
+    )
+    return benchmark_module.RunReport(
+        topology,
+        observed_topology=topology,
+        status=report_status,
+        phases=(
+            benchmark_module.PhaseReport(
+                "wait.control-stream",
+                topology,
+                topology,
+                samples=samples,
+                status=phase_status,
+                warmup=1 if warmup else 0,
+                runs=1,
+                warmup_observations=(observation,) if warmup else (),
+                observations=() if warmup else (observation,),
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("report_status", "phase_status", "drop_delta", "warmup"),
+    (
+        ("in_progress", "in_progress", 1, False),
+        ("failed", "failed", None, False),
+        ("in_progress", "in_progress", "0", True),
+    ),
+    ids=("in-progress-nonzero", "failed-missing", "warmup-malformed"),
+)
+def test_validate_report_rejects_untrusted_partial_control_wait_drop_delta(
+    benchmark_module: types.ModuleType,
+    report_status: str,
+    phase_status: str,
+    drop_delta: object,
+    warmup: bool,
+) -> None:
+    """Generic partial reports cannot bypass exact control drop evidence."""
+    report = _partial_control_wait_report(
+        benchmark_module,
+        report_status=report_status,
+        phase_status=phase_status,
+        drop_delta=drop_delta,
+        warmup=warmup,
+    )
+
+    with pytest.raises(ValueError, match="exact zero drop"):
+        benchmark_module.validate_report(report)
+
+
+@pytest.mark.parametrize(
+    ("report_status", "phase_status", "warmup"),
+    (
+        ("in_progress", "in_progress", False),
+        ("failed", "failed", False),
+        ("in_progress", "in_progress", True),
+    ),
+    ids=("in-progress", "failed", "warmup"),
+)
+def test_validate_report_accepts_exact_zero_partial_control_wait_drop_delta(
+    benchmark_module: types.ModuleType,
+    report_status: str,
+    phase_status: str,
+    warmup: bool,
+) -> None:
+    """Exact integer zero remains valid in every retained partial position."""
+    report = _partial_control_wait_report(
+        benchmark_module,
+        report_status=report_status,
+        phase_status=phase_status,
+        drop_delta=0,
+        warmup=warmup,
+    )
+
+    benchmark_module.validate_report(report)
 
 
 def test_public_render_writes_stdout_or_atomic_output(
@@ -3720,6 +3912,206 @@ def test_run_scenario_refuses_when_pidfds_are_unavailable(
     assert output.exists()
 
 
+def test_fuzzer_duration_budget_is_finite_monotonic_and_covers_n100(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Service lifetime must cover every watchdog-bounded active progress gap."""
+    arguments = {
+        "lane": benchmark_module.EngineLane.CONTROL,
+        "mode": benchmark_module.ExecutionMode.ASYNC,
+        "runs": 100,
+        "warmup": 5,
+        "watchdog_s": 120.0,
+        "cleanup_grace_s": 2.0,
+    }
+    duration = benchmark_module._fuzzer_duration_budget_s(**arguments)
+
+    assert duration == 907_562.0
+    assert duration > 300.0
+    assert math.isfinite(duration)
+    for field in ("runs", "warmup", "watchdog_s", "cleanup_grace_s"):
+        increased = dict(arguments)
+        increased[field] += 1
+        assert benchmark_module._fuzzer_duration_budget_s(**increased) > duration
+
+
+@pytest.mark.parametrize("field", ("watchdog_s", "cleanup_grace_s"))
+def test_fuzzer_duration_budget_rejects_unrepresentable_timeout_integers(
+    benchmark_module: types.ModuleType,
+    field: str,
+) -> None:
+    """Timeout integers that cannot become finite floats must be rejected."""
+    arguments: dict[str, t.Any] = {
+        "lane": benchmark_module.EngineLane.CONTROL,
+        "mode": benchmark_module.ExecutionMode.ASYNC,
+        "runs": 1,
+        "warmup": 0,
+        "watchdog_s": 120.0,
+        "cleanup_grace_s": 2.0,
+    }
+    arguments[field] = 10**400
+
+    with pytest.raises(ValueError, match="finite positive timeouts"):
+        benchmark_module._fuzzer_duration_budget_s(**arguments)
+
+
+def test_supervisor_hands_exact_fuzzer_budget_to_hidden_worker(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The private worker command must receive the supervisor's exact budget."""
+    commands: list[tuple[str, ...]] = []
+
+    def stop_before_spawn(command: t.Sequence[str], **_kwargs: t.Any) -> t.NoReturn:
+        commands.append(tuple(command))
+        message = "injected pre-spawn stop"
+        raise OSError(message)
+
+    monkeypatch.setattr(benchmark_module.subprocess, "Popen", stop_before_spawn)
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+    report = benchmark_module.supervise_worker(
+        benchmark_module.Topology(1, 1, 1),
+        lane=benchmark_module.EngineLane.CONTROL,
+        mode=benchmark_module.ExecutionMode.ASYNC,
+        runs=2,
+        warmup=1,
+        seed=11,
+        run_id="duration-handoff",
+        scratch=tmp_path / "scratch",
+        socket_path=tmp_path / "scratch" / "tmux.sock",
+        output=tmp_path / "report.json",
+        markdown_output=tmp_path / "report.md",
+        guard_decision=decision,
+        original_guard_decision=decision,
+        policy=benchmark_module.ResourcePolicy(),
+        watchdog_s=10.0,
+        cleanup_grace_s=0.5,
+    )
+
+    assert report.status == "failed"
+    worker_commands = tuple(command for command in commands if "_worker" in command)
+    assert len(worker_commands) == 1
+    command = worker_commands[0]
+    flag_index = command.index("--service-duration-seconds")
+    assert command[flag_index + 1] == "2190.5"
+
+
+def test_prepare_context_passes_exact_service_duration_to_fuzzer(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Setup must not replace the supervisor-owned fuzzer lifetime budget."""
+    observed: list[float] = []
+
+    def stop_at_fuzzer(
+        _scratch: pathlib.Path,
+        _run_id: str,
+        **kwargs: t.Any,
+    ) -> t.NoReturn:
+        observed.append(kwargs["duration_s"])
+        message = "injected duration handoff stop"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(benchmark_module, "start_fuzzer", stop_at_fuzzer)
+
+    with pytest.raises(RuntimeError, match="duration handoff stop"):
+        benchmark_module._prepare_context(
+            benchmark_module.Topology(1, 1, 1),
+            benchmark_module.EngineLane.CONTROL,
+            benchmark_module.ExecutionMode.ASYNC,
+            tmp_path / "duration-handoff",
+            socket_path=None,
+            run_id="duration-handoff",
+            delayed_ordinal=0,
+            fuzzer_duration_s=2190.5,
+        )
+
+    assert observed == [2190.5]
+
+
+def test_supervisor_rejects_fuzzer_duration_overflow_before_spawn(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """An unrepresentable service budget must fail before worker side effects."""
+    spawned = False
+    real_popen = benchmark_module.subprocess.Popen
+
+    def reject_spawn(command: t.Sequence[str], **kwargs: t.Any) -> t.Any:
+        nonlocal spawned
+        if "_worker" in command:
+            spawned = True
+            message = "overflowing fuzzer budget reached worker spawn"
+            raise OSError(message)
+        return real_popen(command, **kwargs)
+
+    monkeypatch.setattr(benchmark_module.subprocess, "Popen", reject_spawn)
+    decision = benchmark_module.GuardDecision(
+        True,
+        "ok",
+        None,
+        None,
+        None,
+        False,
+        benchmark_module.HostSnapshot(),
+    )
+
+    with pytest.raises(ValueError, match="finite fuzzer service duration"):
+        benchmark_module.supervise_worker(
+            benchmark_module.Topology(1, 1, 1),
+            lane=benchmark_module.EngineLane.CONTROL,
+            mode=benchmark_module.ExecutionMode.ASYNC,
+            runs=10**400,
+            warmup=0,
+            seed=11,
+            run_id="duration-overflow",
+            scratch=tmp_path / "scratch",
+            socket_path=tmp_path / "scratch" / "tmux.sock",
+            output=tmp_path / "report.json",
+            markdown_output=tmp_path / "report.md",
+            guard_decision=decision,
+            original_guard_decision=decision,
+            policy=benchmark_module.ResourcePolicy(),
+            watchdog_s=120.0,
+            cleanup_grace_s=2.0,
+        )
+
+    assert not spawned
+
+
+@pytest.mark.parametrize("duration_s", (True, 0.0, -1.0, float("inf"), float("nan")))
+def test_start_fuzzer_rejects_nonfinite_or_nonpositive_duration_before_spawn(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    duration_s: object,
+) -> None:
+    """The service process accepts only a finite positive lifetime."""
+    monkeypatch.setattr(
+        benchmark_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("invalid duration started fuzzer"),
+    )
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        benchmark_module.start_fuzzer(
+            tmp_path,
+            "invalid-duration",
+            duration_s=t.cast(float, duration_s),
+        )
+
+
 def test_start_fuzzer_reaps_child_after_readiness_timeout(
     benchmark_module: types.ModuleType,
     tmp_path: pathlib.Path,
@@ -4910,6 +5302,314 @@ def test_live_capture_phase_uses_identical_graphs_with_distinct_planners(
     assert cleanup.complete, cleanup.errors
 
 
+@pytest.mark.parametrize("mode", ("sync", "async"))
+def test_capture_waits_for_each_pane_to_reach_frozen_epoch(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    mode: str,
+) -> None:
+    """Both modes time capture only after every pane consumes frozen epoch H."""
+    from libtmux.experimental.engines.base import CommandResult
+
+    marker = "LIBTMUX_EPOCH run=lagging-pane epoch=1"
+    dispatch_targets: list[tuple[str, ...]] = []
+
+    def record(requests: tuple[t.Any, ...]) -> list[CommandResult]:
+        """Expose pane two at H-1 once and record every dispatch target group."""
+        targets = tuple(
+            request.args[request.args.index("-t") + 1] for request in requests
+        )
+        dispatch_targets.append(targets)
+        results = []
+        for request, target in zip(requests, targets, strict=True):
+            epoch = 6 if len(dispatch_targets) == 1 and target == "%2" else 7
+            results.append(
+                CommandResult(
+                    cmd=("tmux", *request.args),
+                    stdout=(marker, f"[editor epoch={epoch}] pane={target}"),
+                )
+            )
+        return results
+
+    class SyncEngine:
+        """Adapt the shared recorder to the synchronous engine protocol."""
+
+        def run(self, request: t.Any) -> CommandResult:
+            return record((request,))[0]
+
+        def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return record(tuple(requests))
+
+    class AsyncEngine:
+        """Adapt the shared recorder to the asynchronous engine protocol."""
+
+        async def run(self, request: t.Any) -> CommandResult:
+            return record((request,))[0]
+
+        async def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return record(tuple(requests))
+
+    execution_mode = benchmark_module.ExecutionMode(mode)
+    engine = SyncEngine() if mode == "sync" else AsyncEngine()
+    scratch = tmp_path / f"{mode}-lagging-pane"
+    fuzzer = scratch / "fuzzer"
+    fuzzer.mkdir(parents=True)
+    benchmark_module.write_json_atomic(
+        fuzzer / "heartbeat.json",
+        {
+            "schema_version": 1,
+            "run_id": "lagging-pane",
+            "state": "active",
+            "epoch": 7,
+            "monotonic_ns": time.monotonic_ns(),
+        },
+    )
+    pane_ids = ("%1", "%2")
+    context = types.SimpleNamespace(
+        mode=execution_mode,
+        lane=benchmark_module.EngineLane.CONTROL,
+        topology_verified=True,
+        activity_epoch=1,
+        activity_marker=marker,
+        activity_pane_ids=pane_ids,
+        heartbeat_epoch=1,
+        pane_ids=pane_ids,
+        engine=engine,
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+        scratch=scratch,
+        run_id="lagging-pane",
+    )
+
+    if mode == "sync":
+        result = benchmark_module.capture_all_sync(context, strategy="batched")
+    else:
+        result = asyncio.run(
+            benchmark_module.capture_all_async(context, strategy="batched")
+        )
+
+    assert result.epoch == 7
+    assert dispatch_targets == [
+        ("%1", "%2"),
+        ("%2",),
+        ("%1", "%2"),
+    ]
+
+
+@pytest.mark.parametrize("mode", ("sync", "async"))
+@pytest.mark.parametrize(
+    "field",
+    ("timeout_s", "no_progress_timeout_s", "poll_interval_s"),
+)
+@pytest.mark.parametrize(
+    "invalid",
+    (True, float("nan"), float("inf")),
+    ids=("bool", "nan", "inf"),
+)
+def test_pane_epoch_wait_rejects_unbounded_timing_values(
+    benchmark_module: types.ModuleType,
+    mode: str,
+    field: str,
+    invalid: object,
+) -> None:
+    """Every barrier timing input must be an exact finite positive number."""
+    timing: dict[str, t.Any] = {
+        "timeout_s": 1.0,
+        "no_progress_timeout_s": 1.0,
+        "poll_interval_s": 0.01,
+    }
+    timing[field] = invalid
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        if mode == "sync":
+            benchmark_module._wait_pane_epoch_sync(
+                types.SimpleNamespace(),
+                7,
+                **timing,
+            )
+        else:
+            asyncio.run(
+                benchmark_module._wait_pane_epoch_async(
+                    types.SimpleNamespace(),
+                    7,
+                    **timing,
+                )
+            )
+
+
+@pytest.mark.parametrize("mode", ("sync", "async"))
+@pytest.mark.parametrize("failure", ("deadline", "fuzzer"))
+def test_pane_epoch_wait_rechecks_liveness_after_capture_dispatch(
+    benchmark_module: types.ModuleType,
+    mode: str,
+    failure: str,
+) -> None:
+    """A final ready result cannot bypass its deadline or dead producer."""
+    from libtmux.experimental.engines.base import CommandResult
+
+    state = {"fuzzer_exited": False}
+
+    def result_for(request: t.Any) -> CommandResult:
+        if failure == "deadline":
+            time.sleep(0.02)
+        else:
+            state["fuzzer_exited"] = True
+        return CommandResult(
+            cmd=("tmux", *request.args),
+            stdout=("[editor epoch=7] ready",),
+        )
+
+    class SyncEngine:
+        """Return one current pane after crossing the selected boundary."""
+
+        def run(self, request: t.Any) -> CommandResult:
+            return result_for(request)
+
+        def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return [self.run(request) for request in requests]
+
+    class AsyncEngine:
+        """Asynchronous twin of the boundary-crossing engine."""
+
+        async def run(self, request: t.Any) -> CommandResult:
+            return result_for(request)
+
+        async def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            return [await self.run(request) for request in requests]
+
+    context = types.SimpleNamespace(
+        pane_ids=("%1",),
+        engine=SyncEngine() if mode == "sync" else AsyncEngine(),
+        fuzzer=types.SimpleNamespace(
+            poll=lambda: 1 if state["fuzzer_exited"] else None
+        ),
+    )
+    expected = TimeoutError if failure == "deadline" else RuntimeError
+    match = "timed out" if failure == "deadline" else "fuzzer exited"
+
+    with pytest.raises(expected, match=match):
+        if mode == "sync":
+            benchmark_module._wait_pane_epoch_sync(
+                context,
+                7,
+                timeout_s=0.001,
+                no_progress_timeout_s=1.0,
+            )
+        else:
+            asyncio.run(
+                benchmark_module._wait_pane_epoch_async(
+                    context,
+                    7,
+                    timeout_s=0.001,
+                    no_progress_timeout_s=1.0,
+                )
+            )
+
+
+@pytest.mark.parametrize("mode", ("sync", "async"))
+@pytest.mark.parametrize("boundary", ("overall", "no-progress"))
+def test_pane_epoch_wait_checks_deadline_before_redispatch(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    boundary: str,
+) -> None:
+    """A poll delay crossing either deadline must not dispatch stale panes again."""
+    from libtmux.experimental.engines.base import CommandResult
+
+    engine_calls = 0
+
+    def stale_result(request: t.Any) -> CommandResult:
+        return CommandResult(
+            cmd=("tmux", *request.args),
+            stdout=("[editor epoch=6] stale",),
+        )
+
+    class SyncEngine:
+        """Return stale typed captures while counting concrete requests."""
+
+        def run(self, request: t.Any) -> CommandResult:
+            nonlocal engine_calls
+            engine_calls += 1
+            return stale_result(request)
+
+        def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            nonlocal engine_calls
+            engine_calls += 1
+            return [stale_result(request) for request in requests]
+
+    class AsyncEngine:
+        """Asynchronous twin of the stale typed capture engine."""
+
+        async def run(self, request: t.Any) -> CommandResult:
+            nonlocal engine_calls
+            engine_calls += 1
+            return stale_result(request)
+
+        async def run_batch(self, requests: t.Any) -> list[CommandResult]:
+            nonlocal engine_calls
+            engine_calls += 1
+            return [stale_result(request) for request in requests]
+
+    context = types.SimpleNamespace(
+        pane_ids=("%1", "%2"),
+        engine=SyncEngine() if mode == "sync" else AsyncEngine(),
+        fuzzer=types.SimpleNamespace(poll=lambda: None),
+    )
+    timeout_s = 0.02 if boundary == "overall" else 0.1
+    no_progress_timeout_s = 0.1 if boundary == "overall" else 0.02
+    match = "timed out" if boundary == "overall" else "made no progress"
+    now = [0.0]
+
+    if mode == "sync":
+        monkeypatch.setattr(benchmark_module.time, "monotonic", lambda: now[0])
+        monkeypatch.setattr(
+            benchmark_module.time,
+            "sleep",
+            lambda delay: now.__setitem__(0, now[0] + delay),
+        )
+        with pytest.raises(TimeoutError, match=match):
+            benchmark_module._wait_pane_epoch_sync(
+                context,
+                7,
+                timeout_s=timeout_s,
+                no_progress_timeout_s=no_progress_timeout_s,
+                poll_interval_s=0.05,
+            )
+    else:
+        real_sleep = asyncio.sleep
+
+        class FakeLoop:
+            """Expose a test-owned monotonic clock to the async barrier."""
+
+            def time(self) -> float:
+                return now[0]
+
+        async def advance(delay: float) -> None:
+            now[0] += delay
+            await real_sleep(0)
+
+        async def exercise() -> None:
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    benchmark_module.asyncio,
+                    "get_running_loop",
+                    lambda: FakeLoop(),
+                )
+                patch.setattr(benchmark_module.asyncio, "sleep", advance)
+                with pytest.raises(TimeoutError, match=match):
+                    await benchmark_module._wait_pane_epoch_async(
+                        context,
+                        7,
+                        timeout_s=timeout_s,
+                        no_progress_timeout_s=no_progress_timeout_s,
+                        poll_interval_s=0.05,
+                    )
+
+        asyncio.run(exercise())
+
+    assert engine_calls == 1
+
+
 @pytest.mark.parametrize(
     "result_targets",
     (("%2", "%1"), ("%1", "%1"), ("%1", "%9")),
@@ -4946,6 +5646,90 @@ def test_capture_rejects_unattributed_typed_results(
             context,
             plan,
             types.SimpleNamespace(results=results),
+            "batched",
+            5,
+        )
+
+
+def test_capture_accepts_current_epoch_after_initial_marker_eviction(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Long-running panes may evict the one-time marker after stabilization."""
+    from libtmux.experimental.ops import CapturePane, PaneId
+
+    context = types.SimpleNamespace(
+        pane_ids=("%1",),
+        activity_pane_ids=("%1",),
+        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        activity_epoch=1,
+        heartbeat_epoch=8,
+        lane=benchmark_module.EngineLane.CONTROL,
+    )
+    plan = benchmark_module._capture_plan(context)
+    operation = CapturePane(target=PaneId("%1"), start=-5000)
+    result = operation.build_result(
+        returncode=0,
+        stdout=("[editor epoch=8] current after marker eviction",),
+    )
+
+    accepted = benchmark_module._accepted_capture(
+        context,
+        plan,
+        types.SimpleNamespace(results=(result,)),
+        "batched",
+        5,
+    )
+
+    assert accepted.epoch == 8
+    assert accepted.captures[0].lines == result.lines
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ("sync", "async"),
+)
+def test_active_phase_rejects_incomplete_initial_activity_stabilization(
+    benchmark_module: types.ModuleType,
+    mode: str,
+) -> None:
+    """Released activity is not measurable until every pane stabilizes."""
+    execution_mode = benchmark_module.ExecutionMode(mode)
+    context = types.SimpleNamespace(
+        mode=execution_mode,
+        topology_verified=True,
+        activity_epoch=1,
+        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        pane_ids=("%1", "%2"),
+        activity_pane_ids=("%1",),
+    )
+
+    with pytest.raises(RuntimeError, match="initial activity stabilization"):
+        benchmark_module._require_active_phase_context(context, execution_mode)
+
+
+def test_capture_rejects_missing_current_epoch_after_marker_eviction(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """Marker eviction does not make a stale fuzzer epoch acceptable."""
+    from libtmux.experimental.ops import CapturePane, PaneId
+
+    context = types.SimpleNamespace(
+        pane_ids=("%1",),
+        activity_pane_ids=("%1",),
+        activity_marker="LIBTMUX_EPOCH run=capture-run epoch=1",
+        activity_epoch=1,
+        heartbeat_epoch=8,
+        lane=benchmark_module.EngineLane.CONTROL,
+    )
+    plan = benchmark_module._capture_plan(context)
+    operation = CapturePane(target=PaneId("%1"), start=-5000)
+    result = operation.build_result(returncode=0, stdout=("[editor epoch=7] stale",))
+
+    with pytest.raises(RuntimeError, match="current activity epoch"):
+        benchmark_module._accepted_capture(
+            context,
+            plan,
+            types.SimpleNamespace(results=(result,)),
             "batched",
             5,
         )
@@ -5926,6 +6710,103 @@ def _request_content_sentinel(
     raise AssertionError(message)
 
 
+@pytest.mark.parametrize(
+    ("lane_name", "mode_name", "wait_event"),
+    (
+        ("subprocess", "sync", "wait.capture-poll.sync"),
+        ("control", "sync", "wait.capture-poll.sync"),
+        ("subprocess", "async", "wait.capture-poll.async"),
+        ("control", "async", "wait.control-stream"),
+    ),
+)
+def test_content_search_preparation_refreshes_adjacent_wait_and_capture(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    lane_name: str,
+    mode_name: str,
+    wait_event: str,
+) -> None:
+    """Content search must bind a fresh sentinel and its adjacent snapshot."""
+    token = "LIBTMUX_SENTINEL run=content request=fresh value=READY"
+    wait_result = types.SimpleNamespace(token=token)
+    capture = benchmark_module.CaptureResult(
+        1,
+        benchmark_module.ExecutionMetrics(2, 1, 1, 2, 0),
+        "batched",
+        (),
+        (
+            benchmark_module.PaneCapture("%1", (token,)),
+            benchmark_module.PaneCapture("%2", ("ordinary",)),
+        ),
+        2,
+        len(token) + len("ordinary"),
+        7,
+        True,
+    )
+    events: list[str] = []
+
+    def wait_sync(_context: t.Any, *, request_id: str) -> t.Any:
+        assert request_id == "search-contents-fresh"
+        events.append("wait.capture-poll.sync")
+        return wait_result
+
+    async def wait_async(_context: t.Any, *, request_id: str) -> t.Any:
+        assert request_id == "search-contents-fresh"
+        events.append("wait.capture-poll.async")
+        return wait_result
+
+    async def wait_control(_context: t.Any, *, request_id: str) -> t.Any:
+        assert request_id == "search-contents-fresh"
+        events.append("wait.control-stream")
+        return wait_result
+
+    def capture_sync(_context: t.Any, *, strategy: str) -> t.Any:
+        assert strategy == "batched"
+        events.append("capture.batched")
+        return capture
+
+    async def capture_async(_context: t.Any, *, strategy: str) -> t.Any:
+        assert strategy == "batched"
+        events.append("capture.batched")
+        return capture
+
+    real_search = benchmark_module.search_contents
+
+    def search(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        events.append("search.contents")
+        return real_search(*args, **kwargs)
+
+    monkeypatch.setattr(benchmark_module, "wait_capture_poll_sync", wait_sync)
+    monkeypatch.setattr(benchmark_module, "wait_capture_poll_async", wait_async)
+    monkeypatch.setattr(benchmark_module, "wait_control_stream", wait_control)
+    monkeypatch.setattr(benchmark_module, "capture_all_sync", capture_sync)
+    monkeypatch.setattr(benchmark_module, "capture_all_async", capture_async)
+    monkeypatch.setattr(benchmark_module, "search_contents", search)
+    context = types.SimpleNamespace(
+        mode=benchmark_module.ExecutionMode(mode_name),
+        lane=benchmark_module.EngineLane(lane_name),
+        delayed_pane_id="%1",
+    )
+
+    strategy = asyncio.run(
+        benchmark_module._prepare_content_search_strategy(
+            context,
+            request_id="search-contents-fresh",
+        )
+    )
+
+    assert events == [wait_event, "capture.batched", "search.contents"]
+    result = strategy()
+    assert events == [
+        wait_event,
+        "capture.batched",
+        "search.contents",
+        "search.contents",
+    ]
+    assert result.token == token
+    assert result.matched_ids == ("%1",)
+
+
 @pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
 @pytest.mark.parametrize(
     ("target_position", "delayed_ordinal"),
@@ -6335,7 +7216,6 @@ def test_worker_group_preserves_seeded_round_robin_strategy_order(
         lambda _reader: benchmark_module.HostSnapshot(),
     )
     recorder = Recorder()
-    latest: dict[str, t.Any] = {}
 
     asyncio.run(
         benchmark_module._run_worker_group(
@@ -6350,7 +7230,6 @@ def test_worker_group_preserves_seeded_round_robin_strategy_order(
             runs=2,
             seed=11,
             policy=benchmark_module.ResourcePolicy(),
-            latest=latest,
             fail_after=None,
             active_phase=["setup"],
         )
@@ -6440,7 +7319,6 @@ def test_worker_group_failure_retains_only_invoked_terminal_prefix(
                 runs=1,
                 seed=11,
                 policy=benchmark_module.ResourcePolicy(),
-                latest={},
                 fail_after=None,
                 active_phase=["setup"],
             )
@@ -6531,7 +7409,6 @@ def test_worker_group_checkpoints_keep_only_one_active_interleaved_row(
             runs=1,
             seed=11,
             policy=benchmark_module.ResourcePolicy(),
-            latest={},
             fail_after=None,
             active_phase=["setup"],
         )
@@ -6586,14 +7463,28 @@ def test_worker_group_checkpoints_revisited_boundary_before_progress(
                 raise cancellation
 
     def measured(name: str) -> t.Callable[[], t.Any]:
-        return lambda: benchmark_module.SearchResult(
-            23,
-            "snapshot",
-            "sessions",
-            1,
+        strategy = t.cast(
+            t.Literal["capture-poll", "control-stream"],
+            name.removeprefix("wait."),
+        )
+        return lambda: benchmark_module.WaitResult(
+            strategy,
             name,
-            (name,),
-            verified=True,
+            "token",
+            "%1",
+            5,
+            7,
+            12,
+            14,
+            17,
+            2,
+            3,
+            1 if strategy == "capture-poll" else 0,
+            1 if strategy == "control-stream" else 0,
+            1.0,
+            False,
+            0,
+            True,
         )
 
     async def live_postcondition(*_args: t.Any, **_kwargs: t.Any) -> bool:
@@ -6626,7 +7517,6 @@ def test_worker_group_checkpoints_revisited_boundary_before_progress(
                 runs=2,
                 seed=12,
                 policy=benchmark_module.ResourcePolicy(),
-                latest={},
                 fail_after=None,
                 active_phase=["mutation.bulk"],
             )
@@ -6780,7 +7670,6 @@ def test_validator_accepts_actual_seeded_group_boundaries(
             runs=2,
             seed=12,
             policy=benchmark_module.ResourcePolicy(),
-            latest={},
             fail_after=None,
             active_phase=["mutation.bulk"],
         )
@@ -8469,6 +9358,7 @@ def test_worker_reports_the_exact_active_stabilization_boundary(
             guard_decision=decision,
             original_guard_decision=decision,
             policy=benchmark_module.ResourcePolicy(),
+            fuzzer_duration_s=300.0,
         )
     )
 
@@ -8579,6 +9469,7 @@ def test_worker_drains_cleanup_through_repeated_cancellation(
                 guard_decision=decision,
                 original_guard_decision=decision,
                 policy=benchmark_module.ResourcePolicy(),
+                fuzzer_duration_s=300.0,
             ),
             name="worker-cancellation-test",
         )
