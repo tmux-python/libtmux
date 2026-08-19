@@ -7405,18 +7405,14 @@ def test_content_search_preparation_is_request_relative_and_immutable(
         )
     )
 
-    expected_events: list[str] = []
-    if lane_name == "control" and mode_name == "async":
-        expected_events.extend(("control-session:$1", 'control-output:"%2:on"'))
-    expected_events.extend(("heartbeat", f"readiness.{mode_name}"))
-    expected_events.extend(
-        (
-            wait_event,
-            "content.snapshot:%2",
-            "content.snapshot:%1",
-            "search.contents",
-        )
-    )
+    expected_events = [
+        "heartbeat",
+        f"readiness.{mode_name}",
+        wait_event,
+        "content.snapshot:%2",
+        "content.snapshot:%1",
+        "search.contents",
+    ]
     assert events == expected_events
     first = strategy()
     second = strategy()

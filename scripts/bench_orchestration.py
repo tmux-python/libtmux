@@ -6189,6 +6189,7 @@ async def setup_async(
         AsyncControlModeEngine,
         AsyncSubprocessEngine,
     )
+    from libtmux.experimental.engines.base import CommandRequest, CommandResult
     from libtmux.experimental.ops import (
         BatchingPlanner,
         BoundedPlanner,
@@ -6216,6 +6217,13 @@ async def setup_async(
     )
     engine = t.cast("AsyncTmuxEngine", context.engine)
     keepalive = f"bench-{run_id}-keepalive"
+
+    def require_control_output(result: CommandResult) -> None:
+        """Raise one setup error for a rejected pane-output subscription."""
+        if result.returncode != 0:
+            message = "control stream could not enable delayed-pane output"
+            raise RuntimeError(message)
+
     try:
         bootstrap = AsyncSubprocessEngine.for_server(context.server)
         (
@@ -6289,7 +6297,34 @@ async def setup_async(
             control.set_attach_targets([real_session_id])
         (await arun(KillSession(target=NameRef(keepalive)), engine)).raise_for_status()
         context.setup_duration_ns = time.perf_counter_ns() - started_ns
-        verify_topology(context, await snapshot_topology_async(context))
+        verified = verify_topology(context, await snapshot_topology_async(context))
+        if lane is EngineLane.CONTROL:
+            delayed_pane_id = t.cast(str, context.delayed_pane_id)
+            delayed_pane = next(
+                pane for pane in verified.panes if pane.pane_id == delayed_pane_id
+            )
+            clients = (await arun(ListClients(), engine)).raise_for_status().clients
+            delayed_session_id = delayed_pane.session_id
+            (
+                await arun(
+                    SwitchClient(
+                        client=_only_control_client_name(clients),
+                        to_session=delayed_session_id,
+                    ),
+                    engine,
+                )
+            ).raise_for_status()
+            control.set_attach_targets([delayed_session_id])
+            # The pane:state argument needs explicit quotes for tmux's
+            # control-mode parser.
+            enabled = await engine.run(
+                CommandRequest.from_args(
+                    "refresh-client",
+                    "-A",
+                    f'"{delayed_pane_id}:on"',
+                )
+            )
+            require_control_output(enabled)
     except BaseException as setup_error:
         try:
             cleanup_report = await cleanup_run(context)
@@ -10086,34 +10121,6 @@ async def _prepare_content_search_strategy(
     if context.mode not in (ExecutionMode.SYNC, ExecutionMode.ASYNC):
         message = "content search preparation requires a benchmark execution mode"
         raise ValueError(message)
-    if context.mode is ExecutionMode.ASYNC and context.lane is EngineLane.CONTROL:
-        from libtmux.experimental.engines.base import CommandRequest
-
-        # Control clients emit only their attached session. The pane:state
-        # argument also needs explicit quotes for tmux's control-mode parser.
-        engine = t.cast("AsyncTmuxEngine", context.engine)
-        panes_per_session = (
-            context.topology.windows_per_session * context.topology.panes_per_window
-        )
-        delayed_session_id = context.session_ids[
-            context.delayed_ordinal // panes_per_session
-        ]
-        switched = await engine.run(
-            CommandRequest.from_args("switch-client", "-t", delayed_session_id)
-        )
-        if switched.returncode != 0:
-            message = "control stream could not select the delayed-pane session"
-            raise RuntimeError(message)
-        enabled = await engine.run(
-            CommandRequest.from_args(
-                "refresh-client",
-                "-A",
-                f'"{context.delayed_pane_id}:on"',
-            )
-        )
-        if enabled.returncode != 0:
-            message = "control stream could not enable delayed-pane output"
-            raise RuntimeError(message)
     heartbeat = _current_activity_heartbeat(context, max_age_s=2.0)
     wait_result: WaitResult
     if context.mode is ExecutionMode.SYNC:
