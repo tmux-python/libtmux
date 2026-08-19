@@ -23,9 +23,10 @@ result.
 - [Engines](engines.md) explains how to choose a transport without changing the
   operation contract.
 - [Plans](plans.md) covers deferred execution, planners, and the fluent builder.
-- [Active orchestration benchmark](orchestration-benchmark.md) specifies the
+- [Active orchestration benchmark](orchestration-benchmark.md) documents the
   persistent, high-cardinality workload used to measure construction, mutation,
-  waiting, enumeration, capture, and search under pane activity.
+  waiting, enumeration, capture, and search under pane activity, how to run it,
+  and how to read the evidence it retains.
 
 ## Run one operation
 
