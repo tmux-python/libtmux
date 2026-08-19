@@ -213,6 +213,38 @@ def _validated_poll_interval(poll_interval_s: float) -> float:
     return float(poll_interval_s)
 
 
+def _validated_pane_epoch_timing(
+    timeout_s: float,
+    no_progress_timeout_s: float,
+    poll_interval_s: float,
+) -> tuple[float, float, float]:
+    """Return finite positive pane-consumer barrier timing values.
+
+    >>> _validated_pane_epoch_timing(8.0, 3.0, 0.005)
+    (8.0, 3.0, 0.005)
+
+    Raises
+    ------
+    ValueError
+        If any timing value cannot form a finite positive deadline.
+    """
+    validated: list[float] = []
+    for value in (timeout_s, no_progress_timeout_s, poll_interval_s):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            message = "pane epoch timeouts and cadence must be finite and positive"
+            raise ValueError(message)  # noqa: TRY004
+        try:
+            seconds = float(value)
+        except OverflowError as error:
+            message = "pane epoch timeouts and cadence must be finite and positive"
+            raise ValueError(message) from error
+        if not math.isfinite(seconds) or seconds <= 0:
+            message = "pane epoch timeouts and cadence must be finite and positive"
+            raise ValueError(message)
+        validated.append(seconds)
+    return validated[0], validated[1], validated[2]
+
+
 class EngineLane(str, enum.Enum):
     """Transport family used for one live benchmark server.
 
@@ -237,6 +269,91 @@ class ExecutionMode(str, enum.Enum):
 
     SYNC = "sync"
     ASYNC = "async"
+
+
+def _fuzzer_duration_budget_s(
+    *,
+    lane: EngineLane,
+    mode: ExecutionMode,
+    runs: int,
+    warmup: int,
+    watchdog_s: float,
+    cleanup_grace_s: float,
+) -> float:
+    """Return the finite active-service budget allowed by the supervisor.
+
+    Every repeatable invocation publishes a boundary checkpoint and a result
+    checkpoint. The remaining gaps cover stabilization, the non-control wait
+    disposition when applicable, final verification, and one final margin.
+
+    >>> _fuzzer_duration_budget_s(
+    ...     lane=EngineLane.CONTROL, mode=ExecutionMode.ASYNC,
+    ...     runs=2, warmup=1, watchdog_s=10.0, cleanup_grace_s=0.5,
+    ... )
+    2190.5
+
+    Parameters
+    ----------
+    lane : EngineLane
+        Selected transport lane.
+    mode : ExecutionMode
+        Selected dispatch mode.
+    runs : int
+        Timed invocations per repeatable cell.
+    warmup : int
+        Untimed invocations per repeatable cell.
+    watchdog_s : float
+        Maximum interval between increasing progress sequences.
+    cleanup_grace_s : float
+        Final bounded cleanup allowance.
+
+    Returns
+    -------
+    float
+        Finite positive fuzzer lifetime in seconds.
+
+    Raises
+    ------
+    ValueError
+        If inputs are invalid or their exact budget is not a finite float.
+    """
+    if type(runs) is not int or runs <= 0 or type(warmup) is not int or warmup < 0:
+        message = "fuzzer service budget requires positive runs and nonnegative warmup"
+        raise ValueError(message)
+    timeout_values = (watchdog_s, cleanup_grace_s)
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float))
+        for value in timeout_values
+    ):
+        message = "fuzzer service budget requires finite positive timeouts"
+        raise ValueError(message)
+    try:
+        watchdog_seconds, cleanup_grace_seconds = (
+            float(value) for value in timeout_values
+        )
+    except OverflowError as error:
+        message = "fuzzer service budget requires finite positive timeouts"
+        raise ValueError(message) from error
+    if any(
+        not math.isfinite(value) or value <= 0
+        for value in (watchdog_seconds, cleanup_grace_seconds)
+    ):
+        message = "fuzzer service budget requires finite positive timeouts"
+        raise ValueError(message)
+    control_applicable = lane is EngineLane.CONTROL and mode is ExecutionMode.ASYNC
+    cell_count = len(_RUNNER_REPEATABLE_PHASES) + int(control_applicable)
+    progress_gaps = (
+        2 * (runs + warmup) * cell_count + 1 + int(not control_applicable) + 1 + 1
+    )
+    try:
+        duration_s = watchdog_seconds * progress_gaps + cleanup_grace_seconds
+    except OverflowError as error:
+        message = "benchmark requires a finite fuzzer service duration"
+        raise ValueError(message) from error
+    if not math.isfinite(duration_s) or duration_s <= 0:
+        message = "benchmark requires a finite fuzzer service duration"
+        raise ValueError(message)
+    return duration_s
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1366,7 +1483,7 @@ class CaptureResult:
     epoch : int
         Current activity epoch found in every pane.
     verified : bool
-        Whether every capture succeeded and contained the current marker.
+        Whether every capture succeeded and contained the frozen current epoch.
 
     Examples
     --------
@@ -2083,7 +2200,7 @@ class RunContext:
     activity_epoch : int or None
         Released run-scoped activity epoch.
     activity_marker : str or None
-        Exact marker required in every pane.
+        One-time marker required in every pane during initial stabilization.
     activity_pane_ids : tuple[str, ...]
         Panes that captured the released marker.
     heartbeat_epoch : int
@@ -2963,6 +3080,13 @@ def validate_report(report: RunReport) -> None:
             ):
                 message = "warmup observation requires verified positive evidence"
                 raise ValueError(message)
+        if phase.name == "wait.control-stream" and any(
+            type(observation.dropped_notification_delta) is not int
+            or observation.dropped_notification_delta != 0
+            for observation in (*phase.warmup_observations, *phase.observations)
+        ):
+            message = "control-stream observations require exact zero drop evidence"
+            raise ValueError(message)
         if (
             phase.runs > 0
             and phase.name not in {"setup", "stabilization"}
@@ -5434,6 +5558,15 @@ def start_fuzzer(
         message = "ready timeout must be positive"
         raise ValueError(message)
     if (
+        isinstance(duration_s, bool)
+        or not isinstance(duration_s, (int, float))
+        or not math.isfinite(duration_s)
+        or duration_s <= 0
+    ):
+        message = "fuzzer duration must be finite and positive"
+        raise ValueError(message)
+    duration_s = float(duration_s)
+    if (
         not math.isfinite(frame_rate_hz)
         or frame_rate_hz <= 0
         or frame_rate_hz > _WAIT_FRAME_RATE_MAX_HZ
@@ -5534,6 +5667,7 @@ def _prepare_context(
     socket_path: pathlib.Path | None,
     run_id: str,
     delayed_ordinal: int,
+    fuzzer_duration_s: float = 300.0,
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
@@ -5566,6 +5700,8 @@ def _prepare_context(
         Safe identifier used in markers and tmux names.
     delayed_ordinal : int
         Unique pane assigned the delayed stream.
+    fuzzer_duration_s : float
+        Active-service lifetime; supervised runs pass their derived budget.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
 
@@ -5642,6 +5778,7 @@ def _prepare_context(
         fuzzer = start_fuzzer(
             resolved_scratch,
             run_id,
+            duration_s=fuzzer_duration_s,
             _identity_out=fuzzer_identities,
             _identity_callback=publish_identities,
         )
@@ -5746,6 +5883,7 @@ def setup_sync(
     socket_path: pathlib.Path | None = None,
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
+    fuzzer_duration_s: float = 300.0,
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
@@ -5782,6 +5920,8 @@ def setup_sync(
         Marker and topology identity.
     delayed_ordinal : int
         Unique pane assigned the delayed stream.
+    fuzzer_duration_s : float
+        Active-service lifetime; supervised runs pass their derived budget.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
     _socket_ownership_callback : collections.abc.Callable | None
@@ -5823,6 +5963,7 @@ def setup_sync(
         socket_path=socket_path,
         run_id=run_id,
         delayed_ordinal=delayed_ordinal,
+        fuzzer_duration_s=fuzzer_duration_s,
         _process_identity_callback=_process_identity_callback,
     )
     engine = t.cast("TmuxEngine", context.engine)
@@ -5914,6 +6055,7 @@ async def setup_async(
     socket_path: pathlib.Path | None = None,
     run_id: str = "run-0",
     delayed_ordinal: int = 0,
+    fuzzer_duration_s: float = 300.0,
     _process_identity_callback: (
         cabc.Callable[[tuple[ProcessIdentity, ...]], None] | None
     ) = None,
@@ -5948,6 +6090,8 @@ async def setup_async(
         Marker and topology identity.
     delayed_ordinal : int
         Unique pane assigned the delayed stream.
+    fuzzer_duration_s : float
+        Active-service lifetime; supervised runs pass their derived budget.
     _process_identity_callback : collections.abc.Callable | None
         Private worker hook invoked as exact process identities become known.
     _socket_ownership_callback : collections.abc.Callable | None
@@ -5992,6 +6136,7 @@ async def setup_async(
         socket_path=socket_path,
         run_id=run_id,
         delayed_ordinal=delayed_ordinal,
+        fuzzer_duration_s=fuzzer_duration_s,
         _process_identity_callback=_process_identity_callback,
     )
     engine = t.cast("AsyncTmuxEngine", context.engine)
@@ -6715,6 +6860,9 @@ def _require_active_phase_context(
         or context.activity_marker is None
     ):
         message = "measured phases require verified active topology"
+        raise RuntimeError(message)
+    if context.activity_pane_ids != context.pane_ids:
+        message = "measured phases require complete initial activity stabilization"
         raise RuntimeError(message)
 
 
@@ -8556,17 +8704,27 @@ async def enumerate_async(
     )
 
 
-def _capture_plan(context: RunContext) -> LazyPlan:
+def _capture_plan(
+    context: RunContext,
+    *,
+    pane_ids: tuple[str, ...] | None = None,
+) -> LazyPlan:
     """Build the transport-independent all-pane capture operation graph.
 
     >>> context = types.SimpleNamespace(pane_ids=("%1", "%2"))
     >>> [operation.target.value for operation in _capture_plan(context).operations]
     ['%1', '%2']
+    >>> [operation.target.value for operation in _capture_plan(
+    ...     context, pane_ids=("%2",)
+    ... ).operations]
+    ['%2']
 
     Parameters
     ----------
     context : RunContext
         Verified stable pane ID authority.
+    pane_ids : tuple[str, ...] or None
+        Ordered subset to capture, or every stable pane when omitted.
 
     Returns
     -------
@@ -8576,7 +8734,7 @@ def _capture_plan(context: RunContext) -> LazyPlan:
     from libtmux.experimental.ops import CapturePane, LazyPlan, PaneId
 
     plan = LazyPlan()
-    for pane_id in context.pane_ids:
+    for pane_id in context.pane_ids if pane_ids is None else pane_ids:
         plan.add(CapturePane(target=PaneId(pane_id), start=-5000))
     return plan
 
@@ -8639,134 +8797,304 @@ def _activity_frame_epochs(lines: tuple[str, ...]) -> tuple[int, ...]:
     return tuple(epochs)
 
 
-def _streams_reached_epoch(context: RunContext, epoch: int) -> bool:
-    r"""Return whether every source stream has emitted ``epoch`` or newer.
+def _captured_lines_for_panes(
+    pane_ids: tuple[str, ...],
+    plan_result: object,
+) -> tuple[tuple[str, ...], ...]:
+    """Return attributed typed capture lines for an ordered pane subset.
 
-    >>> with tempfile.TemporaryDirectory() as temporary:
-    ...     stream = pathlib.Path(temporary) / "stream.log"
-    ...     _ = stream.write_text("[editor epoch=3] x\n", encoding="utf-8")
-    ...     _streams_reached_epoch(types.SimpleNamespace(streams=(stream,)), 3)
-    True
+    >>> from libtmux.experimental.ops import CapturePane, PaneId
+    >>> operation = CapturePane(target=PaneId("%1"))
+    >>> result = operation.build_result(returncode=0, stdout=("line",))
+    >>> _captured_lines_for_panes(
+    ...     ("%1",), types.SimpleNamespace(results=(result,))
+    ... )
+    (('line',),)
 
     Parameters
     ----------
-    context : RunContext
-        Active run owning the source streams.
-    epoch : int
-        Exact observed heartbeat epoch required in every stream.
+    pane_ids : tuple[str, ...]
+        Expected concrete targets in dispatch order.
+    plan_result : object
+        Plan result containing one typed capture result per target.
 
     Returns
     -------
-    bool
-        Whether every stream contains an epoch greater than or equal to target.
+    tuple[tuple[str, ...], ...]
+        Captured lines in the same order as ``pane_ids``.
+
+    Raises
+    ------
+    RuntimeError
+        If result cardinality or target attribution differs.
+    TypeError
+        If a result is not a typed capture result.
     """
-    for stream in context.streams:
-        try:
-            lines = tuple(stream.read_text(encoding="utf-8").splitlines())
-        except OSError:
-            return False
-        if max(_activity_frame_epochs(lines), default=-1) < epoch:
-            return False
-    return True
+    from libtmux.experimental.ops import CapturePane, CapturePaneResult, PaneId
+
+    results = tuple(t.cast(t.Any, plan_result).results)
+    if len(results) != len(pane_ids):
+        message = "pane readiness result count did not match stable pane IDs"
+        raise RuntimeError(message)
+    result_targets = tuple(
+        result.operation.target.value
+        if isinstance(result, CapturePaneResult)
+        and isinstance(result.operation, CapturePane)
+        and isinstance(result.operation.target, PaneId)
+        else None
+        for result in results
+    )
+    if result_targets != pane_ids:
+        message = "pane readiness target order did not match stable pane IDs"
+        raise RuntimeError(message)
+    lines: list[tuple[str, ...]] = []
+    for pane_id, result in zip(pane_ids, results, strict=True):
+        if not isinstance(result, CapturePaneResult):
+            message = f"pane readiness for {pane_id} did not return typed lines"
+            raise TypeError(message)
+        result.raise_for_status()
+        lines.append(result.lines)
+    return tuple(lines)
 
 
-def _wait_stream_epoch_sync(
+def _pane_ids_before_epoch(
+    pane_ids: tuple[str, ...],
+    captured_lines: tuple[tuple[str, ...], ...],
+    epoch: int,
+) -> tuple[str, ...]:
+    """Return panes whose visible history has not consumed a frozen epoch.
+
+    >>> _pane_ids_before_epoch(
+    ...     ("%1", "%2"),
+    ...     (("[editor epoch=7] ready",), ("[editor epoch=6] lagging",)),
+    ...     7,
+    ... )
+    ('%2',)
+
+    Parameters
+    ----------
+    pane_ids : tuple[str, ...]
+        Concrete pane targets in capture order.
+    captured_lines : tuple[tuple[str, ...], ...]
+        Typed lines attributed to those panes.
+    epoch : int
+        Frozen heartbeat epoch every pane must expose.
+
+    Returns
+    -------
+    tuple[str, ...]
+        Ordered subset still below ``epoch``.
+
+    Raises
+    ------
+    RuntimeError
+        If capture cardinality differs from the pane subset.
+    """
+    if len(captured_lines) != len(pane_ids):
+        message = "pane readiness lines did not match stable pane IDs"
+        raise RuntimeError(message)
+    return tuple(
+        pane_id
+        for pane_id, lines in zip(pane_ids, captured_lines, strict=True)
+        if max(_activity_frame_epochs(lines), default=-1) < epoch
+    )
+
+
+def _wait_pane_epoch_sync(
     context: RunContext,
     epoch: int,
     *,
-    timeout_s: float = 2.0,
+    timeout_s: float = 8.0,
+    no_progress_timeout_s: float = 3.0,
+    poll_interval_s: float = 0.005,
 ) -> None:
-    """Wait outside capture timing until every source emitted ``epoch``.
+    """Wait outside timing until every pane exposes a frozen heartbeat epoch.
 
     >>> try:
-    ...     _wait_stream_epoch_sync(types.SimpleNamespace(), 1, timeout_s=0)
+    ...     _wait_pane_epoch_sync(types.SimpleNamespace(), 1, timeout_s=0)
     ... except ValueError as error:
     ...     print(error)
-    stream epoch timeout must be positive
+    pane epoch timeouts and cadence must be finite and positive
 
     Parameters
     ----------
     context : RunContext
-        Active run owning the source streams and fuzzer.
+        Active synchronous run owning the stable pane IDs and engine.
     epoch : int
-        Exact observed heartbeat epoch required before capture.
+        Frozen heartbeat epoch every pane must expose.
     timeout_s : float
-        Maximum monotonic wait outside the measured capture cell.
+        Overall pane-consumption deadline.
+    no_progress_timeout_s : float
+        Deadline reset whenever another pane reaches ``epoch``.
+    poll_interval_s : float
+        Delay between incomplete readiness captures.
 
     Raises
     ------
     ValueError
-        If ``timeout_s`` is not positive.
+        If timeout or cadence values are not finite and positive.
     RuntimeError
-        If the fuzzer exits before source readiness.
+        If the fuzzer exits or typed capture attribution fails.
     TimeoutError
-        If a source stream does not reach the epoch in time.
+        If pane consumption stops progressing.
     """
-    if timeout_s <= 0:
-        message = "stream epoch timeout must be positive"
-        raise ValueError(message)
+    from libtmux.experimental.ops import BatchingPlanner
+
+    timeout_s, no_progress_timeout_s, poll_interval_s = _validated_pane_epoch_timing(
+        timeout_s,
+        no_progress_timeout_s,
+        poll_interval_s,
+    )
+    engine = t.cast("TmuxEngine", context.engine)
+    pending = context.pane_ids
     deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
+    progress_deadline = time.monotonic() + no_progress_timeout_s
+    while pending:
+        now = time.monotonic()
+        if now >= deadline:
+            message = f"pane epoch wait timed out with {len(pending)} panes pending"
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = (
+                f"pane epoch wait made no progress with {len(pending)} panes pending"
+            )
+            raise TimeoutError(message)
         if context.fuzzer.poll() is not None:
-            message = "fuzzer exited before current capture epoch"
+            message = "fuzzer exited before panes consumed capture epoch"
             raise RuntimeError(message)
-        if _streams_reached_epoch(context, epoch):
+        plan = _capture_plan(context, pane_ids=pending)
+        result = plan.execute(engine, planner=BatchingPlanner())
+        result.raise_for_status()
+        before = len(pending)
+        pending = _pane_ids_before_epoch(
+            pending,
+            _captured_lines_for_panes(pending, result),
+            epoch,
+        )
+        now = time.monotonic()
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited before panes consumed capture epoch"
+            raise RuntimeError(message)
+        if now >= deadline:
+            message = f"pane epoch wait timed out with {len(pending)} panes pending"
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = (
+                f"pane epoch wait made no progress with {len(pending)} panes pending"
+            )
+            raise TimeoutError(message)
+        if not pending:
             return
-        time.sleep(0.005)
-    message = f"source streams did not reach capture epoch {epoch}"
-    raise TimeoutError(message)
+        if len(pending) < before:
+            progress_deadline = now + no_progress_timeout_s
+        time.sleep(
+            min(
+                poll_interval_s,
+                deadline - now,
+                progress_deadline - now,
+            )
+        )
 
 
-async def _wait_stream_epoch_async(
+async def _wait_pane_epoch_async(
     context: RunContext,
     epoch: int,
     *,
-    timeout_s: float = 2.0,
+    timeout_s: float = 8.0,
+    no_progress_timeout_s: float = 3.0,
+    poll_interval_s: float = 0.005,
 ) -> None:
-    """Asynchronously wait outside timing for the observed source epoch.
+    """Asynchronously wait until every pane exposes a frozen heartbeat epoch.
 
-    >>> async def invalid_stream_wait():
+    >>> async def invalid_pane_wait():
     ...     try:
-    ...         await _wait_stream_epoch_async(
+    ...         await _wait_pane_epoch_async(
     ...             types.SimpleNamespace(), 1, timeout_s=0
     ...         )
     ...     except ValueError as error:
     ...         return str(error)
-    >>> asyncio.run(invalid_stream_wait())
-    'stream epoch timeout must be positive'
+    >>> asyncio.run(invalid_pane_wait())
+    'pane epoch timeouts and cadence must be finite and positive'
 
     Parameters
     ----------
     context : RunContext
-        Active run owning the source streams and fuzzer.
+        Active asynchronous run owning the stable pane IDs and engine.
     epoch : int
-        Exact observed heartbeat epoch required before capture.
+        Frozen heartbeat epoch every pane must expose.
     timeout_s : float
-        Maximum event-loop wait outside the measured capture cell.
+        Overall pane-consumption deadline.
+    no_progress_timeout_s : float
+        Deadline reset whenever another pane reaches ``epoch``.
+    poll_interval_s : float
+        Delay between incomplete readiness captures.
 
     Raises
     ------
     ValueError
-        If ``timeout_s`` is not positive.
+        If timeout or cadence values are not finite and positive.
     RuntimeError
-        If the fuzzer exits before source readiness.
+        If the fuzzer exits or typed capture attribution fails.
     TimeoutError
-        If a source stream does not reach the epoch in time.
+        If pane consumption stops progressing.
     """
-    if timeout_s <= 0:
-        message = "stream epoch timeout must be positive"
-        raise ValueError(message)
+    from libtmux.experimental.ops import BatchingPlanner
+
+    timeout_s, no_progress_timeout_s, poll_interval_s = _validated_pane_epoch_timing(
+        timeout_s,
+        no_progress_timeout_s,
+        poll_interval_s,
+    )
+    engine = t.cast("AsyncTmuxEngine", context.engine)
+    pending = context.pane_ids
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_s
-    while loop.time() < deadline:
+    progress_deadline = loop.time() + no_progress_timeout_s
+    while pending:
+        now = loop.time()
+        if now >= deadline:
+            message = f"pane epoch wait timed out with {len(pending)} panes pending"
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = (
+                f"pane epoch wait made no progress with {len(pending)} panes pending"
+            )
+            raise TimeoutError(message)
         if context.fuzzer.poll() is not None:
-            message = "fuzzer exited before current capture epoch"
+            message = "fuzzer exited before panes consumed capture epoch"
             raise RuntimeError(message)
-        if _streams_reached_epoch(context, epoch):
+        plan = _capture_plan(context, pane_ids=pending)
+        result = await plan.aexecute(engine, planner=BatchingPlanner())
+        result.raise_for_status()
+        before = len(pending)
+        pending = _pane_ids_before_epoch(
+            pending,
+            _captured_lines_for_panes(pending, result),
+            epoch,
+        )
+        now = loop.time()
+        if context.fuzzer.poll() is not None:
+            message = "fuzzer exited before panes consumed capture epoch"
+            raise RuntimeError(message)
+        if now >= deadline:
+            message = f"pane epoch wait timed out with {len(pending)} panes pending"
+            raise TimeoutError(message)
+        if now >= progress_deadline:
+            message = (
+                f"pane epoch wait made no progress with {len(pending)} panes pending"
+            )
+            raise TimeoutError(message)
+        if not pending:
             return
-        await asyncio.sleep(0.005)
-    message = f"source streams did not reach capture epoch {epoch}"
-    raise TimeoutError(message)
+        if len(pending) < before:
+            progress_deadline = now + no_progress_timeout_s
+        await asyncio.sleep(
+            min(
+                poll_interval_s,
+                deadline - now,
+                progress_deadline - now,
+            )
+        )
 
 
 def _accepted_capture(
@@ -8783,7 +9111,7 @@ def _accepted_capture(
     >>> operation = CapturePane(target=PaneId("%1"))
     >>> _ = plan.add(operation)
     >>> raw = operation.build_result(
-    ...     returncode=0, stdout=("epoch", "[editor epoch=2] current")
+    ...     returncode=0, stdout=("[editor epoch=2] current",)
     ... )
     >>> context = types.SimpleNamespace(
     ...     pane_ids=("%1",), activity_marker="epoch", activity_epoch=2,
@@ -8792,12 +9120,12 @@ def _accepted_capture(
     >>> _accepted_capture(
     ...     context, plan, types.SimpleNamespace(results=(raw,)), "serial", 4
     ... ).line_count
-    2
+    1
 
     Parameters
     ----------
     context : RunContext
-        Active run containing exact pane IDs and current activity marker.
+        Initially stabilized run with exact pane IDs and frozen heartbeat epoch.
     plan : LazyPlan
         Identical operation graph used for either planner.
     plan_result : object
@@ -8858,10 +9186,6 @@ def _accepted_capture(
         result.raise_for_status()
         if not result.lines:
             message = f"capture for {pane_id} returned no lines"
-            raise RuntimeError(message)
-        marker = t.cast(str, context.activity_marker)
-        if marker not in "\n".join(result.lines):
-            message = f"capture for {pane_id} lacks its run-scoped activity marker"
             raise RuntimeError(message)
         if max(_activity_frame_epochs(result.lines), default=-1) < current_epoch:
             message = f"capture for {pane_id} lacks current activity epoch"
@@ -8926,7 +9250,7 @@ def capture_all_sync(
     planner = t.cast("Planner", _capture_planner(strategy))
     engine = t.cast("TmuxEngine", context.engine)
     heartbeat = _current_activity_heartbeat(context, max_age_s=2.0)
-    _wait_stream_epoch_sync(context, heartbeat.epoch)
+    _wait_pane_epoch_sync(context, heartbeat.epoch)
     started_ns = time.perf_counter_ns()
     result = plan.execute(engine, planner=planner)
     duration_ns = time.perf_counter_ns() - started_ns
@@ -8968,7 +9292,7 @@ async def capture_all_async(
     planner = t.cast("Planner", _capture_planner(strategy))
     engine = t.cast("AsyncTmuxEngine", context.engine)
     heartbeat = _current_activity_heartbeat(context, max_age_s=2.0)
-    await _wait_stream_epoch_async(context, heartbeat.epoch)
+    await _wait_pane_epoch_async(context, heartbeat.epoch)
     started_ns = time.perf_counter_ns()
     result = await plan.aexecute(engine, planner=planner)
     duration_ns = time.perf_counter_ns() - started_ns
@@ -9315,6 +9639,69 @@ def search_contents(
         duration_ns=duration_ns,
         token=token,
     )
+
+
+async def _prepare_content_search_strategy(
+    context: RunContext,
+    *,
+    request_id: str,
+) -> cabc.Callable[[], SearchResult]:
+    """Bind content search to one fresh sentinel and adjacent pane snapshot.
+
+    >>> async def invalid_content_preparation():
+    ...     try:
+    ...         await _prepare_content_search_strategy(
+    ...             types.SimpleNamespace(mode=None), request_id="search-1"
+    ...         )
+    ...     except ValueError as error:
+    ...         return str(error)
+    >>> asyncio.run(invalid_content_preparation())
+    'content search preparation requires a benchmark execution mode'
+
+    Parameters
+    ----------
+    context : RunContext
+        Verified live topology whose wait transport and panes are authoritative.
+    request_id : str
+        Fresh run-scoped sentinel request identity.
+
+    Returns
+    -------
+    collections.abc.Callable[[], SearchResult]
+        Zero-argument search over the verified frozen token and capture.
+
+    Raises
+    ------
+    ValueError
+        If the context has no supported execution mode.
+    RuntimeError
+        If the fresh sentinel is not retained by exactly its delayed pane.
+    """
+    wait_result: WaitResult
+    capture: CaptureResult
+    if context.mode is ExecutionMode.SYNC:
+        wait_result = wait_capture_poll_sync(context, request_id=request_id)
+        capture = capture_all_sync(context, strategy="batched")
+    elif context.mode is ExecutionMode.ASYNC:
+        if context.lane is EngineLane.CONTROL:
+            wait_result = await wait_control_stream(context, request_id=request_id)
+        else:
+            wait_result = await wait_capture_poll_async(
+                context,
+                request_id=request_id,
+            )
+        capture = await capture_all_async(context, strategy="batched")
+    else:
+        message = "content search preparation requires a benchmark execution mode"
+        raise ValueError(message)
+    search = functools.partial(
+        search_contents,
+        capture,
+        token=wait_result.token,
+        expected_pane_id=context.delayed_pane_id,
+    )
+    search()
+    return search
 
 
 PhaseMeasurement: t.TypeAlias = (
@@ -10426,7 +10813,6 @@ async def _run_worker_group(
     runs: int,
     seed: int,
     policy: ResourcePolicy,
-    latest: dict[str, PhaseMeasurement],
     fail_after: str | None,
     active_phase: list[str],
 ) -> None:
@@ -10436,7 +10822,7 @@ async def _run_worker_group(
     ...     try:
     ...         await _run_worker_group(
     ...             t.cast(_WorkerRecorder, None), t.cast(RunContext, None), {},
-    ...             warmup=0, runs=1, seed=1, policy=ResourcePolicy(), latest={},
+    ...             warmup=0, runs=1, seed=1, policy=ResourcePolicy(),
     ...             fail_after=None, active_phase=["setup"],
     ...         )
     ...     except ValueError as error:
@@ -10460,8 +10846,6 @@ async def _run_worker_group(
         Deterministic family-order seed.
     policy : ResourcePolicy
         Runtime guard thresholds.
-    latest : dict[str, PhaseMeasurement]
-        Destination retaining the latest typed result by cell.
     fail_after : str | None
         Private test-harness phase that raises after its final checkpoint.
     active_phase : list[str]
@@ -10515,7 +10899,6 @@ async def _run_worker_group(
         measurement: PhaseMeasurement,
         sample: RawSample | None,
     ) -> None:
-        latest[strategy] = measurement
         phase = phase_states[strategy]
         observation = _observation_for_measurement(strategy, ordinal, measurement)
         if stage == "warmup":
@@ -10684,6 +11067,7 @@ async def run_worker(
     guard_decision: GuardDecision,
     original_guard_decision: GuardDecision,
     policy: ResourcePolicy,
+    fuzzer_duration_s: float,
     stall_after: str | None = None,
     fail_after: str | None = None,
     extra_identity: ProcessIdentity | None = None,
@@ -10707,7 +11091,7 @@ async def run_worker(
     ...             ),
     ...             original_guard_decision=GuardDecision(
     ...                 True, "ok", None, None, None, False, HostSnapshot()
-    ...             ), policy=ResourcePolicy(),
+    ...             ), policy=ResourcePolicy(), fuzzer_duration_s=300.0,
     ...         )
     ...     except ValueError as error:
     ...         return str(error)
@@ -10744,6 +11128,8 @@ async def run_worker(
         Unmodified predictive admission evidence.
     policy : ResourcePolicy
         Runtime guard thresholds.
+    fuzzer_duration_s : float
+        Exact finite active-service lifetime derived by the supervisor.
     stall_after : str | None
         Private test checkpoint that stops emitting progress.
     fail_after : str | None
@@ -10761,6 +11147,14 @@ async def run_worker(
         raise ValueError(message)
     if not guard_decision.allowed:
         message = "worker cannot start after predictive refusal"
+        raise ValueError(message)
+    if (
+        isinstance(fuzzer_duration_s, bool)
+        or not isinstance(fuzzer_duration_s, (int, float))
+        or not math.isfinite(fuzzer_duration_s)
+        or fuzzer_duration_s <= 0
+    ):
+        message = "worker fuzzer duration must be finite and positive"
         raise ValueError(message)
     environment = _collect_environment(
         seed=seed,
@@ -10811,7 +11205,6 @@ async def run_worker(
     failed_phase: str | None = None
     terminal_error: str | None = None
     cleanup = CleanupReport(False)
-    latest: dict[str, PhaseMeasurement] = {}
     active_phase = ["setup"]
     cancellation: asyncio.CancelledError | None = None
 
@@ -10832,6 +11225,7 @@ async def run_worker(
                 socket_path=socket_path,
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
+                fuzzer_duration_s=float(fuzzer_duration_s),
                 _process_identity_callback=recorder.record_identities,
                 _socket_ownership_callback=recorder.record_socket_ownership,
             )
@@ -10843,6 +11237,7 @@ async def run_worker(
                 socket_path=socket_path,
                 run_id=run_id,
                 delayed_ordinal=delayed_ordinal,
+                fuzzer_duration_s=float(fuzzer_duration_s),
                 _process_identity_callback=recorder.record_identities,
                 _socket_ownership_callback=recorder.record_socket_ownership,
             )
@@ -10943,7 +11338,6 @@ async def run_worker(
             runs=runs,
             seed=seed,
             policy=policy,
-            latest=latest,
             fail_after=fail_after,
             active_phase=active_phase,
         )
@@ -10990,7 +11384,6 @@ async def run_worker(
             runs=runs,
             seed=seed + 1,
             policy=policy,
-            latest=latest,
             fail_after=fail_after,
             active_phase=active_phase,
         )
@@ -11034,7 +11427,6 @@ async def run_worker(
             runs=runs,
             seed=seed + 2,
             policy=policy,
-            latest=latest,
             fail_after=fail_after,
             active_phase=active_phase,
         )
@@ -11062,7 +11454,6 @@ async def run_worker(
             runs=runs,
             seed=seed + 3,
             policy=policy,
-            latest=latest,
             fail_after=fail_after,
             active_phase=active_phase,
         )
@@ -11113,13 +11504,10 @@ async def run_worker(
                             kind=search_kind,
                             target=target,
                         )
-        capture = t.cast(CaptureResult, latest["capture.batched"])
-        wait_name = "wait.control-stream" if control_applicable else "wait.capture-poll"
-        wait_result = t.cast(WaitResult, latest[wait_name])
-        search_strategies["search.contents"] = lambda: search_contents(
-            capture,
-            token=wait_result.token,
-            expected_pane_id=context.delayed_pane_id,
+        active_phase[0] = "search.contents"
+        search_strategies["search.contents"] = await _prepare_content_search_strategy(
+            context,
+            request_id=next_request_id("search.contents"),
         )
         await _run_worker_group(
             recorder,
@@ -11129,7 +11517,6 @@ async def run_worker(
             runs=runs,
             seed=seed + 4,
             policy=policy,
-            latest=latest,
             fail_after=fail_after,
             active_phase=active_phase,
         )
@@ -12202,6 +12589,14 @@ def supervise_worker(
     if cleanup_grace_s <= 0:
         message = "supervisor cleanup grace must be positive"
         raise ValueError(message)
+    fuzzer_duration_s = _fuzzer_duration_budget_s(
+        lane=lane,
+        mode=mode,
+        runs=runs,
+        warmup=warmup,
+        watchdog_s=watchdog_s,
+        cleanup_grace_s=cleanup_grace_s,
+    )
     progress_path = output.with_name(f"{output.stem}.{run_id}.progress.jsonl")
     checkpoint_path = output.with_name(f".{output.name}.{run_id}.worker.json")
     admission_path = output.with_name(f".{output.name}.{run_id}.admission.json")
@@ -12241,6 +12636,8 @@ def supervise_worker(
             if policy.memory_floor_bytes is not None
             else "dynamic"
         ),
+        "--service-duration-seconds",
+        str(fuzzer_duration_s),
     ]
     if _test_stall_after is not None:
         command.extend(("--_test-stall-after", _test_stall_after))
@@ -13475,6 +13872,7 @@ def _run_hidden_worker(arguments: argparse.Namespace) -> int:
             guard_decision=guard,
             original_guard_decision=original,
             policy=policy,
+            fuzzer_duration_s=arguments.service_duration_seconds,
             stall_after=arguments.test_stall_after,
             fail_after=arguments.test_fail_after,
             extra_identity=_parse_extra_identity(arguments.test_extra_identity),
@@ -13610,6 +14008,7 @@ def _hidden_worker_parser() -> argparse.ArgumentParser:
     parser.add_argument("--admission", required=True, type=pathlib.Path)
     parser.add_argument("--pid-reserve", required=True)
     parser.add_argument("--memory-floor-bytes", required=True)
+    parser.add_argument("--service-duration-seconds", required=True, type=float)
     parser.add_argument(
         "--_test-stall-after", dest="test_stall_after", help=argparse.SUPPRESS
     )
