@@ -1979,6 +1979,57 @@ class SocketIdentity:
     st_mode: int
     st_mtime_ns: int
 
+    def matches(self, other: SocketIdentity) -> bool:
+        """Report whether *other* is the same node this fingerprint captured.
+
+        Device, inode, owner, file type, and modification time all decide
+        identity. Modification time is load-bearing because a filesystem may
+        reuse an inode number, and a replacement node created later carries a
+        later timestamp.
+
+        Permission bits are the sole exclusion. tmux's ``server_update_socket()``
+        sets the socket's execute bits while any session is attached and clears
+        them when none is, so an owned socket legitimately changes mode while
+        the run holds it. Comparing whole modes therefore reads an ordinary
+        attach or detach as a different socket.
+
+        Parameters
+        ----------
+        other : SocketIdentity
+            Fingerprint observed later for the same path.
+
+        Returns
+        -------
+        bool
+            True only when both fingerprints name one socket node.
+
+        Examples
+        --------
+        An attach flips the execute bit but keeps the node:
+
+        >>> attached = SocketIdentity(1, 2, 3, stat.S_IFSOCK | 0o700, 10)
+        >>> detached = SocketIdentity(1, 2, 3, stat.S_IFSOCK | 0o600, 10)
+        >>> attached.matches(detached)
+        True
+
+        A reused inode number, a replaced node, and a different file type are
+        all rejected:
+
+        >>> attached.matches(SocketIdentity(1, 2, 3, stat.S_IFSOCK | 0o700, 99))
+        False
+        >>> attached.matches(SocketIdentity(1, 9, 3, stat.S_IFSOCK | 0o700, 10))
+        False
+        >>> attached.matches(SocketIdentity(1, 2, 3, stat.S_IFREG | 0o700, 10))
+        False
+        """
+        return (
+            self.st_dev == other.st_dev
+            and self.st_ino == other.st_ino
+            and self.st_uid == other.st_uid
+            and self.st_mtime_ns == other.st_mtime_ns
+            and stat.S_IFMT(self.st_mode) == stat.S_IFMT(other.st_mode)
+        )
+
 
 @dataclasses.dataclass(frozen=True)
 class _SocketOwnership:
@@ -5017,7 +5068,7 @@ def _capture_socket_ownership(
     before = _socket_identity(socket_path)
     process = _query_exact_socket_owner(socket_path, timeout_s=timeout_s)
     after = _socket_identity(socket_path)
-    if before != after or not process_identity_matches(process):
+    if not before.matches(after) or not process_identity_matches(process):
         message = "exact socket ownership changed during capture"
         raise RuntimeError(message)
     return _SocketOwnership(process=process, socket=before)
@@ -5129,7 +5180,7 @@ def _kill_exact_tmux_socket(
         errors.append(f"exact socket ownership: {type(error).__name__}: {error}")
         kill_original_without_path()
         return tuple(errors)
-    if before != socket_ownership.socket:
+    if not before.matches(socket_ownership.socket):
         errors.append(f"configured socket ownership changed: {socket_path}")
         kill_original_without_path()
         return tuple(errors)
@@ -5143,7 +5194,7 @@ def _kill_exact_tmux_socket(
         errors.append(f"exact socket ownership query: {type(error).__name__}: {error}")
         kill_original_without_path()
         return tuple(errors)
-    if after != socket_ownership.socket or current_owner != owner:
+    if not after.matches(socket_ownership.socket) or current_owner != owner:
         errors.append(f"configured socket owner changed: {socket_path}")
         kill_original_without_path()
         return tuple(errors)
@@ -5247,14 +5298,14 @@ def _remove_proven_stale_socket(
         before = _socket_identity(socket_path)
     except OSError as error:
         return (f"stale socket identity: {type(error).__name__}: {error}",)
-    if before != socket_ownership.socket:
+    if not before.matches(socket_ownership.socket):
         return (f"configured socket ownership changed: {socket_path}",)
     if process_identity_matches(socket_ownership.process):
         return (f"socket owner is not proven absent: {socket_path}",)
     try:
         _verify_private_directory_mode(socket_path.parent)
         after = _socket_identity(socket_path)
-        if after != socket_ownership.socket or process_identity_matches(
+        if not after.matches(socket_ownership.socket) or process_identity_matches(
             socket_ownership.process
         ):
             return (f"configured socket ownership changed: {socket_path}",)
