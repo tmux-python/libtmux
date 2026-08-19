@@ -6580,7 +6580,20 @@ def test_repeated_wait_capture_poll_sync_uses_one_active_topology(
         assert len({result.token for result in observed}) == 5
         assert context.fuzzer.pid == identities_before[0].pid
         assert context.processes == identities_before
-        assert len(tuple((context.scratch / "fuzzer" / "requests").glob("*.json"))) == 5
+        assert not tuple((context.scratch / "fuzzer" / "requests").glob("*.json"))
+        evidence_paths = tuple(
+            (context.scratch / "fuzzer" / "sentinels").glob("*.json")
+        )
+        assert len(evidence_paths) == 5
+        evidence = [
+            json.loads(path.read_text(encoding="utf-8")) for path in evidence_paths
+        ]
+        assert {item["request_id"] for item in evidence} == {
+            result.request_id for result in observed
+        }
+        assert {item["sentinel"] for item in evidence} == {
+            result.token for result in observed
+        }
     finally:
         cleanup = asyncio.run(benchmark_module.cleanup_run(context))
     assert cleanup.complete, cleanup.errors
@@ -6658,10 +6671,20 @@ def test_repeated_wait_async_strategies_use_one_active_topology(
             _assert_wait_tokens_only_reach_delayed_pane(context, observed)
             assert context.fuzzer.pid == identities_before[0].pid
             assert context.processes == identities_before
-            assert (
-                len(tuple((context.scratch / "fuzzer" / "requests").glob("*.json")))
-                == 5
+            assert not tuple((context.scratch / "fuzzer" / "requests").glob("*.json"))
+            evidence_paths = tuple(
+                (context.scratch / "fuzzer" / "sentinels").glob("*.json")
             )
+            assert len(evidence_paths) == 5
+            evidence = [
+                json.loads(path.read_text(encoding="utf-8")) for path in evidence_paths
+            ]
+            assert {item["request_id"] for item in evidence} == {
+                result.request_id for result in observed
+            }
+            assert {item["sentinel"] for item in evidence} == {
+                result.token for result in observed
+            }
         finally:
             cleanup = await benchmark_module.cleanup_run(context)
 
