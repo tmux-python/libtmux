@@ -30,6 +30,7 @@ _TERMINAL_SAFE_COMPONENT_ALPHABET = frozenset(
 SENTINEL_COMPONENT_MAX_BYTES = 128
 SENTINEL_RECORD_MAX_BYTES = 422
 ACTIVITY_RECORD_MAX_BYTES = 2_048
+DELAYED_ACTIVITY_RECORD_MAX_BYTES = 128
 EPOCH_PULSE_MAX_BYTES = 64
 
 
@@ -321,21 +322,42 @@ def source_lines(source_root: pathlib.Path, seed: int) -> tuple[str, ...]:
     return tuple(lines)
 
 
-def _bounded_activity_record(text: str) -> str:
+def _bounded_activity_record(
+    text: str,
+    *,
+    max_bytes: int = ACTIVITY_RECORD_MAX_BYTES,
+) -> str:
     r"""Return one newline-terminated record within the encoded byte ceiling.
 
     >>> len(_bounded_activity_record("é" * 2_048 + "\n").encode("utf-8")) <= 2_048
     True
+    >>> len(_bounded_activity_record("é" * 128 + "\n", max_bytes=128).encode())
+    127
     >>> _bounded_activity_record("short\n")
     'short\n'
+
+    Parameters
+    ----------
+    text : str
+        Newline-terminated record to bound without splitting UTF-8 code points.
+    max_bytes : int
+        Positive encoded-byte ceiling including the trailing newline.
+
+    Raises
+    ------
+    ValueError
+        If the record is unterminated or the byte ceiling is not positive.
     """
     if not text.endswith("\n"):
         message = "activity record must be newline-terminated"
         raise ValueError(message)
+    if type(max_bytes) is not int or max_bytes <= 0:
+        message = "activity record byte ceiling must be a positive integer"
+        raise ValueError(message)
     encoded = text.encode("utf-8")
-    if len(encoded) <= ACTIVITY_RECORD_MAX_BYTES:
+    if len(encoded) <= max_bytes:
         return text
-    payload = encoded[: ACTIVITY_RECORD_MAX_BYTES - 1].decode(
+    payload = encoded[: max_bytes - 1].decode(
         "utf-8",
         errors="ignore",
     )
@@ -394,7 +416,15 @@ def render_frame(
     return Frame(
         mode=mode,
         epoch=epoch,
-        text=_bounded_activity_record(text) + _epoch_pulse(epoch),
+        text=_bounded_activity_record(
+            text,
+            max_bytes=(
+                DELAYED_ACTIVITY_RECORD_MAX_BYTES
+                if mode is StreamMode.DELAYED_MATCH
+                else ACTIVITY_RECORD_MAX_BYTES
+            ),
+        )
+        + _epoch_pulse(epoch),
     )
 
 
