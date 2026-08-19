@@ -17,6 +17,7 @@ import os
 import pathlib
 import random
 import signal
+import stat
 import tempfile
 import time
 import typing as t
@@ -167,6 +168,53 @@ class SentinelEvidence:
     scheduling_lateness_ns: int
     sentinel: str
     sentinel_sha256: str
+
+
+@dataclasses.dataclass(frozen=True)
+class _PendingRequest:
+    """One accepted request awaiting its scheduled sentinel emission.
+
+    The fuzzer exclusively owns a mode-0700 output tree, and its trusted
+    benchmark producer publishes markers by atomic replacement. Under that
+    model, device and inode identity are sufficient to detect a newer marker
+    before consuming the accepted pathname.
+
+    Attributes
+    ----------
+    request_id : str
+        Canonical request identity.
+    requested_monotonic_ns : int
+        Producer timestamp for the request.
+    configured_delay_ns : int
+        Delay applied before sentinel emission.
+    scheduled_monotonic_ns : int
+        Monotonic deadline for sentinel emission.
+    sentinel : str
+        Exact terminal-safe sentinel without its trailing newline.
+    path : pathlib.Path
+        Canonical request marker pathname.
+    device : int
+        Device identity observed while reading the stable marker.
+    inode : int
+        Inode identity observed while reading the stable marker.
+
+    Examples
+    --------
+    >>> pending = _PendingRequest(
+    ...     "sample", 1, 2, 3, "READY", pathlib.Path("sample.json"), 4, 5
+    ... )
+    >>> pending.request_id
+    'sample'
+    """
+
+    request_id: str
+    requested_monotonic_ns: int
+    configured_delay_ns: int
+    scheduled_monotonic_ns: int
+    sentinel: str
+    path: pathlib.Path
+    device: int
+    inode: int
 
 
 def stream_for_pane(ordinal: int, delayed_ordinal: int) -> StreamMode:
@@ -343,6 +391,24 @@ def prepare_output(options: WorkloadOptions) -> WorkloadPaths:
     )
 
 
+def _fsync_directory(path: pathlib.Path) -> None:
+    """Make prior directory-entry changes durable.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     _fsync_directory(pathlib.Path(temporary))
+    """
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    directory_fd = os.open(path, directory_flags)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 def write_json_atomic(path: pathlib.Path, data: t.Mapping[str, t.Any]) -> None:
     r"""Replace a marker only after its JSON bytes are durable on disk.
 
@@ -372,14 +438,7 @@ def write_json_atomic(path: pathlib.Path, data: t.Mapping[str, t.Any]) -> None:
         os.fsync(temporary.fileno())
     try:
         os.replace(temporary_path, path)  # noqa: PTH105
-        directory_flags = os.O_RDONLY
-        if hasattr(os, "O_DIRECTORY"):
-            directory_flags |= os.O_DIRECTORY
-        directory_fd = os.open(path.parent, directory_flags)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        _fsync_directory(path.parent)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
             temporary_path.unlink()
@@ -490,6 +549,111 @@ def _request_from_marker(
     return request_id, requested, value
 
 
+def _read_stable_request(
+    path: pathlib.Path,
+    options: WorkloadOptions,
+    *,
+    delay_ns: int,
+    seen_request_ids: t.Container[str] = (),
+) -> _PendingRequest | None:
+    """Read one regular request whose pathname identity stays stable.
+
+    The lstat sandwich relies on the private mode-0700 tree and trusted producer
+    using atomic replacement; request markers are never edited in place.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     root = pathlib.Path(temporary)
+    ...     marker = root / "sample.json"
+    ...     write_json_atomic(marker, {
+    ...         "schema_version": 1, "run_id": "run-7", "request_id": "sample",
+    ...         "requested_monotonic_ns": 7,
+    ...     })
+    ...     options = WorkloadOptions(
+    ...         root / "out", "run-7", root, 0, 1.0, 1.0, 0.0, "READY", 1.0
+    ...     )
+    ...     pending = _read_stable_request(marker, options, delay_ns=3)
+    ...     pending.scheduled_monotonic_ns if pending is not None else None
+    10
+    """
+    try:
+        before = path.lstat()
+    except OSError:
+        return None
+    if not stat.S_ISREG(before.st_mode):
+        return None
+    marker = read_control_marker(path, options.run_id)
+    if marker is None:
+        return None
+    try:
+        after = path.lstat()
+    except OSError:
+        return None
+    if (
+        not stat.S_ISREG(after.st_mode)
+        or before.st_dev != after.st_dev
+        or before.st_ino != after.st_ino
+    ):
+        return None
+    request = _request_from_marker(
+        marker,
+        path,
+        options,
+        seen_request_ids=seen_request_ids,
+    )
+    if request is None:
+        return None
+    request_id, requested_ns, value = request
+    return _PendingRequest(
+        request_id=request_id,
+        requested_monotonic_ns=requested_ns,
+        configured_delay_ns=delay_ns,
+        scheduled_monotonic_ns=requested_ns + delay_ns,
+        sentinel=sentinel_text(options.run_id, request_id, value),
+        path=path,
+        device=after.st_dev,
+        inode=after.st_ino,
+    )
+
+
+def _consume_request(pending: _PendingRequest) -> None:
+    """Remove the still-matching accepted marker and persist its deletion.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as temporary:
+    ...     request = pathlib.Path(temporary) / "sample.json"
+    ...     _ = request.write_text("{}", encoding="utf-8")
+    ...     identity = request.lstat()
+    ...     pending = _PendingRequest(
+    ...         "sample", 1, 0, 1, "READY", request,
+    ...         identity.st_dev, identity.st_ino,
+    ...     )
+    ...     _consume_request(pending)
+    ...     request.exists()
+    False
+    """
+    try:
+        current = pending.path.lstat()
+    except FileNotFoundError as error:
+        message = (
+            f"accepted request marker removed before consumption: {pending.path.name}"
+        )
+        raise RuntimeError(message) from error
+    if (
+        not stat.S_ISREG(current.st_mode)
+        or current.st_dev != pending.device
+        or current.st_ino != pending.inode
+    ):
+        message = (
+            f"accepted request marker replaced before consumption: {pending.path.name}"
+        )
+        raise RuntimeError(message)
+    pending.path.unlink()
+    _fsync_directory(pending.path.parent)
+
+
 def run_serve(options: WorkloadOptions) -> int:
     """Serve paused deterministic streams until a matching stop or lifecycle exit.
 
@@ -557,7 +721,7 @@ def run_serve(options: WorkloadOptions) -> int:
     next_frame_ns: int | None = None
     epoch = 0
     seen_request_ids: set[str] = set()
-    pending_request: tuple[str, int, int, int, str] | None = None
+    pending_request: _PendingRequest | None = None
 
     def publish_heartbeat(state: str, now_ns: int, force: bool = False) -> None:
         """Publish bounded liveness state when time or emitted bytes require it."""
@@ -612,40 +776,26 @@ def run_serve(options: WorkloadOptions) -> int:
 
             if pending_request is None:
                 for request_path in sorted(paths.requests.glob("*.json")):
-                    marker = read_control_marker(request_path, options.run_id)
-                    if marker is None:
-                        continue
-                    request = _request_from_marker(
-                        marker,
+                    candidate = _read_stable_request(
                         request_path,
                         options,
+                        delay_ns=delay_ns,
                         seen_request_ids=seen_request_ids,
                     )
-                    if request is None:
+                    if candidate is None:
                         continue
-                    request_id, requested_ns, value = request
-                    if (paths.sentinels / f"{request_id}.json").exists():
-                        seen_request_ids.add(request_id)
+                    if (paths.sentinels / f"{candidate.request_id}.json").exists():
+                        seen_request_ids.add(candidate.request_id)
                         continue
-                    pending_request = (
-                        request_id,
-                        requested_ns,
-                        delay_ns,
-                        requested_ns + delay_ns,
-                        sentinel_text(options.run_id, request_id, value),
-                    )
-                    seen_request_ids.add(request_id)
+                    pending_request = candidate
+                    seen_request_ids.add(candidate.request_id)
                     break
 
-            if pending_request is not None and now_ns >= pending_request[3]:
-                (
-                    request_id,
-                    requested_ns,
-                    configured_delay_ns,
-                    scheduled_ns,
-                    sentinel,
-                ) = pending_request
-                sentinel_record = f"{sentinel}\n"
+            if (
+                pending_request is not None
+                and now_ns >= pending_request.scheduled_monotonic_ns
+            ):
+                sentinel_record = f"{pending_request.sentinel}\n"
                 sentinel_bytes = sentinel_record.encode()
                 emitted_ns = time.monotonic_ns()
                 bytes_since_heartbeat += _append_text(
@@ -656,18 +806,22 @@ def run_serve(options: WorkloadOptions) -> int:
                 evidence = SentinelEvidence(
                     schema_version=1,
                     run_id=options.run_id,
-                    request_id=request_id,
-                    requested_monotonic_ns=requested_ns,
-                    configured_delay_ns=configured_delay_ns,
-                    scheduled_monotonic_ns=scheduled_ns,
+                    request_id=pending_request.request_id,
+                    requested_monotonic_ns=pending_request.requested_monotonic_ns,
+                    configured_delay_ns=pending_request.configured_delay_ns,
+                    scheduled_monotonic_ns=pending_request.scheduled_monotonic_ns,
                     emitted_monotonic_ns=emitted_ns,
-                    scheduling_lateness_ns=emitted_ns - scheduled_ns,
-                    sentinel=sentinel,
+                    scheduling_lateness_ns=(
+                        emitted_ns - pending_request.scheduled_monotonic_ns
+                    ),
+                    sentinel=pending_request.sentinel,
                     sentinel_sha256=hashlib.sha256(sentinel_bytes).hexdigest(),
                 )
                 write_json_atomic(
-                    paths.sentinels / f"{request_id}.json", dataclasses.asdict(evidence)
+                    paths.sentinels / f"{pending_request.request_id}.json",
+                    dataclasses.asdict(evidence),
                 )
+                _consume_request(pending_request)
                 pending_request = None
 
             publish_heartbeat("active", now_ns)
