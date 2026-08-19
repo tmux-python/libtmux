@@ -218,6 +218,30 @@ def test_render_frame_bounds_multibyte_activity_and_emits_exact_epoch_pulse(
     assert len(fuzzer_module._epoch_pulse(10**20).encode("ascii")) <= 64
 
 
+def test_delayed_record_has_its_own_multibyte_safe_retention_bound(
+    fuzzer_module: types.ModuleType,
+) -> None:
+    """A delayed ordinary record must fit two rows at the minimum pane width."""
+    adversarial_epoch = 10**42 - 1
+
+    frame = fuzzer_module.render_frame(
+        fuzzer_module.StreamMode.DELAYED_MATCH,
+        epoch=adversarial_epoch,
+        corpus=("é" * 4_096,),
+        seed=0,
+    )
+    ordinary, pulse = frame.text.splitlines(keepends=True)
+    multibyte = fuzzer_module._bounded_activity_record(
+        "é" * 4_096 + "\n",
+        max_bytes=128,
+    )
+
+    assert len(ordinary.encode("utf-8")) <= 128
+    assert len(multibyte.encode("utf-8")) <= 128
+    assert pulse == f"LIBTMUX_EPOCH epoch={adversarial_epoch}\n"
+    assert len(pulse.encode("ascii")) <= 64
+
+
 def test_bounded_activity_record_rejects_unterminated_input(
     fuzzer_module: types.ModuleType,
 ) -> None:
