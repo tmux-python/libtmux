@@ -62,6 +62,14 @@ def test_ladders_escalate_pane_pressure(stress_module: types.ModuleType) -> None
         assert panes[-1] > panes[0]
 
 
+def test_shape_supports_column_alignment(stress_module: types.ModuleType) -> None:
+    """The reporting loop aligns shapes, which a bare dataclass rejects."""
+    shape = stress_module.Shape(80, 20, 2)
+
+    assert f"{shape:<10}|" == "80x20x2   |"
+    assert f"{shape}" == "80x20x2"
+
+
 def test_rung_outcome_reports_a_missing_artifact_rather_than_raising(
     stress_module: types.ModuleType, tmp_path: pathlib.Path
 ) -> None:
