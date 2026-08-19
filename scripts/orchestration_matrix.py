@@ -34,6 +34,7 @@ import contextlib
 import dataclasses
 import fcntl
 import json
+import math
 import os
 import pathlib
 import shutil
@@ -338,6 +339,242 @@ def summarize(artifact: pathlib.Path) -> dict[str, object]:
     }
 
 
+def reportable_percentiles(samples: int) -> tuple[int, ...]:
+    """Return the percentiles *samples* observations can actually resolve.
+
+    A percentile at quantile ``q`` needs at least ``1 / (1 - q)`` observations
+    before it is distinguishable from the maximum. Below that it is the
+    maximum wearing a different label, which is how a two-sample cell ends up
+    printing a p99.
+
+    Parameters
+    ----------
+    samples : int
+        Accepted and verified timed samples in one cell.
+
+    Returns
+    -------
+    tuple[int, ...]
+        Percentiles worth rendering, ascending.
+
+    Examples
+    --------
+    >>> reportable_percentiles(2)
+    ()
+    >>> reportable_percentiles(10)
+    (90,)
+    >>> reportable_percentiles(100)
+    (90, 95, 99)
+    """
+    return tuple(
+        percentile
+        for percentile in (90, 95, 99)
+        if samples >= round(100 / (100 - percentile))
+    )
+
+
+def _quantile(ordered: list[float], percentile: int) -> float:
+    """Return the nearest-rank *percentile* of an ascending sequence.
+
+    Examples
+    --------
+    >>> _quantile([1.0, 2.0, 3.0, 4.0], 50)
+    2.0
+    """
+    rank = max(1, min(len(ordered), math.ceil(percentile / 100 * len(ordered))))
+    return ordered[rank - 1]
+
+
+def load_cells(root: pathlib.Path) -> dict[str, dict[str, object]]:
+    """Return every cell artifact found under *root*, keyed by ``lane/mode``.
+
+    Parameters
+    ----------
+    root : pathlib.Path
+        Evidence directory holding one subdirectory per cell.
+
+    Returns
+    -------
+    dict[str, dict[str, object]]
+        Cell label mapped to its status and per-phase sample lists.
+
+    Examples
+    --------
+    >>> load_cells(pathlib.Path("/nonexistent"))
+    {}
+    """
+    cells: dict[str, dict[str, object]] = {}
+    if not root.is_dir():
+        return cells
+    for artifact in sorted(root.glob("*/report.json")):
+        try:
+            report = json.loads(artifact.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        label = f"{report.get('lane')}/{report.get('mode')}"
+        phases: dict[str, list[float]] = {}
+        for phase in report.get("phases") or []:
+            accepted = [
+                sample["duration_ns"] / 1e6
+                for sample in (phase.get("samples") or [])
+                if sample.get("accepted") and sample.get("verified")
+            ]
+            if accepted:
+                phases[phase["name"]] = sorted(accepted)
+        cells[label] = {
+            "status": report.get("status"),
+            "failed_phase": report.get("failed_phase"),
+            "phases": phases,
+        }
+    return cells
+
+
+def render_matrix(root: pathlib.Path, *, baseline: str | None = None) -> str:
+    """Render a cross-lane comparison from the cell artifacts under *root*.
+
+    The rendered unit is the individual phase. A whole-iteration ratio is not
+    reported, because summing phases makes the result a proxy for whichever
+    phase is most expensive -- capture dominates every lane here -- rather than
+    a statement about the lanes.
+
+    Parameters
+    ----------
+    root : pathlib.Path
+        Evidence directory holding one subdirectory per cell.
+    baseline : str or None
+        Cell label ratios are taken against; the slowest completed cell by
+        default, so ratios read as "this many times faster than *baseline*".
+
+    Returns
+    -------
+    str
+        Markdown document; a short notice when no artifact was found.
+
+    Examples
+    --------
+    >>> render_matrix(pathlib.Path("/nonexistent")).splitlines()[0]
+    '# Orchestration matrix'
+    """
+    cells = load_cells(root)
+    lines = ["# Orchestration matrix", ""]
+    if not cells:
+        lines += ["No cell artifacts were found.", ""]
+        return "\n".join(lines)
+
+    counts = {
+        label: max((len(v) for v in t.cast("dict", cell["phases"]).values()), default=0)
+        for label, cell in cells.items()
+    }
+    smallest = min(counts.values()) if counts else 0
+    percentiles = reportable_percentiles(smallest)
+
+    lines += [
+        "> Local descriptive evidence only; not causal or machine-independent.",
+        "",
+        f"Cells hold at least {smallest} timed samples, so this report shows "
+        + (
+            "median and " + ", ".join(f"p{p}" for p in percentiles)
+            if percentiles
+            else "the median only"
+        )
+        + ".",
+        "",
+        "## Cells",
+        "",
+        "| Cell | Status | Timed samples |",
+        "| --- | --- | ---: |",
+    ]
+    for label, cell in sorted(cells.items()):
+        status = t.cast("str", cell["status"]) or "unknown"
+        failed = cell.get("failed_phase")
+        note = f"{status}" + (f" ({failed})" if failed else "")
+        lines.append(f"| `{label}` | {note} | {counts[label]} |")
+
+    completed = {
+        label: cell for label, cell in cells.items() if cell["status"] == "completed"
+    }
+    if len(completed) < 2:
+        lines += [
+            "",
+            "Fewer than two cells completed, so no lane comparison is offered.",
+            "",
+        ]
+        return "\n".join(lines)
+
+    phase_names = sorted(
+        {name for cell in completed.values() for name in t.cast("dict", cell["phases"])}
+    )
+    del baseline
+
+    labels = sorted(completed)
+    header = "| Phase | " + " | ".join(f"`{label}`" for label in labels)
+    header += " | Fastest | Spread |"
+    lines += [
+        "",
+        "## Per-phase medians",
+        "",
+        (
+            "Each row is one phase. Spread is the slowest completed cell "
+            "divided by the fastest, for that phase alone."
+        ),
+        "",
+        header,
+        "| --- | " + " | ".join("---:" for _ in labels) + " | --- | ---: |",
+    ]
+    for name in phase_names:
+        cells_row = []
+        medians: dict[str, float] = {}
+        for label in labels:
+            values = t.cast("dict", completed[label]["phases"]).get(name)
+            if not values:
+                cells_row.append("n/a")
+                continue
+            median = _quantile(values, 50)
+            medians[label] = median
+            cells_row.append(f"{median:.1f} ms")
+        fastest, spread = "n/a", "n/a"
+        if medians:
+            winner = min(medians, key=lambda label: medians[label])
+            fastest = f"`{winner}`"
+            best = medians[winner]
+            if best > 0 and len(medians) > 1:
+                spread = f"{max(medians.values()) / best:.1f}x"
+        lines.append(
+            f"| `{name}` | " + " | ".join(cells_row) + f" | {fastest} | {spread} |"
+        )
+
+    for percentile in percentiles:
+        lines += [
+            "",
+            f"## Per-phase p{percentile}",
+            "",
+            "| Phase | " + " | ".join(f"`{label}`" for label in labels) + " |",
+            "| --- | " + " | ".join("---:" for _ in labels) + " |",
+        ]
+        for name in phase_names:
+            row = []
+            for label in labels:
+                values = t.cast("dict", completed[label]["phases"]).get(name)
+                row.append(
+                    f"{_quantile(values, percentile):.1f} ms" if values else "n/a"
+                )
+            lines.append(f"| `{name}` | " + " | ".join(row) + " |")
+
+    lines += [
+        "",
+        "## What these ratios may claim",
+        "",
+        (
+            "A per-phase ratio is a statement about that phase's request "
+            "pattern on that transport, on this host, at this topology. It is "
+            "not a general engine speedup, and it does not transfer to a "
+            "workload with a different mix of phases."
+        ),
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def run_cell(
     cell: Cell,
     *,
@@ -503,6 +740,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="continue past non-fatal preflight blockers",
     )
+    parser.add_argument(
+        "--render-only",
+        action="store_true",
+        help="re-render an existing evidence root without running any cell",
+    )
     return parser
 
 
@@ -539,6 +781,12 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     shape = parse_shape(arguments.shape)
     cells = _selected_cells(arguments.cells)
     checkout = _BENCHMARK.parent.parent
+
+    if arguments.render_only:
+        report = arguments.evidence_root / "matrix.md"
+        report.write_text(render_matrix(arguments.evidence_root), encoding="utf-8")
+        print(f"rendered {report}")
+        return 0
 
     blockers = preflight(checkout, shape)
     if blockers:
@@ -582,6 +830,9 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     (arguments.evidence_root / "matrix.json").write_text(
         json.dumps(summaries, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    report = arguments.evidence_root / "matrix.md"
+    report.write_text(render_matrix(arguments.evidence_root), encoding="utf-8")
+    print(f"cross-lane report: {report}")
     residue = checkout_residue(checkout)
     if residue:
         print(f"WARNING: {len(residue)} benchmark process(es) remain", file=sys.stderr)
