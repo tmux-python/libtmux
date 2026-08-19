@@ -29,10 +29,14 @@ one persistent active topology and performs several distinct workloads on it.
 
 ## Running the benchmark
 
-Both programs are self-contained PEP 723 scripts. Run every command from the
+Every program here is a self-contained PEP 723 script. Run commands from the
 repository root, because `run` and `ramp` re-invoke their own worker process.
-Clear `TMUX` and `TMUX_PANE` so a run can never reach your interactive server;
-the benchmark also unsets them itself before importing libtmux.
+
+The `env -u TMUX -u TMUX_PANE` prefix below is defensive, not required. Dropping
+it is safe: `bench_orchestration.py` unsets both before importing libtmux, and
+the matrix and stress supervisors strip `TMUX`, `TMUX_PANE`, and `VIRTUAL_ENV`
+from every child they spawn. Keeping the prefix simply makes it obvious at the
+call site that a run can never reach your interactive server.
 
 Preview the workload without starting tmux. This renders the same frames the
 pane processes will follow:
@@ -89,7 +93,17 @@ $ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py ramp \
 ```
 
 Compare every execution lane at one shape. Cells run strictly one at a time,
-because overlapping scale runs perturb the timings they produce:
+because overlapping scale runs perturb the timings they produce. The defaults
+are the combination measured to finish four cells in just under 24 minutes:
+
+```console
+$ env -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
+    --with-orm
+```
+
+Raise the shape only with the wall clock in mind. Subprocess cost per iteration
+grows superlinearly with pane count — roughly 9 seconds at 800 panes against 49
+at 1,600 — so four cells at `80x20x1` take about an hour:
 
 ```console
 $ env -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
