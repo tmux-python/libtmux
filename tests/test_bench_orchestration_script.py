@@ -3872,6 +3872,60 @@ def test_stale_socket_removal_rechecks_directory_before_unlink(
         replacement_source.unlink(missing_ok=True)
 
 
+@pytest.mark.parametrize(
+    ("captured_mode", "observed_mode"),
+    (
+        (0o600, 0o700),
+        (0o700, 0o600),
+    ),
+    ids=("client-attached-after-capture", "client-detached-after-capture"),
+)
+def test_stale_socket_survives_tmux_attach_permission_flip(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    captured_mode: int,
+    observed_mode: int,
+) -> None:
+    """A tmux attach state change must not read as a different socket.
+
+    ``server_update_socket()`` sets the socket's execute bits while any session
+    is attached and clears them when none is, so an owned socket legitimately
+    changes permission bits mid-run. Only the node's identity may decide
+    ownership.
+    """
+    private = tmp_path / "run"
+    private.mkdir(mode=0o700)
+    socket_path = private / "tmux.sock"
+    owned = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    owned.bind(str(socket_path))
+    try:
+        socket_path.chmod(captured_mode)
+        status = socket_path.lstat()
+        ownership = benchmark_module._SocketOwnership(
+            benchmark_module.ProcessIdentity("server", 2**31 - 1, 1),
+            benchmark_module.SocketIdentity(
+                status.st_dev,
+                status.st_ino,
+                status.st_uid,
+                status.st_mode,
+                status.st_mtime_ns,
+            ),
+        )
+        owned.close()
+        socket_path.chmod(observed_mode)
+
+        errors = benchmark_module._remove_proven_stale_socket(
+            socket_path,
+            ownership,
+        )
+
+        assert errors == ()
+        assert not socket_path.exists()
+    finally:
+        owned.close()
+        socket_path.unlink(missing_ok=True)
+
+
 def test_run_scenario_refuses_when_pidfds_are_unavailable(
     benchmark_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
