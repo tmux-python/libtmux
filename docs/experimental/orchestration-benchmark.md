@@ -1,4 +1,4 @@
-# Huge Active Orchestration Benchmark Design
+# Huge Active Orchestration Benchmark
 
 ## Purpose
 
@@ -26,6 +26,115 @@ shape, a completed shape, and a host-resource cutoff.
 The new scripts remain separate from `scripts/bench_engines.py`. That script
 measures repeated construction of short-lived topologies; this benchmark builds
 one persistent active topology and performs several distinct workloads on it.
+
+## Running the benchmark
+
+Both programs are self-contained PEP 723 scripts. Run every command from the
+repository root, because `run` and `ramp` re-invoke their own worker process.
+Clear `TMUX` and `TMUX_PANE` so a run can never reach your interactive server;
+the benchmark also unsets them itself before importing libtmux.
+
+Preview the workload without starting tmux. This renders the same frames the
+pane processes will follow:
+
+```console
+$ uv run python scripts/orchestration_fuzzer.py preview \
+    --seed 20260818 \
+    --duration 5
+```
+
+Inspect a topology and the host guard without writing anything. `plan` imports
+no libtmux and starts no tmux server:
+
+```console
+$ uv run python scripts/bench_orchestration.py plan \
+    --shape 80x20x1
+```
+
+Run a small smoke topology first. It exercises every phase in seconds:
+
+```console
+$ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
+    --shape 2x2x2 \
+    --lane control \
+    --mode async \
+    --runs 3 \
+    --warmup 1 \
+    --output smoke.json
+```
+
+Run the large active cell. Async control mode keeps one persistent client and
+attributes pipelined requests individually:
+
+```console
+$ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
+    --shape 80x20x1 \
+    --lane control \
+    --mode async \
+    --runs 100 \
+    --warmup 5 \
+    --seed 20260818 \
+    --output n100.json \
+    --markdown-output n100.md
+```
+
+Attempt the canonical ramp, which cleans each disposable server before the next
+shape and records a structured cutoff when a resource guard trips:
+
+```console
+$ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py ramp \
+    --runs 5 \
+    --warmup 1 \
+    --output ramp.json
+```
+
+Validate a finished artifact tree. `validate` is read-only and contacts no tmux
+server:
+
+```console
+$ uv run python scripts/bench_orchestration.py validate \
+    --input n100.json
+```
+
+Render Markdown from validated JSON. The destination is replaced atomically and
+only after validation succeeds:
+
+```console
+$ uv run python scripts/bench_orchestration.py render \
+    --input n100.json \
+    --output n100.md
+```
+
+## Reading the evidence
+
+Measured values live in the JSON artifact. Rendered Markdown is generated from
+that artifact, so measured values are never hand-edited. A retained example
+lives at `scripts/bench-results/orchestration-summary.md`.
+
+Four distinctions matter when quoting a report.
+
+A completed shape is not a completed maximum. `100x100x4` is supported and
+selectable, but it is host-gated. Only an artifact whose requested and observed
+topology are both exactly `100x100x4`, with `maximum_completed` true, shows that
+the maximum ran. A successful smaller shape says nothing about a larger one, and
+a resource cutoff is evidence about the host rather than a reporting failure.
+
+Engine batching is not process reduction. A batch still issues one tmux request
+per operation, and on the subprocess transport it starts one process per request,
+so a batched capture costs the same forks as the serial one. Batching changes
+dispatch shape; only the control-mode lanes share one persistent client across
+requests. Reports record planner steps, engine batches, tmux requests, and known
+process starts separately so the difference stays visible.
+
+Configured delay is not waiter overhead. Each delayed-text sample reports the
+configured delay, the generator's scheduling lateness, and the detection overhead
+separately, so a deliberate wait is never presented as library cost. Compare
+detection overhead between the two wait strategies, not total elapsed time.
+
+In-memory filtering is not an end-to-end query. `QueryList` filtering over an
+already materialized snapshot is reported in its own cells and is not equivalent
+to a server-side format filter or to a list-then-filter round trip that must
+reach tmux.
 
 ## Topology and scale
 
