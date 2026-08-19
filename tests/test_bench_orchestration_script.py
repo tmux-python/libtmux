@@ -5473,6 +5473,47 @@ def test_async_mutation_shields_restoration_through_repeated_cancellation(
     asyncio.run(exercise())
 
 
+def test_live_orm_enumeration_matches_the_typed_operation_rows(
+    benchmark_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The classic ORM reference must observe the same hierarchy as the seam.
+
+    The ORM is a reference cell, not a lane: it always reaches tmux through its
+    own request graph. It is only comparable when it returns exactly the rows
+    the typed operations return.
+    """
+    topology = benchmark_module.Topology(2, 3, 2)
+    scratch = tmp_path / "orm-enumeration"
+    context = cleanup = None
+    orm: dict[str, t.Any] = {}
+    typed: dict[str, t.Any] = {}
+
+    context = benchmark_module.setup_sync(
+        topology,
+        benchmark_module.EngineLane.SUBPROCESS,
+        scratch,
+        run_id="orm-enumeration",
+        delayed_ordinal=5,
+    )
+    try:
+        benchmark_module.release_activity_gate(context)
+        benchmark_module.verify_activity_sync(context)
+        for kind in ("sessions", "windows", "panes"):
+            typed[kind] = benchmark_module.enumerate_sync(context, kind=kind)
+            orm[kind] = benchmark_module.enumerate_orm(context, kind=kind)
+    finally:
+        cleanup = asyncio.run(benchmark_module.cleanup_run(context))
+
+    for kind in ("sessions", "windows", "panes"):
+        assert orm[kind].verified, kind
+        assert orm[kind].row_count == typed[kind].row_count, kind
+        assert orm[kind].ids == typed[kind].ids, kind
+        assert orm[kind].duration_ns > 0, kind
+    assert cleanup is not None
+    assert cleanup.complete, cleanup.errors
+
+
 @pytest.mark.parametrize(("lane_name", "mode_name"), _PHASE_LANES)
 def test_live_enumeration_phase_accepts_exact_rows_and_stable_id_checksums(
     benchmark_module: types.ModuleType,
