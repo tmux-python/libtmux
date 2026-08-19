@@ -81,6 +81,19 @@ class Shape:
         """Return ``SxWxP`` notation."""
         return f"{self.sessions}x{self.windows}x{self.panes_per_window}"
 
+    def __format__(self, spec: str) -> str:
+        """Format the ``SxWxP`` notation, so column alignment works.
+
+        A dataclass inherits ``object.__format__``, which rejects any
+        non-empty spec, and the reporting loop aligns shapes into columns.
+
+        Examples
+        --------
+        >>> f"{Shape(80, 20, 2):<10}|"
+        '80x20x2   |'
+        """
+        return format(str(self), spec)
+
     @property
     def panes(self) -> int:
         """Return the live pane count this shape creates."""
