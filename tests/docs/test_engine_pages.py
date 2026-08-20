@@ -12,6 +12,7 @@ _ROOT = pathlib.Path(__file__).parents[2]
 _ENGINE_LANDING = _ROOT / "docs" / "experimental" / "engines.md"
 _ENGINE_ROOT = _ROOT / "docs" / "experimental" / "engines"
 _TUTORIAL_ROOT = _ROOT / "docs" / "experimental" / "tutorials"
+_INSTRUMENTATION = "libtmux.experimental.engines.instrumentation"
 _PYTHON_BLOCK = re.compile(
     r"^```python\n(?P<body>.*?)^```$",
     re.MULTILINE | re.DOTALL,
@@ -78,11 +79,19 @@ def _first_python_block(engine: str) -> str:
 
 
 def test_engine_reference_inventory_is_exact() -> None:
-    """The reference has one page per concrete engine."""
+    """The reference has one page per concrete engine.
+
+    Transports get pages; the protocols they satisfy and the instrumentation
+    wrappers that decorate them do not. The wrapper exclusion is by defining
+    module rather than by name, so a new transport still fails this test while
+    a new wrapper does not demand a transport page it could not fill.
+    """
     exported_engines = {
         name
         for name in engines.__all__
-        if name.endswith("Engine") and name not in {"AsyncTmuxEngine", "TmuxEngine"}
+        if name.endswith("Engine")
+        and name not in {"AsyncTmuxEngine", "TmuxEngine"}
+        and getattr(getattr(engines, name), "__module__", "") != _INSTRUMENTATION
     }
 
     assert set(_ENGINE_PAGES) == exported_engines
