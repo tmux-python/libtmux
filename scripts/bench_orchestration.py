@@ -4572,7 +4572,14 @@ def _pidfd_api_error() -> str | None:
     if platform.system() != "Linux":
         return "pidfd signaling requires Linux"
     if not callable(getattr(os, "pidfd_open", None)):
-        return "os.pidfd_open is unavailable"
+        return (
+            "os.pidfd_open is unavailable, so exact process identity cannot "
+            "be guaranteed. Free-threaded CPython builds are the usual cause; "
+            "check with python -c 'import sysconfig; "
+            'print(sysconfig.get_config_var("Py_GIL_DISABLED"))\'. '
+            "Select an interpreter that exposes pidfd, for example "
+            "UV_PYTHON=/path/to/cpython uv run ..."
+        )
     if not callable(getattr(signal, "pidfd_send_signal", None)):
         return "signal.pidfd_send_signal is unavailable"
     if not callable(getattr(signal, "pthread_sigmask", None)):
