@@ -422,3 +422,59 @@ def test_a_directory_outside_git_yields_no_vcs_attributes(
     resolved = identity.resolve(run_id="r", root=tmp_path, env={})
     assert resolved["libtmux.run_id"] == "r"
     assert "vcs.ref.head.name" not in resolved
+
+
+def test_a_failing_load_setup_is_attempted_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Setup that cannot succeed must not be retried by every iteration.
+
+    rampa isolates a failing iteration and runs the next one, which is what a
+    load tool should do. That makes it the scenario's job not to rebuild
+    expensive state on a path that always fails: building it costs a tmux
+    server and three exporter threads, so retrying per iteration turns one bad
+    input into thousands of servers and enough threads to saturate the machine.
+    It did exactly that once, which is why this is pinned.
+    """
+    pytest.importorskip("opentelemetry", reason="otel dependency group not installed")
+
+    monkeypatch.syspath_prepend(str(_LGTM))
+    spec = importlib.util.spec_from_file_location("load_tmux", _LGTM / "load_tmux.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["load_tmux"] = module
+    spec.loader.exec_module(module)
+
+    attempts = 0
+
+    def refuse() -> t.NoReturn:
+        nonlocal attempts
+        attempts += 1
+        message = "tmux unavailable"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(module, "_server", refuse)
+
+    raised = []
+    for _ in range(50):
+        with pytest.raises(RuntimeError, match="tmux unavailable") as caught:
+            module._engine()
+        raised.append(caught.value)
+
+    assert attempts == 1, f"setup was retried {attempts} times"
+    assert all(error is raised[0] for error in raised)
+
+
+def test_an_unknown_load_lane_is_rejected_before_anything_is_built() -> None:
+    """A typo must fail at import, not once per iteration.
+
+    Validating late means the tmux server is already created by the time the
+    lane is looked up, and the failure repeats for the whole run.
+    """
+    source = (_LGTM / "load_tmux.py").read_text(encoding="utf-8")
+
+    validation = source.index("if LANE not in LANES:")
+    creation = source.index("def _server(")
+    assert validation < creation, "the lane must be validated before _server is defined"
+    assert "raise SystemExit(message)" in source

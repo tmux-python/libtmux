@@ -40,7 +40,24 @@ from libtmux.experimental.engines.base import CommandRequest, CommandSeparator
 from libtmux.experimental.engines.control_mode import command_count
 from libtmux.server import Server
 
+# Transports this scenario can drive, and how to build each.
+LANES = {
+    "control-async": AsyncControlModeEngine.for_server,
+    "subprocess-async": AsyncSubprocessEngine.for_server,
+}
+
 LANE = os.environ.get("LIBTMUX_LOAD_LANE", "control-async")
+if LANE not in LANES:
+    # Validated at import, before any tmux server exists. Left until the first
+    # worker iteration, an unknown lane raises inside a rampa worker, which
+    # counts the iteration as failed and moves on -- so the next iteration
+    # builds another tmux server, and the next, for the whole run. A single
+    # typo produced thousands of servers before this check existed.
+    message = (
+        f"LIBTMUX_LOAD_LANE={LANE!r} is not a lane; choose one of "
+        f"{', '.join(sorted(LANES))}"
+    )
+    raise SystemExit(message)
 PLAIN = CommandRequest.from_args("list-panes", "-a", "-F", "#{pane_id}")
 GROUPED = CommandRequest.from_args(
     "set-option",
@@ -104,27 +121,39 @@ def _engine() -> t.Any:
     spike labels as every other run, so the two are directly comparable instead
     of arriving as a second, parallel account of the same work.
     """
+    # A failure here is permanent for this process, so it is remembered and
+    # re-raised. Building this costs a tmux server and three exporter threads,
+    # and rampa correctly isolates a failing iteration and runs the next one --
+    # so without the latch, a setup that cannot succeed is retried for the whole
+    # run and leaves a fresh set of resources behind every time. That is what
+    # once turned one bad lane name into thousands of tmux servers and ten
+    # thousand threads; the executor was behaving properly, the scenario was not.
+    if "error" in _STATE:
+        raise _STATE["error"]
     if "engine" not in _STATE:
         os.environ.pop("TMUX", None)
         os.environ.pop("TMUX_PANE", None)
-        server, root = _server()
-        _STATE["root"] = root
-        signals = telemetry.build(
-            os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318"),
-            run_id=os.environ.get("LIBTMUX_RUN_ID", f"load-{uuid.uuid4().hex[:8]}"),
-            spike=os.environ.get("LIBTMUX_SPIKE"),
-        )
-        _STATE["signals"] = signals
-        factory = {
-            "control-async": AsyncControlModeEngine.for_server,
-            "subprocess-async": AsyncSubprocessEngine.for_server,
-        }[LANE]
-        _STATE["engine"] = instrument(
-            factory(server),
-            telemetry.OTelSink(
-                signals.tracer, signals.meter, LANE, signals.metric_labels
-            ),
-        )
+        try:
+            # Resolve the factory before anything is created, so a failure here
+            # cannot leave a tmux server behind.
+            factory = LANES[LANE]
+            server, root = _server()
+            _STATE["root"] = root
+            signals = telemetry.build(
+                os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318"),
+                run_id=os.environ.get("LIBTMUX_RUN_ID", f"load-{uuid.uuid4().hex[:8]}"),
+                spike=os.environ.get("LIBTMUX_SPIKE"),
+            )
+            _STATE["signals"] = signals
+            _STATE["engine"] = instrument(
+                factory(server),
+                telemetry.OTelSink(
+                    signals.tracer, signals.meter, LANE, signals.metric_labels
+                ),
+            )
+        except BaseException as error:
+            _STATE["error"] = error
+            raise
     return _STATE["engine"]
 
 
