@@ -478,3 +478,29 @@ def test_an_unknown_load_lane_is_rejected_before_anything_is_built() -> None:
     creation = source.index("def _server(")
     assert validation < creation, "the lane must be validated before _server is defined"
     assert "raise SystemExit(message)" in source
+
+
+def test_the_mcp_config_and_the_stack_agree_on_grafana_port() -> None:
+    """An agent's config must point where the stack actually puts Grafana.
+
+    The image ships an MCP config assuming Grafana's default port. This stack
+    moves it, so the shipped copy connects to nothing -- and the failure is
+    quiet in the worst way: the agent authenticates against nothing, finds no
+    data, and reports an empty stack rather than a misconfigured one. Keeping
+    the two defaults in step is the whole point of shipping our own.
+    """
+    import re
+
+    up = (_LGTM / "up.sh").read_text(encoding="utf-8")
+    mcp = (_LGTM / "mcp-config.sh").read_text(encoding="utf-8")
+
+    def default_port(text: str) -> str:
+        match = re.search(
+            r'GRAFANA_PORT="\$\{LIBTMUX_LGTM_GRAFANA_PORT:-(\d+)\}"', text
+        )
+        assert match, "no Grafana port default found"
+        return match.group(1)
+
+    assert default_port(up) == default_port(mcp)
+    # The token belongs to the running container, never to the repository.
+    assert "glsa_" not in mcp

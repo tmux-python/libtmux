@@ -244,6 +244,30 @@ check therefore re-queries the panels that came back empty until they fill or
 only as long as it needs. A cold-started Tempo is the usual reason for a
 second pass.
 
+## Querying it from an agent
+
+Both Grafana and Tempo expose MCP servers, so an agent can ask the stack
+questions directly instead of being handed screenshots. Print a client
+configuration for this stack:
+
+```console
+$ just otel-mcp
+```
+
+Use its output rather than the one at `/etc/lgtm/mcp.json` inside the
+container. The shipped config assumes Grafana is on its default port; this
+stack moves it, so following the shipped copy connects to nothing and an agent
+reports an empty stack rather than a misconfigured one.
+
+The Grafana service account token is read from the running container each time
+and is never stored in this repository.
+
+Tempo's MCP server answers at `http://127.0.0.1:3200/api/mcp` and offers seven
+tools, including `traceql-search`, `get-trace`, and `get-attribute-values`, so
+the engine attributes are discoverable without knowing the schema in advance.
+Asking it for `{ resource.service.name="libtmux-engines" }` returns the same
+spans the dashboards draw.
+
 ## Configuration
 
 `up.sh` pins the `grafana/otel-lgtm` image rather than tracking `latest`, so a
