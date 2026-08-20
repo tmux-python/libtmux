@@ -45,9 +45,11 @@ if t.TYPE_CHECKING:
 
 SERVICE_NAME = "libtmux-engines"
 
-# Latency buckets in seconds. A control-mode command is tens of microseconds and
-# a subprocess command is a few milliseconds, so the buckets have to span four
-# orders of magnitude or one transport lands entirely in the first bucket.
+# Latency buckets in seconds. Measured medians run from a couple of hundred
+# microseconds on a persistent control-mode client to a few milliseconds per
+# subprocess, and tails reach far past both, so the buckets have to span four
+# orders of magnitude or a transport lands entirely in the first one and its
+# percentiles say nothing.
 DURATION_BUCKETS = (
     0.0001,
     0.00025,
