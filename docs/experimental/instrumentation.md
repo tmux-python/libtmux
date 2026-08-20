@@ -191,6 +191,11 @@ sink exports over OTLP, where `{ span.tmux.commands > 1 }` finds every request
 that batched work. Nothing else changes, because the sink never learns which
 engine it is observing.
 
+That exporter already exists, along with a local Grafana stack to receive it and
+dashboards built on these counts. `just otel-verify` starts it, drives a tmux
+workload through the seam, and checks that every dashboard panel has data. See
+`scripts/lgtm/README.md`.
+
 ## Async
 
 {func}`~libtmux.experimental.engines.instrumentation.instrument` returns
@@ -282,9 +287,10 @@ hooks would build a context object per call whether or not one is used. Wrapping
 adds one Python call plus each sink's own work, and only for programs that ask
 for it.
 
-Two tests hold the claim: one asserts wrapping adds no attribute to the engine
-it wraps, and one measures an instrumented call against the millisecond scale of
-a real tmux round trip.
+The claim is held by two tests: one asserts that wrapping adds no attribute to
+the engine it wraps, and one measures an instrumented call against the
+millisecond scale of a real tmux round trip.
+
 ```console
 $ uv run pytest tests/experimental/engines/test_instrumentation.py
 ```

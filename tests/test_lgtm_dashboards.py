@@ -286,3 +286,38 @@ def test_telemetry_doctests_execute() -> None:
 
     results = doctest.testmod(module, verbose=False)
     assert results.failed == 0, f"{results.failed} doctest(s) failed"
+
+
+def test_readme_only_shows_commands_that_exist() -> None:
+    """Every ``just`` command the README demonstrates is a real recipe.
+
+    A renamed recipe is the likeliest way this documentation rots, and the
+    failure is silent: the prose still reads correctly and the command simply
+    does not work. Checking is cheap because both sides are in the repo.
+    """
+    import re
+
+    readme = (_LGTM / "README.md").read_text(encoding="utf-8")
+    justfile = (_ROOT / "justfile").read_text(encoding="utf-8")
+
+    shown = set(re.findall(r"^\$ just ([a-z][a-z-]*)", readme, re.MULTILINE))
+    assert shown, "the README stopped showing any just commands"
+    defined = set(
+        re.findall(r"^([a-z][a-z-]*)(?: \*?[a-z_]+)?:", justfile, re.MULTILINE)
+    )
+    missing = shown - defined
+    assert not missing, f"README shows recipes that do not exist: {sorted(missing)}"
+
+
+def test_readme_names_every_dashboard_it_ships() -> None:
+    """The README's board list matches the boards actually generated.
+
+    Adding a board and forgetting to mention it leaves it undiscoverable,
+    which for a dashboard is the same as not shipping it.
+    """
+    readme = (_LGTM / "README.md").read_text(encoding="utf-8")
+    for path in sorted(_DASHBOARDS.glob("*.json")):
+        board = json.loads(path.read_text(encoding="utf-8"))
+        assert board["title"] in readme, (
+            f"{board['title']} is generated but never mentioned in the README"
+        )
