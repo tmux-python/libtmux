@@ -112,7 +112,6 @@ def scope(**entries: str) -> t.Iterator[None]:
     >>> with scope(**{"libtmux.phase": "warmup"}):
     ...     pass
     """
-    token = None
     current = context.get_current()
     for key, value in entries.items():
         current = baggage.set_baggage(key, value, context=current)
