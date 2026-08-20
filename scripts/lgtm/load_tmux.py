@@ -163,8 +163,12 @@ async def ramp(worker: rampa.Worker) -> None:
     await _issue(worker, PLAIN)
 
 
-async def teardown(_: t.Any = None) -> None:
-    """Close the engine and remove the tmux server."""
+async def teardown() -> None:
+    """Close the engine and remove the tmux server.
+
+    rampa calls this with no arguments once the run finishes, and reports a
+    failure here as ``TEARDOWN_FAILED`` rather than swallowing it.
+    """
     engine = _STATE.get("engine")
     if engine is not None and hasattr(engine.inner, "aclose"):
         await engine.inner.aclose()
