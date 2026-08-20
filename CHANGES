@@ -269,6 +269,15 @@ The Grafana dashboards under `scripts/lgtm/dashboards/` are generated rather
 than hand-edited, and `scripts/otel_acceptance.py` runs each panel's own query
 and fails naming any panel that came back empty. See `scripts/lgtm/README.md`.
 
+Every run is stamped with its branch, revision, repository, worktree, and an
+optional spike name, so two runs can be compared rather than merely observed.
+Which signal carries which fact is a deliberate split: metrics take only the
+dimensions worth grouping by, while the revision, worktree, and per-test
+identity ride on traces and profiles where high cardinality is expected.
+Values that change within a process, such as the phase a workload is in, travel
+as OpenTelemetry baggage and are copied onto spans by a processor instead of
+being threaded through engine calls.
+
 #### CI actions updated to current majors
 
 Workflow actions moved to their current major releases: `actions/checkout` v7,

@@ -89,14 +89,73 @@ The workload deliberately issues commands tmux rejects. A dashboard whose error
 panel is empty is untested rather than healthy, so the failure path has to
 produce real data.
 
+## Identity: which fact rides on which signal
+
+Every run is stamped with where it came from -- branch, revision, repository,
+worktree, and optionally a spike name -- so two runs can be told apart and
+compared. The interesting decision is not collecting that, it is choosing which
+signal carries which fact, because the three fail differently when you get it
+wrong.
+
+| Fact | Metrics | Traces | Profiles |
+| ---- | ------- | ------ | -------- |
+| branch (`vcs.ref.head.name`) | yes | yes | yes |
+| run id (`libtmux.run_id`) | yes | yes | yes |
+| spike (`libtmux.spike`) | yes | yes | yes |
+| revision (`vcs.ref.head.revision`) | **no** | yes | yes |
+| worktree (`libtmux.worktree`) | **no** | yes | yes |
+| test case, phase | **no** | yes | no |
+
+A metric label is a stored time series forever, so the metric row is a budget
+rather than a wish list. The test is "would I group by this?", not "is it
+interesting?". A commit SHA fails that test: each run has exactly one, so
+grouping by SHA is grouping by run, which the run id already does -- it would
+add no query power while creating a fresh set of series on every commit. It
+still rides on spans and profiles, where the drill-down happens and high
+cardinality is expected. `scripts/lgtm/identity.py` owns the split, and a test
+fails if the metric set grows.
+
+Resolving all of it costs one `git rev-parse` at process start, a couple of
+milliseconds, and nothing per tmux command: the labels are computed once and
+merged into each point. `LIBTMUX_VCS_REF`, `LIBTMUX_VCS_REVISION`,
+`LIBTMUX_WORKTREE`, and `LIBTMUX_SPIKE` override the detected values, which is
+what CI wants -- it checks out a detached HEAD but knows the branch the work
+belongs to.
+
+### Baggage, for what changes mid-process
+
+Branch and revision are fixed for a process, so they are resource attributes.
+The test now running, or the phase a workload is in, are not -- and they should
+not become parameters threaded through engine calls that have no business
+knowing about telemetry.
+
+`telemetry.scope()` puts them in OpenTelemetry baggage, and a span processor
+copies the approved keys onto every span as it starts:
+
+```python
+with telemetry.scope(**{"libtmux.phase": "control-async"}):
+    ...
+```
+
+Spans created anywhere inside that block carry `libtmux.phase`, queryable in
+Tempo as `{ span.libtmux.phase = "control-async" }`. Only the keys in
+`identity.BAGGAGE_KEYS` are copied, because baggage propagates across process
+boundaries and an unrelated caller's entries should not silently become
+attributes here. The cost is one context read per span, and when no baggage is
+set the loop body never runs.
+
 ## Dashboards
 
-Three boards, provisioned into the `libtmux` folder:
+Four boards, provisioned into the `libtmux` folder:
 
 `libtmux / Overview` is throughput, latency, failures, and the trace, log, and
 profile panels side by side. `libtmux / Transports` compares the four transports
 against each other. `libtmux / Commands` breaks the same work down by tmux
-command.
+command. `libtmux / Compare` answers "is this different from that", grouping the
+same measurements by run and by branch.
+
+Every board carries Transport and Branch selectors, and Compare adds a Spike
+selector to scope a comparison to one experiment.
 
 The JSON is generated, not hand-written, by `generate_dashboards.py`. A board is
 a few hundred lines of nested objects where panel placement is manual
