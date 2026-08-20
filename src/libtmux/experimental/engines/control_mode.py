@@ -32,10 +32,10 @@ import time
 import typing as t
 
 from libtmux import exc
+from libtmux.engines.base import command_count
 from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
-    is_command_separator,
     render_control_line,
 )
 from libtmux.experimental.engines.connection import ServerConnection
@@ -752,11 +752,6 @@ def _matches_pending_close(line: bytes, pending: _PendingBlock) -> bool:
             expected = (pending.timestamp, pending.number, pending.flags)
             return guard == expected
     return False
-
-
-def command_count(argv: tuple[str, ...]) -> int:
-    """How many tmux commands a rendered argv runs (bare ``;`` separators + 1)."""
-    return sum(1 for token in argv if is_command_separator(token)) + 1
 
 
 def _merge_blocks(

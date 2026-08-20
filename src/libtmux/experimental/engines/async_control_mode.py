@@ -45,6 +45,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux import exc
+from libtmux.engines.base import command_count
 from libtmux.experimental.engines.asyncio import AsyncSubprocessEngine
 from libtmux.experimental.engines.base import (
     CommandRequest,
@@ -57,7 +58,6 @@ from libtmux.experimental.engines.control_mode import (
     ControlModeError,
     ControlModeParser,
     _merge_blocks,
-    command_count,
 )
 
 if t.TYPE_CHECKING:
