@@ -155,6 +155,11 @@ otel-up:
 otel-down:
     docker rm -f ${LIBTMUX_LGTM_CONTAINER:-libtmux-lgtm}
 
+# Confirm each published port reaches the container, not a host process
+[group: 'otel']
+otel-ports:
+    scripts/lgtm/verify.sh
+
 # Regenerate the provisioned Grafana dashboards from their generator
 [group: 'otel']
 otel-dashboards:
