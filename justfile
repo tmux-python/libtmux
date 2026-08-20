@@ -160,6 +160,11 @@ otel-down:
 otel-ports:
     scripts/lgtm/verify.sh
 
+# Print an MCP client config for this stack, with its real ports and token
+[group: 'otel']
+otel-mcp:
+    scripts/lgtm/mcp-config.sh
+
 # Regenerate the provisioned Grafana dashboards from their generator
 [group: 'otel']
 otel-dashboards:
