@@ -640,6 +640,44 @@ def build_overview() -> Board:
         links=[drill("Break down by command", "libtmux-commands")],
     )
 
+    board.row("Streaming")
+    board.add(
+        stat(
+            "Notifications received",
+            [
+                target(
+                    f"max_over_time(sum(tmux_notifications_total{{{SCOPE}}})[$__range:])",
+                    instant=True,
+                )
+            ],
+            description=(
+                "Control-mode notifications consumed by a subscriber. Counted "
+                "once per run, so this reads the last value in the window "
+                "rather than an increase over it."
+            ),
+        ),
+        w=12,
+        h=5,
+    )
+    board.add(
+        stat(
+            "Notifications dropped",
+            [
+                target(
+                    f"max_over_time(sum(tmux_notifications_dropped_total{{{SCOPE}}})[$__range:])",
+                    instant=True,
+                )
+            ],
+            thresholds=ERR_THRESHOLDS,
+            description=(
+                "Notifications discarded because a subscriber fell behind. "
+                "Above zero means the stream is outrunning its consumer."
+            ),
+        ),
+        w=12,
+        h=5,
+    )
+
     board.row("Traces, logs, and profiles")
     board.add(
         traces(

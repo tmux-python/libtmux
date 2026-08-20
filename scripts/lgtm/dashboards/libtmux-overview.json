@@ -613,12 +613,146 @@
     },
     {
       "type": "row",
-      "title": "Traces, logs, and profiles",
+      "title": "Streaming",
       "collapsed": false,
       "id": 13,
       "gridPos": {
         "x": 0,
         "y": 33,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Notifications received",
+      "description": "Control-mode notifications consumed by a subscriber. Counted once per run, so this reads the last value in the window rather than an increase over it.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max_over_time(sum(tmux_notifications_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"})[$__range:])",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 12,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Notifications dropped",
+      "description": "Notifications discarded because a subscriber fell behind. Above zero means the stream is outrunning its consumer.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max_over_time(sum(tmux_notifications_dropped_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"})[$__range:])",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 12,
+        "h": 5
+      }
+    },
+    {
+      "type": "row",
+      "title": "Traces, logs, and profiles",
+      "collapsed": false,
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 39,
         "w": 24,
         "h": 1
       },
@@ -648,10 +782,10 @@
       "options": {
         "showHeader": true
       },
-      "id": 14,
+      "id": 17,
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 40,
         "w": 12,
         "h": 8
       }
@@ -684,10 +818,10 @@
         "wrapLogMessage": true,
         "enableLogDetails": true
       },
-      "id": 15,
+      "id": 18,
       "gridPos": {
         "x": 12,
-        "y": 34,
+        "y": 40,
         "w": 12,
         "h": 8
       }
@@ -714,10 +848,10 @@
         }
       ],
       "options": {},
-      "id": 16,
+      "id": 19,
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 48,
         "w": 24,
         "h": 11
       }
