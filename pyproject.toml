@@ -61,6 +61,12 @@ otel = [
   "opentelemetry-exporter-otlp-proto-http",
   "pyroscope-io",
 ]
+# Load shaping for scripts/lgtm/load_tmux.py (just otel-load). Separate from
+# `otel` because rampa needs a newer Python than libtmux supports, so the
+# marker keeps `uv sync` working on every version libtmux targets.
+load = [
+  "rampa; python_version >= '3.14'",
+]
 dev = [
   # Docs (via gp-sphinx)
   "gp-sphinx==0.1.0a37",

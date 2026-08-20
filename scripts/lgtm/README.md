@@ -146,10 +146,12 @@ set the loop body never runs.
 
 ## Dashboards
 
-Four boards, provisioned into the `libtmux` folder:
+Five boards, provisioned into the `libtmux` folder:
 
-`libtmux / Overview` is throughput, latency, failures, and the trace, log, and
-profile panels side by side. `libtmux / Transports` compares the four transports
+`libtmux / Home` is the entry point: which board answers which question, with
+links. `libtmux / Overview` follows the RED method -- rate, errors, duration --
+because an engine is a service, and its panels link down to the board that
+explains them. `libtmux / Transports` compares the four transports
 against each other. `libtmux / Commands` breaks the same work down by tmux
 command. `libtmux / Compare` answers "is this different from that", grouping the
 same measurements by run and by branch.
@@ -170,6 +172,34 @@ $ just otel-dashboards
 the committed JSON differs from what the generator produces, so the two cannot
 diverge quietly. Editing a board in the Grafana UI is fine for exploring; move
 the change into the generator to keep it.
+
+## Load shaping: why rampa and not k6
+
+`just otel-smoke` runs flat out for a fixed duration with a fixed number of
+workers. That is a closed loop, and a closed loop hides saturation: as latency
+rises the workers slow down with it, offered load falls, and the graph bends
+politely instead of breaking.
+
+`just otel-load` uses [rampa](https://github.com/tony/rampa) for the shapes
+that expose it, notably `ramping-arrival-rate` -- an open model that keeps
+issuing commands at a target rate whether or not the previous ones finished, so
+latency climbs on its own once a transport saturates. The difference is
+visible: the same control-mode engine measures p99 around 2 ms under the steady
+workload and around 16 ms at the top of the ramp.
+
+k6 was the obvious alternative and is the wrong tool here. Its value is HTTP
+load at scale, and there is no HTTP surface in front of the engines -- driving
+Python from k6 means a subprocess or an HTTP shim per iteration, which measures
+the shim. rampa is Python, so it drives the engines in-process, and it
+implements the same six executor models k6 defines.
+
+rampa provides the schedule; telemetry still comes from this project's own
+sink. That split is deliberate rather than a workaround: rampa's own OTLP
+backend would export under its service name and its metric vocabulary, so a
+load-shaped run would arrive as a second, parallel account of the same work.
+Going through the sink instead means it lands under the same metric names and
+the same branch, worktree, and spike labels as every other run, and the two are
+directly comparable.
 
 ## Why the acceptance check exists
 
