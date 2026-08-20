@@ -229,6 +229,36 @@ def check_pyroscope(base: str, profile_type: str, selector: str) -> tuple[bool, 
     return True, f"{len(names)} frames"
 
 
+def unreachable(endpoints: Endpoints, timeout: float = 5.0) -> list[str]:
+    """Return the backends that did not answer a health probe.
+
+    Worth doing before any panel is checked. A closed port does not always
+    refuse a connection promptly -- under WSL and inside containers the packets
+    are simply dropped, so the socket waits out its full timeout. With one
+    request per panel target, a stack that is merely not running turns a
+    mistake into a twenty-minute silence ending in a confusing report about
+    empty panels.
+    """
+    probes = (
+        ("prometheus", f"{endpoints.prometheus}/api/v1/status/buildinfo"),
+        ("loki", f"{endpoints.loki}/ready"),
+        ("tempo", f"{endpoints.tempo}/api/echo"),
+        ("pyroscope", f"{endpoints.pyroscope}/ready"),
+    )
+
+    def answers(url: str) -> bool:
+        try:
+            with urllib.request.urlopen(url, timeout=timeout):
+                return True
+        except urllib.error.HTTPError:
+            # An HTTP error still proves something is listening and answering.
+            return True
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return False
+
+    return [name for name, url in probes if not answers(url)]
+
+
 def check_panel(panel: dict, board: str, endpoints: Endpoints) -> list[Result]:
     """Verify every target on one panel."""
     results: list[Result] = []
@@ -333,6 +363,13 @@ def main(argv: list[str] | None = None) -> int:
         time.sleep(args.settle)
 
     endpoints = Endpoints(args.prometheus, args.loki, args.tempo, args.pyroscope)
+
+    missing = unreachable(endpoints)
+    if missing:
+        print(f"these backends did not answer: {', '.join(missing)}", file=sys.stderr)
+        print("start the stack first:  just otel-up", file=sys.stderr)
+        return 2
+
     results = check_until(endpoints, args.timeout, args.poll)
 
     width = max((len(r.panel) for r in results), default=10)
