@@ -15,8 +15,15 @@ latency spike to the trace that caused it.
 from __future__ import annotations
 
 import contextlib
+import pathlib
+import sys
 import time
 import typing as t
+
+# These modules sit side by side under scripts/, which is not a package and is
+# not on sys.path by default. Adding it here means any importer works, rather
+# than each caller having to remember.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import identity
 from opentelemetry import baggage, context, metrics, trace

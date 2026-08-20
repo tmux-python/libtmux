@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+import sys
 import typing as t
 
 import pytest
@@ -241,3 +242,47 @@ def test_every_scope_variable_used_is_defined() -> None:
                 assert variable in names, (
                     f"{board['uid']} filters on ${variable} without defining it"
                 )
+
+
+def test_identity_doctests_execute() -> None:
+    """The doctests documenting the metric/profile split actually run.
+
+    ``scripts`` is not in pytest's testpaths, so nothing else executes them.
+    A doctest that never runs is a comment that looks like a test, and this
+    module's examples carry the load-bearing decision: which facts a metric
+    may keep and which belong on a profile.
+    """
+    import doctest
+
+    spec = importlib.util.spec_from_file_location("identity", _LGTM / "identity.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    results = doctest.testmod(module, verbose=False)
+    assert results.attempted > 0, "identity.py has no doctests to run"
+    assert results.failed == 0, f"{results.failed} doctest(s) failed"
+
+
+def test_telemetry_doctests_execute() -> None:
+    """The same, for the exporter module, when its dependency is installed.
+
+    telemetry.py needs OpenTelemetry, which lives in the ``otel`` dependency
+    group rather than ``dev`` so the ordinary gates stay lean. Skipping is
+    honest here; asserting would make the default test run demand a dependency
+    libtmux itself never imports.
+    """
+    import doctest
+
+    pytest.importorskip("opentelemetry", reason="otel dependency group not installed")
+
+    spec = importlib.util.spec_from_file_location("telemetry", _LGTM / "telemetry.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["telemetry"] = module
+    spec.loader.exec_module(module)
+
+    results = doctest.testmod(module, verbose=False)
+    assert results.failed == 0, f"{results.failed} doctest(s) failed"
