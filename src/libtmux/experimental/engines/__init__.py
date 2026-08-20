@@ -34,6 +34,13 @@ from libtmux.experimental.engines.control_mode import (
     ControlModeParser,
 )
 from libtmux.experimental.engines.imsg import ImsgEngine
+from libtmux.experimental.engines.instrumentation import (
+    AsyncInstrumentedEngine,
+    CountingSink,
+    InstrumentedEngine,
+    Sink,
+    instrument,
+)
 from libtmux.experimental.engines.mock import AsyncMockEngine, MockEngine
 from libtmux.experimental.engines.registry import (
     available_engines,
@@ -44,6 +51,7 @@ from libtmux.experimental.engines.subprocess import SubprocessEngine
 
 __all__ = (
     "AsyncControlModeEngine",
+    "AsyncInstrumentedEngine",
     "AsyncMockEngine",
     "AsyncSubprocessEngine",
     "AsyncTmuxEngine",
@@ -53,12 +61,15 @@ __all__ = (
     "ControlModeError",
     "ControlModeParser",
     "ControlNotification",
+    "CountingSink",
     "EngineKind",
     "EngineSpec",
     "HasConnection",
     "ImsgEngine",
+    "InstrumentedEngine",
     "MockEngine",
     "ServerConnection",
+    "Sink",
     "SubprocessEngine",
     "SupportsAsyncTmuxVersion",
     "SupportsConnection",
@@ -66,5 +77,6 @@ __all__ = (
     "TmuxEngine",
     "available_engines",
     "create_engine",
+    "instrument",
     "register_engine",
 )
