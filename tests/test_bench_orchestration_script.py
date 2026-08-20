@@ -3872,6 +3872,27 @@ def test_stale_socket_removal_rechecks_directory_before_unlink(
         replacement_source.unlink(missing_ok=True)
 
 
+def test_pidfd_refusal_names_the_freethreaded_cause_and_remedy(
+    benchmark_module: types.ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refusing is right; refusing without a remedy is not.
+
+    A free-threaded CPython build does not expose ``os.pidfd_open``, and uv
+    selects one whenever that is the interpreter it manages, so a fresh
+    checkout can refuse on a host where the benchmark previously ran. The
+    benchmark is correct to refuse rather than measure without exact process
+    identity, which is exactly why the message has to carry the way out.
+    """
+    monkeypatch.delattr(benchmark_module.os, "pidfd_open", raising=False)
+
+    error = benchmark_module._pidfd_api_error()
+
+    assert error is not None
+    assert "pidfd" in error
+    assert "Free-threaded" in error, "the message must name the usual cause"
+    assert "UV_PYTHON" in error, "the message must name the remedy"
+
+
 @pytest.mark.parametrize(
     ("captured_mode", "observed_mode"),
     (
