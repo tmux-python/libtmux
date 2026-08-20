@@ -11,7 +11,7 @@
   "version": 1,
   "editable": true,
   "graphTooltip": 1,
-  "refresh": "30s",
+  "refresh": "1m",
   "time": {
     "from": "now-1h",
     "to": "now"
@@ -184,13 +184,9 @@
           },
           "unit": "reqps",
           "custom": {
-            "fillOpacity": 18,
+            "fillOpacity": 10,
             "showPoints": "never",
-            "lineWidth": 2,
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
+            "lineWidth": 2
           }
         },
         "overrides": []

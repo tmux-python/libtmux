@@ -174,3 +174,8 @@ otel-acceptance *args:
 [group: 'otel']
 otel-verify:
     uv run --group otel python scripts/otel_acceptance.py --start-stack --smoke
+
+# Drive the engines under a load shape (ramping arrival rate) via rampa
+[group: 'otel']
+otel-load *args:
+    uv run --group otel --group load rampa run scripts/lgtm/load_tmux.py {{ args }}
