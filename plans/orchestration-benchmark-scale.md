@@ -245,6 +245,32 @@ relabelled. Two samples render a median alone.
    scaled to topology and a capture phase that is not one round trip per pane.
    No sample count or larger machine substitutes for it.
 
+## Why the supervisor checks its child interpreter
+
+Three strategies were built and compared before this landed.
+
+**Declare libtmux in PEP 723 metadata** so the scripts run standalone. uv does
+honour `[tool.uv.sources]` in inline metadata, and a relative path resolved the
+working tree editable, so this worked — but only after also spawning children
+through `uv run --script`, which puts uv on the runtime path and pays a
+resolution per child. It also moves interpreter selection into PEP 723, which
+is the layer that selects a free-threaded build in the first place.
+
+**Drop the `--script` shebangs** so the broken path is unreachable. It is not:
+`uv run --script` still works with the metadata gone, it simply runs bare. This
+removed one entry point, not the trap.
+
+**Check before spawning** — what shipped. It is entry-point agnostic, additive,
+and matches the harness's existing posture of refusing loudly rather than
+limping. The other two would win only under different premises: dropping the
+shebang if it were the sole route to the broken interpreter, and PEP 723 if
+these scripts were meant to run outside a checkout, which `run` and `ramp`
+cannot.
+
+The contest also surfaced the free-threaded interpreter finding, which no
+amount of reading would have produced: it only appears in a fresh checkout,
+because the working `.venv` predates it.
+
 ## Sizing runs
 
 Sample counts are chosen from measured variance, not from taste.
