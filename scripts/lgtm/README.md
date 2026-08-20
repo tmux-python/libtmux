@@ -232,6 +232,11 @@ Prometheus, Loki, Tempo, or Pyroscope, and fails naming any panel that returned
 nothing. Because it reads the dashboards themselves, a panel added to the
 generator is covered the moment it exists.
 
+If the stack is not running the check says so and stops, rather than waiting
+out a socket timeout per panel: a closed port is not always refused promptly,
+so without that guard a forgotten `just otel-up` becomes a long silence ending
+in a confusing report of empty panels.
+
 Ingestion is asynchronous, and each backend buffers on its own schedule, so at
 any single instant "no data yet" is indistinguishable from "no data ever". The
 check therefore re-queries the panels that came back empty until they fill or
