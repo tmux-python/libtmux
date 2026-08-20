@@ -299,16 +299,43 @@ def test_readme_only_shows_commands_that_exist() -> None:
     """
     import re
 
-    readme = (_LGTM / "README.md").read_text(encoding="utf-8")
+    prose = "\n".join(
+        (_LGTM / name).read_text(encoding="utf-8")
+        for name in ("README.md", "VERIFICATION.md")
+    )
     justfile = (_ROOT / "justfile").read_text(encoding="utf-8")
 
-    shown = set(re.findall(r"^\$ just ([a-z][a-z-]*)", readme, re.MULTILINE))
+    shown = set(re.findall(r"^\$ just ([a-z][a-z-]*)", prose, re.MULTILINE))
     assert shown, "the README stopped showing any just commands"
     defined = set(
         re.findall(r"^([a-z][a-z-]*)(?: \*?[a-z_]+)?:", justfile, re.MULTILINE)
     )
     missing = shown - defined
-    assert not missing, f"README shows recipes that do not exist: {sorted(missing)}"
+    assert not missing, f"the docs show recipes that do not exist: {sorted(missing)}"
+
+
+def test_the_verification_record_counts_the_panels_it_claims() -> None:
+    """The recorded panel total must match the boards actually generated.
+
+    A verification document that drifts is worse than none: it reads as
+    evidence while describing something else. The panel count is the number a
+    reader is most likely to trust without re-running anything.
+    """
+    import re
+
+    record = (_LGTM / "VERIFICATION.md").read_text(encoding="utf-8")
+    claimed = re.search(r"(\d+)/(\d+) panel queries", record)
+    assert claimed, "the verification record no longer states a panel total"
+
+    actual = 0
+    for path in sorted(_DASHBOARDS.glob("*.json")):
+        board = json.loads(path.read_text(encoding="utf-8"))
+        for panel in _query_panels(board):
+            actual += len(panel["targets"])
+    assert int(claimed.group(2)) == actual, (
+        f"the record claims {claimed.group(2)} panel queries; "
+        f"the boards define {actual}"
+    )
 
 
 def test_readme_names_every_dashboard_it_ships() -> None:
