@@ -211,6 +211,11 @@ def main(argv: list[str] | None = None) -> int:
         "--pyroscope",
         default=os.environ.get("PYROSCOPE_SERVER_ADDRESS", "http://127.0.0.1:4040"),
     )
+    parser.add_argument(
+        "--memory-profile",
+        action="store_true",
+        help="also collect allocation profiles (costs more than CPU sampling)",
+    )
     args = parser.parse_args(argv)
 
     os.environ.pop("TMUX", None)
@@ -227,6 +232,10 @@ def main(argv: list[str] | None = None) -> int:
             server_address=args.pyroscope,
             sample_rate=100,
             upload_interval=3,
+            # Allocation profiling answers a different question from CPU
+            # sampling and costs more to collect, so it stays opt-in rather
+            # than being switched on for every run.
+            mem_enabled=args.memory_profile,
             # The full static identity: a profile is one process, so branch,
             # revision, worktree, and spike cost nothing extra here and make
             # two runs directly comparable in Pyroscope.
