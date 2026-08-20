@@ -94,7 +94,9 @@ done
 # Identity, not liveness: a port that answers may belong to a host process
 # that was already bound to it. verify.sh tells the two apart.
 "$ROOT/scripts/lgtm/verify.sh" || {
-	echo "a published port does not reach this container; see the lines above" >&2
+	echo "a published port does not reach this container; see the lines above," >&2
+	echo "then republish on a free port, for example:" >&2
+	echo "  LIBTMUX_LGTM_PROM_PORT=9098 just otel-up" >&2
 	exit 1
 }
 

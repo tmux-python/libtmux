@@ -17,6 +17,16 @@ GRAFANA_PORT="${LIBTMUX_LGTM_GRAFANA_PORT:-3900}"
 PROM_PORT="${LIBTMUX_LGTM_PROM_PORT:-9099}"
 status=0
 
+port_variable() {
+	# Only the two services this stack moves are overridable; the rest keep
+	# their upstream defaults, so naming a variable for them would mislead.
+	case "$1" in
+		grafana) printf 'LIBTMUX_LGTM_GRAFANA_PORT' ;;
+		prometheus) printf 'LIBTMUX_LGTM_PROM_PORT' ;;
+		*) printf 'LIBTMUX_LGTM_CONTAINER' ;;
+	esac
+}
+
 check() {
 	local label=$1 inside_port=$2 host_port=$3 path=$4
 	local inside outside
@@ -29,6 +39,8 @@ check() {
 		printf '  %-11s %-6s ok\n' "$label" "$host_port"
 	else
 		printf '  %-11s %-6s SHADOWED by another service on this port\n' "$label" "$host_port"
+		printf '  %-11s %-6s   publish it elsewhere: %s=<port> just otel-up\n' \
+			"" "" "$(port_variable "$label")"
 		status=1
 	fi
 }
