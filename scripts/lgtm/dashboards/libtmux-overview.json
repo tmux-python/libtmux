@@ -11,7 +11,7 @@
   "version": 1,
   "editable": true,
   "graphTooltip": 1,
-  "refresh": "30s",
+  "refresh": "1m",
   "time": {
     "from": "now-1h",
     "to": "now"
@@ -84,13 +84,30 @@
   },
   "panels": [
     {
-      "type": "row",
-      "title": "Totals",
-      "collapsed": false,
+      "type": "text",
+      "title": "",
+      "datasource": null,
+      "options": {
+        "mode": "markdown",
+        "content": "**Rate, Errors, Duration** for the tmux engines. RED is the right frame here because an engine is a service: the caller cares how much work goes through, how much of it fails, and how long it takes.\n\nPanels link to the board that explains them. Use **Transports** for which transport is responsible, **Commands** for which tmux command, and **Compare** for whether a branch or run changed anything."
+      },
+      "transparent": true,
       "id": 1,
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 4
+      }
+    },
+    {
+      "type": "row",
+      "title": "Rate",
+      "collapsed": false,
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
         "w": 24,
         "h": 1
       },
@@ -140,10 +157,10 @@
           "values": false
         }
       },
-      "id": 2,
+      "id": 3,
       "gridPos": {
         "x": 0,
-        "y": 1,
+        "y": 5,
         "w": 6,
         "h": 5
       }
@@ -192,13 +209,26 @@
           "values": false
         }
       },
-      "id": 3,
+      "id": 4,
       "gridPos": {
         "x": 6,
-        "y": 1,
+        "y": 5,
         "w": 6,
         "h": 5
       }
+    },
+    {
+      "type": "row",
+      "title": "Errors",
+      "collapsed": false,
+      "id": 5,
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
     },
     {
       "type": "stat",
@@ -244,10 +274,10 @@
           "values": false
         }
       },
-      "id": 4,
+      "id": 6,
       "gridPos": {
-        "x": 12,
-        "y": 1,
+        "x": 0,
+        "y": 11,
         "w": 6,
         "h": 5
       }
@@ -313,22 +343,22 @@
           "values": false
         }
       },
-      "id": 5,
+      "id": 7,
       "gridPos": {
-        "x": 18,
-        "y": 1,
+        "x": 6,
+        "y": 11,
         "w": 6,
         "h": 5
       }
     },
     {
       "type": "row",
-      "title": "Throughput and latency",
+      "title": "Rate over time",
       "collapsed": false,
-      "id": 6,
+      "id": 8,
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 16,
         "w": 24,
         "h": 1
       },
@@ -384,13 +414,20 @@
           "sort": "desc"
         }
       },
-      "id": 7,
+      "id": 9,
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 17,
         "w": 12,
         "h": 8
-      }
+      },
+      "links": [
+        {
+          "title": "Break down by transport",
+          "url": "/d/libtmux-transports?${__url_time_range}&var-lane=${lane:queryparam}&var-branch=${branch:queryparam}",
+          "targetBlank": false
+        }
+      ]
     },
     {
       "type": "timeseries",
@@ -443,10 +480,10 @@
           "sort": "desc"
         }
       },
-      "id": 8,
+      "id": 10,
       "gridPos": {
         "x": 12,
-        "y": 7,
+        "y": 17,
         "w": 12,
         "h": 8
       }
@@ -501,10 +538,10 @@
         },
         "overrides": []
       },
-      "id": 9,
+      "id": 11,
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 25,
         "w": 12,
         "h": 8
       }
@@ -559,22 +596,29 @@
           "sort": "desc"
         }
       },
-      "id": 10,
+      "id": 12,
       "gridPos": {
         "x": 12,
-        "y": 15,
+        "y": 25,
         "w": 12,
         "h": 8
-      }
+      },
+      "links": [
+        {
+          "title": "Break down by command",
+          "url": "/d/libtmux-commands?${__url_time_range}&var-lane=${lane:queryparam}&var-branch=${branch:queryparam}",
+          "targetBlank": false
+        }
+      ]
     },
     {
       "type": "row",
       "title": "Traces, logs, and profiles",
       "collapsed": false,
-      "id": 11,
+      "id": 13,
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 33,
         "w": 24,
         "h": 1
       },
@@ -604,10 +648,10 @@
       "options": {
         "showHeader": true
       },
-      "id": 12,
+      "id": 14,
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 34,
         "w": 12,
         "h": 8
       }
@@ -640,10 +684,10 @@
         "wrapLogMessage": true,
         "enableLogDetails": true
       },
-      "id": 13,
+      "id": 15,
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 34,
         "w": 12,
         "h": 8
       }
@@ -670,10 +714,10 @@
         }
       ],
       "options": {},
-      "id": 14,
+      "id": 16,
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 42,
         "w": 24,
         "h": 11
       }
