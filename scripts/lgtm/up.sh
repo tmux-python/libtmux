@@ -27,7 +27,7 @@ PROM_PORT="${LIBTMUX_LGTM_PROM_PORT:-9099}"
 
 # Bump when the mounted config or the run shape changes, so an existing
 # container is recreated rather than restarted with stale mounts.
-CONFIG_LABEL="dashboards-v1"
+CONFIG_LABEL="dashboards-v2-mcp"
 
 if [[ -n "${PYTHON:-}" ]]; then
 	read -r -a python_cmd <<< "$PYTHON"
@@ -58,6 +58,10 @@ docker_run=(
 	-v "$ROOT/scripts/lgtm/grafana-dashboards-libtmux.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/libtmux.yaml:ro"
 	-v "$ROOT/scripts/lgtm/dashboards:/otel-lgtm/dashboards-libtmux:ro"
 	-e GF_PATHS_DATA=/data/grafana
+	# Tempo's MCP server is off by default. Turning it on costs nothing when
+	# unused and is what lets an agent query traces directly rather than being
+	# handed screenshots of them.
+	-e TEMPO_EXTRA_ARGS=--query-frontend.mcp-server.enabled=true
 	"$IMAGE"
 )
 
