@@ -90,7 +90,12 @@ def expand(expr: str) -> str:
         expr.replace("$__rate_interval", RATE_INTERVAL)
         .replace("$__interval", RATE_INTERVAL)
         .replace("$__range", DASHBOARD_RANGE)
+        # Every scope variable defaults to All, which Grafana interpolates to
+        # the allValue regex.
         .replace("$lane", ".*")
+        .replace("$branch", ".*")
+        .replace("$spike", ".*")
+        .replace("$run", ".*")
     )
 
 

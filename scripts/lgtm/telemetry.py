@@ -14,10 +14,12 @@ latency spike to the trace that caused it.
 
 from __future__ import annotations
 
+import contextlib
 import time
 import typing as t
 
-from opentelemetry import metrics, trace
+import identity
+from opentelemetry import baggage, context, metrics, trace
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -26,7 +28,7 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from libtmux.experimental.engines.control_mode import command_count
@@ -56,6 +58,64 @@ DURATION_BUCKETS = (
 )
 
 
+class BaggageSpanProcessor(SpanProcessor):
+    """Copy selected baggage entries onto every span as it starts.
+
+    Baggage is how a value set once -- the test now running, the phase a
+    workload is in -- reaches spans created deep inside the engines, without
+    threading a parameter through call signatures that have no business knowing
+    about telemetry.
+
+    Only the keys in :data:`identity.BAGGAGE_KEYS` are copied. Baggage
+    propagates to other processes, so mirroring all of it onto spans would let
+    an unrelated caller's entries silently become attributes here.
+
+    The cost is one context read per span and nothing per tmux command, and
+    when no baggage is set the loop body never runs.
+    """
+
+    def on_start(self, span: t.Any, parent_context: t.Any = None) -> None:
+        """Stamp the active baggage onto a starting span."""
+        entries = baggage.get_all(parent_context)
+        if not entries:
+            return
+        for key in identity.BAGGAGE_KEYS:
+            value = entries.get(key)
+            if value is not None:
+                span.set_attribute(key, str(value))
+
+    def on_end(self, span: t.Any) -> None:
+        """Nothing to do; export is another processor's job."""
+
+    def shutdown(self) -> None:
+        """Nothing to release."""
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        """Nothing buffered."""
+        del timeout_millis
+        return True
+
+
+@contextlib.contextmanager
+def scope(**entries: str) -> t.Iterator[None]:
+    """Attach *entries* to every span started inside the block.
+
+    Examples
+    --------
+    >>> with scope(**{"libtmux.phase": "warmup"}):
+    ...     pass
+    """
+    token = None
+    current = context.get_current()
+    for key, value in entries.items():
+        current = baggage.set_baggage(key, value, context=current)
+    token = context.attach(current)
+    try:
+        yield
+    finally:
+        context.detach(token)
+
+
 class OTelSink:
     """Emit one span and one set of metric points per tmux command.
 
@@ -71,15 +131,26 @@ class OTelSink:
         "_commands",
         "_duration",
         "_failures",
+        "_identity",
         "_inlined",
         "_lane",
         "_requests",
         "_tracer",
     )
 
-    def __init__(self, tracer: t.Any, meter: t.Any, lane: str) -> None:
+    def __init__(
+        self,
+        tracer: t.Any,
+        meter: t.Any,
+        lane: str,
+        identity_labels: t.Mapping[str, str] | None = None,
+    ) -> None:
         self._tracer = tracer
         self._lane = lane
+        # Resolved once per process, merged into every point. Building the dict
+        # per command would allocate on the hot path for a value that cannot
+        # change.
+        self._identity = dict(identity_labels or {})
         self._requests = meter.create_counter(
             "tmux.requests", description="Requests dispatched to an engine."
         )
@@ -101,7 +172,7 @@ class OTelSink:
         )
 
     def _attrs(self, command: str) -> dict[str, str]:
-        return {"tmux.lane": self._lane, "tmux.command": command}
+        return {"tmux.lane": self._lane, "tmux.command": command, **self._identity}
 
     def before_command(self, request: CommandRequest) -> tuple[t.Any, float, str]:
         """Open a span and count the request, returning per-command state."""
@@ -168,6 +239,12 @@ class Telemetry(t.NamedTuple):
         Meter the sinks build instruments from.
     handler : logging.Handler
         Handler that ships records to Loki with trace context attached.
+    resource_attributes : dict
+        Full identity for this run; on every span and log by construction.
+    metric_labels : dict
+        The bounded subset metrics may carry, already renamed for Prometheus.
+    profile_tags : dict
+        Static identity for Pyroscope.
     """
 
     tracer_provider: t.Any
@@ -176,6 +253,9 @@ class Telemetry(t.NamedTuple):
     tracer: t.Any
     meter: t.Any
     handler: t.Any
+    resource_attributes: dict[str, str]
+    metric_labels: dict[str, str]
+    profile_tags: dict[str, str]
 
     def shutdown(self) -> None:
         """Flush and stop every provider, in export order."""
@@ -187,7 +267,13 @@ class Telemetry(t.NamedTuple):
         self.logger_provider.shutdown()
 
 
-def build(endpoint: str, *, run_id: str, export_interval_ms: int = 2000) -> Telemetry:
+def build(
+    endpoint: str,
+    *,
+    run_id: str,
+    spike: str | None = None,
+    export_interval_ms: int = 2000,
+) -> Telemetry:
     """Wire OTLP exporters for traces, metrics, and logs.
 
     Parameters
@@ -196,6 +282,8 @@ def build(endpoint: str, *, run_id: str, export_interval_ms: int = 2000) -> Tele
         OTLP HTTP base URL, for example ``http://127.0.0.1:4318``.
     run_id : str
         Identifies one smoke run, so a dashboard can isolate it.
+    spike : str or None
+        Names an experiment several runs belong to, for grouped comparison.
     export_interval_ms : int
         How often metrics are pushed. Short, because a smoke run is short.
 
@@ -204,9 +292,12 @@ def build(endpoint: str, *, run_id: str, export_interval_ms: int = 2000) -> Tele
     Telemetry
         Providers and handles; call :meth:`Telemetry.shutdown` when done.
     """
-    resource = Resource.create({"service.name": SERVICE_NAME, "libtmux.run_id": run_id})
+    attributes = identity.resolve(run_id=run_id, spike=spike, service_name=SERVICE_NAME)
+    resource = Resource.create(dict(attributes))
 
     tracer_provider = TracerProvider(resource=resource)
+    # Baggage first: it must stamp a span before the batch processor sees it.
+    tracer_provider.add_span_processor(BaggageSpanProcessor())
     tracer_provider.add_span_processor(
         BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{endpoint}/v1/traces"))
     )
@@ -235,4 +326,7 @@ def build(endpoint: str, *, run_id: str, export_interval_ms: int = 2000) -> Tele
         tracer=trace.get_tracer("libtmux.engines"),
         meter=metrics.get_meter("libtmux.engines"),
         handler=LoggingHandler(logger_provider=logger_provider),
+        resource_attributes=attributes,
+        metric_labels=identity.metric_attributes(attributes),
+        profile_tags=identity.profile_tags(attributes),
     )

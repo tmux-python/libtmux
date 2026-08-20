@@ -1,7 +1,7 @@
 {
-  "uid": "libtmux-transports",
-  "title": "libtmux / Transports",
-  "description": "Subprocess against control mode, sync against async. Same operations, different dispatch cost.",
+  "uid": "libtmux-compare",
+  "title": "libtmux / Compare",
+  "description": "One run against another, one branch against another. Pick a spike to scope the comparison to a single experiment.",
   "tags": [
     "libtmux",
     "generated"
@@ -13,7 +13,7 @@
   "graphTooltip": 1,
   "refresh": "30s",
   "time": {
-    "from": "now-1h",
+    "from": "now-6h",
     "to": "now"
   },
   "templating": {
@@ -63,6 +63,29 @@
           "text": "All",
           "value": "$__all"
         }
+      },
+      {
+        "name": "spike",
+        "label": "Spike",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "qryType": 1,
+          "query": "label_values(tmux_requests_total, libtmux_spike)",
+          "refId": "var-spike"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -85,7 +108,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "Share of work",
+      "title": "By run",
       "collapsed": false,
       "id": 1,
       "gridPos": {
@@ -97,9 +120,9 @@
       "panels": []
     },
     {
-      "type": "piechart",
-      "title": "Requests by transport",
-      "description": "Which transport carried the run.",
+      "type": "table",
+      "title": "Runs in range",
+      "description": "Every run in the window, side by side.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -111,54 +134,98 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
-          "legendFormat": "{{tmux_lane}}",
+          "expr": "sum by (libtmux_run_id) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range]))",
+          "legendFormat": "requests",
           "range": false,
           "instant": true,
-          "refId": "A"
+          "refId": "A",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (libtmux_run_id) (increase(tmux_commands_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range]))",
+          "legendFormat": "commands",
+          "range": false,
+          "instant": true,
+          "refId": "B",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (libtmux_run_id) (increase(tmux_failures_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range]))",
+          "legendFormat": "failures",
+          "range": false,
+          "instant": true,
+          "refId": "C",
+          "format": "table"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, libtmux_run_id) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range])))",
+          "legendFormat": "p95",
+          "range": false,
+          "instant": true,
+          "refId": "D",
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "job": true,
+              "instance": true
+            }
+          }
         }
       ],
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "unit": "short"
+          "custom": {
+            "align": "auto"
+          }
         },
         "overrides": []
       },
       "options": {
-        "displayLabels": [
-          "percent"
-        ],
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "values": [
-            "value"
-          ]
-        },
-        "pieType": "donut",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "showHeader": true,
+        "footer": {
+          "show": false
         }
       },
       "id": 2,
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 8,
-        "h": 8
+        "w": 24,
+        "h": 9
       }
     },
     {
       "type": "timeseries",
-      "title": "Commands per request",
-      "description": "Above 1 means requests are carrying command groups.",
+      "title": "p95 by run",
+      "description": "Did a run get slower than the one before it?",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -170,8 +237,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_commands_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range])) / clamp_min(sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range])), 1)",
-          "legendFormat": "{{tmux_lane}}",
+          "expr": "histogram_quantile(0.95, sum by (le, libtmux_run_id) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range])))",
+          "legendFormat": "{{libtmux_run_id}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -182,7 +249,7 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "short",
+          "unit": "s",
           "custom": {
             "fillOpacity": 10,
             "showPoints": "never",
@@ -207,16 +274,16 @@
       },
       "id": 3,
       "gridPos": {
-        "x": 8,
-        "y": 1,
-        "w": 8,
+        "x": 0,
+        "y": 10,
+        "w": 12,
         "h": 8
       }
     },
     {
       "type": "timeseries",
-      "title": "Inlined commands",
-      "description": "Commands that cost no dispatch of their own.",
+      "title": "Request rate by run",
+      "description": "",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -228,8 +295,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (rate(tmux_inlined_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval]))",
-          "legendFormat": "{{tmux_lane}}",
+          "expr": "sum by (libtmux_run_id) (rate(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__rate_interval]))",
+          "legendFormat": "{{libtmux_run_id}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -265,20 +332,20 @@
       },
       "id": 4,
       "gridPos": {
-        "x": 16,
-        "y": 1,
-        "w": 8,
+        "x": 12,
+        "y": 10,
+        "w": 12,
         "h": 8
       }
     },
     {
       "type": "row",
-      "title": "Latency percentiles",
+      "title": "By branch",
       "collapsed": false,
       "id": 5,
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 18,
         "w": 24,
         "h": 1
       },
@@ -286,8 +353,8 @@
     },
     {
       "type": "timeseries",
-      "title": "p50 by transport",
-      "description": "",
+      "title": "p95 by branch",
+      "description": "The regression check: one branch against another.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -299,8 +366,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval])))",
-          "legendFormat": "{{tmux_lane}}",
+          "expr": "histogram_quantile(0.95, sum by (le, vcs_ref_head_name) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range])))",
+          "legendFormat": "{{vcs_ref_head_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -337,14 +404,14 @@
       "id": 6,
       "gridPos": {
         "x": 0,
-        "y": 10,
-        "w": 8,
+        "y": 19,
+        "w": 12,
         "h": 8
       }
     },
     {
-      "type": "timeseries",
-      "title": "p95 by transport",
+      "type": "piechart",
+      "title": "Requests by branch",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -357,10 +424,10 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval])))",
-          "legendFormat": "{{tmux_lane}}",
-          "range": true,
-          "instant": false,
+          "expr": "sum by (vcs_ref_head_name) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range]))",
+          "legendFormat": "{{vcs_ref_head_name}}",
+          "range": false,
+          "instant": true,
           "refId": "A"
         }
       ],
@@ -369,40 +436,41 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "s",
-          "custom": {
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "lineWidth": 2
-          }
+          "unit": "short"
         },
         "overrides": []
       },
       "options": {
+        "displayLabels": [
+          "percent"
+        ],
         "legend": {
           "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
+          "placement": "right",
+          "values": [
+            "value"
           ]
         },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
+        "pieType": "donut",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
         }
       },
       "id": 7,
       "gridPos": {
-        "x": 8,
-        "y": 10,
-        "w": 8,
+        "x": 12,
+        "y": 19,
+        "w": 12,
         "h": 8
       }
     },
     {
-      "type": "timeseries",
-      "title": "p99 by transport",
+      "type": "table",
+      "title": "Branch summary",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -415,79 +483,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval])))",
-          "legendFormat": "{{tmux_lane}}",
-          "range": true,
-          "instant": false,
-          "refId": "A",
-          "exemplar": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "unit": "s",
-          "custom": {
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "lineWidth": 2
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "id": 8,
-      "gridPos": {
-        "x": 16,
-        "y": 10,
-        "w": 8,
-        "h": 8
-      }
-    },
-    {
-      "type": "row",
-      "title": "Per-transport detail",
-      "collapsed": false,
-      "id": 9,
-      "gridPos": {
-        "x": 0,
-        "y": 18,
-        "w": 24,
-        "h": 1
-      },
-      "panels": []
-    },
-    {
-      "type": "table",
-      "title": "Transport summary",
-      "description": "Totals for the selected window, per transport.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
+          "expr": "sum by (vcs_ref_head_name) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range]))",
           "legendFormat": "requests",
           "range": false,
           "instant": true,
@@ -500,8 +496,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_commands_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
-          "legendFormat": "commands",
+          "expr": "sum by (vcs_ref_head_name) (increase(tmux_inlined_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range]))",
+          "legendFormat": "inlined",
           "range": false,
           "instant": true,
           "refId": "B",
@@ -513,8 +509,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_inlined_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
-          "legendFormat": "inlined",
+          "expr": "histogram_quantile(0.95, sum by (le, vcs_ref_head_name) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\", libtmux_spike=~\"$spike\"}[$__range])))",
+          "legendFormat": "p95",
           "range": false,
           "instant": true,
           "refId": "C",
@@ -554,10 +550,10 @@
           "show": false
         }
       },
-      "id": 10,
+      "id": 8,
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 27,
         "w": 24,
         "h": 8
       }
