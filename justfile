@@ -142,3 +142,35 @@ _entr-warn:
     @echo "Install entr(1) to automatically run tasks on file change."
     @echo "See https://eradman.com/entrproject/                      "
     @echo "----------------------------------------------------------"
+
+# ---- OpenTelemetry / LGTM dev workflow ----
+
+# Start the local Grafana LGTM stack the telemetry checks query against
+[group: 'otel']
+otel-up:
+    scripts/lgtm/up.sh
+
+# Stop and remove the local Grafana LGTM stack
+[group: 'otel']
+otel-down:
+    docker rm -f ${LIBTMUX_LGTM_CONTAINER:-libtmux-lgtm}
+
+# Regenerate the provisioned Grafana dashboards from their generator
+[group: 'otel']
+otel-dashboards:
+    uv run python scripts/lgtm/generate_dashboards.py
+
+# Drive a real tmux workload through the engine seam into LGTM
+[group: 'otel']
+otel-smoke *args:
+    uv run --group otel python scripts/otel_smoke.py {{ args }}
+
+# Verify every dashboard panel's own queries return data
+[group: 'otel']
+otel-acceptance *args:
+    uv run --group otel python scripts/otel_acceptance.py {{ args }}
+
+# Start the stack, run the workload, then verify every panel end to end
+[group: 'otel']
+otel-verify:
+    uv run --group otel python scripts/otel_acceptance.py --start-stack --smoke

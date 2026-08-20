@@ -1,0 +1,66 @@
+# Repo-owned copy of the otel-lgtm image's datasource provisioning, mounted by
+# scripts/lgtm/up.sh.
+#
+# It is committed unchanged, and the reason is the uids: every panel in
+# scripts/lgtm/dashboards/ binds to "prometheus", "tempo", "loki", or
+# "pyroscope" by uid. Pinning the file alongside the pinned image means a board
+# cannot silently lose its datasource because an image bumped a uid.
+#
+# The exemplar and traces-to-logs wiring below is what lets a metric panel jump
+# to the trace behind a spike, and a trace jump to its logs.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    url: http://127.0.0.1:9090
+    editable: true
+    jsonData:
+      timeInterval: 60s
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: "Trace: $${__value.raw}"
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://127.0.0.1:3200
+    editable: true
+    jsonData:
+      tracesToLogsV2:
+        customQuery: true
+        datasourceUid: "loki"
+        query: '{$${__tags}} | trace_id = "$${__trace.traceId}"'
+        tags:
+          - key: "service.name"
+            value: "service_name"
+
+      serviceMap:
+        datasourceUid: "prometheus"
+      search:
+        hide: false
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: "loki"
+
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://127.0.0.1:3100
+    editable: true
+    jsonData:
+      derivedFields:
+        - name: "trace_id"
+          matcherType: "label"
+          matcherRegex: "trace_id"
+          url: "$${__value.raw}"
+          datasourceUid: "tempo"
+          urlDisplayLabel: "Trace: $${__value.raw}"
+
+  - name: Pyroscope
+    type: grafana-pyroscope-datasource
+    uid: pyroscope
+    url: http://127.0.0.1:4040
