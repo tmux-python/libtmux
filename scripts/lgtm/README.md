@@ -97,7 +97,21 @@ Logs carry trace context, so a log line links to the trace it came from.
 
 Profiles come from Pyroscope sampling the process, which is how "where did the
 Python time go" gets answered — the engines' own frames show up in the flame
-graph.
+graph, tagged per transport, so a lane's CPU cost is as comparable as its
+latency.
+
+Allocation profiles are available too, but off by default because collecting
+them costs more than CPU sampling:
+
+```console
+$ just otel-smoke --memory-profile
+```
+
+That adds the `memory:alloc_space`, `memory:alloc_objects`, and
+`memory:inuse_space` profile types. They are per run rather than per transport:
+the per-lane tag scopes the CPU sampler, and the allocation profiler does not
+consult it. The other profile types Pyroscope lists — goroutines, mutex, block
+— belong to Go runtimes and stay empty for a Python process.
 
 The workload deliberately issues commands tmux rejects. A dashboard whose error
 panel is empty is untested rather than healthy, so the failure path has to
