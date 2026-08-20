@@ -35,6 +35,12 @@ Drive a workload:
 $ just otel-smoke
 ```
 
+Drive a ramping arrival rate instead, to find where a transport saturates:
+
+```console
+$ just otel-load
+```
+
 Check that every panel has data:
 
 ```console
@@ -64,6 +70,14 @@ publishes it, but a host process already bound there answers first. Queries then
 reach the wrong server and return plausible data, which costs far more
 debugging time than a refused connection. Override with
 `LIBTMUX_LGTM_GRAFANA_PORT` and `LIBTMUX_LGTM_PROM_PORT` if these collide too.
+
+`just otel-up` checks for this before reporting success, by comparing each
+service's build info as seen from inside the container against the same URL
+from the host. Run it alone at any time:
+
+```console
+$ just otel-ports
+```
 
 ## What the workload emits
 
@@ -183,9 +197,15 @@ politely instead of breaking.
 `just otel-load` uses [rampa](https://github.com/tony/rampa) for the shapes
 that expose it, notably `ramping-arrival-rate` -- an open model that keeps
 issuing commands at a target rate whether or not the previous ones finished, so
-latency climbs on its own once a transport saturates. The difference is
-visible: the same control-mode engine measures p99 around 2 ms under the steady
-workload and around 16 ms at the top of the ramp.
+latency climbs on its own once a transport saturates:
+
+```console
+$ just otel-load
+```
+
+The difference is visible: the same control-mode engine measures p99 around
+2 ms under the steady workload and around 16 ms at the top of the ramp. Pick a
+transport with `LIBTMUX_LOAD_LANE=subprocess-async`.
 
 k6 was the obvious alternative and is the wrong tool here. Its value is HTTP
 load at scale, and there is no HTTP surface in front of the engines -- driving

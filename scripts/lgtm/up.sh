@@ -87,6 +87,13 @@ for _ in $(seq 1 45); do
 	sleep 4
 done
 
+# Identity, not liveness: a port that answers may belong to a host process
+# that was already bound to it. verify.sh tells the two apart.
+"$ROOT/scripts/lgtm/verify.sh" || {
+	echo "a published port does not reach this container; see the lines above" >&2
+	exit 1
+}
+
 cat <<EOF
 grafana    http://127.0.0.1:${GRAFANA_PORT}  (admin/admin)
 prometheus http://127.0.0.1:${PROM_PORT}
