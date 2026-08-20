@@ -21,7 +21,8 @@ $ just otel-verify
 ```
 
 That is the command to reach for first. The steps below are the same workflow
-taken one piece at a time.
+taken one piece at a time. What that command covers, and what it deliberately
+does not, is recorded in [VERIFICATION.md](VERIFICATION.md).
 
 Start or restart the stack:
 

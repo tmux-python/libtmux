@@ -27,11 +27,24 @@ port_variable() {
 	esac
 }
 
+# Seconds to keep waiting for a port that is not answering yet. A service can
+# still be binding when its container reports healthy, so a single sample
+# turns a cold start into a spurious failure. Shadowing is not retried: two
+# different services answering is a settled fact, not a timing question.
+WAIT_SECONDS="${LIBTMUX_LGTM_WAIT:-30}"
+
 check() {
 	local label=$1 inside_port=$2 host_port=$3 path=$4
-	local inside outside
-	inside=$(docker exec "$CONTAINER" curl -s -m 8 "http://127.0.0.1:${inside_port}${path}" 2> /dev/null)
-	outside=$(curl -s -m 8 "http://127.0.0.1:${host_port}${path}" 2> /dev/null)
+	local inside outside deadline
+	deadline=$((SECONDS + WAIT_SECONDS))
+	while :; do
+		inside=$(docker exec "$CONTAINER" curl -s -m 8 "http://127.0.0.1:${inside_port}${path}" 2> /dev/null)
+		outside=$(curl -s -m 8 "http://127.0.0.1:${host_port}${path}" 2> /dev/null)
+		if [[ -n "$outside" && -n "$inside" ]] || ((SECONDS >= deadline)); then
+			break
+		fi
+		sleep 2
+	done
 	if [[ -z "$outside" ]]; then
 		printf '  %-11s %-6s UNREACHABLE from host\n' "$label" "$host_port"
 		status=1
