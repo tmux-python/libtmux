@@ -40,6 +40,29 @@
           "text": "All",
           "value": "$__all"
         }
+      },
+      {
+        "name": "branch",
+        "label": "Branch",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "qryType": 1,
+          "query": "label_values(tmux_requests_total, vcs_ref_head_name)",
+          "refId": "var-branch"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -88,7 +111,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\"}[$__range]))",
+          "expr": "sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
           "legendFormat": "{{tmux_lane}}",
           "range": false,
           "instant": true,
@@ -147,7 +170,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_commands_total{tmux_lane=~\"$lane\"}[$__range])) / clamp_min(sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\"}[$__range])), 1)",
+          "expr": "sum by (tmux_lane) (increase(tmux_commands_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range])) / clamp_min(sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range])), 1)",
           "legendFormat": "{{tmux_lane}}",
           "range": true,
           "instant": false,
@@ -205,7 +228,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (rate(tmux_inlined_total{tmux_lane=~\"$lane\"}[$__rate_interval]))",
+          "expr": "sum by (tmux_lane) (rate(tmux_inlined_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval]))",
           "legendFormat": "{{tmux_lane}}",
           "range": true,
           "instant": false,
@@ -276,7 +299,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval])))",
           "legendFormat": "{{tmux_lane}}",
           "range": true,
           "instant": false,
@@ -334,7 +357,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval])))",
           "legendFormat": "{{tmux_lane}}",
           "range": true,
           "instant": false,
@@ -392,7 +415,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, tmux_lane) (rate(tmux_command_duration_seconds_bucket{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__rate_interval])))",
           "legendFormat": "{{tmux_lane}}",
           "range": true,
           "instant": false,
@@ -464,7 +487,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\"}[$__range]))",
+          "expr": "sum by (tmux_lane) (increase(tmux_requests_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
           "legendFormat": "requests",
           "range": false,
           "instant": true,
@@ -477,7 +500,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_commands_total{tmux_lane=~\"$lane\"}[$__range]))",
+          "expr": "sum by (tmux_lane) (increase(tmux_commands_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
           "legendFormat": "commands",
           "range": false,
           "instant": true,
@@ -490,7 +513,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum by (tmux_lane) (increase(tmux_inlined_total{tmux_lane=~\"$lane\"}[$__range]))",
+          "expr": "sum by (tmux_lane) (increase(tmux_inlined_total{tmux_lane=~\"$lane\", vcs_ref_head_name=~\"$branch\"}[$__range]))",
           "legendFormat": "inlined",
           "range": false,
           "instant": true,
