@@ -8,9 +8,11 @@ to, which is where a board rots silently.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import pathlib
+import subprocess
 import sys
 import typing as t
 
@@ -321,3 +323,102 @@ def test_readme_names_every_dashboard_it_ships() -> None:
         assert board["title"] in readme, (
             f"{board['title']} is generated but never mentioned in the README"
         )
+
+
+def _identity() -> t.Any:
+    """Import the identity resolver from ``scripts/``."""
+    spec = importlib.util.spec_from_file_location("identity", _LGTM / "identity.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _git_repo(root: pathlib.Path) -> None:
+    """Create a one-commit git repository at *root*."""
+    run = functools.partial(subprocess.run, cwd=root, check=True, capture_output=True)
+    run(["git", "init", "-q", "-b", "trunk"])
+    run(["git", "config", "user.email", "t@example.invalid"])
+    run(["git", "config", "user.name", "Test"])
+    (root / "f.txt").write_text("x", encoding="utf-8")
+    run(["git", "add", "f.txt"])
+    run(["git", "commit", "-qm", "first"])
+
+
+def test_an_explicit_ref_beats_the_checkout(tmp_path: pathlib.Path) -> None:
+    """CI checks out a detached HEAD but knows the branch the work belongs to.
+
+    Without the override every CI run would be labelled by its revision, and
+    comparing a branch against another would be impossible in exactly the
+    place it matters most.
+    """
+    identity = _identity()
+    _git_repo(tmp_path)
+
+    resolved = identity.resolve(
+        run_id="r",
+        root=tmp_path,
+        env={"LIBTMUX_VCS_REF": "release/1.2", "LIBTMUX_WORKTREE": "ci-runner"},
+    )
+
+    assert resolved["vcs.ref.head.name"] == "release/1.2"
+    assert resolved["libtmux.worktree"] == "ci-runner"
+    assert identity.metric_attributes(resolved)["vcs_ref_head_name"] == "release/1.2"
+
+
+def test_a_detached_head_never_labels_itself_head(tmp_path: pathlib.Path) -> None:
+    """Detached checkouts must not collapse onto one meaningless label.
+
+    ``git rev-parse --abbrev-ref HEAD`` answers the literal string ``HEAD``
+    when detached. Used directly, every detached run on every branch would
+    share one dimension value and could not be told apart.
+    """
+    identity = _identity()
+    _git_repo(tmp_path)
+    subprocess.run(
+        ["git", "checkout", "-q", "--detach"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    attributes = identity.vcs_attributes(tmp_path)
+
+    assert attributes["vcs.ref.head.name"] != "HEAD"
+    assert attributes["vcs.ref.head.type"] in {"tag", "revision"}
+    assert attributes["vcs.ref.head.revision"].startswith(
+        attributes["vcs.ref.head.name"]
+    )
+
+
+def test_a_tagged_detached_head_reports_the_tag(tmp_path: pathlib.Path) -> None:
+    """A tag is more meaningful than a revision, so it wins when present."""
+    identity = _identity()
+    _git_repo(tmp_path)
+    subprocess.run(
+        ["git", "tag", "v9.9.9"], cwd=tmp_path, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "checkout", "-q", "--detach"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    attributes = identity.vcs_attributes(tmp_path)
+
+    assert attributes["vcs.ref.head.name"] == "v9.9.9"
+    assert attributes["vcs.ref.head.type"] == "tag"
+
+
+def test_a_directory_outside_git_yields_no_vcs_attributes(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Telemetry must still run where there is no repository to describe."""
+    identity = _identity()
+
+    assert identity.vcs_attributes(tmp_path) == {}
+    resolved = identity.resolve(run_id="r", root=tmp_path, env={})
+    assert resolved["libtmux.run_id"] == "r"
+    assert "vcs.ref.head.name" not in resolved
