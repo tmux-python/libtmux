@@ -298,6 +298,17 @@ Values that change within a process, such as the phase a workload is in, travel
 as OpenTelemetry baggage and are copied onto spans by a processor instead of
 being threaded through engine calls.
 
+`just otel-load` drives the engines under a ramping arrival rate, an open model
+that keeps offering work regardless of latency and so exposes where a transport
+saturates -- something a fixed-worker loop hides, because it slows down along
+with the system. The schedule comes from rampa; the telemetry still comes from
+this project's own sink, so a load-shaped run is directly comparable with every
+other run rather than speaking a second vocabulary.
+
+The dashboards follow Grafana's guidance: a Home board says which board answers
+which question, Overview is organized as rate, errors, and duration, and its
+panels link down to the board that explains them.
+
 #### CI actions updated to current majors
 
 Workflow actions moved to their current major releases: `actions/checkout` v7,

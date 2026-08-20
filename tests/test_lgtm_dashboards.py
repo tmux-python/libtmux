@@ -51,6 +51,16 @@ def _panels(board: dict[str, t.Any]) -> list[dict[str, t.Any]]:
     return [panel for panel in board["panels"] if panel["type"] != "row"]
 
 
+def _query_panels(board: dict[str, t.Any]) -> list[dict[str, t.Any]]:
+    """Return only the panels that are supposed to query a datasource.
+
+    Text panels are documentation. Grafana's guidance is to write the question
+    a board answers onto the board itself, so a panel with no query is
+    expected here rather than a defect.
+    """
+    return [panel for panel in _panels(board) if panel["type"] != "text"]
+
+
 def test_committed_dashboards_match_their_generator(tmp_path: pathlib.Path) -> None:
     """The JSON in the repo is what the generator produces right now.
 
@@ -77,7 +87,7 @@ def test_committed_dashboards_match_their_generator(tmp_path: pathlib.Path) -> N
 def test_every_panel_queries_something() -> None:
     """A panel with no target can never show data."""
     for board in _boards():
-        for panel in _panels(board):
+        for panel in _query_panels(board):
             assert panel.get("targets"), (
                 f"{board['uid']}/{panel['title']} has no targets"
             )
@@ -86,7 +96,7 @@ def test_every_panel_queries_something() -> None:
 def test_every_target_binds_a_provisioned_datasource() -> None:
     """Panels reference datasources by uid, so the uid has to exist."""
     for board in _boards():
-        for panel in _panels(board):
+        for panel in _query_panels(board):
             for target in panel["targets"]:
                 uid = (target.get("datasource") or {}).get("uid")
                 assert uid in _DATASOURCE_UIDS, (
@@ -130,7 +140,7 @@ def test_acceptance_expands_every_template_variable() -> None:
     spec.loader.exec_module(acceptance)
 
     for board in _boards():
-        for panel in _panels(board):
+        for panel in _query_panels(board):
             for target in panel["targets"]:
                 query = (
                     target.get("expr")
@@ -167,7 +177,7 @@ def test_no_panel_reads_a_counter_without_a_window() -> None:
     the series to have gone stale, which is exactly when nobody is looking.
     """
     for board in _boards():
-        for panel in _panels(board):
+        for panel in _query_panels(board):
             for target in panel["targets"]:
                 if (target.get("datasource") or {}).get("type") != "prometheus":
                     continue
