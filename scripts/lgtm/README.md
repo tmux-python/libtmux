@@ -95,6 +95,14 @@ metric-to-trace pivot.
 
 Logs carry trace context, so a log line links to the trace it came from.
 
+Streaming is measured separately, because notifications arrive out of band and
+the instrumentation seam never sees them: a sink wraps `run()`, and nothing
+routes a `%output` through `run()`. The workload therefore subscribes to
+control-mode notifications while commands keep flowing, and records how many
+arrived along with the engine's own count of any it had to drop because the
+subscriber fell behind. Those two counters are written once per run, so their
+panels read the last value in the window rather than an increase across it.
+
 Profiles come from Pyroscope sampling the process, which is how "where did the
 Python time go" gets answered — the engines' own frames show up in the flame
 graph, tagged per transport, so a lane's CPU cost is as comparable as its
