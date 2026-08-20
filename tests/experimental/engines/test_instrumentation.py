@@ -274,3 +274,36 @@ def test_control_mode_reports_no_process_starts() -> None:
     assert counts.tmux_commands == 4
     assert counts.inlined == 0
     assert counts.elapsed_ns > 0
+
+
+def test_concurrent_observers_do_not_cross_attribute() -> None:
+    """Two overlapping scopes each see only the commands they issued.
+
+    This is what tracing does: several requests in flight, each charged to its
+    own span. Both scopes drive the *same* underlying engine and interleave on
+    the event loop, so a design that kept "the current observer" anywhere
+    shared -- a module global, a listener list on the engine both scopes hold --
+    reports one scope's commands against the other. Composing a wrapper per
+    scope keeps the observer on the only thing that is already per-scope.
+
+    A shared sink would report 5 and 5 here instead of 3 and 2.
+    """
+    inner = _AsyncEngine()
+    observed: dict[str, int] = {}
+
+    async def scope(name: str, commands: int) -> None:
+        counts = CountingSink()
+        engine = AsyncInstrumentedEngine(inner, counts)
+        for index in range(commands):
+            await engine.run(CommandRequest.from_args(f"{name}-{index}"))
+            # Yield, so the other scope runs while this one is still open.
+            await asyncio.sleep(0)
+        observed[name] = counts.requests
+
+    async def exercise() -> None:
+        await asyncio.gather(scope("alpha", 3), scope("beta", 2))
+
+    asyncio.run(exercise())
+
+    assert observed == {"alpha": 3, "beta": 2}
+    assert len(inner.seen) == 5
