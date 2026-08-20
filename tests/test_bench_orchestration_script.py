@@ -6581,15 +6581,14 @@ def _blocking_tmux_binary(tmp_path: pathlib.Path) -> tuple[pathlib.Path, pathlib
     """Create a real blocking process so timeout cleanup stays observable."""
     executable = tmp_path / "blocking-tmux"
     pid_path = tmp_path / "blocking-tmux.pid"
+    # A shell stub rather than a Python one: the capture timeout under test is
+    # 50ms, and a Python interpreter needs longer than that to start on a busy
+    # machine, so the child was sometimes killed before it recorded its pid and
+    # the test failed reading the file. `exec` keeps the recorded pid valid by
+    # replacing the shell rather than forking, so one process both reports and
+    # blocks.
     executable.write_text(
-        "#!/usr/bin/env python3\n"
-        "import os\n"
-        "import pathlib\n"
-        "import time\n"
-        "pathlib.Path(os.environ['BLOCKING_TMUX_PID']).write_text(\n"
-        "    str(os.getpid()), encoding='ascii'\n"
-        ")\n"
-        "time.sleep(0.5)\n",
+        '#!/bin/sh\necho $$ > "$BLOCKING_TMUX_PID"\nexec sleep 0.5\n',
         encoding="utf-8",
     )
     executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
