@@ -32,7 +32,6 @@ SERVICE = "libtmux-engines"
 # question is "did this branch change anything", and leaving it out silently
 # mixes two branches into one line.
 SCOPE = 'tmux_lane=~"$lane", vcs_ref_head_name=~"$branch"'
-LANE = SCOPE  # queries below read naturally as "the current scope"
 TAGS = ["libtmux", "generated"]
 
 BUCKET = "tmux_command_duration_seconds_bucket"
@@ -40,7 +39,7 @@ BUCKET = "tmux_command_duration_seconds_bucket"
 
 def rate_by(label: str, metric: str) -> str:
     """Per-second rate of *metric*, grouped by *label*."""
-    return f"sum by ({label}) (rate({metric}{{{LANE}}}[$__rate_interval]))"
+    return f"sum by ({label}) (rate({metric}{{{SCOPE}}}[$__rate_interval]))"
 
 
 def window_total(metric: str, label: str | None = None) -> str:
@@ -54,7 +53,7 @@ def window_total(metric: str, label: str | None = None) -> str:
     in the window the viewer selected, which is both what they meant and
     immune to staleness.
     """
-    inner = f"increase({metric}{{{LANE}}}[$__range])"
+    inner = f"increase({metric}{{{SCOPE}}}[$__range])"
     return f"sum by ({label}) ({inner})" if label else f"sum({inner})"
 
 
@@ -62,7 +61,7 @@ def window_quantile(quantile: float, label: str) -> str:
     """Latency *quantile* across the whole window, for summary tables."""
     return (
         f"histogram_quantile({quantile}, sum by (le, {label}) "
-        f"(rate({BUCKET}{{{LANE}}}[$__range])))"
+        f"(rate({BUCKET}{{{SCOPE}}}[$__range])))"
     )
 
 
@@ -70,7 +69,7 @@ def quantile_by(quantile: float, label: str) -> str:
     """Latency *quantile* from the duration histogram, grouped by *label*."""
     return (
         f"histogram_quantile({quantile}, sum by (le, {label}) "
-        f"(rate({BUCKET}{{{LANE}}}[$__rate_interval])))"
+        f"(rate({BUCKET}{{{SCOPE}}}[$__rate_interval])))"
     )
 
 
