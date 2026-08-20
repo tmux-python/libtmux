@@ -14,10 +14,15 @@ shape, a completed shape, and a host-resource cutoff.
 
 ## Deliverables
 
-- `scripts/orchestration_fuzzer.py`: a self-contained PEP 723 Rich workload
-  generator with `preview` and `serve` commands.
-- `scripts/bench_orchestration.py`: a self-contained PEP 723 benchmark with
-  `plan`, `run`, and `ramp` commands.
+- `scripts/orchestration_fuzzer.py`: a PEP 723 Rich workload generator with
+  `preview` and `serve` commands.
+- `scripts/bench_orchestration.py`: a PEP 723 benchmark with `plan`, `run`, and
+  `ramp` commands. Only `plan` runs standalone; `run` and `ramp` import libtmux
+  from the working tree and need the project environment.
+- `scripts/orchestration_matrix.py`: a supervisor comparing execution lanes one
+  cell at a time.
+- `scripts/orchestration_stress.py`: a pressure ladder locating where each
+  topology dimension stops completing.
 - Focused unit and live-tmux tests for workload determinism, delayed matching,
   topology truth, phase correctness, cleanup, and machine-readable results.
 - JSON results containing raw samples and environment/resource metadata.
@@ -29,14 +34,28 @@ one persistent active topology and performs several distinct workloads on it.
 
 ## Running the benchmark
 
-Every program here is a self-contained PEP 723 script. Run commands from the
-repository root, because `run` and `ramp` re-invoke their own worker process.
+Run every command from the repository root through the project environment,
+because `run` and `ramp` re-invoke their own worker process and that worker
+imports libtmux from the working tree.
 
-The `env -u TMUX -u TMUX_PANE` prefix below is defensive, not required. Dropping
-it is safe: `bench_orchestration.py` unsets both before importing libtmux, and
-the matrix and stress supervisors strip `TMUX`, `TMUX_PANE`, and `VIRTUAL_ENV`
-from every child they spawn. Keeping the prefix simply makes it obvious at the
-call site that a run can never reach your interactive server.
+Only `plan` is genuinely standalone — it reads host files, imports no libtmux,
+and starts no server, so `uv run --script scripts/bench_orchestration.py plan`
+works anywhere. Everything else needs the project environment; running a
+supervisor as a PEP 723 script gives its children an interpreter without
+libtmux, which they now refuse with an explanatory message rather than a bare
+import error.
+
+The benchmark requires an interpreter exposing Linux `pidfd`, which
+free-threaded CPython builds do not provide. It refuses rather than measure
+without exact process identity. If a fresh checkout refuses this way, select a
+different interpreter with `UV_PYTHON`.
+
+The `env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE` prefix below is defensive, not
+required. Dropping it is safe: `bench_orchestration.py` unsets the tmux
+variables before importing libtmux, and the supervisors strip all three from
+every child they spawn. Clearing `VIRTUAL_ENV` only silences a uv warning when
+another project's environment is active; the resolved interpreter is identical
+either way.
 
 Preview the workload without starting tmux. This renders the same frames the
 pane processes will follow:
@@ -58,7 +77,7 @@ $ uv run python scripts/bench_orchestration.py plan \
 Run a small smoke topology first. It exercises every phase in seconds:
 
 ```console
-$ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
     --shape 2x2x2 \
     --lane control \
     --mode async \
@@ -71,7 +90,7 @@ Run the large active cell. Async control mode keeps one persistent client and
 attributes pipelined requests individually:
 
 ```console
-$ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
     --shape 80x20x1 \
     --lane control \
     --mode async \
@@ -86,7 +105,7 @@ Attempt the canonical ramp, which cleans each disposable server before the next
 shape and records a structured cutoff when a resource guard trips:
 
 ```console
-$ env -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py ramp \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py ramp \
     --runs 5 \
     --warmup 1 \
     --output ramp.json
@@ -97,7 +116,7 @@ because overlapping scale runs perturb the timings they produce. The defaults
 are the combination measured to finish four cells in just under 24 minutes:
 
 ```console
-$ env -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
     --with-orm
 ```
 
@@ -106,7 +125,7 @@ grows superlinearly with pane count — roughly 9 seconds at 800 panes against 4
 at 1,600 — so four cells at `80x20x1` take about an hour:
 
 ```console
-$ env -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
     --shape 80x20x1 \
     --runs 20 \
     --warmup 2 \
@@ -125,7 +144,7 @@ test, not a comparison: each rung is a single invocation, so only the outcome
 means anything:
 
 ```console
-$ env -u TMUX -u TMUX_PANE uv run python scripts/orchestration_stress.py \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration_stress.py \
     --axis all \
     --budget-seconds 2400
 ```
