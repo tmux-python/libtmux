@@ -177,3 +177,57 @@ def test_no_panel_reads_a_counter_without_a_window() -> None:
                     f"range window and will blank out once the series goes "
                     f"stale: {expr}"
                 )
+
+
+def test_metric_labels_stay_a_closed_low_cardinality_set() -> None:
+    """Metrics may carry only the dimensions worth grouping by.
+
+    Every distinct label combination is a Prometheus series kept forever, so
+    this set is a budget, not a convenience. A commit SHA is the tempting
+    mistake: each run has exactly one, so grouping by SHA is grouping by run,
+    which the run id already allows -- it would buy no query power while
+    adding a fresh set of series on every commit.
+
+    Detail like the SHA, the worktree path, and test identity is not lost; it
+    rides on spans and profiles, where high cardinality is expected and the
+    drill-down actually happens.
+    """
+    spec = importlib.util.spec_from_file_location("identity", _LGTM / "identity.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert {label for _key, label in module.METRIC_KEYS} == {
+        "vcs_ref_head_name",
+        "libtmux_run_id",
+        "libtmux_spike",
+    }
+
+    resource = {
+        "vcs.ref.head.name": "main",
+        "vcs.ref.head.revision": "deadbeef",
+        "vcs.repository.name": "libtmux",
+        "libtmux.worktree": "/home/someone/checkout",
+        "libtmux.run_id": "r1",
+    }
+    labels = module.metric_attributes(resource)
+    assert "vcs_ref_head_revision" not in labels
+    assert "libtmux_worktree" not in labels
+    assert labels["vcs_ref_head_name"] == "main"
+
+    # The same facts must still reach profiles, where they are affordable.
+    tags = module.profile_tags(resource)
+    assert "vcs_ref_head_revision" in tags
+
+
+def test_every_scope_variable_used_is_defined() -> None:
+    """A panel filtering on an undefined variable silently returns nothing."""
+    for board in _boards():
+        names = {var["name"] for var in board["templating"]["list"]}
+        serialized = json.dumps(board["panels"])
+        for variable in ("lane", "branch", "spike", "run"):
+            if f"${variable}" in serialized:
+                assert variable in names, (
+                    f"{board['uid']} filters on ${variable} without defining it"
+                )

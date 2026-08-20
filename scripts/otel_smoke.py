@@ -155,6 +155,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", default=f"smoke-{uuid.uuid4().hex[:8]}")
     parser.add_argument(
+        "--spike",
+        default=None,
+        help="name an experiment so several runs group together (or LIBTMUX_SPIKE)",
+    )
+    parser.add_argument(
         "--seconds", type=float, default=4.0, help="workload duration per lane"
     )
     parser.add_argument(
@@ -176,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.pop("TMUX", None)
     os.environ.pop("TMUX_PANE", None)
 
-    signals = telemetry.build(args.otlp, run_id=args.run_id)
+    signals = telemetry.build(args.otlp, run_id=args.run_id, spike=args.spike)
     logging.basicConfig(level=logging.INFO, handlers=[signals.handler], force=True)
 
     try:
@@ -187,7 +192,10 @@ def main(argv: list[str] | None = None) -> int:
             server_address=args.pyroscope,
             sample_rate=100,
             upload_interval=3,
-            tags={"run_id": args.run_id},
+            # The full static identity: a profile is one process, so branch,
+            # revision, worktree, and spike cost nothing extra here and make
+            # two runs directly comparable in Pyroscope.
+            tags=signals.profile_tags,
         )
         profiling = True
     except Exception as error:  # noqa: BLE001 - profiling is optional
@@ -211,9 +219,12 @@ def main(argv: list[str] | None = None) -> int:
             engine = instrument(
                 factory(),
                 counts,
-                telemetry.OTelSink(signals.tracer, signals.meter, lane),
+                telemetry.OTelSink(
+                    signals.tracer, signals.meter, lane, signals.metric_labels
+                ),
             )
-            run_sync(engine, args.seconds)
+            with telemetry.scope(**{"libtmux.phase": f"{lane}-sync"}):
+                run_sync(engine, args.seconds)
             totals[lane] = lane_totals(counts)
             logger.info("lane finished", extra={"lane": lane, **totals[lane]})
 
@@ -226,7 +237,9 @@ def main(argv: list[str] | None = None) -> int:
             engine = instrument(
                 factory(),
                 counts,
-                telemetry.OTelSink(signals.tracer, signals.meter, lane),
+                telemetry.OTelSink(
+                    signals.tracer, signals.meter, lane, signals.metric_labels
+                ),
             )
 
             async def drive(engine: t.Any = engine) -> None:
@@ -237,7 +250,8 @@ def main(argv: list[str] | None = None) -> int:
                     if hasattr(inner, "aclose"):
                         await inner.aclose()
 
-            asyncio.run(drive())
+            with telemetry.scope(**{"libtmux.phase": f"{lane}-async"}):
+                asyncio.run(drive())
             totals[lane] = lane_totals(counts)
             logger.info("lane finished", extra={"lane": lane, **totals[lane]})
     finally:
@@ -266,7 +280,9 @@ def main(argv: list[str] | None = None) -> int:
             f"  {lane:<18}{row['requests']:>10}{row['tmux_commands']:>10}"
             f"{row['inlined']:>10}{row['elapsed_ms']:>11}"
         )
-    print(f"\n  run_id={args.run_id}  service={telemetry.SERVICE_NAME}")
+    ref = signals.resource_attributes.get("vcs.ref.head.name", "?")
+    worktree = signals.resource_attributes.get("libtmux.worktree", "-")
+    print(f"\n  run_id={args.run_id}  branch={ref}  worktree={worktree}")
     print(f"  exported to {args.otlp} and {args.pyroscope}")
     return 0
 
