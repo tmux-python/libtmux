@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import os
 import pathlib
@@ -140,6 +141,25 @@ async def run_async(engine: t.Any, seconds: float, concurrency: int) -> None:
     await asyncio.gather(*(worker() for _ in range(concurrency)))
 
 
+@contextlib.contextmanager
+def _profile_lane(lane: str, *, enabled: bool) -> t.Iterator[None]:
+    """Tag the CPU profile with the lane running inside the block.
+
+    Pyroscope's configure-time tags describe the whole process, which is fine
+    for branch or run identity but leaves the flamegraph unable to answer the
+    question the other signals can: what did *this* transport cost. A dynamic
+    tag around each lane makes the profile filterable the same way the metrics
+    and traces already are.
+    """
+    if not enabled:
+        yield
+        return
+    import pyroscope
+
+    with pyroscope.tag_wrapper({"tmux_lane": lane}):
+        yield
+
+
 def _log_lane(signals: t.Any, lane: str, totals: dict[str, int]) -> None:
     """Log a lane's result from inside a span, so the line links to a trace.
 
@@ -238,7 +258,10 @@ def main(argv: list[str] | None = None) -> int:
                     signals.tracer, signals.meter, lane, signals.metric_labels
                 ),
             )
-            with telemetry.scope(**{"libtmux.phase": f"{lane}-sync"}):
+            with (
+                telemetry.scope(**{"libtmux.phase": f"{lane}-sync"}),
+                _profile_lane(lane, enabled=profiling),
+            ):
                 run_sync(engine, args.seconds)
             totals[lane] = lane_totals(counts)
             _log_lane(signals, lane, totals[lane])
@@ -265,7 +288,10 @@ def main(argv: list[str] | None = None) -> int:
                     if hasattr(inner, "aclose"):
                         await inner.aclose()
 
-            with telemetry.scope(**{"libtmux.phase": f"{lane}-async"}):
+            with (
+                telemetry.scope(**{"libtmux.phase": f"{lane}-async"}),
+                _profile_lane(lane, enabled=profiling),
+            ):
                 asyncio.run(drive())
             totals[lane] = lane_totals(counts)
             _log_lane(signals, lane, totals[lane])
