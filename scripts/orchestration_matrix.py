@@ -34,6 +34,7 @@ import collections.abc as cabc
 import contextlib
 import dataclasses
 import fcntl
+import functools
 import json
 import math
 import os
@@ -55,6 +56,35 @@ _MODES = ("sync", "async")
 # leaves room for the run-scoped subdirectory the benchmark appends.
 _SCRATCH_PREFIX = "ltm-"
 _MEMORY_FLOOR_BYTES = 8 * 1024**3
+
+
+@functools.lru_cache(maxsize=1)
+def child_interpreter() -> str:
+    """Return an interpreter that can actually run the benchmark.
+
+    ``sys.executable`` is this supervisor's own environment. Under a PEP 723
+    invocation that environment is ephemeral and has no libtmux, so a child
+    spawned from it dies on import with no explanation. Verify before
+    spawning, and say what to do about it.
+
+    The answer cannot change within one process, so it is probed once.
+    """
+    probe = subprocess.run(
+        (sys.executable, "-c", "import libtmux, rich"),
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode == 0:
+        return sys.executable
+    message = (
+        f"the interpreter running this supervisor ({sys.executable}) cannot "
+        "import libtmux, so every benchmark child would fail on import.\n"
+        "This happens when the script is run as a PEP 723 script, whose "
+        "environment is isolated from the project.\n"
+        "Run it through the project environment instead:\n"
+        f"  uv run python scripts/orchestration_matrix.py"
+    )
+    raise SystemExit(message)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -691,7 +721,7 @@ def run_cell(
     for name in ("TMUX", "TMUX_PANE", "VIRTUAL_ENV"):
         environment.pop(name, None)
     command = (
-        sys.executable,
+        child_interpreter(),
         str(_BENCHMARK),
         "run",
         "--shape",
