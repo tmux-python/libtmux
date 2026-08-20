@@ -160,6 +160,72 @@ def _profile_lane(lane: str, *, enabled: bool) -> t.Iterator[None]:
         yield
 
 
+async def stream_lane(server: t.Any, signals: t.Any, seconds: float) -> dict[str, int]:
+    """Consume control-mode notifications while commands keep flowing.
+
+    Notifications arrive out of band, so the instrumentation seam never sees
+    them: a sink wraps run(), and nothing routes a %output through run(). That
+    leaves the streaming half of control mode unmeasured, including the
+    engine's own count of notifications it had to drop because a subscriber
+    fell behind -- which is the number that says the stream is unhealthy.
+
+    Reading the counter costs one attribute access at the end of the lane, so
+    the measurement does not disturb what it measures.
+    """
+    engine = AsyncControlModeEngine.for_server(server)
+    # The workload's own panes run `sleep`, which ignores keystrokes and so
+    # emits no output. Streaming needs something that answers, so this lane
+    # gets its own shell window; without one the notification count is a
+    # confident zero.
+    await engine.run(
+        CommandRequest.from_args("new-window", "-t", "smoke", "-n", "stream", "sh")
+    )
+    received = 0
+    deadline = time.monotonic() + seconds
+
+    async def consume() -> None:
+        nonlocal received
+        async for _ in engine.subscribe():
+            received += 1
+            if time.monotonic() > deadline:
+                break
+
+    consumer = asyncio.create_task(consume())
+    # Let the consumer register its subscription before any output exists.
+    # Started against a tight command loop it never gets scheduled, then waits
+    # for notifications the shell already emitted, and reports a confident
+    # zero.
+    await asyncio.sleep(0.1)
+    try:
+        while time.monotonic() < deadline:
+            await engine.run(
+                CommandRequest.from_args(
+                    "send-keys", "-t", "stream", "echo stream", "Enter"
+                )
+            )
+            # Pace the sends so producer and consumer interleave. Saturating
+            # the connection would measure a queue, not a stream.
+            await asyncio.sleep(0.02)
+        try:
+            await asyncio.wait_for(consumer, timeout=5)
+        except TimeoutError:
+            consumer.cancel()
+        dropped = engine.dropped_notifications
+    finally:
+        await engine.aclose()
+
+    meter = signals.meter
+    labels = {**signals.metric_labels, "tmux.lane": "control-stream"}
+    meter.create_counter(
+        "tmux.notifications", description="Control-mode notifications received."
+    ).add(received, labels)
+    meter.create_counter(
+        "tmux.notifications.dropped",
+        description="Notifications dropped because a subscriber fell behind.",
+    ).add(dropped, labels)
+    return {"received": received, "dropped": dropped}
+
+
 def _log_lane(signals: t.Any, lane: str, totals: dict[str, int]) -> None:
     """Log a lane's result from inside a span, so the line links to a trace.
 
@@ -304,6 +370,10 @@ def main(argv: list[str] | None = None) -> int:
                 asyncio.run(drive())
             totals[lane] = lane_totals(counts)
             _log_lane(signals, lane, totals[lane])
+
+        with telemetry.scope(**{"libtmux.phase": "control-stream"}):
+            stream = asyncio.run(stream_lane(server, signals, args.seconds))
+        logger.info("stream finished", extra={"lane": "control-stream", **stream})
     finally:
         subprocess.run(
             ("tmux", "-S", str(root / "smoke.sock"), "kill-server"),
