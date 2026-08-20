@@ -140,7 +140,7 @@ class Board:
         title: str,
         *,
         description: str = "",
-        refresh: str = "30s",
+        refresh: str = "1m",
         time_from: str = "now-1h",
     ) -> None:
         self.uid = uid
@@ -187,10 +187,19 @@ class Board:
         )
         self._y += 1
 
-    def add(self, panel: dict[str, t.Any], *, w: int = 12, h: int = 8) -> None:
+    def add(
+        self,
+        panel: dict[str, t.Any],
+        *,
+        w: int = 12,
+        h: int = 8,
+        links: list[dict[str, t.Any]] | None = None,
+    ) -> None:
         """Place a panel at the current grid cursor."""
         panel["id"] = self._next_id()
         panel["gridPos"] = self._place(w, h)
+        if links:
+            panel["links"] = links
         self._panels.append(panel)
 
     def variable(self, name: str, label: str, metric_label: str) -> None:
@@ -401,6 +410,38 @@ def table(
     }
 
 
+def text(title: str, markdown: str) -> dict[str, t.Any]:
+    """Build a documentation panel.
+
+    Grafana's guidance is that a dashboard should answer a question, and that
+    the question should be written down rather than inferred from the panels.
+    """
+    return {
+        "type": "text",
+        "title": title,
+        "datasource": None,
+        "options": {"mode": "markdown", "content": markdown},
+        "transparent": True,
+    }
+
+
+def drill(title: str, uid: str) -> dict[str, t.Any]:
+    """Build a panel link that opens *uid* keeping time range and variables.
+
+    Directed browsing is what separates a set of dashboards from a pile of
+    them: from a symptom, one click reaches the board that explains it, still
+    scoped to what you were looking at.
+    """
+    return {
+        "title": title,
+        "url": (
+            f"/d/{uid}?$" + "{__url_time_range}"
+            "&var-lane=${lane:queryparam}&var-branch=${branch:queryparam}"
+        ),
+        "targetBlank": False,
+    }
+
+
 def logs(title: str, expr: str, *, description: str = "") -> dict[str, t.Any]:
     """Build a Loki logs panel."""
     return {
@@ -476,7 +517,23 @@ def build_overview() -> Board:
     )
     board.scope_variables()
 
-    board.row("Totals")
+    board.add(
+        text(
+            "",
+            "**Rate, Errors, Duration** for the tmux engines. RED is the right "
+            "frame here because an engine is a service: the caller cares how "
+            "much work goes through, how much of it fails, and how long it "
+            "takes.\n\n"
+            "Panels link to the board that explains them. Use **Transports** "
+            "for which transport is responsible, **Commands** for which tmux "
+            "command, and **Compare** for whether a branch or run changed "
+            "anything.",
+        ),
+        w=24,
+        h=4,
+    )
+
+    board.row("Rate")
     board.add(
         stat(
             "Requests",
@@ -495,6 +552,7 @@ def build_overview() -> Board:
         w=6,
         h=5,
     )
+    board.row("Errors")
     board.add(
         stat(
             "Inlined share",
@@ -529,7 +587,7 @@ def build_overview() -> Board:
         h=5,
     )
 
-    board.row("Throughput and latency")
+    board.row("Rate over time")
     board.add(
         timeseries(
             "Request rate by transport",
@@ -541,7 +599,8 @@ def build_overview() -> Board:
             ],
             unit="reqps",
             description="How much each transport is carrying.",
-        )
+        ),
+        links=[drill("Break down by transport", "libtmux-transports")],
     )
     board.add(
         timeseries(
@@ -578,7 +637,8 @@ def build_overview() -> Board:
             ],
             unit="reqps",
             description="tmux rejections; the smoke workload issues these on purpose.",
-        )
+        ),
+        links=[drill("Break down by command", "libtmux-commands")],
     )
 
     board.row("Traces, logs, and profiles")
@@ -754,7 +814,6 @@ def build_commands() -> Board:
                 )
             ],
             unit="reqps",
-            stacking=True,
         ),
         w=16,
         h=9,
@@ -971,7 +1030,94 @@ def build_compare() -> Board:
     return board
 
 
-BUILDERS = (build_overview, build_transports, build_commands, build_compare)
+def build_home() -> Board:
+    """Build the entry point that says which board answers which question.
+
+    Grafana's maturity model calls this directed browsing: without it, finding
+    the right dashboard is guesswork and the answer is to duplicate one.
+    """
+    board = Board(
+        "libtmux-home",
+        "libtmux / Home",
+        description="Start here. Which board answers which question.",
+        refresh="",
+    )
+    board.scope_variables()
+    board.add(
+        text(
+            "",
+            "# libtmux engine observability\n\n"
+            "Telemetry comes from the engine instrumentation seam, so the "
+            "exporters are ordinary sinks and the engines are untouched.\n\n"
+            "| Board | Answers |\n"
+            "| --- | --- |\n"
+            "| [Overview](/d/libtmux-overview) | Is work flowing, and is it healthy? "
+            "Rate, errors, duration, plus traces, logs and profiles. |\n"
+            "| [Transports](/d/libtmux-transports) | Which transport is responsible? "
+            "Subprocess against control mode, sync against async. |\n"
+            "| [Commands](/d/libtmux-commands) | Which tmux command is responsible? |\n"
+            "| [Compare](/d/libtmux-compare) | "
+            "Did this run or branch change anything? |\n\n"
+            "**Producing data**: `just otel-smoke` for a steady workload, "
+            "`just otel-load` for a ramping arrival rate that exposes "
+            "saturation. `just otel-acceptance` checks every panel still has "
+            "data.\n\n"
+            "Every board is generated by `scripts/lgtm/generate_dashboards.py`; "
+            "edits made in this UI are overwritten on the next `just otel-up`.",
+        ),
+        w=24,
+        h=13,
+    )
+    board.row("Health right now")
+    board.add(
+        stat(
+            "Requests in range",
+            [target(window_total("tmux_requests_total"), instant=True)],
+            description="Across every transport in the selected window.",
+        ),
+        w=8,
+        h=5,
+        links=[drill("Open Overview", "libtmux-overview")],
+    )
+    board.add(
+        stat(
+            "Failure share",
+            [
+                target(
+                    f"100 * {window_total('tmux_failures_total')} "
+                    f"/ clamp_min({window_total('tmux_requests_total')}, 1)",
+                    instant=True,
+                )
+            ],
+            unit="percent",
+            thresholds=ERR_THRESHOLDS,
+            description="Requests tmux rejected.",
+        ),
+        w=8,
+        h=5,
+        links=[drill("Open Commands", "libtmux-commands")],
+    )
+    board.add(
+        stat(
+            "Branches reporting",
+            [
+                target(
+                    "count(count by (vcs_ref_head_name) ("
+                    + window_total("tmux_requests_total", "vcs_ref_head_name")
+                    + "))",
+                    instant=True,
+                )
+            ],
+            description="How many branches have data in this window.",
+        ),
+        w=8,
+        h=5,
+        links=[drill("Open Compare", "libtmux-compare")],
+    )
+    return board
+
+
+BUILDERS = (build_home, build_overview, build_transports, build_commands, build_compare)
 
 
 def write_dashboards(out_dir: pathlib.Path) -> list[pathlib.Path]:

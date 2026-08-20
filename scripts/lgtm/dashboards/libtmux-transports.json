@@ -11,7 +11,7 @@
   "version": 1,
   "editable": true,
   "graphTooltip": 1,
-  "refresh": "30s",
+  "refresh": "1m",
   "time": {
     "from": "now-1h",
     "to": "now"
