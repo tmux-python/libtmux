@@ -140,6 +140,21 @@ async def run_async(engine: t.Any, seconds: float, concurrency: int) -> None:
     await asyncio.gather(*(worker() for _ in range(concurrency)))
 
 
+def _log_lane(signals: t.Any, lane: str, totals: dict[str, int]) -> None:
+    """Log a lane's result from inside a span, so the line links to a trace.
+
+    A log record only carries trace context when a span is current; emitted
+    between lanes it would reach Loki with the run's identity but nothing to
+    click through to. Opening a short span around the record is what makes the
+    Loki-to-Tempo jump in the datasource configuration actually work.
+    """
+    with signals.tracer.start_as_current_span("tmux lane summary") as span:
+        span.set_attribute("tmux.lane", lane)
+        for key, value in totals.items():
+            span.set_attribute(f"tmux.{key}", value)
+        logger.info("lane finished", extra={"lane": lane, **totals})
+
+
 def lane_totals(counts: CountingSink) -> dict[str, int]:
     """Summarize one lane's locally observed counts."""
     return {
@@ -226,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
             with telemetry.scope(**{"libtmux.phase": f"{lane}-sync"}):
                 run_sync(engine, args.seconds)
             totals[lane] = lane_totals(counts)
-            logger.info("lane finished", extra={"lane": lane, **totals[lane]})
+            _log_lane(signals, lane, totals[lane])
 
         async_lanes = (
             ("subprocess-async", lambda: AsyncSubprocessEngine.for_server(server)),
@@ -253,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
             with telemetry.scope(**{"libtmux.phase": f"{lane}-async"}):
                 asyncio.run(drive())
             totals[lane] = lane_totals(counts)
-            logger.info("lane finished", extra={"lane": lane, **totals[lane]})
+            _log_lane(signals, lane, totals[lane])
     finally:
         subprocess.run(
             ("tmux", "-S", str(root / "smoke.sock"), "kill-server"),
