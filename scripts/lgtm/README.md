@@ -121,6 +121,11 @@ the per-lane tag scopes the CPU sampler, and the allocation profiler does not
 consult it. The other profile types Pyroscope lists — goroutines, mutex, block
 — belong to Go runtimes and stay empty for a Python process.
 
+Both transports and the notification stream were exercised against every tmux
+from 3.2a to 3.7b, with identical command and inlining counts and no dropped
+notifications on any of them. Control mode is the part most likely to drift
+between releases, so that is the half worth having checked.
+
 The workload deliberately issues commands tmux rejects. A dashboard whose error
 panel is empty is untested rather than healthy, so the failure path has to
 produce real data.
