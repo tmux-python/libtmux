@@ -51,6 +51,11 @@ A tmux command rejection is normally result data. Missing executables, dead
 persistent connections, protocol mismatches, and similar transport failures
 raise at the engine boundary.
 
+## Observe an engine
+
+Any engine can be wrapped to count or trace the tmux commands it dispatches. See
+{ref}`instrumentation`.
+
 ## Tutorials
 
 Each engine row links to its tested workflow. Start with
