@@ -86,6 +86,37 @@ def test_defaults_are_the_combination_measured_to_fit_the_budget(
     assert matrix_module.reportable_percentiles(defaults.runs) == (90, 95)
 
 
+def test_child_interpreter_refuses_and_names_the_remedy(
+    matrix_module: types.ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interpreter without libtmux must be rejected before any child runs.
+
+    Spawning from it produces a bare ModuleNotFoundError inside a child whose
+    output nobody reads, so the supervisor checks first and says what to run
+    instead.
+    """
+    system_python = "/usr/bin/python3"
+    if not pathlib.Path(system_python).exists():
+        pytest.skip("no system interpreter without libtmux available")
+    monkeypatch.setattr(matrix_module.sys, "executable", system_python)
+    # The probe is cached for the process; a stale entry would mask the guard.
+    matrix_module.child_interpreter.cache_clear()
+
+    with pytest.raises(SystemExit) as raised:
+        matrix_module.child_interpreter()
+
+    message = str(raised.value)
+    assert "libtmux" in message
+    assert "uv run python" in message, "the message must name the remedy"
+
+
+def test_child_interpreter_accepts_an_interpreter_that_can_import(
+    matrix_module: types.ModuleType,
+) -> None:
+    """The supported path must not pay for the guard with a false refusal."""
+    assert matrix_module.child_interpreter() == matrix_module.sys.executable
+
+
 def test_reportable_percentiles_track_sample_count(
     matrix_module: types.ModuleType,
 ) -> None:
