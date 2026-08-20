@@ -277,6 +277,18 @@ it.
 
 ### Development
 
+#### Local observability stack
+
+`just otel-verify` starts a Grafana LGTM container, drives a real tmux workload
+through every engine transport, and checks that each dashboard panel returns
+data. Metrics, traces, logs, and continuous profiles are emitted through the
+engine instrumentation seam, so the exporters are ordinary sinks and libtmux
+itself gains no OpenTelemetry dependency.
+
+The Grafana dashboards under `scripts/lgtm/dashboards/` are generated rather
+than hand-edited, and `scripts/otel_acceptance.py` runs each panel's own query
+and fails naming any panel that came back empty. See `scripts/lgtm/README.md`.
+
 #### CI actions updated to current majors
 
 Workflow actions moved to their current major releases: `actions/checkout` v7,

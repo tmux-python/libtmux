@@ -53,6 +53,14 @@ Repository = "https://github.com/tmux-python/libtmux"
 Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
 [dependency-groups]
+# Telemetry exporters for the local LGTM stack (scripts/lgtm/, just otel-*).
+# Kept out of `dev` so the ordinary test and type gates stay lean: libtmux
+# itself never imports OpenTelemetry, and only scripts/ do.
+otel = [
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp-proto-http",
+  "pyroscope-io",
+]
 dev = [
   # Docs (via gp-sphinx)
   "gp-sphinx==0.1.0a37",
