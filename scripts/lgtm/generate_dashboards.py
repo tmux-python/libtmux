@@ -27,9 +27,12 @@ TEMPO: dict[str, str] = {"type": "tempo", "uid": "tempo"}
 PYROSCOPE: dict[str, str] = {"type": "grafana-pyroscope-datasource", "uid": "pyroscope"}
 
 SERVICE = "libtmux-engines"
-# Every panel filters by the lane template variable, so one board serves both
-# "all transports together" and "this transport alone".
-LANE = 'tmux_lane=~"$lane"'
+# Every panel's selector, so filtering is uniform and adding a dimension here
+# reaches all of them at once. Branch is in the default scope because the usual
+# question is "did this branch change anything", and leaving it out silently
+# mixes two branches into one line.
+SCOPE = 'tmux_lane=~"$lane", vcs_ref_head_name=~"$branch"'
+LANE = SCOPE  # queries below read naturally as "the current scope"
 TAGS = ["libtmux", "generated"]
 
 BUCKET = "tmux_command_duration_seconds_bucket"
@@ -190,18 +193,18 @@ class Board:
         panel["gridPos"] = self._place(w, h)
         self._panels.append(panel)
 
-    def lane_variable(self) -> None:
-        """Add the transport selector every board filters on."""
+    def variable(self, name: str, label: str, metric_label: str) -> None:
+        """Add a multi-select variable populated from a metric's label values."""
         self._templates.append(
             {
-                "name": "lane",
-                "label": "Transport",
+                "name": name,
+                "label": label,
                 "type": "query",
                 "datasource": PROM,
                 "query": {
                     "qryType": 1,
-                    "query": "label_values(tmux_requests_total, tmux_lane)",
-                    "refId": "var-lane",
+                    "query": f"label_values(tmux_requests_total, {metric_label})",
+                    "refId": f"var-{name}",
                 },
                 "refresh": 2,
                 "sort": 1,
@@ -211,6 +214,11 @@ class Board:
                 "current": {"text": "All", "value": "$__all"},
             }
         )
+
+    def scope_variables(self) -> None:
+        """Add the selectors every board shares: transport and branch."""
+        self.variable("lane", "Transport", "tmux_lane")
+        self.variable("branch", "Branch", "vcs_ref_head_name")
 
     def to_dict(self) -> dict[str, t.Any]:
         """Render the dashboard envelope."""
@@ -466,7 +474,7 @@ def build_overview() -> Board:
             "trace behind it."
         ),
     )
-    board.lane_variable()
+    board.scope_variables()
 
     board.row("Totals")
     board.add(
@@ -609,7 +617,7 @@ def build_transports() -> Board:
             "operations, different dispatch cost."
         ),
     )
-    board.lane_variable()
+    board.scope_variables()
 
     board.row("Share of work")
     board.add(
@@ -719,7 +727,7 @@ def build_commands() -> Board:
         "libtmux / Commands",
         description="Which tmux commands the workload issues, and what they cost.",
     )
-    board.lane_variable()
+    board.scope_variables()
 
     board.row("Command mix")
     board.add(
@@ -810,7 +818,160 @@ def build_commands() -> Board:
     return board
 
 
-BUILDERS = (build_overview, build_transports, build_commands)
+def build_compare() -> Board:
+    """Build the board for comparing runs, branches, and spikes.
+
+    The other boards answer "what is happening". This one answers "is this
+    different from that", which is the question the identity attributes exist
+    to serve: same panels, grouped by whichever axis is being compared.
+    """
+    board = Board(
+        "libtmux-compare",
+        "libtmux / Compare",
+        description=(
+            "One run against another, one branch against another. Pick a spike "
+            "to scope the comparison to a single experiment."
+        ),
+        time_from="now-6h",
+    )
+    board.scope_variables()
+    board.variable("spike", "Spike", "libtmux_spike")
+
+    scoped = f'{SCOPE}, libtmux_spike=~"$spike"'
+
+    def by(label: str, metric: str) -> str:
+        return f"sum by ({label}) (increase({metric}{{{scoped}}}[$__range]))"
+
+    def quantile(quantile_value: float, label: str) -> str:
+        return (
+            f"histogram_quantile({quantile_value}, sum by (le, {label}) "
+            f"(rate({BUCKET}{{{scoped}}}[$__range])))"
+        )
+
+    board.row("By run")
+    board.add(
+        table(
+            "Runs in range",
+            [
+                target(
+                    by("libtmux_run_id", "tmux_requests_total"),
+                    "requests",
+                    fmt="table",
+                    instant=True,
+                    ref="A",
+                ),
+                target(
+                    by("libtmux_run_id", "tmux_commands_total"),
+                    "commands",
+                    fmt="table",
+                    instant=True,
+                    ref="B",
+                ),
+                target(
+                    by("libtmux_run_id", "tmux_failures_total"),
+                    "failures",
+                    fmt="table",
+                    instant=True,
+                    ref="C",
+                ),
+                target(
+                    quantile(0.95, "libtmux_run_id"),
+                    "p95",
+                    fmt="table",
+                    instant=True,
+                    ref="D",
+                ),
+            ],
+            description="Every run in the window, side by side.",
+        ),
+        w=24,
+        h=9,
+    )
+    board.add(
+        timeseries(
+            "p95 by run",
+            [target(quantile(0.95, "libtmux_run_id"), "{{libtmux_run_id}}")],
+            unit="s",
+            description="Did a run get slower than the one before it?",
+        ),
+        w=12,
+        h=8,
+    )
+    board.add(
+        timeseries(
+            "Request rate by run",
+            [
+                target(
+                    f"sum by (libtmux_run_id) "
+                    f"(rate(tmux_requests_total{{{scoped}}}[$__rate_interval]))",
+                    "{{libtmux_run_id}}",
+                )
+            ],
+            unit="reqps",
+        ),
+        w=12,
+        h=8,
+    )
+
+    board.row("By branch")
+    board.add(
+        timeseries(
+            "p95 by branch",
+            [target(quantile(0.95, "vcs_ref_head_name"), "{{vcs_ref_head_name}}")],
+            unit="s",
+            description="The regression check: one branch against another.",
+        ),
+        w=12,
+        h=8,
+    )
+    board.add(
+        piechart(
+            "Requests by branch",
+            [
+                target(
+                    by("vcs_ref_head_name", "tmux_requests_total"),
+                    "{{vcs_ref_head_name}}",
+                    instant=True,
+                )
+            ],
+        ),
+        w=12,
+        h=8,
+    )
+    board.add(
+        table(
+            "Branch summary",
+            [
+                target(
+                    by("vcs_ref_head_name", "tmux_requests_total"),
+                    "requests",
+                    fmt="table",
+                    instant=True,
+                    ref="A",
+                ),
+                target(
+                    by("vcs_ref_head_name", "tmux_inlined_total"),
+                    "inlined",
+                    fmt="table",
+                    instant=True,
+                    ref="B",
+                ),
+                target(
+                    quantile(0.95, "vcs_ref_head_name"),
+                    "p95",
+                    fmt="table",
+                    instant=True,
+                    ref="C",
+                ),
+            ],
+        ),
+        w=24,
+        h=8,
+    )
+    return board
+
+
+BUILDERS = (build_overview, build_transports, build_commands, build_compare)
 
 
 def write_dashboards(out_dir: pathlib.Path) -> list[pathlib.Path]:
