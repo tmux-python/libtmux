@@ -66,6 +66,17 @@ _TERMINAL_SAFE_COMPONENT_ALPHABET = frozenset(
 _SENTINEL_COMPONENT_MAX_BYTES = 128
 _SENTINEL_RECORD_MAX_BYTES = 422
 _WAIT_TIMEOUT_MAX_S = 3.0
+# tmux exits 1 when no server is listening on the socket -- "no server running
+# on <path>", or "error connecting to <path>" when the socket is gone too. For
+# a teardown that is the goal state, not a failure, and a server can finish
+# exiting on its own between the ownership check and the kill landing. The
+# larger the topology the likelier that race: an 80x20x1 rung loses it
+# routinely, which used to record a cleanup error for a cleanup that had
+# succeeded and, because complete cleanup requires an empty error list, failed
+# the whole rung -- stopping the escalating stress harness and understating the
+# ceiling it exists to measure. Absence of the owning process is the evidence
+# that settles it.
+_TMUX_NO_SERVER_STATUS = 1
 _WAIT_FRAME_RATE_MAX_HZ = 40.0
 _REPORT_SCHEMA_VERSION = 3
 _PROGRESS_SCHEMA_VERSION = 2
@@ -5332,7 +5343,11 @@ def _kill_exact_tmux_socket(
                 helper_registry.close()
         if helper_timed_out:
             errors.append("exact socket kill-server timed out")
-        elif helper.returncode != 0:
+        elif helper.returncode not in (0, _TMUX_NO_SERVER_STATUS):
+            # Any other non-zero status is the helper behaving unexpectedly
+            # rather than tmux reporting an absent server, so it is worth
+            # reporting even when the fallback signals below rescue the
+            # teardown.
             errors.append(f"exact socket kill-server exited {helper.returncode}")
 
     survivors = _wait_identity_absence((owner,), timeout_s=timeout_s)
@@ -5345,6 +5360,10 @@ def _kill_exact_tmux_socket(
         errors.append(
             f"server pid {owner.pid} with start time {owner.start_time} remains"
         )
+        if helper is not None and helper.returncode == _TMUX_NO_SERVER_STATUS:
+            # The server outlived a kill that reported no server: worth saying,
+            # but only now that its survival is established.
+            errors.append("exact socket kill-server found no server, yet one remains")
     elif socket_path.exists():
         errors.extend(_remove_proven_stale_socket(socket_path, socket_ownership))
     return tuple(errors)
