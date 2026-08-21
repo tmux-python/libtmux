@@ -249,6 +249,25 @@ Going through the sink instead means it lands under the same metric names and
 the same branch, worktree, and spike labels as every other run, and the two are
 directly comparable.
 
+### How long a run can be
+
+The shipped scenarios run 10 and 16 seconds, but a long `--duration` is safe:
+a steady run holds about 100 MB resident whatever its length, growing by
+roughly 100 bytes per iteration rather than accumulating.
+
+That depends on the rampa version. Through 0.0.1a1, `rampa run` attached its
+sample buffer unconditionally, so every metric sample was retained for the
+whole run even when no configured output would read it. On this workload that
+was about 1.75 KB per iteration -- 4 MB/s, climbing linearly with no plateau to
+2.25 GB after nine minutes, which on a memory-capped host ends in swap rather
+than a clean error. If a run's memory climbs steadily, check whether rampa
+predates that fix before looking anywhere else.
+
+The tmux server's pane runs a holding command that outlasts any plausible
+`--duration` by design. If it exited first the window would close, the last
+window closing would end the session, and the server would go with it
+mid-run -- `destroy-unattached off` only survives *detach*.
+
 ## Why the acceptance check exists
 
 A dashboard that renders is not a dashboard that works. A panel whose query
