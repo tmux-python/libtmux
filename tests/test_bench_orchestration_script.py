@@ -9311,6 +9311,15 @@ def test_cli_watchdog_recovers_stalled_worker_and_exact_resources(
     _assert_terminal_cleanup(payload)
 
 
+# The progress watchdog is a *no-progress* timer, so a test that parks a worker
+# at a checkpoint must first let the run reach it. The slowest step before any
+# stall point is starting a tmux server, which takes well under a second idle
+# but seconds on a loaded machine. Sub-second values made these two tests fail
+# whenever the box was busy -- 2 of 6 runs at load 19 -- while testing nothing
+# about the threshold itself: they assert what the run recorded, not how fast.
+_STALL_TEST_WATCHDOG_S = "10"
+
+
 def test_cli_watchdog_recovers_stall_after_atomic_server_ownership(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -9330,9 +9339,9 @@ def test_cli_watchdog_recovers_stall_after_atomic_server_ownership(
         "--scratch-root",
         str(tmp_path / "scratch"),
         "--watchdog-seconds",
-        "0.3",
+        _STALL_TEST_WATCHDOG_S,
         "--cleanup-grace-seconds",
-        "0.3",
+        "1.0",
         "--_test-stall-after",
         "identity.server.socket",
         cwd=tmp_path,
@@ -11938,9 +11947,9 @@ def test_cli_process_identity_mismatch_never_signals_unrelated_pid(
             "--scratch-root",
             str(tmp_path / "scratch"),
             "--watchdog-seconds",
-            "0.2",
+            _STALL_TEST_WATCHDOG_S,
             "--cleanup-grace-seconds",
-            "0.3",
+            "1.0",
             "--_test-extra-identity",
             f"unrelated:{unrelated.pid}:{start_time + 1}",
             "--_test-stall-after",
@@ -12716,3 +12725,97 @@ def test_cli_ramp_phase_failure_marks_later_shapes_not_attempted(
     assert child["failed_phase"] == "setup"
     _assert_terminal_cleanup(child)
     assert payload["cleanup"]["complete"] is True
+
+
+def test_stalled_worker_gives_up_after_its_deadline(
+    benchmark_module: types.ModuleType,
+) -> None:
+    """``--_test-stall-after`` must not wait forever.
+
+    The stall exists so the cancellation tests can prove the supervisor reaps a
+    parked worker. It used to be ``while True``, which is only correct while
+    something is alive to do the reaping.
+    """
+    started = time.monotonic()
+
+    benchmark_module._stall_until_reaped(max_seconds=0.3)
+
+    assert time.monotonic() - started < 10.0, "the stall never returned"
+    # The shipped bound must be finite too, not just the injected one.
+    assert 0 < benchmark_module._STALL_MAX_S < 3600
+
+
+def test_stalled_worker_exits_when_its_spawner_dies(
+    tmp_path: pathlib.Path,
+) -> None:
+    """An orphaned stall exits instead of blocking the machine's benchmarks.
+
+    A test that fails, times out, or is interrupted leaves the worker parked
+    with nobody to cancel it. That is not a quiet leak: the benchmark preflight
+    refuses to start while any benchmark process is running, so one orphan
+    refuses every subsequent run until reboot. Observed in practice at 1h44m
+    old, with its pytest temporary directory long deleted.
+    """
+    root = pathlib.Path(__file__).parents[1]
+    bench = root / "scripts" / "bench_orchestration.py"
+
+    stall = tmp_path / "stall.py"
+    stall.write_text(
+        # Registered in sys.modules before exec: dataclasses resolve their
+        # field types through sys.modules[cls.__module__], which is None for a
+        # module loaded by path alone.
+        "import importlib.util, sys\n"
+        "spec = importlib.util.spec_from_file_location(\n"
+        f"    'bench_probe', {str(bench)!r}\n"
+        ")\n"
+        "module = importlib.util.module_from_spec(spec)\n"
+        "sys.modules['bench_probe'] = module\n"
+        "spec.loader.exec_module(module)\n"
+        "module._stall_until_reaped()\n"
+    )
+    spawner = tmp_path / "spawner.py"
+    spawner.write_text(
+        "import subprocess, sys, time\n"
+        f"child = subprocess.Popen([sys.executable, {str(stall)!r}])\n"
+        "print(child.pid, flush=True)\n"
+        "time.sleep(3600)\n"
+    )
+
+    env = os.environ.copy()
+    env.pop("VIRTUAL_ENV", None)
+    parent = subprocess.Popen(
+        (sys.executable, str(spawner)),
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert parent.stdout is not None
+        orphan_pid = int(parent.stdout.readline().strip())
+        # Let it reach the stall before its spawner is taken away.
+        time.sleep(2.0)
+        assert _pid_alive(orphan_pid), "the stall never started"
+
+        parent.kill()
+        parent.wait(timeout=10)
+
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline and _pid_alive(orphan_pid):
+            time.sleep(0.2)
+        assert not _pid_alive(orphan_pid), (
+            "orphaned stall survived its spawner and would block future runs"
+        )
+    finally:
+        if parent.poll() is None:
+            parent.kill()
+
+
+def _pid_alive(pid: int) -> bool:
+    """Report whether *pid* is still running, ignoring zombies."""
+    try:
+        state = pathlib.Path(f"/proc/{pid}/stat").read_bytes()
+    except OSError:
+        return False
+    fields = state[state.rfind(b")") + 2 :].split()
+    return bool(fields) and fields[0] != b"Z"
