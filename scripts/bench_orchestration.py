@@ -66,6 +66,9 @@ _TERMINAL_SAFE_COMPONENT_ALPHABET = frozenset(
 _SENTINEL_COMPONENT_MAX_BYTES = 128
 _SENTINEL_RECORD_MAX_BYTES = 422
 _WAIT_TIMEOUT_MAX_S = 3.0
+# Longest a `--_test-stall-after` worker waits to be cancelled before giving up.
+# The cancellation tests assert within seconds; this only has to outlast them.
+_STALL_MAX_S = 120.0
 # tmux exits 1 when no server is listening on the socket -- "no server running
 # on <path>", or "error connecting to <path>" when the socket is gone too. For
 # a teardown that is the goal state, not a failure, and a server can finish
@@ -11247,6 +11250,44 @@ def _progress_event_from_json(value: object) -> ProgressEvent:
     return event
 
 
+def _stall_until_reaped(max_seconds: float | None = None) -> None:
+    """Wait to be cancelled, but never longer than the caller can outlive.
+
+    ``--_test-stall-after`` parks a worker mid-run so the cancellation tests
+    can prove the supervisor reaps it. The wait used to be ``while True``, which
+    is correct only while the test is alive to do the reaping: a test that
+    failed, timed out, or was interrupted left the worker stalled forever. That
+    is not a quiet leak, because :func:`_preflight` refuses to start while any
+    benchmark process is running -- so one orphan blocks every subsequent
+    benchmark on the machine until reboot. Observed in practice: a stalled
+    worker from a load-flaked test run was still parked 1h44m later, with its
+    pytest temporary directory long deleted, and it refused three unrelated
+    matrix runs.
+
+    Two exits, both cheap: the parent going away means nobody is left to
+    cancel, and the deadline covers the case where the parent survives but
+    forgets.
+
+    Parameters
+    ----------
+    max_seconds : float | None
+        Longest to wait. ``None`` uses :data:`_STALL_MAX_S`; passing a value
+        keeps the bound testable without patching a module global.
+
+    Examples
+    --------
+    >>> _stall_until_reaped(0.0)
+    """
+    original_parent = os.getppid()
+    limit = _STALL_MAX_S if max_seconds is None else max_seconds
+    deadline = time.monotonic() + limit
+    while time.monotonic() < deadline:
+        # Reparenting is the portable signal that the spawner died.
+        if os.getppid() != original_parent:
+            return
+        time.sleep(0.05)
+
+
 @dataclasses.dataclass
 class _WorkerRecorder:
     """Own worker checkpoints and the append-only progress sequence.
@@ -11323,8 +11364,7 @@ class _WorkerRecorder:
         )
         write_json_atomic(self.checkpoint_path, self.report)
         if self.stall_after == name:
-            while True:
-                time.sleep(0.05)
+            _stall_until_reaped()
 
     def record_identity(self, identity: ProcessIdentity) -> None:
         """Publish one exact identity once, at the moment it becomes known.
