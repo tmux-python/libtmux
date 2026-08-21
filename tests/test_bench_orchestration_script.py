@@ -3196,6 +3196,67 @@ def test_exact_socket_fallback_kills_only_the_configured_tmux_server(
     assert not unrelated.exists()
 
 
+def test_exact_socket_reports_no_error_when_the_server_exits_first(
+    benchmark_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Losing the race to tmux's own exit is a successful teardown, not an error.
+
+    ``kill-server`` exits 1 when no server is listening, which is precisely the
+    state cleanup is trying to reach. A server can finish exiting between the
+    ownership check and the kill landing, and the bigger the topology the more
+    routinely it does. Recording that as an error failed rungs whose teardown
+    had worked, which stopped the escalating stress harness early and
+    understated the pane ceiling it measures.
+    """
+    target = tmp_path / "target.sock"
+    created = subprocess.run(
+        ("tmux", "-S", str(target), "new-session", "-d", "-s", "keepalive"),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert created.returncode == 0, created.stderr
+    ownership = benchmark_module._capture_socket_ownership(target, timeout_s=1.0)
+
+    real_popen = subprocess.Popen
+
+    def let_the_server_win_the_race(
+        args: t.Any,
+        **kwargs: t.Any,
+    ) -> subprocess.Popen[bytes]:
+        if tuple(args) == ("tmux", "-S", str(target), "kill-server"):
+            # Stand in for the server finishing on its own a moment early. The
+            # real kill-server still runs, and still reports what tmux really
+            # reports for an absent server.
+            os.kill(ownership.process.pid, signal.SIGTERM)
+            benchmark_module._wait_identity_absence((ownership.process,), timeout_s=5.0)
+        return t.cast("subprocess.Popen[bytes]", real_popen(args, **kwargs))
+
+    monkeypatch.setattr(
+        benchmark_module.subprocess, "Popen", let_the_server_win_the_race
+    )
+    registry = benchmark_module._PidfdRegistry()
+    # Retained while the server is still alive: a pidfd is what lets absence be
+    # proven afterwards without risking a reused pid.
+    assert registry.retain(ownership.process)
+    try:
+        errors = benchmark_module._kill_exact_tmux_socket(
+            target,
+            timeout_s=5.0,
+            process_handles=registry,
+            socket_ownership=ownership,
+        )
+
+        assert errors == (), errors
+        assert not benchmark_module.process_identity_matches(ownership.process)
+        assert not target.exists()
+    finally:
+        registry.close()
+        benchmark_module._remove_proven_stale_socket(target, ownership)
+
+
 def test_cleanup_preserves_live_replacement_after_original_server_exits(
     benchmark_module: types.ModuleType,
     tmp_path: pathlib.Path,
