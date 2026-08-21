@@ -64,6 +64,74 @@ def test_ladders_escalate_pane_pressure(stress_module: types.ModuleType) -> None
         assert panes[-1] > panes[0]
 
 
+def test_watchdog_allowance_grows_with_the_rung(
+    stress_module: types.ModuleType,
+) -> None:
+    """Every rung on a ladder gets at least as much slack as the one below it.
+
+    The benchmark's own default is flat, and one control/async pass measured
+    14.3s at 400 panes against 177.5s at 1600. A fixed allowance therefore
+    reports the larger rung as stuck when it is only slower, which stops the
+    ladder before it reaches anything real.
+    """
+    for axis in ("panes", "windows", "sessions"):
+        allowances = [
+            stress_module.watchdog_seconds(rung, 3600.0)
+            for rung in stress_module.ladder(axis)
+        ]
+        assert allowances == sorted(allowances)
+        assert allowances[-1] > allowances[0]
+        assert min(allowances) > 120.0, "every rung beats the flat default"
+
+
+def test_watchdog_allowance_never_outlives_the_rung_limit(
+    stress_module: types.ModuleType,
+) -> None:
+    """A stuck rung is still killed by the hard per-rung limit."""
+    biggest = max(stress_module.ladder("panes"), key=lambda rung: rung.panes)
+
+    assert stress_module.watchdog_seconds(biggest, 90.0) == 90.0
+
+
+def test_rung_passes_its_scaled_watchdog_to_the_benchmark(
+    stress_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """The allowance has to reach the child, not just be computable."""
+    shape = stress_module.Shape(80, 20, 1)
+    seen: list[tuple[str, ...]] = []
+
+    class _Finished:
+        returncode = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    def record(command: tuple[str, ...], **kwargs: object) -> _Finished:
+        seen.append(tuple(command))
+        return _Finished()
+
+    # Resolved rather than probed: child_interpreter() shells out itself, and
+    # a Popen stub would otherwise intercept that probe instead of the rung.
+    monkeypatch.setattr(stress_module, "child_interpreter", lambda: sys.executable)
+    monkeypatch.setattr(stress_module.subprocess, "Popen", record)
+    stress_module.run_rung(
+        shape,
+        lane="control",
+        mode="async",
+        evidence_root=tmp_path,
+        timeout_s=900.0,
+    )
+
+    assert seen, "the benchmark was never invoked"
+    command = seen[0]
+    assert "--watchdog-seconds" in command
+    passed = float(command[command.index("--watchdog-seconds") + 1])
+    assert passed == stress_module.watchdog_seconds(shape, 900.0)
+    assert passed > 120.0
+
+
 def test_shape_supports_column_alignment(stress_module: types.ModuleType) -> None:
     """The reporting loop aligns shapes, which a bare dataclass rejects."""
     shape = stress_module.Shape(80, 20, 2)
