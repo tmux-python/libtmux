@@ -51,6 +51,14 @@ import typing as t
 _BENCHMARK = pathlib.Path(__file__).with_name("bench_orchestration.py")
 _SCRATCH_PREFIX = "lts-"
 _MEMORY_FLOOR_BYTES = 8 * 1024**3
+# The benchmark's own progress watchdog is a flat 120s, which does not scale
+# with the topology a rung builds. Measured on this ladder's own shapes, one
+# control/async pass costs 14.3s at 400 panes, 24.0s at 800, 52.5s at 1200 and
+# 177.5s at 1600 -- superlinear, so a fixed allowance turns into a false
+# failure exactly where the harness is meant to be measuring. These give a
+# per-rung allowance instead, still bounded by --rung-timeout-seconds.
+_WATCHDOG_BASE_S = 120.0
+_WATCHDOG_PER_PANE_S = 0.25
 
 
 @functools.lru_cache(maxsize=1)
@@ -251,6 +259,43 @@ def rung_outcome(artifact: pathlib.Path, returncode: int | None) -> dict[str, ob
     }
 
 
+def watchdog_seconds(shape: Shape, rung_timeout_s: float) -> float:
+    """Return the progress-gap allowance for *shape*, capped by the rung limit.
+
+    The allowance has to grow with the topology: the same phase that finishes
+    well inside 120 seconds at 400 panes needs several times that at 1600, so a
+    flat watchdog reports a slow rung as a stuck one and stops the ladder short
+    of anything real. The cap keeps a genuinely stuck rung from outliving the
+    hard per-rung limit that would have killed it anyway.
+
+    Parameters
+    ----------
+    shape : Shape
+        Topology this rung builds.
+    rung_timeout_s : float
+        Hard limit for the whole rung, which the allowance never exceeds.
+
+    Returns
+    -------
+    float
+        Seconds a rung may make no progress before it is declared stuck.
+
+    Examples
+    --------
+    >>> watchdog_seconds(Shape(80, 20, 1), 900.0)
+    520.0
+    >>> watchdog_seconds(Shape(20, 20, 1), 900.0)
+    220.0
+
+    A large topology is bounded by the rung limit rather than the formula:
+
+    >>> watchdog_seconds(Shape(80, 20, 4), 900.0)
+    900.0
+    """
+    scaled = _WATCHDOG_BASE_S + shape.panes * _WATCHDOG_PER_PANE_S
+    return min(scaled, rung_timeout_s)
+
+
 def run_rung(
     shape: Shape,
     *,
@@ -295,6 +340,8 @@ def run_rung(
         str(out / "report.json"),
         "--scratch-root",
         str(scratch),
+        "--watchdog-seconds",
+        str(watchdog_seconds(shape, timeout_s)),
     )
     started = time.monotonic()
     returncode: int | None = None
