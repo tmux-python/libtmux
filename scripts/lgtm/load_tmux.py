@@ -16,11 +16,13 @@ Run it through ``just otel-load``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import typing as t
 import uuid
 
@@ -75,11 +77,108 @@ GROUPED = CommandRequest.from_args(
 # transport, which is the opposite of the point.
 _STATE: dict[str, t.Any] = {}
 
+_ROOT_PREFIX = "libtmux-load-"
+
+# The holding command for the server's one pane. When it exits the window
+# closes, the last window closing ends the session, and the server exits with
+# it -- `destroy-unattached off` does not prevent that, it only survives
+# *detach*. So this value is the ceiling on how long a run can last, not a
+# cleanup mechanism, and it is set far above any plausible `--duration`.
+# Cleanup is `teardown` plus `_reap_stale_roots`, which do not depend on it.
+_HOLD_COMMAND = "sleep 86400"
+
+
+def _process_identity(pid: int) -> str | None:
+    """Return a pid's start time, or ``None`` when the pid is not running.
+
+    Pairing the pid with its start time is what makes a staleness claim safe:
+    pids are reused, and reaping on a bare pid check could delete a live run's
+    server the moment the kernel handed its number to something else.
+    """
+    try:
+        stat = pathlib.Path(f"/proc/{pid}/stat").read_bytes()
+    except OSError:
+        return None
+    # `comm` is parenthesised and may itself contain spaces or parens, so the
+    # fields are counted from the last ')' rather than by splitting the line.
+    fields = stat[stat.rfind(b")") + 2 :].split()
+    try:
+        return fields[19].decode()
+    except IndexError:
+        return None
+
+
+def _reap_stale_roots() -> None:
+    """Remove load roots whose owning process is gone.
+
+    ``teardown`` is the normal cleanup path and rampa runs it after SIGINT too.
+    SIGKILL runs no user code at all, so a killed run strands its tmux server,
+    that server's pane, and this directory -- each holding a pty -- with nothing
+    left to reclaim them. This is the path that survives any exit, because it
+    runs at the *start* of the next run rather than the end of the last one.
+
+    A root is only removed once its owner is proven absent. A root whose owner
+    is still running belongs to a concurrent run and is left alone; so is a root
+    with no owner file that still has a tmux bound to it, since stealing another
+    run's server would be worse than leaking this one.
+    """
+    reaped = 0
+    for root in pathlib.Path(tempfile.gettempdir()).glob(f"{_ROOT_PREFIX}*"):
+        if not root.is_dir():
+            continue
+        socket_path = root / "load.sock"
+        owner = root / "owner"
+        if owner.exists():
+            try:
+                pid_text, identity = owner.read_text().split()
+                if _process_identity(int(pid_text)) == identity:
+                    continue  # a live run owns this root
+            except (OSError, ValueError):
+                pass  # unreadable owner file: fall through to the socket probe
+        elif _socket_has_server(socket_path):
+            continue  # predates the owner file and is still in use
+        with contextlib.suppress(Exception):
+            subprocess.run(
+                ("tmux", "-S", str(socket_path), "kill-server"),
+                capture_output=True,
+                check=False,
+            )
+            shutil.rmtree(root, ignore_errors=True)
+            reaped += 1
+    if reaped:
+        print(f"reaped {reaped} stale load root(s)", file=sys.stderr)
+
+
+def _socket_has_server(socket_path: pathlib.Path) -> bool:
+    """Report whether a tmux server is answering on *socket_path*.
+
+    ``kill-server`` and every other tmux subcommand exit 1 when no server is
+    listening, so the check is the exit status of the cheapest read-only
+    command rather than the presence of the socket file, which outlives its
+    server.
+    """
+    try:
+        return (
+            subprocess.run(
+                ("tmux", "-S", str(socket_path), "list-sessions"),
+                capture_output=True,
+                check=False,
+                timeout=5,
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
 
 def _server() -> tuple[Server, pathlib.Path]:
     """Create the throwaway tmux server this run drives."""
-    root = pathlib.Path(f"/tmp/libtmux-load-{uuid.uuid4().hex[:8]}")
+    root = pathlib.Path(tempfile.gettempdir()) / f"{_ROOT_PREFIX}{uuid.uuid4().hex[:8]}"
     root.mkdir(mode=0o700)
+    # Written before the server exists, so a kill between mkdir and new-session
+    # still leaves a root the next run can prove stale.
+    identity = _process_identity(os.getpid())
+    (root / "owner").write_text(f"{os.getpid()} {identity}")
     socket_path = root / "load.sock"
     subprocess.run(
         (
@@ -92,7 +191,7 @@ def _server() -> tuple[Server, pathlib.Path]:
             "-d",
             "-s",
             "load",
-            "sleep 600",
+            _HOLD_COMMAND,
         ),
         check=True,
     )
@@ -137,6 +236,10 @@ def _engine() -> t.Any:
             # Resolve the factory before anything is created, so a failure here
             # cannot leave a tmux server behind.
             factory = LANES[LANE]
+            # Reclaim what an earlier killed run stranded. Runs here rather than
+            # at import so a scenario listing does not touch other runs' roots,
+            # and behind the latch so it happens once per run, not per iteration.
+            _reap_stale_roots()
             server, root = _server()
             _STATE["root"] = root
             signals = telemetry.build(
