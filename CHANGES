@@ -82,6 +82,13 @@ covered too.
 Keystrokes sent with {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` are still
 logged as given — libtmux cannot tell a password from a command.
 
+#### `Server.kill_session()` logs the session it killed (#744)
+
+Killing a session through {meth}`Server.kill_session()
+<libtmux.Server.kill_session>` emitted no lifecycle record, while
+{meth}`Session.kill() <libtmux.Session.kill>` emitted one for the same
+user-visible operation. Both now log `session killed`.
+
 #### One command line, one shape (#744)
 
 `tmux_cmd` reported two different strings depending on which module logged it:
