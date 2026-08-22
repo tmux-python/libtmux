@@ -49,23 +49,24 @@ _Notes on the upcoming release will go here._
 
 #### Log records name which tmux server they came from (#744)
 
-Command records now carry `tmux_socket`, the socket name or path the command
-addressed, so an application driving more than one tmux server can tell their
-records apart. Every command record also carries `tmux_subcommand`, derived
-from the command line rather than hand-written at each call site, so it is
-present for every tmux subcommand libtmux runs instead of only the ones with
-bespoke logging.
+Command and lifecycle records now carry `tmux_socket`, the socket name or path
+the operation addressed, so an application driving more than one tmux server
+can tell their records apart. Command records for tmux subcommands also carry
+`tmux_subcommand`, derived from the command line rather than hand-written at
+each call site. Socket identities containing control characters stay on one
+log line.
 
 #### Failed tmux commands are logged at `ERROR` (#744)
 
-{func}`~libtmux.common.raise_if_stderr` emits one `ERROR` record before raising,
-carrying the exit code, socket, and command line that the exception message does
-not. The record is attributed to the libtmux method that ran the command, so
-`%(filename)s` and OpenTelemetry's `code.filepath` locate the failure. This matters most for the list accessors, which swallow tmux errors by
-design: {attr}`Server.sessions <libtmux.Server.sessions>` still returns an empty
+Every public operation that cannot start tmux or treats tmux stderr as a
+failure now emits the same `ERROR` record before preserving its existing
+exception type. The record carries the socket and command line, plus the exit
+code when available, and points at the libtmux method that ran the command.
+This matters most for list accessors that swallow tmux errors:
+{attr}`Server.sessions <libtmux.Server.sessions>` still returns an empty
 {class}`~libtmux._internal.query_list.QueryList` when tmux is unreachable, but
-now says why. Paths that expect a non-zero exit, such as
-{meth}`Server.is_alive() <libtmux.Server.is_alive>`, do not log an error.
+now says why. Expected non-zero probes such as
+{meth}`Server.is_alive() <libtmux.Server.is_alive>` stay quiet.
 
 ### Fixes
 
@@ -77,14 +78,16 @@ entry, so a badly formed list produced a burst of identical records every time
 options were read. It now warns once for the option, with `tmux_option_skipped`
 counting what it dropped.
 
-#### Pane and buffer content stays out of debug records (#744)
+#### Sensitive tmux content stays out of debug records (#744)
 
-{meth}`Pane.capture_pane() <libtmux.Pane.capture_pane>`, `show-buffer`, and
-`list-buffers` return whatever was on a screen or in a paste buffer, and every
-line of it was written to a `DEBUG` record — so a captured pane put its contents,
-including anything typed at a prompt, into the log. Those commands now report
-`tmux_stdout_len` alone, the way an HTTP client logs a content length rather
-than a body. The calls return exactly what they always did.
+Pane capture, buffer reads, environment inspection, message history, and prompt
+history now report `tmux_stdout_len` without copying their content into
+`tmux_stdout`. Buffer payloads passed to {meth}`Server.set_buffer()
+<libtmux.Server.set_buffer>` are replaced with `REDACTED` in `tmux_cmd`. The
+calls retain their existing results.
+
+tmux aliases and unambiguous command abbreviations inherit the same redaction
+policy as the corresponding full command names.
 
 #### An unparseable row of tmux output says so (#744)
 
@@ -98,31 +101,29 @@ what distinguishes a value that contained a separator from any other cause.
 #### Environment values are hidden coming back, too (#744)
 
 Redacting what libtmux sends only covered half the round trip: tmux returns the
-same values on stdout, so {meth}`getenv() <libtmux.common.EnvironmentMixin.getenv>`
-and {meth}`show_environment() <libtmux.common.EnvironmentMixin.show_environment>`
-wrote to a `DEBUG` record the very value
-{meth}`set_environment() <libtmux.common.EnvironmentMixin.set_environment>` had
-been careful to keep out of one. Their records now show the names alone, while
-the calls return what they always did.
+same values on stdout, and a value may span lines after tmux output is split.
+Environment-query records now omit `tmux_stdout` content entirely while
+retaining `tmux_stdout_len`; {meth}`getenv()
+<libtmux.common.EnvironmentMixin.getenv>` and {meth}`show_environment()
+<libtmux.common.EnvironmentMixin.show_environment>` keep their existing API
+results.
 
 #### Command content cannot forge a log record (#744)
 
 A tmux command line carries whatever the caller passed it — the keys
 {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` sends, a start directory, a
-window command. A newline among them ended the `DEBUG` record early in any
-line-oriented log, leaving the remainder to read as a record of its own. An
-argument holding control characters is now written in shell `$'…'` form, which
-`bash` and `zsh` expand back to the original bytes, so the command line still
-pastes and reproduces the call while staying on one line. Terminal escape
-sequences are rendered rather than passed through to whatever reads the log.
+window command. A line boundary among them ended the `DEBUG` record early in
+any line-oriented log, leaving the remainder to read as a record of its own.
+An argument holding control characters is now written in shell `$'…'` form,
+which keeps the rendering familiar and pasteable for ordinary tmux arguments
+while staying on one line. Terminal escape sequences are rendered rather than
+passed through to whatever reads the log.
 
 #### An over-long command no longer floods the log (#744)
 
-A command larger than tmux accepts was rejected by tmux but still written to
-three log records in full, so a single oversized {meth}`Server.set_buffer()
-<libtmux.Server.set_buffer>` could put hundreds of kilobytes into a `DEBUG` log.
-`tmux_cmd` is now capped at the size of the largest command tmux will run, and
-a shortened one ends in an ellipsis so it is recognisable as such.
+A caller-composed command that tmux rejects as too large could still be copied
+into multiple `DEBUG` records in full. `tmux_cmd` is now bounded, and a
+shortened rendering ends in an ellipsis.
 
 #### Environment values no longer appear in logs (#744)
 
