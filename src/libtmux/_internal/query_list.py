@@ -102,11 +102,7 @@ def keygetter(
                 dct = getattr(dct, sub_field)
 
     except Exception:
-        logger.debug(
-            "key lookup failed for path: %s",
-            path,
-            exc_info=True,
-        )
+        logger.debug("key lookup failed for path: %s", path)
         return None
 
     return dct
@@ -146,11 +142,7 @@ def parse_lookup(
             if field_name is not None:
                 return keygetter(obj, field_name)
     except Exception:
-        logger.debug(
-            "lookup parsing failed for path: %s",
-            path,
-            exc_info=True,
-        )
+        logger.debug("lookup parsing failed for path: %s", path)
     return None
 
 

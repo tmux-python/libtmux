@@ -14,6 +14,7 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
+from libtmux._internal.log_context import object_extra
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -286,10 +287,7 @@ def session(
         server.kill_session(old_test_session)
         logger.debug(
             "old test session killed",
-            extra={
-                "tmux_session": old_test_session,
-                "tmux_subcommand": "kill-session",
-            },
+            extra=object_extra("kill-session", session=old_test_session),
         )
     assert session.session_name == TEST_SESSION_NAME
     assert TEST_SESSION_NAME != "tmuxp"

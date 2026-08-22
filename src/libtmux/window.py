@@ -14,6 +14,7 @@ import shlex
 import typing as t
 import warnings
 
+from libtmux._internal.log_context import object_extra
 from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
@@ -1385,14 +1386,14 @@ class Window(
         self.window_name = new_name
         self.refresh()
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "rename-window",
-        }
-        if self.window_name is not None:
-            extra["tmux_window"] = str(self.window_name)
-        if self.window_id is not None:
-            extra["tmux_target"] = str(self.window_id)
-        logger.info("window renamed", extra=extra)
+        logger.info(
+            "window renamed",
+            extra=object_extra(
+                "rename-window",
+                window=self.window_name,
+                target=self.window_id,
+            ),
+        )
 
         return self
 
@@ -1448,15 +1449,14 @@ class Window(
 
         raise_if_stderr(proc, "kill-window")
 
-        msg = "other windows killed" if all_except else "window killed"
-        extra: dict[str, str] = {
-            "tmux_subcommand": "kill-window",
-        }
-        if self.window_name is not None:
-            extra["tmux_window"] = str(self.window_name)
-        if self.window_id is not None:
-            extra["tmux_target"] = str(self.window_id)
-        logger.info(msg, extra=extra)
+        logger.info(
+            "other windows killed" if all_except else "window killed",
+            extra=object_extra(
+                "kill-window",
+                window=self.window_name,
+                target=self.window_id,
+            ),
+        )
 
     def move_window(
         self,
