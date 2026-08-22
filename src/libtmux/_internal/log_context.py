@@ -23,9 +23,22 @@ __all__ = (
 REDACTED = "REDACTED"
 """Placeholder substituted for environment values in logged command lines.
 
-Chosen to survive :func:`shlex.join` unquoted, so quoting in a logged command
-line still marks a genuinely quoted argument.
+Chosen to survive quoting untouched, so quoting in a logged command line
+still marks a genuinely quoted argument.
 """
+
+_CONTROL_CHARS = frozenset(chr(code) for code in range(0x20)) | {"\x7f"}
+
+_CONTROL_ESCAPES = {
+    "\a": r"\a",
+    "\b": r"\b",
+    "\t": r"\t",
+    "\n": r"\n",
+    "\v": r"\v",
+    "\f": r"\f",
+    "\r": r"\r",
+    "\x1b": r"\e",
+}
 
 _VALUE_FLAGS = frozenset("cfLST")
 """tmux global flags that consume the argument after them.
@@ -53,6 +66,50 @@ read as an environment pair.
 
 _SETENV_SUBCOMMANDS = frozenset({"set-environment", "setenv"})
 """Subcommands shaped ``[-Fhgru] [-t target] variable [value]``."""
+
+
+def _quote(token: str) -> str:
+    r"""Quote one argument for a log record, keeping control characters out.
+
+    A caller controls much of what reaches a tmux command line — the keys
+    :meth:`Pane.send_keys` sends, a start directory, a window command. A
+    newline among them would end the log line early and let the remainder pose
+    as a record of its own, so a token carrying control characters is rendered
+    with shell ANSI-C quoting: ``bash`` and ``zsh`` still reproduce the exact
+    bytes when the line is pasted, but the line itself stays on one line.
+
+    Examples
+    --------
+    >>> _quote("plain")
+    'plain'
+
+    >>> _quote("has space")
+    "'has space'"
+
+    A newline cannot break out of the record:
+
+    >>> _quote("echo hi\nCRITICAL forged")
+    "$'echo hi\\nCRITICAL forged'"
+
+    Neither can an escape sequence reach the terminal reading the log:
+
+    >>> _quote("\x1b[31mred")
+    "$'\\e[31mred'"
+    """
+    if not _CONTROL_CHARS.intersection(token):
+        return shlex.quote(token)
+
+    escaped = []
+    for char in token:
+        if char in {"\\", "'"}:
+            escaped.append("\\" + char)
+        elif char in _CONTROL_ESCAPES:
+            escaped.append(_CONTROL_ESCAPES[char])
+        elif char in _CONTROL_CHARS:
+            escaped.append(f"\\x{ord(char):02x}")
+        else:
+            escaped.append(char)
+    return "$'" + "".join(escaped) + "'"
 
 
 class CommandContext(t.NamedTuple):
@@ -146,7 +203,9 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
     return CommandContext(
         subcommand=subcommand,
         socket=socket,
-        command=shlex.join(_redact(tokens, subcommand, subcommand_index)),
+        command=" ".join(
+            _quote(token) for token in _redact(tokens, subcommand, subcommand_index)
+        ),
     )
 
 

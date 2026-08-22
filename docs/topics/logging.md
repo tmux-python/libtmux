@@ -57,8 +57,26 @@ logging.basicConfig(level=logging.DEBUG)
 ```
 
 Then read `tmux_cmd` off the record and run it yourself. It is shell-quoted, so
-it pastes into a terminal as-is and reproduces what libtmux did — including the
-`-L` or `-S` flag that selects the right server.
+it pastes into `bash` or `zsh` as-is and reproduces what libtmux did — including
+the `-L` or `-S` flag that selects the right server.
+
+An argument holding control characters appears in `$'…'` form, which those
+shells expand back to the original bytes. That keeps a record on one line even
+when a caller sends a multi-line payload, so nothing in a command line can pose
+as a log record of its own:
+
+```python
+>>> import logging
+>>> caplog.clear()
+>>> pane = session.active_window.active_pane
+>>> with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+...     pane.send_keys("echo one\necho two", enter=False)
+>>> record = caplog.records[0]
+>>> "\n" in record.tmux_cmd
+False
+>>> record.tmux_cmd.endswith("$'echo one\\necho two'")
+True
+```
 
 ## Where records come from
 
@@ -150,7 +168,7 @@ scalars.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `tmux_cmd` | `str` | Full command line, shell-quoted, secrets redacted |
+| `tmux_cmd` | `str` | Full command line: shell-quoted, single-line, secrets redacted |
 | `tmux_subcommand` | `str` | tmux subcommand, e.g. `new-session` |
 | `tmux_socket` | `str` | Socket name or path identifying which tmux server |
 | `tmux_target` | `str` | tmux target the operation addressed |
