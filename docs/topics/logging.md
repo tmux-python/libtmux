@@ -169,6 +169,53 @@ subcommand, and how many fields the row held against how many it should have.
 A count one higher than expected means a value contained the character libtmux
 splits rows on.
 
+## What does not come through logging
+
+libtmux raises about as many advisories through {mod}`warnings` as it logs — a
+deprecated method, a flag your tmux is too old for, an argument being ignored.
+Those never reach a logging handler, so an application configured exactly as
+above receives none of them.
+
+Route them in with {func}`logging.captureWarnings`, which sends them to the
+`py.warnings` logger at `WARNING`:
+
+```python
+>>> import logging
+>>> import warnings
+>>> records = []
+>>> class Capture(logging.Handler):
+...     def emit(self, record):
+...         records.append(record)
+>>> handler = Capture()
+>>> warnings_logger = logging.getLogger("py.warnings")
+>>> warnings_logger.addHandler(handler)
+
+Without the bridge, nothing arrives:
+
+>>> with warnings.catch_warnings(record=True):
+...     warnings.simplefilter("always")
+...     warnings.warn("a tmux flag was ignored", stacklevel=2)
+>>> len(records)
+0
+
+With it, the advisory becomes a record:
+
+>>> logging.captureWarnings(True)
+>>> with warnings.catch_warnings():
+...     warnings.simplefilter("always")
+...     warnings.warn("a tmux flag was ignored", stacklevel=2)
+>>> [(r.name, r.levelname) for r in records]
+[('py.warnings', 'WARNING')]
+
+>>> logging.captureWarnings(False)
+>>> warnings_logger.removeHandler(handler)
+```
+
+The two channels do not behave alike, and the difference bites. Python delivers
+a given warning **once per source location** by default, while a logger emits
+every call. An advisory you see once may have fired on every iteration, so treat
+a warning as "this happened at least once" rather than as a count.
+
 ## The `extra` schema
 
 Every field is attached under `extra`, which makes it an attribute on the
