@@ -88,6 +88,15 @@ argument holding control characters is now written in shell `$'…'` form, which
 pastes and reproduces the call while staying on one line. Terminal escape
 sequences are rendered rather than passed through to whatever reads the log.
 
+#### An over-long command no longer floods the log (#744)
+
+A command larger than tmux accepts was rejected by tmux but still written to
+three log records in full, so a single oversized {meth}`Server.set_buffer()
+<libtmux.Server.set_buffer>` could put hundreds of kilobytes into a `DEBUG` log.
+`tmux_cmd` is now capped at the largest command tmux will run, which leaves
+every command tmux actually accepted reproducible from its record, and
+`tmux_cmd_len` reports the length before capping.
+
 #### Environment values no longer appear in logs (#744)
 
 Passing `environment=` to {meth}`Server.new_session()
