@@ -77,6 +77,17 @@ entry, so a badly formed list produced a burst of identical records every time
 options were read. It now warns once for the option, with `tmux_option_skipped`
 counting what it dropped.
 
+#### Command content cannot forge a log record (#744)
+
+A tmux command line carries whatever the caller passed it — the keys
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` sends, a start directory, a
+window command. A newline among them ended the `DEBUG` record early in any
+line-oriented log, leaving the remainder to read as a record of its own. An
+argument holding control characters is now written in shell `$'…'` form, which
+`bash` and `zsh` expand back to the original bytes, so the command line still
+pastes and reproduces the call while staying on one line. Terminal escape
+sequences are rendered rather than passed through to whatever reads the log.
+
 #### Environment values no longer appear in logs (#744)
 
 Passing `environment=` to {meth}`Server.new_session()

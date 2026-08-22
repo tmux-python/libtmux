@@ -487,3 +487,29 @@ def test_failure_record_names_the_caller(
     rec = records[0]
     assert rec.funcName == "kill_window"
     assert rec.filename == "session.py"
+
+
+def test_command_content_cannot_forge_a_log_line(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A newline a caller sends must not end the record and start a new one.
+
+    ``send_keys`` carries whatever the caller types, so a multi-line payload
+    would otherwise split one record across several lines of a line-oriented
+    log, where the remainder reads as a record of its own.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        pane.send_keys("echo hi\nCRITICAL libtmux.server forged", enter=False)
+
+    dispatched = [
+        r for r in caplog.records if r.getMessage() == "tmux command dispatched"
+    ]
+    assert len(dispatched) >= 1
+
+    rec = t.cast(t.Any, dispatched[-1])
+    assert "\n" not in rec.tmux_cmd
+    assert "$'echo hi\\nCRITICAL libtmux.server forged'" in rec.tmux_cmd
