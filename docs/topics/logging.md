@@ -311,14 +311,92 @@ This covers `environment=` on {meth}`Server.new_session()
 well as {meth}`set_environment()
 <libtmux.common.EnvironmentMixin.set_environment>`.
 
-Two things libtmux cannot redact for you, because it cannot tell a secret from a
-keystroke:
+tmux hands those values straight back, so the output side is covered too:
+{meth}`getenv() <libtmux.common.EnvironmentMixin.getenv>` and
+{meth}`show_environment() <libtmux.common.EnvironmentMixin.show_environment>`
+return what you asked for while their records show only the names.
+
+```python
+>>> import logging
+>>> caplog.clear()
+>>> server = session.server
+>>> server.set_environment("DEPLOY_KEY", "hunter2")
+>>> with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+...     server.getenv("DEPLOY_KEY")
+'hunter2'
+>>> completed = next(
+...     r for r in caplog.records
+...     if r.getMessage() == "tmux command completed"
+... )
+>>> any("hunter2" in line for line in completed.tmux_stdout)
+False
+```
+
+### What libtmux cannot redact
+
+libtmux hides what tmux's own grammar marks as an environment value. It cannot
+classify content you compose yourself:
 
 - **{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` payloads.** What you type
-  into a pane appears verbatim in `tmux_cmd` at `DEBUG`. If you send
-  credentials, do not ship `DEBUG` records off the host.
-- **Anything you pass as a `start_directory`, `window_command`, or shell
-  command**, for the same reason.
+  into a pane appears in `tmux_cmd` at `DEBUG`.
+- **A `start_directory`, `window_command`, or shell command.**
+- **A format string that prints a variable**, such as
+  `display-message -p '#{q:DEPLOY_KEY}'`.
+
+Only your application knows which of those carry secrets, so redacting them is
+its job — with a {class}`~logging.Filter` that rewrites the fields you care
+about.
+
+Placement matters more than the filter does. A filter on a logger runs only for
+records that logger made; {meth}`Logger.callHandlers()
+<logging.Logger.callHandlers>` walks to ancestor loggers for their *handlers*
+and never consults their filters. Since every record comes from a child such as
+`libtmux.common`, attaching one to `logging.getLogger("libtmux")` protects
+nothing, and says nothing about it. Attach it to a **handler**:
+
+```python
+>>> import logging
+>>> import re
+
+>>> class RedactFilter(logging.Filter):
+...     def __init__(self, *patterns: str) -> None:
+...         super().__init__()
+...         self.patterns = [re.compile(p) for p in patterns]
+...
+...     def filter(self, record: logging.LogRecord) -> bool:
+...         for pattern in self.patterns:
+...             if isinstance(getattr(record, "tmux_cmd", None), str):
+...                 record.tmux_cmd = pattern.sub("REDACTED", record.tmux_cmd)
+...         return True
+
+>>> records = []
+>>> class Capture(logging.Handler):
+...     def emit(self, record):
+...         records.append(record)
+
+>>> handler = Capture()
+>>> libtmux_logger = logging.getLogger("libtmux")
+>>> libtmux_logger.addHandler(handler)
+>>> libtmux_logger.setLevel(logging.DEBUG)
+>>> pane = session.active_window.active_pane
+
+On the logger, it never runs:
+
+>>> libtmux_logger.addFilter(RedactFilter("hunter2"))
+>>> pane.send_keys("login hunter2", enter=False)
+>>> any("hunter2" in r.tmux_cmd for r in records if hasattr(r, "tmux_cmd"))
+True
+
+On the handler, it does:
+
+>>> libtmux_logger.removeFilter(libtmux_logger.filters[0])
+>>> handler.addFilter(RedactFilter("hunter2"))
+>>> records.clear()
+>>> pane.send_keys("login hunter2", enter=False)
+>>> any("hunter2" in r.tmux_cmd for r in records if hasattr(r, "tmux_cmd"))
+False
+>>> libtmux_logger.removeHandler(handler)
+```
 
 The command line also reaches the process table, so it is visible to `ps` for
 the same user regardless of logging. Logs differ in that they travel.
@@ -369,7 +447,8 @@ class TmuxJsonFormatter(logging.Formatter):
 ### Route one server's records somewhere else
 
 `tmux_socket` identifies the server, so a {class}`~logging.Filter` can split a
-multi-server application's logs:
+multi-server application's logs. Attach it to the handler, for the reason
+[above](#what-libtmux-cannot-redact):
 
 ```python
 class SocketFilter(logging.Filter):

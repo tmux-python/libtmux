@@ -539,3 +539,26 @@ def test_oversized_command_is_capped_in_the_record(
     rec = t.cast(t.Any, records[0])
     assert len(rec.tmux_cmd) <= _COMMAND_CAP
     assert rec.tmux_cmd_len > _COMMAND_CAP
+
+
+def test_environment_values_are_hidden_in_both_directions(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Redacting what libtmux sends is half of it; tmux hands the value back."""
+    secret = "s3cr3t-round-trip"
+    server = session.server
+    server.set_environment("DEPLOY_KEY", secret)
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        value = server.getenv("DEPLOY_KEY")
+
+    assert value == secret, "redaction must not change what the caller gets"
+
+    leaked = [
+        r
+        for r in caplog.records
+        for key in ("tmux_cmd", "tmux_stdout")
+        if secret in str(getattr(r, key, ""))
+    ]
+    assert leaked == [], f"secret reached {len(leaked)} record(s)"
