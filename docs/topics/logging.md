@@ -21,49 +21,65 @@ route these records somewhere — a test assertion, a log aggregator, a trace.
 The shortest thing that works — lifecycle events, no tmux command noise:
 
 ```python
-import logging
-
-logging.basicConfig(level=logging.INFO)
+>>> import logging
+>>> logging.basicConfig(level=logging.INFO)
 ```
 
 To see the tmux commands themselves, including their output, drop only libtmux
 to `DEBUG` and leave the rest of your application alone:
 
 ```python
-logging.getLogger("libtmux").setLevel(logging.DEBUG)
+>>> import logging
+>>> libtmux_logger = logging.getLogger("libtmux")
+>>> previous_level = libtmux_logger.level
+>>> libtmux_logger.setLevel(logging.DEBUG)
+>>> libtmux_logger.getEffectiveLevel() == logging.DEBUG
+True
+>>> libtmux_logger.setLevel(previous_level)
 ```
 
 ## Diagnosing a failure
 
 When libtmux is not doing what you expect, this shows every tmux command it
-runs, the exit code, and whatever tmux wrote back:
+runs, the exit code, and whatever tmux wrote back. It installs a real handler
+with safe defaults for records that carry no command outcome. The final three
+lines restore the shared documentation process; keep the handler installed in
+your application:
 
 ```python
-import logging
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(levelname)s %(name)s %(message)s | %(tmux_cmd)s -> %(tmux_exit_code)s",
-)
+>>> import logging
+>>> handler = logging.StreamHandler()
+>>> formatter = logging.Formatter(
+...     "%(levelname)s %(name)s %(message)s | %(tmux_cmd)s -> %(tmux_exit_code)s",
+...     defaults={"tmux_cmd": "-", "tmux_exit_code": "-"},
+... )
+>>> handler.setFormatter(formatter)
+>>> libtmux_logger = logging.getLogger("libtmux")
+>>> previous_level = libtmux_logger.level
+>>> libtmux_logger.addHandler(handler)
+>>> libtmux_logger.setLevel(logging.DEBUG)
+>>> record = logging.LogRecord(
+...     "libtmux.common", logging.DEBUG, "common.py", 1,
+...     "tmux command completed", None, None,
+... )
+>>> record.tmux_cmd = "tmux -Ldemo list-sessions"
+>>> record.tmux_exit_code = 0
+>>> formatter.format(record)
+'DEBUG libtmux.common tmux command completed | tmux -Ldemo list-sessions -> 0'
+>>> libtmux_logger.removeHandler(handler)
+>>> handler.close()
+>>> libtmux_logger.setLevel(previous_level)
 ```
 
-That format string names two keys that not every record carries, so pair it
-with defaults or you will lose records — see
-[Formatting records safely](#formatting-records-safely). The version that will
-not drop anything:
+Then read `tmux_cmd` off the record. It is shell-quoted and includes the
+`-L` or `-S` flag that selects the right server. It reproduces the command
+unless libtmux replaced sensitive content with `REDACTED` or shortened an
+oversized rendering.
 
-```python
-logging.basicConfig(level=logging.DEBUG)
-```
-
-Then read `tmux_cmd` off the record and run it yourself. It is shell-quoted, so
-it pastes into `bash` or `zsh` as-is and reproduces what libtmux did — including
-the `-L` or `-S` flag that selects the right server.
-
-An argument holding control characters appears in `$'…'` form, which those
-shells expand back to the original bytes. That keeps a record on one line even
-when a caller sends a multi-line payload, so nothing in a command line can pose
-as a log record of its own:
+An argument holding control characters appears in `$'…'` form. Shell escapes
+keep the rendering familiar and pasteable for ordinary tmux arguments without
+placing a literal line boundary in the record, so nothing in a command line can
+pose as a log record of its own:
 
 ```python
 >>> import logging
@@ -101,7 +117,13 @@ configure as one unit:
 Silence the command chatter while keeping lifecycle events:
 
 ```python
-logging.getLogger("libtmux.common").setLevel(logging.INFO)
+>>> import logging
+>>> command_logger = logging.getLogger("libtmux.common")
+>>> previous_level = command_logger.level
+>>> command_logger.setLevel(logging.INFO)
+>>> command_logger.isEnabledFor(logging.DEBUG)
+False
+>>> command_logger.setLevel(previous_level)
 ```
 
 ## What each level gives you
@@ -219,14 +241,15 @@ a warning as "this happened at least once" rather than as a count.
 ## The `extra` schema
 
 Every field is attached under `extra`, which makes it an attribute on the
-{class}`~logging.LogRecord`. Keys are `snake_case`, prefixed `tmux_`, and hold
-scalars.
+{class}`~logging.LogRecord`. Keys are `snake_case` and prefixed `tmux_`.
+Context and count fields are scalars; bounded stdout and stderr fields are
+lists of strings.
 
 ### Context, on any record that knows it
 
 | Key | Type | Meaning |
 |---|---|---|
-| `tmux_cmd` | `str` | Full command line: shell-quoted, single-line, secrets redacted |
+| `tmux_cmd` | `str` | Rendered command line: shell-quoted, single-line, secrets redacted |
 | `tmux_subcommand` | `str` | tmux subcommand, e.g. `new-session` |
 | `tmux_socket` | `str` | Socket name or path identifying which tmux server |
 | `tmux_target` | `str` | tmux target the operation addressed |
@@ -236,14 +259,14 @@ scalars.
 | `tmux_option_key` | `str` | Option name, on `libtmux.options` warnings |
 | `tmux_option_skipped` | `int` | Entries libtmux could not parse under that option |
 | `tmux_fields_expected` | `int` | Fields a row of tmux output should have held |
-| `tmux_fields_received` | `int` | Fields it actually held
+| `tmux_fields_received` | `int` | Fields it actually held |
 
 ### Outcome, on completion and failure records
 
 | Key | Type | Meaning |
 |---|---|---|
 | `tmux_exit_code` | `int` | tmux process exit code |
-| `tmux_stdout` | `list[str]` | stdout lines, capped; empty for content commands |
+| `tmux_stdout` | `list[str]` | stdout lines, capped; empty for sensitive output commands |
 | `tmux_stderr` | `list[str]` | stderr lines, capped |
 | `tmux_stdout_len` | `int` | Total stdout line count before capping |
 | `tmux_stderr_len` | `int` | Total stderr line count before capping |
@@ -337,9 +360,9 @@ readable:
 
 ## What libtmux does not log
 
-Environment values never reach a log record. libtmux redacts them where the
-command line is turned into text, so the variable names stay visible for
-debugging while the values do not:
+Environment values passed through tmux's environment options never reach a log
+record. libtmux redacts them where the command line is turned into text, so the
+variable names stay visible for debugging while the values do not:
 
 ```python
 >>> import logging
@@ -367,10 +390,11 @@ This covers `environment=` on {meth}`Server.new_session()
 well as {meth}`set_environment()
 <libtmux.common.EnvironmentMixin.set_environment>`.
 
-tmux hands those values straight back, so the output side is covered too:
+tmux hands those values straight back, and a value may span output lines.
 {meth}`getenv() <libtmux.common.EnvironmentMixin.getenv>` and
 {meth}`show_environment() <libtmux.common.EnvironmentMixin.show_environment>`
-return what you asked for while their records show only the names.
+keep their existing API results, but their records omit `tmux_stdout` content
+and retain `tmux_stdout_len`.
 
 ```python
 >>> import logging
@@ -384,9 +408,16 @@ return what you asked for while their records show only the names.
 ...     r for r in caplog.records
 ...     if r.getMessage() == "tmux command completed"
 ... )
->>> any("hunter2" in line for line in completed.tmux_stdout)
-False
+>>> completed.tmux_stdout
+[]
+>>> completed.tmux_stdout_len
+1
 ```
+
+Paste-buffer data follows the same body-versus-metadata boundary. The payload
+passed to {meth}`Server.set_buffer() <libtmux.Server.set_buffer>` is replaced
+with `REDACTED` in `tmux_cmd`, and buffer contents returned by tmux stay
+off the record.
 
 ### What libtmux cannot redact
 
@@ -398,6 +429,11 @@ classify content you compose yourself:
 - **A `start_directory`, `window_command`, or shell command.**
 - **A format string that prints a variable**, such as
   `display-message -p '#{q:DEPLOY_KEY}'`.
+
+The built-in names, aliases, and command abbreviations are covered. A command
+defined in `command-alias` has server-specific grammar that libtmux cannot
+inspect on this path. An alias name that shares a protected command prefix is
+handled conservatively; any other custom alias remains unclassified.
 
 Only your application knows which of those carry secrets, so redacting them is
 its job — with a {class}`~logging.Filter` that rewrites the fields you care
@@ -419,10 +455,19 @@ nothing, and says nothing about it. Attach it to a **handler**:
 ...         super().__init__()
 ...         self.patterns = [re.compile(p) for p in patterns]
 ...
-...     def filter(self, record: logging.LogRecord) -> bool:
+...     def _redact(self, value: str | list[str]) -> str | list[str]:
 ...         for pattern in self.patterns:
-...             if isinstance(getattr(record, "tmux_cmd", None), str):
-...                 record.tmux_cmd = pattern.sub("REDACTED", record.tmux_cmd)
+...             if isinstance(value, str):
+...                 value = pattern.sub("REDACTED", value)
+...             else:
+...                 value = [pattern.sub("REDACTED", item) for item in value]
+...         return value
+...
+...     def filter(self, record: logging.LogRecord) -> bool:
+...         for field in ("tmux_cmd", "tmux_stdout", "tmux_stderr"):
+...             value = getattr(record, field, None)
+...             if isinstance(value, (str, list)):
+...                 setattr(record, field, self._redact(value))
 ...         return True
 
 >>> records = []
@@ -450,8 +495,14 @@ On the handler, it does:
 >>> libtmux_logger.removeFilter(on_logger)
 >>> handler.addFilter(RedactFilter("hunter2"))
 >>> records.clear()
->>> pane.send_keys("login hunter2", enter=False)
->>> any("hunter2" in r.tmux_cmd for r in records if hasattr(r, "tmux_cmd"))
+>>> result = server.cmd("display-message", "-p", "login hunter2")
+>>> result.stdout
+['login hunter2']
+>>> any(
+...     "hunter2" in str(getattr(r, field, ""))
+...     for r in records
+...     for field in ("tmux_cmd", "tmux_stdout", "tmux_stderr")
+... )
 False
 
 Put the logger back as you found it — a level set on a shared logger outlives
@@ -479,7 +530,13 @@ lifecycle without that, leave `libtmux` at `DEBUG` and raise just the command
 logger:
 
 ```python
-logging.getLogger("libtmux.common").setLevel(logging.INFO)
+>>> import logging
+>>> command_logger = logging.getLogger("libtmux.common")
+>>> previous_level = command_logger.level
+>>> command_logger.setLevel(logging.INFO)
+>>> command_logger.isEnabledFor(logging.DEBUG)
+False
+>>> command_logger.setLevel(previous_level)
 ```
 
 At `DEBUG`, `tmux_stdout` and `tmux_stderr` are capped, and the untruncated
@@ -487,16 +544,17 @@ counts stay available as `tmux_stdout_len` and `tmux_stderr_len`. A
 `list-panes` against a large server can still be a lot of text — prefer the
 `_len` fields when you only need volume.
 
-Commands that return content rather than control data — `capture-pane`,
-`show-buffer`, `list-buffers` — report only `tmux_stdout_len`. Their output is
-whatever happened to be on a screen or in a paste buffer, it can be large, and
-the caller already has it as a return value. This is the same line HTTP clients
-draw when they log a status and a content length but never a response body.
+Commands that return content rather than control data — pane capture, buffer
+inspection, message history, prompt history, and environment inspection —
+report only `tmux_stdout_len`. The output may contain terminal text, commands,
+or multiline values, and the caller already has it as a return value. This is
+the same line HTTP clients draw when they log a status and a content length but
+never a response body.
 
-`tmux_cmd` is capped too, at the size of the largest command tmux itself will
-run, and a shortened one ends in an ellipsis. Quoting expands what the cap
-measures — a single quote becomes five characters — so a command built almost
-entirely of quotes can be one tmux accepts whose record still shortens.
+`tmux_cmd` is bounded too, at a practical rendered-character ceiling derived
+from tmux's transport limit, and a shortened one ends in an ellipsis. tmux
+counts transport bytes while log quoting expands some characters, so this cap
+deliberately does not claim to be the exact largest command tmux accepts.
 
 ## Threads and async
 
@@ -520,11 +578,14 @@ them. Leave the `QueueHandler` unformatted and format in the listener, or give
 it the same `defaults` as any other formatter.
 
 ```python
-import logging.handlers
-import queue
-
-log_queue: queue.Queue = queue.Queue()
-handler = logging.handlers.QueueHandler(log_queue)  # no formatter here
+>>> import logging
+>>> import logging.handlers
+>>> import queue
+>>> log_queue: queue.Queue[logging.LogRecord] = queue.Queue()
+>>> handler = logging.handlers.QueueHandler(log_queue)
+>>> handler.formatter is None
+True
+>>> handler.close()
 ```
 
 An `asyncio` task name does not follow work into
@@ -538,21 +599,26 @@ own identifier if you need to correlate tmux calls back to a task.
 Emit one JSON object per record, promoting the tmux fields to top level:
 
 ```python
-import json
-import logging
-
-
-class TmuxJsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        payload = {
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        payload.update(
-            {k: v for k, v in record.__dict__.items() if k.startswith("tmux_")}
-        )
-        return json.dumps(payload)
+>>> import json
+>>> import logging
+>>> class TmuxJsonFormatter(logging.Formatter):
+...     def format(self, record: logging.LogRecord) -> str:
+...         payload = {
+...             "level": record.levelname,
+...             "logger": record.name,
+...             "message": record.getMessage(),
+...         }
+...         payload.update(
+...             {k: v for k, v in record.__dict__.items() if k.startswith("tmux_")}
+...         )
+...         return json.dumps(payload)
+>>> record = logging.LogRecord(
+...     "libtmux.server", logging.INFO, "server.py", 1,
+...     "session created", None, None,
+... )
+>>> record.tmux_socket = "demo"
+>>> TmuxJsonFormatter().format(record)
+'{"level": "INFO", "logger": "libtmux.server", "message": "session created", "tmux_socket": "demo"}'
 ```
 
 ### Route one server's records somewhere else
@@ -562,23 +628,51 @@ multi-server application's logs. Attach it to the handler, for the reason
 [above](#what-libtmux-cannot-redact):
 
 ```python
-class SocketFilter(logging.Filter):
-    def __init__(self, socket: str) -> None:
-        super().__init__()
-        self.socket = socket
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        return getattr(record, "tmux_socket", None) == self.socket
+>>> import logging
+>>> class SocketFilter(logging.Filter):
+...     def __init__(self, socket: str) -> None:
+...         super().__init__()
+...         self.socket = socket
+...
+...     def filter(self, record: logging.LogRecord) -> bool:
+...         return getattr(record, "tmux_socket", None) == self.socket
+>>> record = logging.LogRecord(
+...     "libtmux.server", logging.INFO, "server.py", 1,
+...     "session created", None, None,
+... )
+>>> record.tmux_socket = "deploy"
+>>> SocketFilter("deploy").filter(record)
+True
+>>> SocketFilter("staging").filter(record)
+False
 ```
 
 ### Attach records to an OpenTelemetry span
 
-The `tmux_` keys map onto span attributes without transformation, since they are
-already flat scalars:
+The scalar `tmux_` keys map onto span attributes without transformation. The
+bounded stdout and stderr lists are intentionally left out of this compact
+recipe:
 
 ```python
-def annotate(span, record: logging.LogRecord) -> None:
-    for key, value in record.__dict__.items():
-        if key.startswith("tmux_") and isinstance(value, (str, int)):
-            span.set_attribute(key, value)
+>>> import logging
+>>> class Span:
+...     def __init__(self) -> None:
+...         self.attributes = {}
+...
+...     def set_attribute(self, key, value) -> None:
+...         self.attributes[key] = value
+>>> def annotate(span, record: logging.LogRecord) -> None:
+...     for key, value in record.__dict__.items():
+...         if key.startswith("tmux_") and isinstance(value, (str, int)):
+...             span.set_attribute(key, value)
+>>> span = Span()
+>>> record = logging.LogRecord(
+...     "libtmux.common", logging.DEBUG, "common.py", 1,
+...     "tmux command completed", None, None,
+... )
+>>> record.tmux_socket = "deploy"
+>>> record.tmux_exit_code = 0
+>>> annotate(span, record)
+>>> span.attributes
+{'tmux_socket': 'deploy', 'tmux_exit_code': 0}
 ```
