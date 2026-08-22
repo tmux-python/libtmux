@@ -12,6 +12,10 @@ libtmux never configures logging for you. It attaches a
 {class}`~logging.NullHandler` and nothing else, so a library import stays silent
 until your application asks for output.
 
+Most readers need only the next two sections: turn it on, and read a failure.
+The field schema and the testing and formatting sections below are for when you
+route these records somewhere — a test assertion, a log aggregator, a trace.
+
 ## Turn it on
 
 The shortest thing that works — lifecycle events, no tmux command noise:
@@ -70,6 +74,7 @@ configure as one unit:
 | `libtmux.pane` | Pane split, floating pane creation, pane kill |
 | `libtmux.options` | Option values tmux returned that libtmux could not parse |
 | `libtmux.hooks` | Hook lines tmux returned that libtmux could not parse |
+| `libtmux._internal.control_mode` | The `tmux -C` client used by the test fixtures |
 
 Silence the command chatter while keeping lifecycle events:
 
@@ -114,6 +119,27 @@ apart without changing your code:
 Polling with {meth}`Server.is_alive() <libtmux.Server.is_alive>` stays quiet, so
 a health check loop does not fill your logs with errors.
 
+A failure record is attributed to the libtmux method that ran the command, not
+to the helper that raised. So `%(filename)s:%(lineno)d` in a format string —
+and `code.filepath` in OpenTelemetry — point at the operation you called:
+
+```python
+>>> import logging
+>>> caplog.clear()
+>>> from libtmux import exc
+>>> with caplog.at_level(logging.ERROR, logger="libtmux.common"):
+...     try:
+...         session.kill_window(target_window="no_such_window")
+...     except exc.LibTmuxException:
+...         pass
+>>> caplog.records[-1].funcName
+'kill_window'
+```
+
+An option whose value libtmux cannot parse warns once for that option, with
+`tmux_option_skipped` counting the entries it dropped, rather than once per
+entry.
+
 ## The `extra` schema
 
 Every field is attached under `extra`, which makes it an attribute on the
@@ -132,6 +158,7 @@ scalars.
 | `tmux_window` | `str` | Window name or index |
 | `tmux_pane` | `str` | Pane identifier |
 | `tmux_option_key` | `str` | Option name, on `libtmux.options` warnings |
+| `tmux_option_skipped` | `int` | Entries libtmux could not parse under that option |
 
 ### Outcome, on completion and failure records
 
@@ -158,6 +185,7 @@ Assert on `caplog.records`, not on `caplog.text`. The structured fields are what
 you actually care about, and `caplog.record_tuples` cannot reach them at all.
 
 ```python
+>>> import logging
 >>> caplog.clear()
 >>> with caplog.at_level(logging.INFO, logger="libtmux.session"):
 ...     window = session.new_window(window_name="deploy")
@@ -176,9 +204,12 @@ indexing by position — libtmux may add records between the one you want and th
 end of the list:
 
 ```python
+>>> import logging
 >>> caplog.clear()
+>>> release = session.new_window(window_name="release")
 >>> with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
-...     _ = window.rename_window("release")
+...     release.rename_window("released")
+Window(@... ...:released, Session($... ...))
 >>> completed = [
 ...     r for r in caplog.records
 ...     if r.getMessage() == "tmux command completed"
@@ -186,7 +217,6 @@ end of the list:
 ... ]
 >>> completed[0].tmux_exit_code
 0
->>> window.kill()
 ```
 
 ## Formatting records safely
@@ -199,6 +229,7 @@ record** — so a formatter written against `DEBUG` records silently loses your
 Give every custom key a default:
 
 ```python
+>>> import logging
 >>> formatter = logging.Formatter(
 ...     "%(levelname)s %(message)s cmd=%(tmux_cmd)s",
 ...     defaults={"tmux_cmd": "-"},
@@ -218,6 +249,7 @@ command line is turned into text, so the variable names stay visible for
 debugging while the values do not:
 
 ```python
+>>> import logging
 >>> caplog.clear()
 >>> with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
 ...     env_session = server.new_session(

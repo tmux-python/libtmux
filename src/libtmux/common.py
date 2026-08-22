@@ -294,6 +294,10 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
             "tmux_stderr": proc.stderr[:_LOG_LINE_CAP],
             "tmux_stderr_len": len(proc.stderr),
         },
+        # Attribute the record to the wrapper that ran the command, not to this
+        # helper. Every one of its call sites would otherwise report the same
+        # file and line.
+        stacklevel=2,
     )
     raise exc.LibTmuxException(
         "\n".join(proc.stderr),
