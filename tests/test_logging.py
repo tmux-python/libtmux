@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import typing as t
 
@@ -513,3 +514,28 @@ def test_command_content_cannot_forge_a_log_line(
     rec = t.cast(t.Any, dispatched[-1])
     assert "\n" not in rec.tmux_cmd
     assert "$'echo hi\\nCRITICAL libtmux.server forged'" in rec.tmux_cmd
+
+
+def test_oversized_command_is_capped_in_the_record(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A command tmux refuses must not put its whole payload in the log.
+
+    tmux caps a command at ``MAX_IMSGSIZE``, so a payload past that never runs;
+    the record keeps ``tmux_cmd_len`` to report what the caller actually passed.
+    """
+    from libtmux._internal.log_context import _COMMAND_CAP
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="libtmux.common"),
+        contextlib.suppress(Exception),
+    ):
+        server.set_buffer("x" * (_COMMAND_CAP * 4))
+
+    records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+    assert len(records) >= 1
+
+    rec = t.cast(t.Any, records[0])
+    assert len(rec.tmux_cmd) <= _COMMAND_CAP
+    assert rec.tmux_cmd_len > _COMMAND_CAP
