@@ -27,6 +27,14 @@ Chosen to survive quoting untouched, so quoting in a logged command line
 still marks a genuinely quoted argument.
 """
 
+_COMMAND_CAP = 16384
+"""Longest command line kept on a record, in characters.
+
+tmux refuses a command larger than ``MAX_IMSGSIZE`` (16384) in ``compat/imsg.h``,
+so anything tmux was willing to run survives intact and only a rejected command
+is shortened.
+"""
+
 _CONTROL_CHARS = frozenset(chr(code) for code in range(0x20)) | {"\x7f"}
 
 _CONTROL_ESCAPES = {
@@ -125,12 +133,15 @@ class CommandContext(t.NamedTuple):
         command addressed. ``None`` when tmux would use its default socket.
     command : str
         Shell-quoted command line with environment values replaced by
-        :data:`REDACTED`.
+        :data:`REDACTED`, shortened to :data:`_COMMAND_CAP`.
+    length : int
+        Length of the command line before shortening.
     """
 
     subcommand: str | None
     socket: str | None
     command: str
+    length: int
 
 
 def describe_command(argv: Sequence[str]) -> CommandContext:
@@ -150,8 +161,11 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
     --------
     Global flags are skipped to reach the subcommand:
 
-    >>> describe_command(["tmux", "-Lmysock", "new-session", "-d"])
-    CommandContext(subcommand='new-session', socket='mysock', command='tmux -Lmysock new-session -d')
+    >>> describe_command(["tmux", "-Lmysock", "new-session", "-d"]).subcommand
+    'new-session'
+
+    >>> describe_command(["tmux", "-Lmysock", "new-session", "-d"]).socket
+    'mysock'
 
     Flags that take a value are understood in both joined and separated form,
     so the value is never mistaken for the subcommand:
@@ -170,7 +184,7 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
     ...     ["tmux", "new-session", "-eAPI_TOKEN=hunter2"]
     ... ).command
     'tmux new-session -eAPI_TOKEN=REDACTED'
-    """  # noqa: E501
+    """
     tokens = [str(arg) for arg in argv]
     subcommand: str | None = None
     socket: str | None = None
@@ -200,12 +214,18 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
             break
         index += 2 if takes_next_token else 1
 
+    command = " ".join(
+        _quote(token) for token in _redact(tokens, subcommand, subcommand_index)
+    )
     return CommandContext(
         subcommand=subcommand,
         socket=socket,
-        command=" ".join(
-            _quote(token) for token in _redact(tokens, subcommand, subcommand_index)
+        command=(
+            command
+            if len(command) <= _COMMAND_CAP
+            else command[: _COMMAND_CAP - 1] + "\N{HORIZONTAL ELLIPSIS}"
         ),
+        length=len(command),
     )
 
 
