@@ -159,7 +159,9 @@ command that was already logged.
 #### A guide to libtmux's logging (#744)
 
 {ref}`logging` covers turning logging on, which logger emits what, the full
-`tmux_` field schema, and how to assert on records with pytest's `caplog`. It
+`tmux_` field schema, how to assert on records with pytest's `caplog`, and the
+advisories that travel through {mod}`warnings` rather than a logger — along with
+the one call that routes them into the same stream. It
 also documents the {class}`~logging.Formatter` trap that silently drops records
 whose format string names a field they do not carry, and what libtmux redacts.
 The page's examples run as part of the test suite.
