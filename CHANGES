@@ -89,6 +89,14 @@ Killing a session through {meth}`Server.kill_session()
 {meth}`Session.kill() <libtmux.Session.kill>` emitted one for the same
 user-visible operation. Both now log `session killed`.
 
+#### The pytest fixtures no longer pollute failure reports (#744)
+
+The bundled `session` fixture asked tmux to switch a client even when none was
+attached, which is a command failure. Now that libtmux logs failures at
+`ERROR`, pytest replayed that record into the captured-log section of every
+failing test, where it read as the cause rather than as fixture noise. The
+fixture now attempts the switch only when a client exists.
+
 #### One command line, one shape (#744)
 
 `tmux_cmd` reported two different strings depending on which module logged it:
