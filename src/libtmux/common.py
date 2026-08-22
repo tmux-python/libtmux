@@ -11,7 +11,6 @@ import functools
 import logging
 import pathlib
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -20,6 +19,7 @@ import warnings
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal.log_context import describe_command
 from .formats import Format, _escape_format
 
 if t.TYPE_CHECKING:
@@ -29,6 +29,9 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+#: Maximum stdout/stderr lines attached to a debug record
+_LOG_LINE_CAP = 100
 
 #: Minimum version of tmux required to run libtmux
 TMUX_MIN_VERSION = "3.3a"
@@ -332,6 +335,12 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     originating tmux subcommand so downstream consumers (e.g. libtmux-mcp's
     ``handle_tool_errors``) keep the "which tmux command failed" context.
 
+    Logs one ``ERROR`` record before raising. The record carries the exit code,
+    socket, and command line, which the exception message does not, so an
+    accessor that swallows the exception — :attr:`Server.sessions` and the
+    other lenient list accessors — still leaves a trace of why it came back
+    empty.
+
     Parameters
     ----------
     proc : :class:`tmux_cmd`
@@ -357,13 +366,28 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
 
     .. versionadded:: 0.57
     """
-    if proc.stderr:
-        from libtmux.neo import _is_target_not_found_error
+    if not proc.stderr:
+        return
 
-        stderr = "\n".join(proc.stderr)
-        if _is_target_not_found_error(stderr):
-            raise exc.TmuxObjectDoesNotExist._from_stderr(stderr, subcommand)
-        raise exc.LibTmuxException(stderr, subcommand=subcommand)
+    logger.error(
+        "tmux command failed",
+        extra={
+            **proc._log_extra,
+            "tmux_subcommand": subcommand,
+            "tmux_exit_code": proc.returncode,
+            "tmux_stderr": proc.stderr[:_LOG_LINE_CAP],
+            "tmux_stderr_len": len(proc.stderr),
+        },
+    )
+    from libtmux.neo import _is_target_not_found_error
+
+    stderr = "\n".join(proc.stderr)
+    if _is_target_not_found_error(stderr):
+        raise exc.TmuxObjectDoesNotExist._from_stderr(stderr, subcommand)
+    raise exc.LibTmuxException(
+        stderr,
+        subcommand=subcommand,
+    )
 
 
 _REDACTED = "***"
@@ -520,11 +544,7 @@ class tmux_cmd:
         self.cmd = cmd
 
         if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = _loggable_cmd(cmd)
-            logger.debug(
-                "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
+            logger.debug("tmux command dispatched", extra=self._log_extra)
 
         try:
             self.process = subprocess.Popen(
@@ -542,9 +562,7 @@ class tmux_cmd:
         except Exception:
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
-                extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
-                },
+                extra=self._log_extra,
             )
             raise
 
@@ -567,14 +585,30 @@ class tmux_cmd:
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
+                    **self._log_extra,
                     "tmux_exit_code": self.returncode,
-                    "tmux_stdout": self.stdout[:100],
-                    "tmux_stderr": self.stderr[:100],
+                    "tmux_stdout": self.stdout[:_LOG_LINE_CAP],
+                    "tmux_stderr": self.stderr[:_LOG_LINE_CAP],
                     "tmux_stdout_len": len(self.stdout),
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    @functools.cached_property
+    def _log_extra(self) -> dict[str, t.Any]:
+        """Logging context every record for this command shares.
+
+        Derived once from :attr:`cmd`, so the command line a record reports is
+        the same string whichever layer emitted it, with environment values
+        already redacted.
+        """
+        context = describe_command(self.cmd)
+        extra: dict[str, t.Any] = {"tmux_cmd": context.command}
+        if context.subcommand is not None:
+            extra["tmux_subcommand"] = context.subcommand
+        if context.socket is not None:
+            extra["tmux_socket"] = context.socket
+        return extra
 
 
 class _TmuxVersionUnavailable(Exception):
