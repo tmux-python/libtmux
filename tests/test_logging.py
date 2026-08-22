@@ -594,3 +594,31 @@ def test_pane_content_is_not_written_to_records(
         if rec.tmux_subcommand == "capture-pane":
             assert rec.tmux_stdout == []
             assert rec.tmux_stdout_len > 0, "the count still reports what came back"
+
+
+def test_parse_failure_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """A row libtmux cannot parse must say so; the exception names only zip().
+
+    A field holding the format separator splits in two, and the field counts are
+    what identify that. Nothing else in the log reports it: tmux succeeded, so
+    the command records show a clean exit.
+    """
+    from libtmux.formats import FORMAT_SEPARATOR
+    from libtmux.neo import parse_output
+
+    row = FORMAT_SEPARATOR.join(["one", "two", "three"]) + FORMAT_SEPARATOR
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.neo"),
+        pytest.raises(ValueError, match="zip"),
+    ):
+        parse_output(row, "list-panes", "3.7")
+
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) == 1
+
+    rec = t.cast(t.Any, records[0])
+    assert rec.getMessage() == "tmux output parse failed"
+    assert rec.tmux_subcommand == "list-panes"
+    assert rec.tmux_fields_received == 3
+    assert rec.tmux_fields_expected != rec.tmux_fields_received
