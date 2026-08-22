@@ -34,6 +34,7 @@ from libtmux.common import (
     _format_text,
     _literal,
     _log_if_stderr,
+    _log_subprocess_errors,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -502,10 +503,13 @@ class Server(
         ...     m.setenv("TMUX_TMPDIR", str(deep))
         ...     assert not TmuxServer(socket_name="unbindable").is_alive()
         """
+        token = _log_subprocess_errors.set(False)
         try:
             res = self.cmd("list-sessions")
         except Exception:
             return False
+        finally:
+            _log_subprocess_errors.reset(token)
         return res.returncode == 0
 
     def raise_if_dead(self) -> None:
