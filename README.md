@@ -294,7 +294,8 @@ def test_my_tmux_tool(session):
     # Fixtures handle cleanup automatically
 ```
 
-- Fresh tmux server/session/window/pane fixtures per test
+- Fresh `server` and `session` fixtures per test, each on an isolated
+  tmux socket; derive windows and panes from `session`
 - Temporary HOME and tmux config fixtures keep indices stable
 - `TestServer` helper spins up multiple isolated tmux servers
 
