@@ -8,6 +8,8 @@ import typing as t
 
 import pytest
 
+from libtmux.test.retry import retry_until
+
 if t.TYPE_CHECKING:
     from libtmux.server import Server
     from libtmux.session import Session
@@ -562,3 +564,33 @@ def test_environment_values_are_hidden_in_both_directions(
         if secret in str(getattr(r, key, ""))
     ]
     assert leaked == [], f"secret reached {len(leaked)} record(s)"
+
+
+def test_pane_content_is_not_written_to_records(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Terminal content reaches the caller as a return value, not as a record.
+
+    A pane holds whatever was typed into it, so its contents are the tmux
+    equivalent of an HTTP response body: the record reports how much came back.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+    marker = "hunter2-typed-into-the-pane"
+    pane.send_keys(f"# {marker}", enter=True)
+    retry_until(lambda: any(marker in line for line in pane.capture_pane()), 2)
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        captured = pane.capture_pane()
+
+    assert any(marker in line for line in captured), "caller still gets the content"
+
+    records = [r for r in caplog.records if hasattr(r, "tmux_stdout")]
+    assert records, "expected a completion record"
+    for record in records:
+        rec = t.cast(t.Any, record)
+        assert not any(marker in line for line in rec.tmux_stdout)
+        if rec.tmux_subcommand == "capture-pane":
+            assert rec.tmux_stdout == []
+            assert rec.tmux_stdout_len > 0, "the count still reports what came back"

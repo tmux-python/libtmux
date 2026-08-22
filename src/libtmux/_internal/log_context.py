@@ -79,6 +79,15 @@ _SETENV_SUBCOMMANDS = frozenset({"set-environment", "setenv"})
 _ENV_OUTPUT_SUBCOMMANDS = frozenset({"show-environment", "showenv"})
 """Subcommands whose stdout reports ``NAME=VALUE`` for environment variables."""
 
+_CONTENT_SUBCOMMANDS = frozenset(
+    {"capture-pane", "list-buffers", "lsb", "show-buffer", "showb"},
+)
+"""Subcommands whose stdout is terminal or buffer content rather than control data.
+
+Their output is whatever happened to be on a screen or in a paste buffer, and it
+already reaches the caller as a return value, so a record reports how much came
+back instead of what it was."""
+
 
 def _quote(token: str) -> str:
     r"""Quote one argument for a log record, keeping control characters out.
@@ -335,11 +344,20 @@ def redact_output(subcommand: str | None, lines: list[str]) -> list[str]:
     >>> redact_output("show-environment", ["-EDITOR"])
     ['-EDITOR']
 
+    Terminal and buffer content is dropped rather than redacted — the caller
+    already has it as a return value, and ``tmux_stdout_len`` still reports how
+    much there was:
+
+    >>> redact_output("capture-pane", ["$ whoami", "root"])
+    []
+
     Output from anything else is left alone, so a debug record stays useful:
 
     >>> redact_output("list-sessions", ["mysession: 1 windows"])
     ['mysession: 1 windows']
     """
+    if subcommand in _CONTENT_SUBCOMMANDS:
+        return []
     if subcommand not in _ENV_OUTPUT_SUBCOMMANDS:
         return lines
     return [
