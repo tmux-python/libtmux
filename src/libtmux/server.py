@@ -33,8 +33,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     _literal,
-    _log_if_stderr,
-    _log_subprocess_errors,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -100,6 +98,27 @@ def _fetch_or_empty(
         if e.args and _is_daemon_not_up_error(str(e.args[0])):
             return []
         raise
+
+
+def _log_swallowed_list_error(
+    server: Server,
+    list_cmd: str,
+    error: exc.LibTmuxException,
+) -> None:
+    """Record a list failure at the boundary that converts it to empty."""
+    stderr = str(error).splitlines()
+    logger.error(
+        "tmux command failed",
+        extra={
+            **object_extra(
+                list_cmd,
+                socket=server.socket_path or server.socket_name,
+            ),
+            "tmux_stderr": stderr[:100],
+            "tmux_stderr_len": len(stderr),
+        },
+        stacklevel=2,
+    )
 
 
 class Server(
@@ -503,13 +522,10 @@ class Server(
         ...     m.setenv("TMUX_TMPDIR", str(deep))
         ...     assert not TmuxServer(socket_name="unbindable").is_alive()
         """
-        token = _log_subprocess_errors.set(False)
         try:
             res = self.cmd("list-sessions")
         except Exception:
             return False
-        finally:
-            _log_subprocess_errors.reset(token)
         return res.returncode == 0
 
     def raise_if_dead(self) -> None:
@@ -791,7 +807,6 @@ class Server(
             stderr_text = " ".join(str(line) for line in proc.stderr)
             if _is_daemon_not_up_error(stderr_text):
                 return
-            _log_if_stderr(proc, "kill-server")
             raise exc.LibTmuxException(proc.stderr)
         logger.info(
             "server killed",
@@ -2873,7 +2888,7 @@ class Server(
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no sessions" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`. The swallowed
-        failure is also logged once at ``ERROR`` on ``libtmux.common``; see
+        failure is also logged once at ``ERROR`` on ``libtmux.server``; see
         :ref:`logging`.
         """
         try:
@@ -2881,7 +2896,8 @@ class Server(
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
-        except exc.LibTmuxException:
+        except exc.LibTmuxException as error:
+            _log_swallowed_list_error(self, "list-sessions", error)
             return QueryList([])
         return QueryList(sessions)
 
@@ -2935,7 +2951,8 @@ class Server(
         tmux's ``list-clients`` fails for any reason — no running daemon, a
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no clients attached" from "tmux unreachable", call
-        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`. The swallowed
+        failure is logged once at ``ERROR`` on ``libtmux.server``.
 
         Returns
         -------
@@ -2953,7 +2970,8 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
-        except exc.LibTmuxException:
+        except exc.LibTmuxException as error:
+            _log_swallowed_list_error(self, "list-clients", error)
             return QueryList([])
         return QueryList(clients)
 

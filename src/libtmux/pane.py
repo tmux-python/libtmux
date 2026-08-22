@@ -21,7 +21,6 @@ from libtmux.common import (
     _format_arg,
     _format_path_arg,
     _format_text,
-    _log_if_stderr,
     escape_trailing_separator,
     get_version_str,
     has_gte_version,
@@ -1536,7 +1535,6 @@ class Pane(
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
         if pane_cmd.stderr:
-            _log_if_stderr(pane_cmd, "split-window")
             if "pane too small" in pane_cmd.stderr:
                 raise exc.LibTmuxException(pane_cmd.stderr)
 

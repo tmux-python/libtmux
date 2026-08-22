@@ -278,17 +278,12 @@ def test_session_kill_all_except_logging(
     )
 
 
-def test_server_new_session_surfaces_kill_session_stderr(
+def test_server_new_session_propagates_without_logging(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test kill-session stderr propagation, and the ERROR record it emits.
-
-    ``has_session`` is monkeypatched so ``new_session`` attempts to kill a
-    session that does not exist; tmux then fails the ``kill-session`` for real,
-    which is the condition under test.
-    """
+    """A propagated tmux failure remains exception data, not a log record."""
     from libtmux import exc
 
     monkeypatch.setattr(server, "has_session", lambda session_name: True)
@@ -299,22 +294,16 @@ def test_server_new_session_surfaces_kill_session_stderr(
     ):
         server.new_session(session_name="no_such_session", kill_session=True)
 
-    records = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(records) >= 1, "expected ERROR record for the failed kill-session"
-
-    rec = t.cast(t.Any, records[0])
-    assert rec.getMessage() == "tmux command failed"
-    assert rec.tmux_subcommand == "kill-session"
-    assert isinstance(rec.tmux_exit_code, int)
-    assert rec.tmux_exit_code != 0
-    assert rec.tmux_stderr_len >= 1
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
 
 
-def test_environment_failure_logs_before_value_error(
+def test_environment_failure_propagates_without_logging(
     server: Server,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Environment errors keep their public exception and log the failure."""
+    """Translated environment errors remain exception data."""
     dead = server.new_session(session_name="logging_dead_environment")
     dead.kill()
 
@@ -324,67 +313,19 @@ def test_environment_failure_logs_before_value_error(
     ):
         dead.set_environment("KEY", "value")
 
-    records = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(records) == 1
-    rec = t.cast(t.Any, records[0])
-    assert rec.getMessage() == "tmux command failed"
-    assert rec.tmux_subcommand == "set-environment"
-    assert rec.funcName == "set_environment"
-
-
-def test_pane_split_failure_logs_before_specialized_exception(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Pane creation errors log once without changing their exception."""
-    from libtmux import exc
-
-    pane = session.active_window.active_pane
-    assert pane is not None
-    pane.split()
-    pane.kill()
-
-    with (
-        caplog.at_level(logging.ERROR, logger="libtmux.common"),
-        pytest.raises(exc.LibTmuxException),
-    ):
-        pane.split()
-
-    records = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(records) == 1
-    rec = t.cast(t.Any, records[0])
-    assert rec.tmux_subcommand == "split-window"
-    assert rec.funcName == "split"
-
-
-def test_option_failure_logs_before_option_error(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Option errors keep their public exception after transport logging."""
-    from libtmux import exc
-
-    with (
-        caplog.at_level(logging.ERROR, logger="libtmux.common"),
-        pytest.raises(exc.OptionError),
-    ):
-        session.set_option("not-a-libtmux-option", "value")
-
-    records = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(records) == 1
-    rec = t.cast(t.Any, records[0])
-    assert rec.tmux_subcommand == "set-option"
-    assert rec.funcName == "set_option"
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
 
 
 @pytest.mark.parametrize("configured", [True, False], ids=["configured", "default"])
-def test_missing_tmux_binary_logs_before_public_exception(
+def test_missing_tmux_binary_propagates_without_logging(
     configured: bool,
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A missing executable still leaves one failure record."""
+    """A missing executable remains exception data, not a log record."""
     from libtmux import exc
     from libtmux.common import tmux_cmd
 
@@ -397,12 +338,9 @@ def test_missing_tmux_binary_logs_before_public_exception(
     ):
         tmux_cmd("list-sessions", tmux_bin=tmux_bin)
 
-    records = [record for record in caplog.records if record.levelno == logging.ERROR]
-    assert len(records) == 1
-    record = t.cast(t.Any, records[0])
-    assert record.getMessage() == "tmux subprocess failed"
-    assert record.tmux_subcommand == "list-sessions"
-    assert not hasattr(record, "tmux_exit_code")
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
 
 
 @pytest.mark.parametrize(
@@ -760,32 +698,6 @@ def test_session_fixture_setup_logs_no_errors(
     assert errors == [], f"fixture setup logged: {[r.getMessage() for r in errors]}"
 
 
-def test_failure_record_names_the_caller(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """The ERROR record locates the tmux operation, not the shared helper.
-
-    ``raise_if_stderr()`` has many call sites; without ``stacklevel`` every one
-    of them reports the same file and line, which makes ``%(filename)s`` and
-    OpenTelemetry's ``code.filepath`` useless for finding the failure.
-    """
-    from libtmux import exc
-
-    with (
-        caplog.at_level(logging.ERROR, logger="libtmux.common"),
-        pytest.raises(exc.LibTmuxException),
-    ):
-        session.kill_window(target_window="no_such_window")
-
-    records = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(records) >= 1
-
-    rec = records[0]
-    assert rec.funcName == "kill_window"
-    assert rec.filename == "session.py"
-
-
 def test_command_content_cannot_forge_a_log_line(
     session: Session,
     caplog: pytest.LogCaptureFixture,
@@ -929,13 +841,10 @@ def test_pane_content_is_not_written_to_records(
             assert rec.tmux_stdout_len > 0, "the count still reports what came back"
 
 
-def test_parse_failure_is_logged(caplog: pytest.LogCaptureFixture) -> None:
-    """A row libtmux cannot parse must say so; the exception names only zip().
-
-    A field holding the format separator splits in two, and the field counts are
-    what identify that. Nothing else in the log reports it: tmux succeeded, so
-    the command records show a clean exit.
-    """
+def test_parse_failure_propagates_without_logging(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A parser failure remains exception data."""
     from libtmux.formats import FORMAT_SEPARATOR
     from libtmux.neo import parse_output
 
@@ -947,14 +856,9 @@ def test_parse_failure_is_logged(caplog: pytest.LogCaptureFixture) -> None:
     ):
         parse_output(row, "list-panes", "3.7")
 
-    records = [r for r in caplog.records if r.levelno == logging.ERROR]
-    assert len(records) == 1
-
-    rec = t.cast(t.Any, records[0])
-    assert rec.getMessage() == "tmux output parse failed"
-    assert rec.tmux_subcommand == "list-panes"
-    assert rec.tmux_fields_received == 3
-    assert rec.tmux_fields_expected != rec.tmux_fields_received
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
 
 
 def test_concurrent_records_share_no_mutable_state(
