@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import types
 import typing as t
 
 import pytest
@@ -268,27 +267,35 @@ def test_session_kill_all_except_logging(
 
 
 def test_server_new_session_surfaces_kill_session_stderr(
+    server: Server,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test kill-session stderr propagation using monkeypatch for the failure path.
+    """Test kill-session stderr propagation, and the ERROR record it emits.
 
-    A real tmux fixture is not used here because this path requires forcing a
-    kill-session command failure before session creation begins.
+    ``has_session`` is monkeypatched so ``new_session`` attempts to kill a
+    session that does not exist; tmux then fails the ``kill-session`` for real,
+    which is the condition under test.
     """
     from libtmux import exc
-    from libtmux.server import Server
-    from libtmux.test.random import namer
 
-    server = Server(socket_name=f"libtmux_log_{next(namer)}")
     monkeypatch.setattr(server, "has_session", lambda session_name: True)
-    monkeypatch.setattr(
-        server,
-        "cmd",
-        lambda *args, **kwargs: types.SimpleNamespace(stderr=["kill failed"]),
-    )
 
-    with pytest.raises(exc.LibTmuxException, match="kill failed"):
-        server.new_session(session_name="existing_session", kill_session=True)
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(exc.LibTmuxException, match="kill-session"),
+    ):
+        server.new_session(session_name="no_such_session", kill_session=True)
+
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) >= 1, "expected ERROR record for the failed kill-session"
+
+    rec = t.cast(t.Any, records[0])
+    assert rec.getMessage() == "tmux command failed"
+    assert rec.tmux_subcommand == "kill-session"
+    assert isinstance(rec.tmux_exit_code, int)
+    assert rec.tmux_exit_code != 0
+    assert rec.tmux_stderr_len >= 1
 
 
 def test_options_warning_logging_schema(
@@ -315,3 +322,91 @@ def test_options_warning_logging_schema(
     rec = t.cast(t.Any, records[0])
     assert isinstance(rec.tmux_option_key, str)
     assert rec.exc_info is None
+
+
+@pytest.mark.parametrize(
+    ("argv", "subcommand", "socket"),
+    [
+        (["tmux", "-Lsock", "new-session"], "new-session", "sock"),
+        (["tmux", "-L", "sock", "new-session"], "new-session", "sock"),
+        (["tmux", "-S", "/tmp/s", "kill-server"], "kill-server", "/tmp/s"),
+        (["tmux", "-f", "/etc/tmux.conf", "kill-server"], "kill-server", None),
+        (["tmux", "-2", "-q", "list-panes"], "list-panes", None),
+        (["tmux", "-c", "echo hi", "run-shell"], "run-shell", None),
+        (["tmux", "-T", "256", "list-keys"], "list-keys", None),
+        (["tmux", "-V"], None, None),
+    ],
+    ids=[
+        "joined-socket",
+        "separated-socket",
+        "socket-path",
+        "separated-config",
+        "bundled-booleans",
+        "separated-shell-command",
+        "separated-features",
+        "no-subcommand",
+    ],
+)
+def test_describe_command_reads_tmux_global_flags(
+    argv: list[str],
+    subcommand: str | None,
+    socket: str | None,
+) -> None:
+    """Global flags that take a value must not be read as the subcommand.
+
+    Mirrors tmux's own ``getopt`` string in ``tmux.c`` (``2c:CDdf:hlL:NqS:T:uUvV``).
+    libtmux always joins its own flags, so only a caller building a command line
+    by hand reaches the separated forms.
+    """
+    from libtmux._internal.log_context import describe_command
+
+    context = describe_command(argv)
+    assert context.subcommand == subcommand
+    assert context.socket == socket
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["tmux", "new-session", "-eK=v"], "tmux new-session -eK=REDACTED"),
+        (["tmux", "new-session", "-e", "K=v"], "tmux new-session -e K=REDACTED"),
+        (["tmux", "split-window", "-eK=a=b"], "tmux split-window -eK=REDACTED"),
+        (["tmux", "set-environment", "K", "v"], "tmux set-environment K REDACTED"),
+        (["tmux", "set-environment", "-u", "K"], "tmux set-environment -u K"),
+        (["tmux", "select-pane", "-e", "-t%1"], "tmux select-pane -e -t%1"),
+        (["tmux", "copy-mode", "-e"], "tmux copy-mode -e"),
+    ],
+    ids=[
+        "joined-env-pair",
+        "separated-env-pair",
+        "value-containing-equals",
+        "set-environment-value",
+        "set-environment-unset-keeps-name",
+        "select-pane-boolean-e",
+        "copy-mode-boolean-e",
+    ],
+)
+def test_describe_command_redacts_only_environment_values(
+    argv: list[str],
+    expected: str,
+) -> None:
+    """``-e`` is an env pair on some subcommands and a boolean on others."""
+    from libtmux._internal.log_context import describe_command
+
+    assert describe_command(argv).command == expected
+
+
+def test_command_records_carry_socket_identity(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Records name which tmux server they came from."""
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        server.cmd("list-sessions")
+
+    records = [r for r in caplog.records if hasattr(r, "tmux_socket")]
+    assert len(records) >= 1, "expected records tagged with the socket"
+
+    rec = t.cast(t.Any, records[0])
+    assert rec.tmux_socket == server.socket_name
+    assert rec.tmux_subcommand == "list-sessions"
