@@ -743,6 +743,7 @@ class Session(
             "other sessions killed" if all_except else "session killed",
             extra=object_extra(
                 "kill-session",
+                socket=self.server.socket_path or self.server.socket_name,
                 session=self.session_name,
                 target=self.session_id,
             ),
@@ -785,6 +786,7 @@ class Session(
             "session renamed",
             extra=object_extra(
                 "rename-session",
+                socket=self.server.socket_path or self.server.socket_name,
                 session=new_name,
                 target=self.session_id,
             ),
@@ -947,6 +949,7 @@ class Session(
             "window created",
             extra=object_extra(
                 "new-window",
+                socket=self.server.socket_path or self.server.socket_name,
                 session=self.session_name,
                 window=window.window_name,
                 target=target,
@@ -986,6 +989,7 @@ class Session(
             "window killed",
             extra=object_extra(
                 "kill-window",
+                socket=self.server.socket_path or self.server.socket_name,
                 session=self.session_name,
                 target=target,
             ),
