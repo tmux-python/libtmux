@@ -47,128 +47,39 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
-#### Log records name which tmux server they came from (#744)
+#### Structured logs omit command and output payloads (#744)
 
-Command and lifecycle records now carry `tmux_socket`, the socket name or path
-the operation addressed, so an application driving more than one tmux server
-can tell their records apart. Command records for tmux subcommands also carry
-`tmux_subcommand`, derived from the command line rather than hand-written at
-each call site. Socket identities containing control characters stay on one
-log line.
+Every tmux subprocess now emits one `DEBUG` record before execution and one
+afterward. Records identify the executable, socket, subcommand, exit code, and
+stdout/stderr line counts. Command operands and process output bodies are
+omitted, so caller data does not require command-specific redaction.
 
-#### Failed tmux commands are logged at `ERROR` (#744)
-
-Command paths that surface a tmux failure, and list accessors that leniently
-convert one to an empty result, now emit the same `ERROR` record while
-preserving their existing API behavior. The record carries the socket and
-command line, plus the exit code when available, and points at the libtmux
-method that ran the command. This matters most for list accessors that swallow
-tmux errors:
-{attr}`Server.sessions <libtmux.Server.sessions>` still returns an empty
-{class}`~libtmux._internal.query_list.QueryList` when tmux is unreachable, but
-now says why. Expected non-zero probes such as
-{meth}`Server.is_alive() <libtmux.Server.is_alive>` stay quiet.
+Lifecycle records now identify the tmux socket. Killing a session through
+{meth}`Server.kill_session() <libtmux.Server.kill_session>` also emits the
+same `session killed` event as {meth}`Session.kill()
+<libtmux.Session.kill>`.
 
 ### Fixes
 
-#### An unparseable option warns once, not once per entry (#744)
+#### Logging reports only failures it handles (#744)
 
-An option whose value libtmux could not parse — `terminal-features`,
-`terminal-overrides`, `command-alias` — logged one `WARNING` per malformed
-entry, so a badly formed list produced a burst of identical records every time
-options were read. It now warns once for the option, with `tmux_option_skipped`
-counting what it dropped.
+{attr}`Server.sessions <libtmux.Server.sessions>`,
+{attr}`Server.attached_sessions <libtmux.Server.attached_sessions>`, and
+{attr}`Server.clients <libtmux.Server.clients>` now emit one `ERROR` when
+they convert a tmux failure to an empty result. Failures that propagate as
+exceptions and expected probes such as {meth}`Server.is_alive()
+<libtmux.Server.is_alive>` stay quiet.
 
-#### Sensitive tmux content stays out of debug records (#744)
-
-Pane capture, buffer reads, environment inspection, message history, and prompt
-history now report `tmux_stdout_len` without copying their content into
-`tmux_stdout`. Buffer payloads passed to {meth}`Server.set_buffer()
-<libtmux.Server.set_buffer>` are replaced with `REDACTED` in `tmux_cmd`. The
-calls retain their existing results.
-
-tmux's built-in aliases, relevant default aliases, and policy-safe command
-abbreviations inherit the same redaction policy as the corresponding full
-command names.
-
-#### An unparseable row of tmux output says so (#744)
-
-When tmux returns a row libtmux cannot split into the fields it asked for, the
-exception names only the parsing primitive that raised — it identifies neither
-tmux, the subcommand, nor the field. Nothing in the log filled that gap either,
-since tmux itself succeeded and the command records showed a clean exit. Such a
-row now logs an `ERROR` carrying the subcommand and the field counts, which is
-what distinguishes a value that contained a separator from any other cause.
-
-#### Environment values are hidden coming back, too (#744)
-
-Redacting what libtmux sends only covered half the round trip: tmux returns the
-same values on stdout, and a value may span lines after tmux output is split.
-Environment-query records now omit `tmux_stdout` content entirely while
-retaining `tmux_stdout_len`; {meth}`getenv()
-<libtmux.common.EnvironmentMixin.getenv>` and {meth}`show_environment()
-<libtmux.common.EnvironmentMixin.show_environment>` keep their existing API
-results.
-
-#### Command content cannot forge a log record (#744)
-
-A tmux command line carries whatever the caller passed it — the keys
-{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` sends, a start directory, a
-window command. A line boundary among them ended the `DEBUG` record early in
-any line-oriented log, leaving the remainder to read as a record of its own.
-An argument holding control characters is now written in shell `$'…'` form,
-which keeps the rendering familiar and pasteable for ordinary tmux arguments
-while staying on one line. Terminal escape sequences are rendered rather than
-passed through to whatever reads the log.
-
-#### An over-long command no longer floods the log (#744)
-
-A caller-composed command that tmux rejects as too large could still be copied
-into multiple `DEBUG` records in full. `tmux_cmd` is now bounded, and a
-shortened rendering ends in an ellipsis.
-
-#### Environment values no longer appear in logs (#744)
-
-Passing `environment=` to {meth}`Server.new_session()
-<libtmux.Server.new_session>`, {meth}`Session.new_window()
-<libtmux.Session.new_window>`, or {meth}`Pane.split() <libtmux.Pane.split>` put
-each `NAME=VALUE` pair on a tmux command line that `DEBUG` logging then recorded
-verbatim, so a token passed to a session appeared in any log the application
-shipped. Values are now replaced with `REDACTED` while the names stay visible.
-{meth}`set_environment() <libtmux.common.EnvironmentMixin.set_environment>` is
-covered too, including forms that bundle boolean options before `-e`.
-
-Keystrokes sent with {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` are still
-logged as given — libtmux cannot tell a password from a command.
-
-#### `Server.kill_session()` logs the session it killed (#744)
-
-Killing a session through {meth}`Server.kill_session()
-<libtmux.Server.kill_session>` emitted no lifecycle record, while
-{meth}`Session.kill() <libtmux.Session.kill>` emitted one for the same
-user-visible operation. Both now log `session killed`.
-
-#### One command line, one shape (#744)
-
-`tmux_cmd` reported two different strings depending on which module logged it:
-the full argument vector including the tmux binary, or the arguments alone. It
-is now produced in one place, so a consumer parsing the field sees a single
-shape. Listing objects no longer emits a duplicate pair of debug records for a
-command that was already logged.
+Malformed `terminal-features`, `terminal-overrides`, and `command-alias`
+entries now produce one aggregate warning per option. Debug messages for failed
+lookup paths render control characters instead of writing them into the record.
 
 ### Documentation
 
-#### A guide to libtmux's logging (#744)
+#### Logging guide (#744)
 
-{ref}`logging` covers turning logging on, which logger emits what, the full
-`tmux_` field schema, how to assert on records with pytest's `caplog`, and the
-advisories that travel through {mod}`warnings` rather than a logger — along with
-the one call that routes them into the same stream. It also covers running under
-threads and `asyncio`, including the {class}`~logging.handlers.QueueHandler`
-formatter that discards records before they reach the queue. It
-also documents the {class}`~logging.Formatter` trap that silently drops records
-whose format string names a field they do not carry, and what libtmux redacts.
-The page's examples run as part of the test suite.
+{ref}`logging` documents levels, logger names, structured fields, failure
+semantics, payload omission, safe formatters, warnings, and `caplog` tests.
 
 #### Cleaner `from_env` examples (#719)
 
