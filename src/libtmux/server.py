@@ -502,6 +502,11 @@ class Server(
 
         raise_if_stderr(proc, "kill-session")
 
+        logger.info(
+            "session killed",
+            extra=object_extra("kill-session", target=target_session),
+        )
+
         return self
 
     def run_shell(
