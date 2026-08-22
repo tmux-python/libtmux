@@ -376,26 +376,33 @@ nothing, and says nothing about it. Attach it to a **handler**:
 
 >>> handler = Capture()
 >>> libtmux_logger = logging.getLogger("libtmux")
+>>> previous_level = libtmux_logger.level
 >>> libtmux_logger.addHandler(handler)
 >>> libtmux_logger.setLevel(logging.DEBUG)
 >>> pane = session.active_window.active_pane
+>>> on_logger = RedactFilter("hunter2")
 
 On the logger, it never runs:
 
->>> libtmux_logger.addFilter(RedactFilter("hunter2"))
+>>> libtmux_logger.addFilter(on_logger)
 >>> pane.send_keys("login hunter2", enter=False)
 >>> any("hunter2" in r.tmux_cmd for r in records if hasattr(r, "tmux_cmd"))
 True
 
 On the handler, it does:
 
->>> libtmux_logger.removeFilter(libtmux_logger.filters[0])
+>>> libtmux_logger.removeFilter(on_logger)
 >>> handler.addFilter(RedactFilter("hunter2"))
 >>> records.clear()
 >>> pane.send_keys("login hunter2", enter=False)
 >>> any("hunter2" in r.tmux_cmd for r in records if hasattr(r, "tmux_cmd"))
 False
+
+Put the logger back as you found it — a level set on a shared logger outlives
+the code that set it:
+
 >>> libtmux_logger.removeHandler(handler)
+>>> libtmux_logger.setLevel(previous_level)
 ```
 
 The command line also reaches the process table, so it is visible to `ps` for

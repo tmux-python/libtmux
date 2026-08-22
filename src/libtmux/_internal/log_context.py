@@ -356,6 +356,8 @@ def redact_output(subcommand: str | None, lines: list[str]) -> list[str]:
     >>> redact_output("list-sessions", ["mysession: 1 windows"])
     ['mysession: 1 windows']
     """
+    # Dropping beats redacting: a subcommand in both sets returns content, and
+    # content is withheld whole rather than pattern-matched.
     if subcommand in _CONTENT_SUBCOMMANDS:
         return []
     if subcommand not in _ENV_OUTPUT_SUBCOMMANDS:
