@@ -45,6 +45,45 @@ conform.
 - Add `NullHandler` in library `__init__.py` files.
 - Never configure handlers, levels, or formatters in library code —
   that's the application's job.
+- Define a logger only in modules that log; an unused one is dead
+  code.
+
+### Where the schema is built
+
+`_internal/log_context.py` owns both producers. Reuse them instead of
+hand-rolling an `extra` dict:
+
+- `describe_command(argv)` derives `tmux_cmd`, `tmux_subcommand`, and
+  `tmux_socket` from a tmux command line, redacting environment values.
+  It parses tmux's global flags per the `getopt` string in tmux's
+  `tmux.c`; a flag that takes a value must never be read as the
+  subcommand.
+- `object_extra(subcommand, ...)` builds lifecycle records, enforcing
+  that every value is a `str` and an unknown key is omitted rather than
+  set to `None`.
+
+`tmux_cmd` carries the command line for every command record, so no
+other layer should log one — a second producer means two shapes under
+one key.
+
+Redaction is two-directional. `describe_command()` covers what libtmux
+sends and `redact_output()` covers what tmux returns; a subcommand that
+carries a secret one way almost always carries it back the other.
+`redact_output()` also decides control data from content: a subcommand
+returning screen or buffer contents reports `tmux_stdout_len` and
+nothing else, since the caller already holds the value and the log
+would only duplicate it at size. Neither can classify content a caller
+composed — `send_keys` payloads, shell commands, format queries — so
+that boundary is documented rather than guessed at.
+
+A `logging.Filter` belongs on a handler. `Logger.callHandlers()` walks
+ancestor loggers for their handlers and never consults their filters,
+so a filter on `libtmux` never sees a record from `libtmux.common`. It
+quotes control characters into shell `$'…'` form: a caller controls
+much of what reaches a command line, and a raw newline there would let
+the tail of an argument pose as its own record. Object names need no
+such guard — tmux rejects control characters in them before libtmux
+logs anything.
 
 ### Structured context via `extra`
 
@@ -63,6 +102,8 @@ searching, or test assertions.
 | `tmux_window` | `str` | window name or index |
 | `tmux_pane` | `str` | pane identifier |
 | `tmux_option_key` | `str` | tmux option name |
+| `tmux_option_skipped` | `int` | entries skipped under one option |
+| `tmux_socket` | `str` | socket name or path identifying the tmux server |
 
 **Heavy/optional keys** (DEBUG only, potentially large):
 
@@ -115,7 +156,7 @@ with the portable pattern (override `process()` to merge);
 |-------|---------|----------|
 | `DEBUG` | Internal mechanics, tmux I/O | tmux command + stdout, format queries |
 | `INFO` | Object lifecycle, user-visible operations | Session created, window added |
-| `WARNING` | Recoverable issues, deprecation | Deprecated method, missing optional program |
+| `WARNING` | Recoverable issues libtmux resolved itself | Output it could not parse, a client it had to kill |
 | `ERROR` | Failures that stop an operation | tmux command failed, invalid target |
 
 ### Message style
@@ -124,6 +165,44 @@ with the portable pattern (override `process()` to merge);
   command failed"`.
 - No trailing punctuation.
 - Keep messages short; put details in `extra`, not the message string.
+
+Deprecations and ignored arguments go through `warnings.warn`, not a
+logger — that is the Python mechanism for them, and
+`logging.captureWarnings(True)` is how an application routes them into
+the same stream. Do not log a deprecation as well; a warning already
+deduplicates per source location and a log record would not.
+
+### Thread safety
+
+`logging` locks handler output, so the only race libtmux could add is
+handing one mutable value to two records. Keep every list and dict
+per-record — slice before you pass it — and no lock is needed anywhere
+on this path.
+
+### Failure records
+
+`raise_if_stderr()` is where libtmux decides a tmux command *failed*,
+so it is the one place that logs `ERROR` for that. A command tmux ran
+successfully can still fail libtmux — `parse_output()` logs the field
+counts when a row does not match the template, because the `zip()`
+message names neither tmux nor the subcommand. Converting such an error
+to `LibTmuxException` would be worse than leaving it: the lenient list
+accessors catch that type, so a loud failure would become a silent
+empty result. Paths that tolerate a non-zero exit — `has-session`
+probes, `is_alive()` — do not route through it and stay quiet. Do not
+log `ERROR` on a non-zero exit code alone; tmux uses one to answer
+"no".
+
+It logs with `stacklevel=2` so the record names the wrapper that ran
+the command. Verify that whenever call depth changes: with the wrong
+value, all of its call sites collapse onto one file and line.
+
+`tmux_stderr` rides on the failure record despite being a heavy key,
+because a failure without tmux's own message is not actionable. It
+stays capped.
+
+A per-item parse loop reports once for the whole item, with a count,
+rather than once per entry — see `_warn_skipped()` in `options.py`.
 
 ### Exception logging
 
@@ -158,4 +237,7 @@ Assert on `caplog.records` attributes, not string matching on
 - Logging secret env var values (log key names only).
 - Non-scalar ad-hoc objects in `extra`.
 - Requiring custom `extra` fields in format strings without safe
-  defaults (missing keys raise `KeyError`).
+  defaults. A missing field makes `Formatter.format()` raise
+  `ValueError`, which `handleError()` prints to stderr before dropping
+  the record; with `logging.raiseExceptions = False` even that goes
+  away. Pass `defaults=` (Python 3.10+).
