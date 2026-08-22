@@ -95,6 +95,7 @@ configure as one unit:
 | `libtmux.pane` | Pane split, floating pane creation, pane kill |
 | `libtmux.options` | Option values tmux returned that libtmux could not parse |
 | `libtmux.hooks` | Hook lines tmux returned that libtmux could not parse |
+| `libtmux.neo` | Rows of tmux output libtmux could not parse |
 | `libtmux._internal.control_mode` | The `tmux -C` client used by the test fixtures |
 
 Silence the command chatter while keeping lifecycle events:
@@ -161,6 +162,13 @@ An option whose value libtmux cannot parse warns once for that option, with
 `tmux_option_skipped` counting the entries it dropped, rather than once per
 entry.
 
+Not every failure comes from tmux. When libtmux cannot parse a row tmux returned
+successfully, the exception mentions only the parsing primitive that raised, so
+an `ERROR` record on `libtmux.neo` carries what the exception cannot: the
+subcommand, and how many fields the row held against how many it should have.
+A count one higher than expected means a value contained the character libtmux
+splits rows on.
+
 ## The `extra` schema
 
 Every field is attached under `extra`, which makes it an attribute on the
@@ -180,6 +188,8 @@ scalars.
 | `tmux_pane` | `str` | Pane identifier |
 | `tmux_option_key` | `str` | Option name, on `libtmux.options` warnings |
 | `tmux_option_skipped` | `int` | Entries libtmux could not parse under that option |
+| `tmux_fields_expected` | `int` | Fields a row of tmux output should have held |
+| `tmux_fields_received` | `int` | Fields it actually held
 
 ### Outcome, on completion and failure records
 
