@@ -280,10 +280,8 @@ def session(
     session_id = session.session_id
     assert session_id is not None
 
-    # Avoid an ERROR record that pytest would replay as fixture noise.
-    if server.clients:
-        with contextlib.suppress(exc.LibTmuxException):
-            server.switch_client(target_session=session_id)
+    with contextlib.suppress(exc.LibTmuxException):
+        server.switch_client(target_session=session_id)
 
     for old_test_session in old_test_sessions:
         server.kill_session(old_test_session)
