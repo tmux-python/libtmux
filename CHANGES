@@ -77,6 +77,16 @@ entry, so a badly formed list produced a burst of identical records every time
 options were read. It now warns once for the option, with `tmux_option_skipped`
 counting what it dropped.
 
+#### Environment values are hidden coming back, too (#744)
+
+Redacting what libtmux sends only covered half the round trip: tmux returns the
+same values on stdout, so {meth}`getenv() <libtmux.common.EnvironmentMixin.getenv>`
+and {meth}`show_environment() <libtmux.common.EnvironmentMixin.show_environment>`
+wrote to a `DEBUG` record the very value
+{meth}`set_environment() <libtmux.common.EnvironmentMixin.set_environment>` had
+been careful to keep out of one. Their records now show the names alone, while
+the calls return what they always did.
+
 #### Command content cannot forge a log record (#744)
 
 A tmux command line carries whatever the caller passed it — the keys
