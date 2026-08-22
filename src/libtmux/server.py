@@ -94,7 +94,6 @@ def _log_swallowed_list_error(
     error: exc.LibTmuxException,
 ) -> None:
     """Record a list failure at the boundary that converts it to empty."""
-    stderr = str(error).splitlines()
     logger.error(
         "tmux command failed",
         extra={
@@ -102,8 +101,7 @@ def _log_swallowed_list_error(
                 list_cmd,
                 socket=server.socket_path or server.socket_name,
             ),
-            "tmux_stderr": stderr[:100],
-            "tmux_stderr_len": len(stderr),
+            "tmux_stderr_len": len(str(error).splitlines()),
         },
         stacklevel=2,
     )
