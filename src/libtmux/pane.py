@@ -1250,8 +1250,8 @@ class Pane(
         size: int, optional
             Cell/row count to occupy with respect to current window.
         percentage: int, optional
-            Percentage (0-100) of the window to occupy (``-p`` flag).
-            Mutually exclusive with *size*.
+            Percentage (0-100) of the window to occupy. Mutually exclusive
+            with *size*.
 
             .. versionadded:: 0.56
         environment: dict, optional
@@ -1343,7 +1343,10 @@ class Pane(
             tmux_args += (f"-l{size}",)
 
         if percentage is not None:
-            tmux_args += (f"-p{percentage}",)
+            # tmux 3.1 taught -l to take a percentage and deprecated -p; 3.4
+            # then regressed -p outright ("size missing"). -l is the spelling
+            # that works across every version libtmux supports.
+            tmux_args += (f"-l{percentage}%",)
 
         if full_window_split:
             tmux_args += ("-f",)

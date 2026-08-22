@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### Splitting by percentage works on tmux 3.4 (#736)
+
+Passing `percentage=` to {meth}`Pane.split() <libtmux.Pane.split>` or
+{meth}`Window.split() <libtmux.Window.split>` raised
+{exc}`~libtmux.exc.LibTmuxException` on tmux 3.4, which rejects the sizing flag
+libtmux used. The size now rides on the spelling tmux has accepted since 3.1,
+so a percentage split behaves the same on every supported version.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -56,6 +66,13 @@ its {meth}`Server <libtmux.Server.from_env>`,
 environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
+
+#### How-to guides (#736)
+
+A new {ref}`how-to section <howto>` collects task-shaped recipes: starting and
+connecting to servers, locating the pane your code runs in, and driving panes.
+Every block is plain Python you can paste and run, and the suite runs each page
+end to end, so a guide that stops working fails the build.
 
 ### Development
 
