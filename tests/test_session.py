@@ -543,7 +543,8 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     2. Session state can change arbitrarily while the user is attached
     3. Refreshing after such a command makes no semantic sense
     """
-    from libtmux.common import tmux_cmd
+    from libtmux.common import tmux_cmd  # noqa: F401
+    from libtmux.engines.base import CommandResult
 
     # Create a new session specifically for this test
     test_session = server.new_session(detach=True)
@@ -558,7 +559,11 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
             self.stderr: list[str] = []
             self.cmd: list[str] = ["tmux", "attach-session"]
 
-    def patched_cmd(cmd_name: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def patched_cmd(
+        cmd_name: str,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> CommandResult:
         """Patched cmd that kills session after attach-session."""
         if cmd_name == "attach-session":
             # Simulate: attach-session succeeded, user worked, then killed session
