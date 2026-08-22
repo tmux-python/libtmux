@@ -59,6 +59,13 @@ it.
 
 ### Development
 
+#### The control-mode test no longer flakes in CI (#733)
+
+`test_control_mode_stdout_preserves_non_ascii_output` intermittently timed out
+waiting for output that had already arrived, so it failed on loaded runners and
+passed on re-run. The test now bounds its wait with a reader thread and a
+deadline. The non-ASCII decoding regression it guards is still covered.
+
 #### CI actions updated to current majors
 
 Workflow actions moved to their current major releases: `actions/checkout` v7,
