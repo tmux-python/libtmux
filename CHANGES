@@ -86,6 +86,15 @@ including anything typed at a prompt, into the log. Those commands now report
 `tmux_stdout_len` alone, the way an HTTP client logs a content length rather
 than a body. The calls return exactly what they always did.
 
+#### An unparseable row of tmux output says so (#744)
+
+When tmux returns a row libtmux cannot split into the fields it asked for, the
+exception names only the parsing primitive that raised — it identifies neither
+tmux, the subcommand, nor the field. Nothing in the log filled that gap either,
+since tmux itself succeeded and the command records showed a clean exit. Such a
+row now logs an `ERROR` carrying the subcommand and the field counts, which is
+what distinguishes a value that contained a separator from any other cause.
+
 #### Environment values are hidden coming back, too (#744)
 
 Redacting what libtmux sends only covered half the round trip: tmux returns the
