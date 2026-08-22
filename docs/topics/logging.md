@@ -261,6 +261,21 @@ Give every custom key a default:
 'INFO session created cmd=-'
 ```
 
+`tmux_stdout` and `tmux_stderr` hold lists, and a `%s` renders a list as its
+Python repr rather than as lines. Join them yourself when you want them
+readable:
+
+```python
+>>> import logging
+>>> record = logging.LogRecord(
+...     "libtmux.common", logging.DEBUG, "common.py", 1,
+...     "tmux command completed", None, None,
+... )
+>>> record.tmux_stdout = ["line one", "line two"]
+>>> logging.Formatter("%(message)s out=%(tmux_stdout)s").format(record)
+"tmux command completed out=['line one', 'line two']"
+```
+
 ## What libtmux does not log
 
 Environment values never reach a log record. libtmux redacts them where the
