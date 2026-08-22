@@ -280,8 +280,13 @@ def session(
     session_id = session.session_id
     assert session_id is not None
 
-    with contextlib.suppress(exc.LibTmuxException):
-        server.switch_client(target_session=session_id)
+    # Only worth attempting when a client is attached. Asking tmux to switch a
+    # client that does not exist is a command failure, which libtmux logs at
+    # ERROR — and pytest replays that into the captured log of every failing
+    # test, where it reads as the cause rather than fixture noise.
+    if server.clients:
+        with contextlib.suppress(exc.LibTmuxException):
+            server.switch_client(target_session=session_id)
 
     for old_test_session in old_test_sessions:
         server.kill_session(old_test_session)
