@@ -45,7 +45,41 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Structured logs omit command and output payloads (#744)
+
+Every tmux subprocess now emits one `DEBUG` record before execution and one
+afterward. Records identify the executable, socket, subcommand, exit code, and
+stdout/stderr line counts. Command operands and process output bodies are
+omitted, so caller data does not require command-specific redaction.
+
+Lifecycle records now identify the tmux socket. Killing a session through
+{meth}`Server.kill_session() <libtmux.Server.kill_session>` also emits the
+same `session killed` event as {meth}`Session.kill()
+<libtmux.Session.kill>`.
+
+### Fixes
+
+#### Logging reports only failures it handles (#744)
+
+{attr}`Server.sessions <libtmux.Server.sessions>`,
+{attr}`Server.attached_sessions <libtmux.Server.attached_sessions>`, and
+{attr}`Server.clients <libtmux.Server.clients>` now emit one `ERROR` when
+they convert a tmux failure to an empty result. Failures that propagate as
+exceptions and expected probes such as {meth}`Server.is_alive()
+<libtmux.Server.is_alive>` stay quiet.
+
+Malformed `terminal-features`, `terminal-overrides`, and `command-alias`
+entries now produce one aggregate warning per option. Debug messages for failed
+lookup paths render control characters instead of writing them into the record.
+
 ### Documentation
+
+#### Logging guide (#744)
+
+{ref}`logging` documents levels, logger names, structured fields, failure
+semantics, payload omission, safe formatters, warnings, and `caplog` tests.
 
 #### Cleaner `from_env` examples (#719)
 

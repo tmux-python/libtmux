@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 import pathlib
 import shutil
 import subprocess
@@ -209,7 +208,7 @@ def test_new_session_shell(server: Server) -> None:
 def test_new_session_shell_env(server: Server) -> None:
     """Verify ``Server.new_session`` creates valid session running w/ command (#553)."""
     cmd = "sleep 1m"
-    env = dict(os.environ)
+    env = {"LIBTMUX_TEST_ENV": "present"}
     mysession = server.new_session(
         "test_new_session_env",
         window_command=cmd,
@@ -220,6 +219,7 @@ def test_new_session_shell_env(server: Server) -> None:
     pane = window.panes[0]
     assert mysession.session_name == "test_new_session_env"
     assert server.has_session("test_new_session_env")
+    assert mysession.getenv("LIBTMUX_TEST_ENV") == "present"
 
     pane_start_command = pane.pane_start_command
     assert pane_start_command is not None
@@ -1399,24 +1399,39 @@ def test_server_search_panes_filter_by_id(server: Server) -> None:
     assert [p.pane_id for p in matches] == [target.pane_id]
 
 
-def test_server_clients_returns_empty_on_tmux_error(
+@pytest.mark.parametrize(
+    ("accessor", "list_cmd"),
+    [
+        ("sessions", "list-sessions"),
+        ("attached_sessions", "list-sessions"),
+        ("clients", "list-clients"),
+    ],
+)
+def test_lenient_list_accessors_log_and_return_empty(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    accessor: str,
+    list_cmd: str,
 ) -> None:
-    """``Server.clients`` returns an empty QueryList on tmux failure.
-
-    Lenient-by-default contract: ``list-clients`` failing for any reason
-    yields ``QueryList([])``, matching the historic shape of
-    :attr:`Server.sessions`. Callers needing a connectivity check should
-    use :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
-    """
-    sentinel = exc.LibTmuxException("simulated list-clients failure")
+    """Lenient list accessors log once where they swallow a tmux failure."""
+    sentinel = exc.LibTmuxException("simulated list failure")
 
     def _boom(**_: object) -> list[dict[str, str]]:
         raise sentinel
 
     monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
-    assert list(server.clients) == []
+    with caplog.at_level(logging.ERROR, logger="libtmux.server"):
+        assert list(getattr(server, accessor)) == []
+
+    records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert len(records) == 1
+    record = t.cast(t.Any, records[0])
+    assert record.tmux_subcommand == list_cmd
+    assert record.tmux_socket == server.socket_name
+    assert record.tmux_stderr_len == 1
+    assert not hasattr(record, "tmux_stderr")
+    assert record.funcName == ("clients" if accessor == "clients" else "sessions")
 
 
 def test_server_search_sessions_propagates_errors(
@@ -1437,27 +1452,6 @@ def test_server_search_sessions_propagates_errors(
     monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
     with pytest.raises(exc.LibTmuxException, match="simulated list-sessions failure"):
         server.search_sessions(filter="#{m:keep_*,#{session_name}}")
-
-
-def test_server_sessions_returns_empty_on_tmux_error(
-    server: Server,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``Server.sessions`` returns an empty QueryList on tmux failure.
-
-    Pins the lenient-by-default contract: a ``list-sessions`` failure —
-    daemon down, missing socket, permission error, subprocess crash —
-    yields ``QueryList([])`` rather than propagating. Callers that need
-    to distinguish "no sessions" from "tmux unreachable" should use
-    :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
-    """
-    sentinel = exc.LibTmuxException("simulated list-sessions failure")
-
-    def _boom(**_: object) -> list[dict[str, str]]:
-        raise sentinel
-
-    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
-    assert list(server.sessions) == []
 
 
 def test_server_sessions_missing_socket_returns_empty(tmp_path: pathlib.Path) -> None:

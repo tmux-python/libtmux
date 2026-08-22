@@ -1,10 +1,11 @@
-"""Tests for libtmux logging standards compliance."""
+"""Tests for libtmux logging contracts."""
 
 from __future__ import annotations
 
 import logging
-import types
+import pathlib
 import typing as t
+from collections.abc import Callable
 
 import pytest
 
@@ -13,305 +14,469 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 
-def test_tmux_cmd_debug_logging_schema(
-    server: Server,
+def _capture_info(
     caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Test that tmux_cmd produces structured log records per AGENTS.md."""
-    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
-        server.cmd("list-sessions")
-    records = [r for r in caplog.records if hasattr(r, "tmux_exit_code")]
-    assert len(records) >= 1
-    record = t.cast(t.Any, records[0])
-    assert isinstance(record.tmux_cmd, str)
-    assert isinstance(record.tmux_exit_code, int)
+    logger_name: str,
+    message: str,
+    action: Callable[[], object],
+) -> tuple[t.Any, t.Any]:
+    """Run one action and return its single matching lifecycle record."""
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger=logger_name):
+        result = action()
+
+    records = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.INFO and record.getMessage() == message
+    ]
+    assert len(records) == 1
+    return result, t.cast(t.Any, records[0])
 
 
-def test_lifecycle_info_logging_schema(
+def test_tmux_cmd_debug_logging_schema(
     session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test that lifecycle operations produce INFO records with str-typed extra."""
-    with caplog.at_level(logging.INFO, logger="libtmux.session"):
-        window = session.new_window(window_name="log_test")
+    """Command records expose bounded metadata, never operands or output bodies."""
+    server = session.server
+    marker = "caller-secret"
 
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        proc = server.cmd("list-sessions", "-F", marker)
+
+    assert marker in proc.stdout
     records = [
-        r
-        for r in caplog.records
-        if hasattr(r, "tmux_subcommand") and r.levelno == logging.INFO
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("tmux command")
     ]
-    assert len(records) >= 1, "expected at least one INFO lifecycle record"
-
+    assert [record.getMessage() for record in records] == [
+        "tmux command dispatched",
+        "tmux command completed",
+    ]
     for record in records:
         rec = t.cast(t.Any, record)
-        for key in ("tmux_subcommand", "tmux_session", "tmux_window", "tmux_target"):
-            val = getattr(rec, key, None)
-            if val is not None:
-                assert isinstance(val, str), (
-                    f"extra key {key!r} should be str, got {type(val).__name__}"
-                )
+        assert rec.tmux_subcommand == "list-sessions"
+        assert rec.tmux_socket == server.socket_name
+        assert rec.tmux_cmd.endswith("list-sessions <2 arguments omitted>")
+        assert marker not in rec.tmux_cmd
+        assert not hasattr(rec, "tmux_stdout")
+        assert not hasattr(rec, "tmux_stderr")
 
-    window.kill()
+    completed = t.cast(t.Any, records[-1])
+    assert isinstance(completed.tmux_exit_code, int)
+    assert completed.tmux_stdout_len == len(proc.stdout)
+    assert completed.tmux_stderr_len == 0
 
 
-def test_server_new_session_info_logging(
+def test_lifecycle_info_logging(
     server: Server,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test that server.new_session() produces INFO record with str-typed extra."""
-    with caplog.at_level(logging.INFO, logger="libtmux.server"):
-        new_session = server.new_session(session_name="log_test_session")
-
-    records = [
-        r
-        for r in caplog.records
-        if hasattr(r, "tmux_subcommand")
-        and r.levelno == logging.INFO
-        and getattr(r, "tmux_subcommand", None) == "new-session"
-    ]
-    assert len(records) >= 1, "expected INFO record for session creation"
-
-    rec = t.cast(t.Any, records[0])
-    assert isinstance(rec.tmux_subcommand, str)
-    assert isinstance(rec.tmux_session, str)
-
-    new_session.kill()
-
-
-def test_server_kill_info_logging(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Test that server.kill() emits a lifecycle INFO record."""
-    from libtmux.server import Server
+    """Lifecycle call sites emit the shared string-valued context schema."""
     from libtmux.test.random import namer
 
-    with Server(socket_name=f"libtmux_log_{next(namer)}") as temp_server:
-        temp_server.new_session(session_name=f"log_session_{next(namer)}")
-        caplog.clear()
+    session_name = f"log_session_{next(namer)}"
+    renamed_session = f"log_session_{next(namer)}"
+    window_name = f"log_window_{next(namer)}"
+    renamed_window = f"log_window_{next(namer)}"
 
-        with caplog.at_level(logging.INFO, logger="libtmux.server"):
-            temp_server.kill()
-
-    records = [
-        r
-        for r in caplog.records
-        if getattr(r, "tmux_subcommand", None) == "kill-server"
-        and r.levelno == logging.INFO
-    ]
-    assert len(records) >= 1, "expected INFO record for server kill"
-
-    rec = t.cast(t.Any, records[0])
-    assert rec.getMessage() == "server killed"
-    assert isinstance(rec.tmux_subcommand, str)
-
-
-def test_window_rename_info_logging(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Test that window.rename_window() produces INFO record with str-typed extra."""
-    window = session.active_window
-    assert window is not None
-    with caplog.at_level(logging.INFO, logger="libtmux.window"):
-        window.rename_window("log_renamed")
-
-    records = [
-        r
-        for r in caplog.records
-        if hasattr(r, "tmux_subcommand")
-        and r.levelno == logging.INFO
-        and getattr(r, "tmux_subcommand", None) == "rename-window"
-    ]
-    assert len(records) >= 1, "expected INFO record for window rename"
-
-    rec = t.cast(t.Any, records[0])
-    assert isinstance(rec.tmux_subcommand, str)
-    for key in ("tmux_window", "tmux_target"):
-        val = getattr(rec, key, None)
-        if val is not None:
-            assert isinstance(val, str), (
-                f"extra key {key!r} should be str, got {type(val).__name__}"
-            )
-
-
-def test_window_kill_all_except_logging(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Test that window.kill(all_except=True) identifies the surviving window."""
-    from libtmux.test.random import namer
-
-    survivor = session.new_window(window_name=f"log_survivor_{next(namer)}")
-    other_windows = [
-        session.new_window(window_name=f"log_other_{next(namer)}"),
-        session.new_window(window_name=f"log_other_{next(namer)}"),
-    ]
-
-    with caplog.at_level(logging.INFO, logger="libtmux.window"):
-        survivor.kill(all_except=True)
-
-    records = [
-        r
-        for r in caplog.records
-        if getattr(r, "tmux_subcommand", None) == "kill-window"
-        and r.levelno == logging.INFO
-    ]
-    assert len(records) >= 1, "expected INFO record for all-except window kill"
-
-    rec = t.cast(t.Any, records[0])
-    assert rec.getMessage() == "other windows killed"
-    assert rec.tmux_window == survivor.window_name
-    assert rec.tmux_target == survivor.window_id
-    remaining_window_ids = {window.window_id for window in session.windows}
-    assert survivor.window_id in remaining_window_ids
-    assert all(window.window_id not in remaining_window_ids for window in other_windows)
-
-
-def test_pane_split_info_logging(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Test that pane.split() produces INFO record with str-typed extra."""
-    window = session.active_window
-    assert window is not None
+    session, session_created = _capture_info(
+        caplog,
+        "libtmux.server",
+        "session created",
+        lambda: server.new_session(session_name=session_name),
+    )
+    _, session_renamed = _capture_info(
+        caplog,
+        "libtmux.session",
+        "session renamed",
+        lambda: session.rename_session(renamed_session),
+    )
+    window, window_created = _capture_info(
+        caplog,
+        "libtmux.session",
+        "window created",
+        lambda: session.new_window(window_name=window_name),
+    )
+    _, window_renamed = _capture_info(
+        caplog,
+        "libtmux.window",
+        "window renamed",
+        lambda: window.rename_window(renamed_window),
+    )
     pane = window.active_pane
     assert pane is not None
-    with caplog.at_level(logging.INFO, logger="libtmux.pane"):
-        new_pane = pane.split()
+    split_pane, pane_created = _capture_info(
+        caplog,
+        "libtmux.pane",
+        "pane created",
+        pane.split,
+    )
+    _, pane_killed = _capture_info(
+        caplog,
+        "libtmux.pane",
+        "pane killed",
+        split_pane.kill,
+    )
+    _, window_killed = _capture_info(
+        caplog,
+        "libtmux.session",
+        "window killed",
+        lambda: session.kill_window(window.window_id),
+    )
+    doomed_name = f"log_session_{next(namer)}"
+    doomed, _ = _capture_info(
+        caplog,
+        "libtmux.server",
+        "session created",
+        lambda: server.new_session(session_name=doomed_name),
+    )
+    _, session_killed = _capture_info(
+        caplog,
+        "libtmux.server",
+        "session killed",
+        lambda: server.kill_session(doomed_name),
+    )
 
     records = [
-        r
-        for r in caplog.records
-        if hasattr(r, "tmux_subcommand")
-        and r.levelno == logging.INFO
-        and getattr(r, "tmux_subcommand", None) == "split-window"
+        session_created,
+        session_renamed,
+        window_created,
+        window_renamed,
+        pane_created,
+        pane_killed,
+        window_killed,
+        session_killed,
     ]
-    assert len(records) >= 1, "expected INFO record for pane split"
-
-    rec = t.cast(t.Any, records[0])
-    assert isinstance(rec.tmux_subcommand, str)
-    assert isinstance(rec.tmux_pane, str)
-    for key in ("tmux_session", "tmux_window"):
-        val = getattr(rec, key, None)
-        if val is not None:
-            assert isinstance(val, str), (
-                f"extra key {key!r} should be str, got {type(val).__name__}"
-            )
-
-    new_pane.kill()
-
-
-def test_pane_kill_all_except_logging(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Test that pane.kill(all_except=True) identifies the surviving pane."""
-    window = session.active_window
-    assert window is not None
-    window.resize(height=100, width=100)
-    survivor = window.split()
-    other_panes = [window.split(), window.split()]
-
-    with caplog.at_level(logging.INFO, logger="libtmux.pane"):
-        survivor.kill(all_except=True)
-
-    records = [
-        r
-        for r in caplog.records
-        if getattr(r, "tmux_subcommand", None) == "kill-pane"
-        and r.levelno == logging.INFO
+    assert [
+        (record.name, record.getMessage(), record.tmux_subcommand) for record in records
+    ] == [
+        ("libtmux.server", "session created", "new-session"),
+        ("libtmux.session", "session renamed", "rename-session"),
+        ("libtmux.session", "window created", "new-window"),
+        ("libtmux.window", "window renamed", "rename-window"),
+        ("libtmux.pane", "pane created", "split-window"),
+        ("libtmux.pane", "pane killed", "kill-pane"),
+        ("libtmux.session", "window killed", "kill-window"),
+        ("libtmux.server", "session killed", "kill-session"),
     ]
-    assert len(records) >= 1, "expected INFO record for all-except pane kill"
+    for record in records:
+        assert record.tmux_socket == server.socket_name
+        for key in (
+            "tmux_subcommand",
+            "tmux_socket",
+            "tmux_session",
+            "tmux_window",
+            "tmux_pane",
+            "tmux_target",
+        ):
+            value = getattr(record, key, None)
+            assert value is None or isinstance(value, str)
 
-    rec = t.cast(t.Any, records[0])
-    assert rec.getMessage() == "other panes killed"
-    assert rec.tmux_pane == survivor.pane_id
-    assert rec.tmux_target == survivor.pane_id
-    remaining_pane_ids = {p.pane_id for p in window.panes}
-    assert survivor.pane_id in remaining_pane_ids
-    assert all(p.pane_id not in remaining_pane_ids for p in other_panes)
+    assert session_created.tmux_session == session_name
+    assert session_renamed.tmux_session == renamed_session
+    assert window_created.tmux_window == window_name
+    assert window_renamed.tmux_window == renamed_window
+    assert pane_created.tmux_pane == split_pane.pane_id
+    assert pane_killed.tmux_pane == split_pane.pane_id
+    assert window_killed.tmux_target == window.window_id
+    assert session_killed.tmux_target == doomed.session_name
 
 
-def test_session_kill_all_except_logging(
+def test_all_except_lifecycle_logging(
     server: Server,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test that session.kill(all_except=True) identifies the surviving session."""
+    """The three all-except branches identify the object they preserve."""
     from libtmux.test.random import namer
 
-    survivor = server.new_session(session_name=f"log_survivor_{next(namer)}")
-    other_sessions = [
-        server.new_session(session_name=f"log_other_{next(namer)}"),
-        server.new_session(session_name=f"log_other_{next(namer)}"),
-    ]
-
-    with caplog.at_level(logging.INFO, logger="libtmux.session"):
-        survivor.kill(all_except=True)
-
-    records = [
-        r
-        for r in caplog.records
-        if getattr(r, "tmux_subcommand", None) == "kill-session"
-        and r.levelno == logging.INFO
-    ]
-    assert len(records) >= 1, "expected INFO record for all-except session kill"
-
-    rec = t.cast(t.Any, records[0])
-    assert rec.getMessage() == "other sessions killed"
-    assert rec.tmux_session == survivor.session_name
-    assert rec.tmux_target == survivor.session_id
-    remaining_session_ids = {session.session_id for session in server.sessions}
-    assert survivor.session_id in remaining_session_ids
-    assert all(
-        session.session_id not in remaining_session_ids for session in other_sessions
+    workspace = server.new_session(session_name=f"log_workspace_{next(namer)}")
+    window = workspace.new_window(window_name=f"log_window_{next(namer)}")
+    workspace.new_window(window_name=f"log_other_{next(namer)}")
+    _, windows_killed = _capture_info(
+        caplog,
+        "libtmux.window",
+        "other windows killed",
+        lambda: window.kill(all_except=True),
     )
 
+    window.resize(height=100, width=100)
+    pane = window.split()
+    window.split()
+    _, panes_killed = _capture_info(
+        caplog,
+        "libtmux.pane",
+        "other panes killed",
+        lambda: pane.kill(all_except=True),
+    )
 
-def test_server_new_session_surfaces_kill_session_stderr(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test kill-session stderr propagation using monkeypatch for the failure path.
+    survivor = server.new_session(session_name=f"log_survivor_{next(namer)}")
+    server.new_session(session_name=f"log_other_{next(namer)}")
+    _, sessions_killed = _capture_info(
+        caplog,
+        "libtmux.session",
+        "other sessions killed",
+        lambda: survivor.kill(all_except=True),
+    )
 
-    A real tmux fixture is not used here because this path requires forcing a
-    kill-session command failure before session creation begins.
-    """
-    from libtmux import exc
+    assert (
+        windows_killed.tmux_subcommand,
+        windows_killed.tmux_window,
+        windows_killed.tmux_target,
+    ) == ("kill-window", window.window_name, window.window_id)
+    assert (
+        panes_killed.tmux_subcommand,
+        panes_killed.tmux_pane,
+        panes_killed.tmux_target,
+    ) == ("kill-pane", pane.pane_id, pane.pane_id)
+    assert (
+        sessions_killed.tmux_subcommand,
+        sessions_killed.tmux_session,
+        sessions_killed.tmux_target,
+    ) == ("kill-session", survivor.session_name, survivor.session_id)
+
+
+def test_server_kill_info_logging(caplog: pytest.LogCaptureFixture) -> None:
+    """Killing a server emits its lifecycle record."""
     from libtmux.server import Server
     from libtmux.test.random import namer
 
-    server = Server(socket_name=f"libtmux_log_{next(namer)}")
-    monkeypatch.setattr(server, "has_session", lambda session_name: True)
-    monkeypatch.setattr(
-        server,
-        "cmd",
-        lambda *args, **kwargs: types.SimpleNamespace(stderr=["kill failed"]),
-    )
+    with Server(socket_name=f"libtmux_log_{next(namer)}") as server:
+        server.new_session(session_name=f"log_session_{next(namer)}")
+        _, record = _capture_info(
+            caplog,
+            "libtmux.server",
+            "server killed",
+            server.kill,
+        )
 
-    with pytest.raises(exc.LibTmuxException, match="kill failed"):
-        server.new_session(session_name="existing_session", kill_session=True)
+    assert record.tmux_subcommand == "kill-server"
+    assert record.tmux_socket == server.socket_name
+
+
+def test_server_new_session_propagates_without_logging(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A propagated tmux failure remains exception data, not a log record."""
+    from libtmux import exc
+
+    monkeypatch.setattr(server, "has_session", lambda session_name: True)
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(exc.LibTmuxException, match="kill-session"),
+    ):
+        server.new_session(session_name="no_such_session", kill_session=True)
+
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
+
+
+def test_environment_failure_propagates_without_logging(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A translated environment failure remains exception data only."""
+    dead = server.new_session(session_name="logging_dead_environment")
+    dead.kill()
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(ValueError),
+    ):
+        dead.set_environment("KEY", "value")
+
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
+
+
+@pytest.mark.parametrize("configured", [True, False], ids=["configured", "default"])
+def test_missing_tmux_binary_propagates_without_logging(
+    configured: bool,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A missing executable remains exception data, not a log record."""
+    from libtmux import exc
+    from libtmux.common import tmux_cmd
+
+    tmux_bin = str(tmp_path / "missing-tmux") if configured else None
+    if not configured:
+        monkeypatch.setattr("libtmux.common.shutil.which", lambda _: None)
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(exc.TmuxCommandNotFound),
+    ):
+        tmux_cmd("list-sessions", tmux_bin=tmux_bin)
+
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
+
+
+@pytest.mark.parametrize(
+    "binary_case",
+    ["configured-missing", "default-missing", "invalid-format"],
+)
+def test_is_alive_unusable_binary_stays_quiet(
+    binary_case: str,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A health check converts an unusable executable to a quiet false result."""
+    from libtmux.server import Server
+
+    tmux_bin: str | None = str(tmp_path / "missing-tmux")
+    if binary_case == "default-missing":
+        tmux_bin = None
+        monkeypatch.setenv("PATH", "")
+    elif binary_case == "invalid-format":
+        invalid_tmux = tmp_path / "invalid-tmux"
+        invalid_tmux.write_text("not an executable format\n")
+        invalid_tmux.chmod(0o755)
+        tmux_bin = str(invalid_tmux)
+    server = Server(tmux_bin=tmux_bin)
+
+    with caplog.at_level(logging.ERROR, logger="libtmux.common"):
+        assert not server.is_alive()
+
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
 
 
 def test_options_warning_logging_schema(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Test that options parse warnings produce records with tmux_option_key."""
+    """Malformed values produce one aggregate warning without traceback data."""
     from libtmux._internal.sparse_array import SparseArray
     from libtmux.options import explode_complex
 
-    # A terminal-features value without ":" triggers a split failure and WARNING
     bad_features: SparseArray[str | int | bool | None] = SparseArray()
-    bad_features[0] = 42  # int, not str — causes .split() to fail
+    for index in range(25):
+        bad_features[index] = index
 
     with caplog.at_level(logging.WARNING, logger="libtmux.options"):
         explode_complex({"terminal-features": bad_features})  # type: ignore[dict-item]
 
     records = [
-        r
-        for r in caplog.records
-        if hasattr(r, "tmux_option_key") and r.levelno == logging.WARNING
+        record
+        for record in caplog.records
+        if getattr(record, "tmux_option_key", None) == "terminal-features"
     ]
-    assert len(records) >= 1, "expected WARNING record for option parse failure"
+    assert len(records) == 1
+    record = t.cast(t.Any, records[0])
+    assert record.tmux_option_skipped == 25
+    assert record.exc_info is None
 
-    rec = t.cast(t.Any, records[0])
-    assert isinstance(rec.tmux_option_key, str)
-    assert rec.exc_info is None
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (
+            ["tmux", "-Lsock", "new-session", "-eKEY=secret"],
+            {
+                "tmux_cmd": "tmux -L sock new-session <1 arguments omitted>",
+                "tmux_subcommand": "new-session",
+                "tmux_socket": "sock",
+            },
+        ),
+        (
+            ["tmux", "-S", "/tmp/s", "set-buffer", "secret"],
+            {
+                "tmux_cmd": "tmux -S /tmp/s set-buffer <1 arguments omitted>",
+                "tmux_subcommand": "set-buffer",
+                "tmux_socket": "/tmp/s",
+            },
+        ),
+        (
+            ["tmux", "-f", "secret-conf", "run-shell", "secret"],
+            {
+                "tmux_cmd": "tmux run-shell <1 arguments omitted>",
+                "tmux_subcommand": "run-shell",
+            },
+        ),
+        (
+            ["tmux", "-2L", "sock", "list-panes"],
+            {
+                "tmux_cmd": "tmux -L sock list-panes",
+                "tmux_subcommand": "list-panes",
+                "tmux_socket": "sock",
+            },
+        ),
+        (
+            ["tmux", "-L", "safe\nforged", "future-command", "secret"],
+            {
+                "tmux_cmd": (
+                    "tmux -L 'safe\\nforged' future-command <1 arguments omitted>"
+                ),
+                "tmux_subcommand": "future-command",
+                "tmux_socket": "'safe\\nforged'",
+            },
+        ),
+        (["tmux", "-V"], {"tmux_cmd": "tmux"}),
+    ],
+)
+def test_command_extra_separates_operation_from_parameters(
+    argv: list[str],
+    expected: dict[str, str],
+) -> None:
+    """Operation records identify tmux without carrying parameter data."""
+    from libtmux._internal.log_context import command_extra
+
+    assert command_extra(argv) == expected
+
+
+def test_session_fixture_setup_logs_no_errors(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The bundled fixture does not inject ERROR records into test reports."""
+    assert session.session_name is not None
+    assert [
+        record
+        for record in caplog.get_records("setup")
+        if record.levelno >= logging.ERROR
+    ] == []
+
+
+def test_lookup_path_cannot_forge_a_log_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A caller-provided lookup path remains one diagnostic line."""
+    from libtmux._internal.query_list import keygetter
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux._internal.query_list"):
+        keygetter({}, "missing\nERROR libtmux forged")
+
+    record = caplog.records[-1]
+    assert "\n" not in record.getMessage()
+    assert "\\nERROR libtmux forged" in record.getMessage()
+
+
+def test_parse_failure_propagates_without_logging(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A parser failure remains exception data, not a second error channel."""
+    from libtmux.formats import FORMAT_SEPARATOR
+    from libtmux.neo import parse_output
+
+    row = FORMAT_SEPARATOR.join(["one", "two", "three"]) + FORMAT_SEPARATOR
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.neo"),
+        pytest.raises(ValueError, match="zip"),
+    ):
+        parse_output(row, "list-panes", "3.7")
+
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
