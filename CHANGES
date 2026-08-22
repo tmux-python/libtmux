@@ -45,7 +45,60 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Log records name which tmux server they came from (#744)
+
+Command records now carry `tmux_socket`, the socket name or path the command
+addressed, so an application driving more than one tmux server can tell their
+records apart. Every command record also carries `tmux_subcommand`, derived
+from the command line rather than hand-written at each call site, so it is
+present for every tmux subcommand libtmux runs instead of only the ones with
+bespoke logging.
+
+#### Failed tmux commands are logged at `ERROR` (#744)
+
+{func}`~libtmux.common.raise_if_stderr` emits one `ERROR` record before raising,
+carrying the exit code, socket, and command line that the exception message does
+not. This matters most for the list accessors, which swallow tmux errors by
+design: {attr}`Server.sessions <libtmux.Server.sessions>` still returns an empty
+{class}`~libtmux._internal.query_list.QueryList` when tmux is unreachable, but
+now says why. Paths that expect a non-zero exit, such as
+{meth}`Server.is_alive() <libtmux.Server.is_alive>`, do not log an error.
+
+### Fixes
+
+#### Environment values no longer appear in logs (#744)
+
+Passing `environment=` to {meth}`Server.new_session()
+<libtmux.Server.new_session>`, {meth}`Session.new_window()
+<libtmux.Session.new_window>`, or {meth}`Pane.split() <libtmux.Pane.split>` put
+each `NAME=VALUE` pair on a tmux command line that `DEBUG` logging then recorded
+verbatim, so a token passed to a session appeared in any log the application
+shipped. Values are now replaced with `REDACTED` while the names stay visible.
+{meth}`set_environment() <libtmux.common.EnvironmentMixin.set_environment>` is
+covered too.
+
+Keystrokes sent with {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` are still
+logged as given — libtmux cannot tell a password from a command.
+
+#### One command line, one shape (#744)
+
+`tmux_cmd` reported two different strings depending on which module logged it:
+the full argument vector including the tmux binary, or the arguments alone. It
+is now produced in one place, so a consumer parsing the field sees a single
+shape. Listing objects no longer emits a duplicate pair of debug records for a
+command that was already logged.
+
 ### Documentation
+
+#### A guide to libtmux's logging (#744)
+
+{ref}`logging` covers turning logging on, which logger emits what, the full
+`tmux_` field schema, and how to assert on records with pytest's `caplog`. It
+also documents the {class}`~logging.Formatter` trap that silently drops records
+whose format string names a field they do not carry, and what libtmux redacts.
+The page's examples run as part of the test suite.
 
 #### Cleaner `from_env` examples (#719)
 
