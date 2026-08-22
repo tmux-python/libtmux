@@ -1487,6 +1487,7 @@ class Window(
             "window renamed",
             extra=object_extra(
                 "rename-window",
+                socket=self.server.socket_path or self.server.socket_name,
                 window=self.window_name,
                 target=self.window_id,
             ),
@@ -1550,6 +1551,7 @@ class Window(
             "other windows killed" if all_except else "window killed",
             extra=object_extra(
                 "kill-window",
+                socket=self.server.socket_path or self.server.socket_name,
                 window=self.window_name,
                 target=self.window_id,
             ),

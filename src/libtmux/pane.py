@@ -21,6 +21,7 @@ from libtmux.common import (
     _format_arg,
     _format_path_arg,
     _format_text,
+    _log_if_stderr,
     escape_trailing_separator,
     get_version_str,
     has_gte_version,
@@ -1208,6 +1209,7 @@ class Pane(
             "other panes killed" if all_except else "pane killed",
             extra=object_extra(
                 "kill-pane",
+                socket=self.server.socket_path or self.server.socket_name,
                 pane=self.pane_id,
                 target=self.pane_id,
             ),
@@ -1534,6 +1536,7 @@ class Pane(
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
         if pane_cmd.stderr:
+            _log_if_stderr(pane_cmd, "split-window")
             if "pane too small" in pane_cmd.stderr:
                 raise exc.LibTmuxException(pane_cmd.stderr)
 
@@ -1555,6 +1558,7 @@ class Pane(
             "pane created",
             extra=object_extra(
                 "split-window",
+                socket=self.server.socket_path or self.server.socket_name,
                 session=self.session.session_name,
                 window=self.window.window_name,
                 pane=pane.pane_id,
@@ -1721,6 +1725,7 @@ class Pane(
             "floating pane created",
             extra=object_extra(
                 "new-pane",
+                socket=self.server.socket_path or self.server.socket_name,
                 session=self.session.session_name,
                 window=self.window.window_name,
                 pane=pane.pane_id,

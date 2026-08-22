@@ -33,6 +33,7 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     _literal,
+    _log_if_stderr,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -786,8 +787,15 @@ class Server(
             stderr_text = " ".join(str(line) for line in proc.stderr)
             if _is_daemon_not_up_error(stderr_text):
                 return
+            _log_if_stderr(proc, "kill-server")
             raise exc.LibTmuxException(proc.stderr)
-        logger.info("server killed", extra=object_extra("kill-server"))
+        logger.info(
+            "server killed",
+            extra=object_extra(
+                "kill-server",
+                socket=self.socket_path or self.socket_name,
+            ),
+        )
 
     def _session_target(
         self,
@@ -854,7 +862,11 @@ class Server(
 
         logger.info(
             "session killed",
-            extra=object_extra("kill-session", target=target_session),
+            extra=object_extra(
+                "kill-session",
+                socket=self.socket_path or self.socket_name,
+                target=target_session,
+            ),
         )
 
         return self
@@ -2741,7 +2753,11 @@ class Server(
                     raise_if_stderr(proc, "kill-session")
                     logger.info(
                         "existing session killed",
-                        extra=object_extra("kill-session", session=session_name),
+                        extra=object_extra(
+                            "kill-session",
+                            socket=self.socket_path or self.socket_name,
+                            session=session_name,
+                        ),
                     )
                 else:
                     msg = f"Session named {session_name} exists"
@@ -2751,7 +2767,11 @@ class Server(
 
         logger.debug(
             "creating session",
-            extra=object_extra("new-session", session=session_name),
+            extra=object_extra(
+                "new-session",
+                socket=self.socket_path or self.socket_name,
+                session=None if session_name is None else str(session_name),
+            ),
         )
 
         env = os.environ.get("TMUX")
@@ -2825,6 +2845,7 @@ class Server(
             "session created",
             extra=object_extra(
                 "new-session",
+                socket=self.socket_path or self.socket_name,
                 session=session.session_name,
                 target=session.session_id,
             ),
