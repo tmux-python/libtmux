@@ -22,6 +22,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import (
     _log_if_stderr,
+    _log_subprocess_errors,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -300,10 +301,13 @@ class Server(
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
         """
+        token = _log_subprocess_errors.set(False)
         try:
             res = self.cmd("list-sessions")
         except Exception:
             return False
+        finally:
+            _log_subprocess_errors.reset(token)
         return res.returncode == 0
 
     def raise_if_dead(self) -> None:

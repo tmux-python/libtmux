@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import logging
 import re
@@ -23,6 +24,11 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
+
+_log_subprocess_errors = contextvars.ContextVar(
+    "libtmux_log_subprocess_errors",
+    default=True,
+)
 
 
 #: Maximum stdout/stderr lines attached to a debug record
@@ -364,7 +370,8 @@ class tmux_cmd:
         self.cmd = cmd
 
         if not resolved:
-            logger.error("tmux subprocess failed", extra=self._log_extra)
+            if _log_subprocess_errors.get():
+                logger.error("tmux subprocess failed", extra=self._log_extra)
             raise exc.TmuxCommandNotFound
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -382,10 +389,11 @@ class tmux_cmd:
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
         except Exception as error:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
-                extra=self._log_extra,
-            )
+            if _log_subprocess_errors.get():
+                logger.error(  # noqa: TRY400
+                    "tmux subprocess failed",
+                    extra=self._log_extra,
+                )
             if isinstance(error, FileNotFoundError):
                 raise exc.TmuxCommandNotFound from None
             raise
