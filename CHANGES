@@ -45,6 +45,31 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Scoping a `Server` no longer kills it (#724)
+
+Leaving a `with` block used to kill any live {class}`~libtmux.Server`, so
+`with Server() as server:` around no work at all destroyed the default tmux
+daemon and every session in it. A server is a handle on a socket rather than a
+connection: the same handle addresses a daemon whether or not your process
+started it, so scoping one to a block is not grounds to destroy it.
+
+Teardown is now something you ask for, with the new
+{attr}`~libtmux.Server.kill_on_exit`. {class}`~libtmux.Session`,
+{class}`~libtmux.Window` and {class}`~libtmux.Pane` are unchanged — those you
+get by creating them. See {ref}`context_managers`.
+
+```python
+# Before: killed whatever daemon was on that socket
+with Server(socket_name="my-work") as server:
+    pass
+
+# After: nothing is killed unless you say so
+with Server(socket_name="my-work", kill_on_exit=True) as server:
+    pass
+```
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

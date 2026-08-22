@@ -354,15 +354,89 @@ def test_socket_name_precedence(server: Server) -> None:
 
 
 def test_server_context_manager(TestServer: type[Server]) -> None:
-    """Test Server context manager functionality."""
+    """Leaving the block does not kill the server, even one it started."""
     with TestServer() as server:
         session = server.new_session()
         assert server.is_alive()
         assert len(server.sessions) == 1
         assert session in server.sessions
 
-    # Server should be killed after exiting context
-    assert not server.is_alive()
+    assert server.is_alive()
+    assert [s.session_name for s in server.sessions] == [session.session_name]
+
+    server.kill()
+
+
+def test_server_context_manager_spares_pre_existing_server(
+    TestServer: type[Server],
+) -> None:
+    """A server the ``with`` block did not start survives the block."""
+    pre_existing = TestServer()
+    pre_existing.new_session(session_name="important-work")
+
+    with TestServer(socket_name=pre_existing.socket_name) as scoped:
+        assert scoped.is_alive()
+
+    assert pre_existing.is_alive()
+    assert [session.session_name for session in pre_existing.sessions] == [
+        "important-work",
+    ]
+
+    pre_existing.kill()
+
+
+def test_server_context_manager_spares_the_default_socket(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A bare ``Server()`` leaves the default socket's daemon alone.
+
+    The shape of the original report: no socket name, no socket path, so the
+    handle addresses whichever tmux the caller already has open. Every other
+    test here goes through the ``TestServer`` factory, which mints a private
+    socket and therefore cannot reproduce it.
+    """
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path))
+
+    already_running = Server()
+    already_running.new_session(session_name="important-work")
+
+    with Server() as scoped:
+        assert scoped.is_alive()
+
+    assert already_running.is_alive()
+    assert [session.session_name for session in already_running.sessions] == [
+        "important-work",
+    ]
+
+    already_running.kill()
+
+
+def test_server_context_manager_kill_on_exit_true(
+    TestServer: type[Server],
+) -> None:
+    """``kill_on_exit=True`` kills a live server the block did not start."""
+    pre_existing = TestServer()
+    pre_existing.new_session(session_name="important-work")
+
+    with TestServer(
+        socket_name=pre_existing.socket_name,
+        kill_on_exit=True,
+    ) as scoped:
+        assert scoped.is_alive()
+
+    assert not pre_existing.is_alive()
+
+
+def test_server_context_manager_kill_on_exit_true_when_block_started_it(
+    TestServer: type[Server],
+) -> None:
+    """``kill_on_exit=True`` tears down a server the block itself started."""
+    with TestServer(kill_on_exit=True) as scoped:
+        scoped.new_session(session_name="disposable")
+        assert scoped.is_alive()
+
+    assert not scoped.is_alive()
 
 
 class StartDirectoryTestFixture(t.NamedTuple):
