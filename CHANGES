@@ -45,6 +45,20 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Development
+
+#### tmux 3.7c joins the tested versions (#746)
+
+CI exercises tmux 3.7c. The point release needs no library change:
+{func}`~libtmux.common.get_version` strips the point-release suffix, so the
+existing `3.7` feature gates already accept it, and the tmux 3.7
+{meth}`~libtmux.Pane.break_pane` workaround keys on the raw `"3.7"` string
+through {func}`~libtmux.common.get_version_str`.
+
+One tmux-side behavior change is worth knowing: on 3.7c, creating a floating
+pane with {meth}`~libtmux.Pane.new_pane` in a zoomed window unzooms the
+window, where tmux 3.7 through 3.7b left it zoomed.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
