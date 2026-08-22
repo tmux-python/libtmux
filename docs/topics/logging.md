@@ -87,7 +87,7 @@ logging.getLogger("libtmux.common").setLevel(logging.INFO)
 | Level | You get |
 |---|---|
 | `ERROR` | A tmux command libtmux treated as a failure, and subprocess errors |
-| `WARNING` | Option and hook output libtmux could not parse |
+| `WARNING` | Option and hook output libtmux could not parse; a control-mode client killed after declining to exit |
 | `INFO` | Object lifecycle: created, renamed, killed |
 | `DEBUG` | Every tmux command line, exit code, stdout, and stderr |
 
