@@ -127,16 +127,21 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
             subcommand = token
             subcommand_index = index
             break
-        flag, joined_value = body[0], body[1:]
-        if flag in _VALUE_FLAGS:
+        # Booleans bundle, so a value flag can sit anywhere in the token and
+        # takes the remainder of it — or the next token when it ends there.
+        takes_next_token = False
+        for position, flag in enumerate(body):
+            if flag not in _VALUE_FLAGS:
+                continue
+            joined_value = body[position + 1 :]
             value = joined_value or (
                 tokens[index + 1] if index + 1 < len(tokens) else None
             )
             if flag in _SOCKET_FLAGS:
                 socket = value
-            index += 1 if joined_value else 2
-        else:
-            index += 1
+            takes_next_token = not joined_value
+            break
+        index += 2 if takes_next_token else 1
 
     return CommandContext(
         subcommand=subcommand,
