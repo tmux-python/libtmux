@@ -186,7 +186,7 @@ scalars.
 | Key | Type | Meaning |
 |---|---|---|
 | `tmux_exit_code` | `int` | tmux process exit code |
-| `tmux_stdout` | `list[str]` | stdout lines, capped |
+| `tmux_stdout` | `list[str]` | stdout lines, capped; empty for content commands |
 | `tmux_stderr` | `list[str]` | stderr lines, capped |
 | `tmux_cmd_len` | `int` | Command-line length before capping |
 | `tmux_stdout_len` | `int` | Total stdout line count before capping |
@@ -413,6 +413,12 @@ At `DEBUG`, `tmux_stdout` and `tmux_stderr` are capped, and the untruncated
 counts stay available as `tmux_stdout_len` and `tmux_stderr_len`. A
 `list-panes` against a large server can still be a lot of text — prefer the
 `_len` fields when you only need volume.
+
+Commands that return content rather than control data — `capture-pane`,
+`show-buffer`, `list-buffers` — report only `tmux_stdout_len`. Their output is
+whatever happened to be on a screen or in a paste buffer, it can be large, and
+the caller already has it as a return value. This is the same line HTTP clients
+draw when they log a status and a content length but never a response body.
 
 `tmux_cmd` is capped too, at the size of the largest command tmux itself will
 run. Quoting expands what it measures — a single quote becomes five characters
