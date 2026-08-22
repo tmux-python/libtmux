@@ -305,9 +305,10 @@ def test_options_warning_logging_schema(
     from libtmux._internal.sparse_array import SparseArray
     from libtmux.options import explode_complex
 
-    # A terminal-features value without ":" triggers a split failure and WARNING
+    # ints rather than "term:feature" strings, so every .split() fails
     bad_features: SparseArray[str | int | bool | None] = SparseArray()
-    bad_features[0] = 42  # int, not str — causes .split() to fail
+    for index in range(25):
+        bad_features[index] = index
 
     with caplog.at_level(logging.WARNING, logger="libtmux.options"):
         explode_complex({"terminal-features": bad_features})  # type: ignore[dict-item]
@@ -317,10 +318,13 @@ def test_options_warning_logging_schema(
         for r in caplog.records
         if hasattr(r, "tmux_option_key") and r.levelno == logging.WARNING
     ]
-    assert len(records) >= 1, "expected WARNING record for option parse failure"
+    assert len(records) == 1, (
+        f"one option should warn once, not once per entry; got {len(records)}"
+    )
 
     rec = t.cast(t.Any, records[0])
     assert isinstance(rec.tmux_option_key, str)
+    assert rec.tmux_option_skipped == 25
     assert rec.exc_info is None
 
 
@@ -332,6 +336,9 @@ def test_options_warning_logging_schema(
         (["tmux", "-S", "/tmp/s", "kill-server"], "kill-server", "/tmp/s"),
         (["tmux", "-f", "/etc/tmux.conf", "kill-server"], "kill-server", None),
         (["tmux", "-2", "-q", "list-panes"], "list-panes", None),
+        (["tmux", "-2Lsock", "new-session"], "new-session", "sock"),
+        (["tmux", "-2L", "sock", "new-session"], "new-session", "sock"),
+        (["tmux", "-qu", "-S", "/tmp/x", "kill-server"], "kill-server", "/tmp/x"),
         (["tmux", "-c", "echo hi", "run-shell"], "run-shell", None),
         (["tmux", "-T", "256", "list-keys"], "list-keys", None),
         (["tmux", "-V"], None, None),
@@ -342,6 +349,9 @@ def test_options_warning_logging_schema(
         "socket-path",
         "separated-config",
         "bundled-booleans",
+        "boolean-bundled-with-socket",
+        "boolean-bundled-socket-takes-next",
+        "bundled-booleans-then-socket-path",
         "separated-shell-command",
         "separated-features",
         "no-subcommand",
@@ -451,3 +461,29 @@ def test_session_fixture_setup_logs_no_errors(
 
     errors = [r for r in caplog.get_records("setup") if r.levelno >= logging.ERROR]
     assert errors == [], f"fixture setup logged: {[r.getMessage() for r in errors]}"
+
+
+def test_failure_record_names_the_caller(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The ERROR record locates the tmux operation, not the shared helper.
+
+    ``raise_if_stderr()`` has many call sites; without ``stacklevel`` every one
+    of them reports the same file and line, which makes ``%(filename)s`` and
+    OpenTelemetry's ``code.filepath`` useless for finding the failure.
+    """
+    from libtmux import exc
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(exc.LibTmuxException),
+    ):
+        session.kill_window(target_window="no_such_window")
+
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) >= 1
+
+    rec = records[0]
+    assert rec.funcName == "kill_window"
+    assert rec.filename == "session.py"

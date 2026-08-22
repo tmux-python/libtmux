@@ -434,6 +434,15 @@ def explode_arrays(
     return options
 
 
+def _warn_skipped(key: str, skipped: int) -> None:
+    """Report unparseable entries for one option, once rather than per entry."""
+    if skipped:
+        logger.warning(
+            "tmux options parse failed",
+            extra={"tmux_option_key": key, "tmux_option_skipped": skipped},
+        )
+
+
 def explode_complex(
     _dict: ExplodedUntypedOptionsDict,
 ) -> ExplodedComplexUntypedOptionsDict:
@@ -508,20 +517,20 @@ def explode_complex(
         try:
             if isinstance(val, SparseArray) and key == "terminal-features":
                 new_val: TerminalFeatures = {}
+                skipped = 0
 
                 for item in val.iter_values():
                     try:
                         term, features = item.split(":", maxsplit=1)
                         new_val[term] = features.split(":")
-                    except Exception:
-                        logger.warning(
-                            "tmux options parse failed",
-                            extra={"tmux_option_key": key},
-                        )
+                    except Exception:  # NOQA: PERF203
+                        skipped += 1
+                _warn_skipped(key, skipped)
                 options[key] = new_val
                 continue
             if isinstance(val, SparseArray) and key == "terminal-overrides":
                 new_overrides: TerminalOverrides = {}
+                skipped = 0
 
                 for item in val.iter_values():
                     try:
@@ -540,15 +549,14 @@ def explode_complex(
                                 new_overrides[term][k] = int(v) if v.isdigit() else v
                             elif feature:
                                 new_overrides[term][feature] = None
-                    except Exception:
-                        logger.warning(
-                            "tmux options parse failed",
-                            extra={"tmux_option_key": key},
-                        )
+                    except Exception:  # NOQA: PERF203
+                        skipped += 1
+                _warn_skipped(key, skipped)
                 options[key] = new_overrides
                 continue
             if isinstance(val, SparseArray) and key == "command-alias":
                 new_aliases: CommandAliases = {}
+                skipped = 0
 
                 for item in val.iter_values():
                     try:
@@ -559,11 +567,9 @@ def explode_complex(
                         ):
                             options[key] = {}
                         new_aliases[alias] = command
-                    except Exception:
-                        logger.warning(
-                            "tmux options parse failed",
-                            extra={"tmux_option_key": key},
-                        )
+                    except Exception:  # NOQA: PERF203
+                        skipped += 1
+                _warn_skipped(key, skipped)
                 options[key] = new_aliases
                 continue
             options[key] = val
