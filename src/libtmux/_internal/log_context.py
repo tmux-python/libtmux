@@ -7,6 +7,7 @@ tmux or touches a logger, so the record schema is testable without a server.
 
 from __future__ import annotations
 
+import os
 import shlex
 import typing as t
 
@@ -29,14 +30,16 @@ still marks a genuinely quoted argument.
 """
 
 _COMMAND_CAP = 16384
-"""Longest command line kept on a record, in characters.
+"""Practical rendered-character cap derived from tmux's message ceiling.
 
-tmux refuses a command larger than ``MAX_IMSGSIZE`` (16384) in ``compat/imsg.h``,
-so anything tmux was willing to run survives intact and only a rejected command
-is shortened.
+Quoting and UTF-8 mean this is not an exact model of tmux's transport bytes.
 """
 
-_CONTROL_CHARS = frozenset(chr(code) for code in range(0x20)) | {"\x7f"}
+_CONTROL_CHARS = (
+    frozenset(chr(code) for code in range(0x20))
+    | frozenset(chr(code) for code in range(0x7F, 0xA0))
+    | {"\u2028", "\u2029"}
+)
 
 _CONTROL_ESCAPES = {
     "\a": r"\a",
@@ -56,12 +59,34 @@ Mirrors the ``getopt`` string in tmux's ``tmux.c`` (``2c:CDdf:hlL:NqS:T:uUvV``).
 Every other global flag is a boolean and may be bundled, as in ``-2q``.
 """
 
-_SOCKET_FLAGS = frozenset("LS")
+_CANONICAL_SUBCOMMANDS = {
+    "new": "new-session",
+    "neww": "new-window",
+    "newp": "new-pane",
+    "popup": "display-popup",
+    "respawnp": "respawn-pane",
+    "respawnw": "respawn-window",
+    "splitw": "split-window",
+    "split-pane": "split-window",
+    "splitp": "split-window",
+    "setenv": "set-environment",
+    "showenv": "show-environment",
+    "capturep": "capture-pane",
+    "setb": "set-buffer",
+    "saveb": "save-buffer",
+    "showb": "show-buffer",
+    "lsb": "list-buffers",
+    "showmsgs": "show-messages",
+    "showphist": "show-prompt-history",
+}
+"""Relevant tmux aliases mapped to the policy command they execute."""
 
 _ENV_SUBCOMMANDS = frozenset(
     {
         "new-session",
         "new-window",
+        "new-pane",
+        "display-popup",
         "respawn-pane",
         "respawn-window",
         "split-window",
@@ -73,20 +98,44 @@ _ENV_SUBCOMMANDS = frozenset(
 read as an environment pair.
 """
 
-_SETENV_SUBCOMMANDS = frozenset({"set-environment", "setenv"})
+_SETENV_SUBCOMMANDS = frozenset({"set-environment"})
 """Subcommands shaped ``[-Fhgru] [-t target] variable [value]``."""
 
-_ENV_OUTPUT_SUBCOMMANDS = frozenset({"show-environment", "showenv"})
+_ENV_OUTPUT_SUBCOMMANDS = frozenset({"show-environment"})
 """Subcommands whose stdout reports ``NAME=VALUE`` for environment variables."""
 
+_BUFFER_INPUT_SUBCOMMANDS = frozenset({"set-buffer"})
+"""Subcommands whose positional data is caller-provided buffer content."""
+
 _CONTENT_SUBCOMMANDS = frozenset(
-    {"capture-pane", "list-buffers", "lsb", "show-buffer", "showb"},
+    {
+        "capture-pane",
+        "list-buffers",
+        "save-buffer",
+        "show-buffer",
+        "show-messages",
+        "show-prompt-history",
+    },
 )
 """Subcommands whose stdout is terminal or buffer content rather than control data.
 
 Their output is whatever happened to be on a screen or in a paste buffer, and it
 already reaches the caller as a return value, so a record reports how much came
 back instead of what it was."""
+
+_ENVIRONMENT_POLICY = "environment"
+_SETENV_POLICY = "set-environment"
+_BUFFER_INPUT_POLICY = "set-buffer"
+_SENSITIVE_OUTPUT_POLICY = "sensitive-output"
+
+_POLICY_BY_COMMAND = {
+    **dict.fromkeys(_ENV_SUBCOMMANDS, _ENVIRONMENT_POLICY),
+    **dict.fromkeys(_SETENV_SUBCOMMANDS, _SETENV_POLICY),
+    **dict.fromkeys(_BUFFER_INPUT_SUBCOMMANDS, _BUFFER_INPUT_POLICY),
+    **dict.fromkeys(_ENV_OUTPUT_SUBCOMMANDS, _SENSITIVE_OUTPUT_POLICY),
+    **dict.fromkeys(_CONTENT_SUBCOMMANDS, _SENSITIVE_OUTPUT_POLICY),
+}
+"""Canonical commands grouped by the log-safety policy they share."""
 
 
 def _quote(token: str) -> str:
@@ -96,8 +145,8 @@ def _quote(token: str) -> str:
     :meth:`Pane.send_keys` sends, a start directory, a window command. A
     newline among them would end the log line early and let the remainder pose
     as a record of its own, so a token carrying control characters is rendered
-    with shell ANSI-C quoting: ``bash`` and ``zsh`` still reproduce the exact
-    bytes when the line is pasted, but the line itself stays on one line.
+    with shell ANSI-C quoting. The result remains pasteable for ordinary tmux
+    arguments, but the log itself stays on one line.
 
     Examples
     --------
@@ -127,10 +176,78 @@ def _quote(token: str) -> str:
         elif char in _CONTROL_ESCAPES:
             escaped.append(_CONTROL_ESCAPES[char])
         elif char in _CONTROL_CHARS:
-            escaped.append(f"\\x{ord(char):02x}")
+            codepoint = ord(char)
+            if codepoint <= 0x7F:
+                escaped.append(f"\\x{codepoint:02x}")
+            elif codepoint <= 0xFFFF:
+                escaped.append(f"\\u{codepoint:04x}")
+            else:
+                escaped.append(f"\\U{codepoint:08x}")
         else:
             escaped.append(char)
     return "$'" + "".join(escaped) + "'"
+
+
+def _canonical_subcommand(subcommand: str | None) -> str | None:
+    """Return the command name used for logging policy decisions.
+
+    Examples
+    --------
+    >>> _canonical_subcommand("new")
+    'new-session'
+
+    >>> _canonical_subcommand("list-sessions")
+    'list-sessions'
+    """
+    if subcommand is None:
+        return None
+    return _CANONICAL_SUBCOMMANDS.get(subcommand, subcommand)
+
+
+def _policy_for_subcommand(subcommand: str | None) -> str | None:
+    """Return the safety policy for an exact command or tmux abbreviation.
+
+    A prefix is safe to classify when every protected command it matches uses
+    the same policy. Prefixes spanning incompatible argument grammars remain
+    unclassified.
+
+    Examples
+    --------
+    >>> _policy_for_subcommand("new-")
+    'environment'
+
+    >>> _policy_for_subcommand("set-") is None
+    True
+    """
+    canonical_subcommand = _canonical_subcommand(subcommand)
+    if canonical_subcommand is None:
+        return None
+    exact_policy = _POLICY_BY_COMMAND.get(canonical_subcommand)
+    if exact_policy is not None:
+        return exact_policy
+
+    policies = {
+        policy
+        for command, policy in _POLICY_BY_COMMAND.items()
+        if command.startswith(canonical_subcommand)
+    }
+    return policies.pop() if len(policies) == 1 else None
+
+
+def _safe_scalar(value: str | None) -> str | None:
+    r"""Quote control characters while preserving ordinary field values.
+
+    Examples
+    --------
+    >>> _safe_scalar("server")
+    'server'
+
+    >>> _safe_scalar("safe\nERROR forged")
+    "$'safe\\nERROR forged'"
+    """
+    if value is None or not _CONTROL_CHARS.intersection(value):
+        return value
+    return _quote(value)
 
 
 class CommandContext(t.NamedTuple):
@@ -198,7 +315,8 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
     """
     tokens = [str(arg) for arg in argv]
     subcommand: str | None = None
-    socket: str | None = None
+    socket_label: str | None = None
+    socket_path: str | None = None
     subcommand_index = len(tokens)
 
     index = 1
@@ -219,8 +337,10 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
             value = joined_value or (
                 tokens[index + 1] if index + 1 < len(tokens) else None
             )
-            if flag in _SOCKET_FLAGS:
-                socket = value
+            if flag == "L":
+                socket_label = value
+            elif flag == "S":
+                socket_path = value
             takes_next_token = not joined_value
             break
         index += 2 if takes_next_token else 1
@@ -230,7 +350,7 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
     )
     return CommandContext(
         subcommand=subcommand,
-        socket=socket,
+        socket=_safe_scalar(socket_path if socket_path is not None else socket_label),
         command=(
             command
             if len(command) <= _COMMAND_CAP
@@ -256,15 +376,22 @@ def _redact(
     >>> _redact(["tmux", "select-pane", "-e", "-t%1"], "select-pane", 1)
     ['tmux', 'select-pane', '-e', '-t%1']
     """
-    if subcommand in _SETENV_SUBCOMMANDS:
+    policy = _policy_for_subcommand(subcommand)
+    if policy == _SETENV_POLICY:
         return _redact_set_environment(tokens, subcommand_index)
+    if policy == _BUFFER_INPUT_POLICY:
+        return _redact_set_buffer(tokens, subcommand_index)
 
     redacted = list(tokens)
-    separated_pairs = subcommand in _ENV_SUBCOMMANDS
+    separated_pairs = policy == _ENVIRONMENT_POLICY
     index = subcommand_index + 1
     while index < len(redacted):
         token = redacted[index]
-        if token.startswith("-e") and "=" in token[2:]:
+        if (
+            policy == _ENVIRONMENT_POLICY
+            and token.startswith("-e")
+            and "=" in token[2:]
+        ):
             name = token[2:].split("=", 1)[0]
             redacted[index] = f"-e{name}={REDACTED}"
         elif separated_pairs and token == "-e" and index + 1 < len(redacted):
@@ -293,21 +420,69 @@ def _redact_set_environment(tokens: list[str], subcommand_index: int) -> list[st
     ['tmux', 'set-environment', '-u', 'K']
     """
     redacted = list(tokens)
-    positions: list[int] = []
     index = subcommand_index + 1
     while index < len(redacted):
         token = redacted[index]
-        if token == "-t":
-            index += 2
-            continue
-        if token.startswith("-") and len(token) > 1:
+        if token == "--":
             index += 1
-            continue
-        positions.append(index)
-        index += 1
+            break
+        if token.startswith("-") and len(token) > 1:
+            takes_next = False
+            valid_option = True
+            for position, flag in enumerate(token[1:]):
+                if flag == "t":
+                    takes_next = position == len(token) - 2
+                    break
+                if flag not in "Fhgru":
+                    valid_option = False
+                    break
+            if valid_option:
+                index += 2 if takes_next else 1
+                continue
+        break
 
-    if len(positions) >= 2:
-        redacted[positions[-1]] = REDACTED
+    if index + 1 < len(redacted):
+        redacted[index + 1] = REDACTED
+    return redacted
+
+
+def _redact_set_buffer(tokens: list[str], subcommand_index: int) -> list[str]:
+    """Return ``tokens`` with ``set-buffer`` data replaced.
+
+    Examples
+    --------
+    >>> _redact_set_buffer(["tmux", "set-buffer", "-b", "name", "data"], 1)
+    ['tmux', 'set-buffer', '-b', 'name', 'REDACTED']
+
+    A command that only selects a buffer has no data to redact:
+
+    >>> _redact_set_buffer(["tmux", "set-buffer", "-b", "name"], 1)
+    ['tmux', 'set-buffer', '-b', 'name']
+    """
+    redacted = list(tokens)
+    index = subcommand_index + 1
+    while index < len(redacted):
+        token = redacted[index]
+        if token == "--":
+            index += 1
+            break
+        if token.startswith("-") and len(token) > 1:
+            takes_next = False
+            valid_option = True
+            for position, flag in enumerate(token[1:]):
+                if flag in "bnt":
+                    takes_next = position == len(token) - 2
+                    break
+                if flag not in "aw":
+                    valid_option = False
+                    break
+            if valid_option:
+                index += 2 if takes_next else 1
+                continue
+        break
+
+    if index < len(redacted):
+        redacted[index] = REDACTED
     return redacted
 
 
@@ -329,17 +504,12 @@ def redact_output(subcommand: str | None, lines: list[str]) -> list[str]:
     Returns
     -------
     list[str]
-        The lines, with any environment value replaced by :data:`REDACTED`.
+        Safe lines for a log record. Sensitive command output is withheld.
 
     Examples
     --------
-    >>> redact_output("show-environment", ["EDITOR=vim", "API_TOKEN=hunter2"])
-    ['EDITOR=REDACTED', 'API_TOKEN=REDACTED']
-
-    An unset variable carries no value to hide:
-
-    >>> redact_output("show-environment", ["-EDITOR"])
-    ['-EDITOR']
+    >>> redact_output("show-environment", ["EDITOR=vim", "continued value"])
+    []
 
     Terminal and buffer content is dropped rather than redacted — the caller
     already has it as a return value, and ``tmux_stdout_len`` still reports how
@@ -355,18 +525,15 @@ def redact_output(subcommand: str | None, lines: list[str]) -> list[str]:
     """
     # Dropping beats redacting: a subcommand in both sets returns content, and
     # content is withheld whole rather than pattern-matched.
-    if subcommand in _CONTENT_SUBCOMMANDS:
+    if _policy_for_subcommand(subcommand) == _SENSITIVE_OUTPUT_POLICY:
         return []
-    if subcommand not in _ENV_OUTPUT_SUBCOMMANDS:
-        return lines
-    return [
-        f"{line.split('=', 1)[0]}={REDACTED}" if "=" in line else line for line in lines
-    ]
+    return lines
 
 
 def object_extra(
     subcommand: str,
     *,
+    socket: str | os.PathLike[str] | None = None,
     session: str | None = None,
     window: str | None = None,
     pane: str | None = None,
@@ -381,6 +548,8 @@ def object_extra(
     ----------
     subcommand : str
         tmux subcommand the operation ran, e.g. ``"kill-pane"``.
+    socket : str | os.PathLike[str], optional
+        Socket name or path identifying the tmux server.
     session : str, optional
         Session name.
     window : str, optional
@@ -411,6 +580,8 @@ def object_extra(
     '3'
     """
     extra = {"tmux_subcommand": subcommand}
+    if socket is not None:
+        extra["tmux_socket"] = t.cast(str, _safe_scalar(str(socket)))
     for key, value in (
         ("tmux_session", session),
         ("tmux_window", window),

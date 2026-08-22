@@ -109,11 +109,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
+            _log_if_stderr(cmd, "set-environment")
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -138,11 +134,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
+            _log_if_stderr(cmd, "set-environment")
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -167,11 +159,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
+            _log_if_stderr(cmd, "set-environment")
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -245,6 +233,53 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
+def _log_if_stderr(
+    proc: tmux_cmd,
+    subcommand: str | None,
+    *,
+    stacklevel: int = 2,
+) -> bool:
+    """Log one standard failure record when ``proc`` carries stderr.
+
+    Parameters
+    ----------
+    proc : :class:`tmux_cmd`
+        Result of a tmux command.
+    subcommand : str | None
+        tmux subcommand, when the command line contains one.
+    stacklevel : int, optional
+        Logging call depth needed to identify the operation wrapper.
+
+    Returns
+    -------
+    bool
+        Whether stderr was present and a record was emitted.
+
+    Examples
+    --------
+    >>> proc = session.cmd("display-message", "-p", "#{session_id}")
+    >>> _log_if_stderr(proc, "display-message")
+    False
+    """
+    if not proc.stderr:
+        return False
+
+    extra: dict[str, t.Any] = {
+        **proc._log_extra,
+        "tmux_exit_code": proc.returncode,
+        "tmux_stderr": proc.stderr[:_LOG_LINE_CAP],
+        "tmux_stderr_len": len(proc.stderr),
+    }
+    if subcommand is not None:
+        extra["tmux_subcommand"] = subcommand
+    logger.error(
+        "tmux command failed",
+        extra=extra,
+        stacklevel=stacklevel,
+    )
+    return True
+
+
 def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
 
@@ -282,23 +317,9 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
 
     .. versionadded:: 0.57
     """
-    if not proc.stderr:
+    if not _log_if_stderr(proc, subcommand, stacklevel=3):
         return
 
-    logger.error(
-        "tmux command failed",
-        extra={
-            **proc._log_extra,
-            "tmux_subcommand": subcommand,
-            "tmux_exit_code": proc.returncode,
-            "tmux_stderr": proc.stderr[:_LOG_LINE_CAP],
-            "tmux_stderr_len": len(proc.stderr),
-        },
-        # Attribute the record to the wrapper that ran the command, not to this
-        # helper. Every one of its call sites would otherwise report the same
-        # file and line.
-        stacklevel=2,
-    )
     raise exc.LibTmuxException(
         "\n".join(proc.stderr),
         subcommand=subcommand,
@@ -336,14 +357,15 @@ class tmux_cmd:
 
     def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
         resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
-
-        cmd = [resolved]
+        cmd = [resolved or "tmux"]
         cmd += args  # add the command arguments to cmd
         cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
+
+        if not resolved:
+            logger.error("tmux subprocess failed", extra=self._log_extra)
+            raise exc.TmuxCommandNotFound
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("tmux command dispatched", extra=self._log_extra)
@@ -359,13 +381,13 @@ class tmux_cmd:
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
+        except Exception as error:
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
                 extra=self._log_extra,
             )
+            if isinstance(error, FileNotFoundError):
+                raise exc.TmuxCommandNotFound from None
             raise
 
         self.returncode = returncode
@@ -464,6 +486,7 @@ def _query_version(tmux_bin: str | None = None) -> str:
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
             raise _TmuxVersionUnavailable
+        _log_if_stderr(proc, None)
         raise exc.VersionTooLow(proc.stderr)
 
     return proc.stdout[0].split("tmux ")[1]

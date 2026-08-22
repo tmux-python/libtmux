@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import logging
+import pathlib
 import typing as t
 
 import pytest
@@ -46,7 +48,14 @@ def test_lifecycle_info_logging_schema(
 
     for record in records:
         rec = t.cast(t.Any, record)
-        for key in ("tmux_subcommand", "tmux_session", "tmux_window", "tmux_target"):
+        assert rec.tmux_socket == session.server.socket_name
+        for key in (
+            "tmux_subcommand",
+            "tmux_socket",
+            "tmux_session",
+            "tmux_window",
+            "tmux_target",
+        ):
             val = getattr(rec, key, None)
             if val is not None:
                 assert isinstance(val, str), (
@@ -301,6 +310,101 @@ def test_server_new_session_surfaces_kill_session_stderr(
     assert rec.tmux_stderr_len >= 1
 
 
+def test_environment_failure_logs_before_value_error(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Environment errors keep their public exception and log the failure."""
+    dead = server.new_session(session_name="logging_dead_environment")
+    dead.kill()
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(ValueError),
+    ):
+        dead.set_environment("KEY", "value")
+
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) == 1
+    rec = t.cast(t.Any, records[0])
+    assert rec.getMessage() == "tmux command failed"
+    assert rec.tmux_subcommand == "set-environment"
+    assert rec.funcName == "set_environment"
+
+
+def test_pane_split_failure_logs_before_specialized_exception(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Pane creation errors log once without changing their exception."""
+    from libtmux import exc
+
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.kill()
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(exc.LibTmuxException),
+    ):
+        pane.split()
+
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) == 1
+    rec = t.cast(t.Any, records[0])
+    assert rec.tmux_subcommand == "split-window"
+    assert rec.funcName == "split"
+
+
+def test_option_failure_logs_before_option_error(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Option errors keep their public exception after transport logging."""
+    from libtmux import exc
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(exc.OptionError),
+    ):
+        session.set_option("not-a-libtmux-option", "value")
+
+    records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(records) == 1
+    rec = t.cast(t.Any, records[0])
+    assert rec.tmux_subcommand == "set-option"
+    assert rec.funcName == "set_option"
+
+
+@pytest.mark.parametrize("configured", [True, False], ids=["configured", "default"])
+def test_missing_tmux_binary_logs_before_public_exception(
+    configured: bool,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A missing executable still leaves one failure record."""
+    from libtmux import exc
+    from libtmux.common import tmux_cmd
+
+    tmux_bin = str(tmp_path / "missing-tmux") if configured else None
+    if not configured:
+        monkeypatch.setattr("libtmux.common.shutil.which", lambda _: None)
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(exc.TmuxCommandNotFound),
+    ):
+        tmux_cmd("list-sessions", tmux_bin=tmux_bin)
+
+    records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert len(records) == 1
+    record = t.cast(t.Any, records[0])
+    assert record.getMessage() == "tmux subprocess failed"
+    assert record.tmux_subcommand == "list-sessions"
+    assert not hasattr(record, "tmux_exit_code")
+
+
 def test_options_warning_logging_schema(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -344,6 +448,16 @@ def test_options_warning_logging_schema(
         (["tmux", "-qu", "-S", "/tmp/x", "kill-server"], "kill-server", "/tmp/x"),
         (["tmux", "-c", "echo hi", "run-shell"], "run-shell", None),
         (["tmux", "-T", "256", "list-keys"], "list-keys", None),
+        (
+            ["tmux", "-L", "label", "-S", "/tmp/path", "list-sessions"],
+            "list-sessions",
+            "/tmp/path",
+        ),
+        (
+            ["tmux", "-S/path", "-Llabel", "list-sessions"],
+            "list-sessions",
+            "/path",
+        ),
         (["tmux", "-V"], None, None),
     ],
     ids=[
@@ -357,6 +471,8 @@ def test_options_warning_logging_schema(
         "bundled-booleans-then-socket-path",
         "separated-shell-command",
         "separated-features",
+        "path-after-label",
+        "path-before-label",
         "no-subcommand",
     ],
 )
@@ -385,18 +501,36 @@ def test_describe_command_reads_tmux_global_flags(
         (["tmux", "new-session", "-e", "K=v"], "tmux new-session -e K=REDACTED"),
         (["tmux", "split-window", "-eK=a=b"], "tmux split-window -eK=REDACTED"),
         (["tmux", "set-environment", "K", "v"], "tmux set-environment K REDACTED"),
+        (
+            ["tmux", "setenv", "-Ft", "work", "K", "-secret"],
+            "tmux setenv -Ft work K REDACTED",
+        ),
         (["tmux", "set-environment", "-u", "K"], "tmux set-environment -u K"),
         (["tmux", "select-pane", "-e", "-t%1"], "tmux select-pane -e -t%1"),
+        (["tmux", "select-pane", "-eK=v"], "tmux select-pane -eK=v"),
         (["tmux", "copy-mode", "-e"], "tmux copy-mode -e"),
+        (
+            ["tmux", "set-buffer", "-b", "named", "secret data"],
+            "tmux set-buffer -b named REDACTED",
+        ),
+        (["tmux", "setb", "secret data"], "tmux setb REDACTED"),
+        (["tmux", "set-e", "K", "secret"], "tmux set-e K REDACTED"),
+        (["tmux", "set-b", "secret data"], "tmux set-b REDACTED"),
     ],
     ids=[
         "joined-env-pair",
         "separated-env-pair",
         "value-containing-equals",
         "set-environment-value",
+        "setenv-dash-prefixed-value",
         "set-environment-unset-keeps-name",
         "select-pane-boolean-e",
+        "select-pane-joined-boolean-e",
         "copy-mode-boolean-e",
+        "set-buffer-content",
+        "setb-content",
+        "set-environment-prefix",
+        "set-buffer-prefix",
     ],
 )
 def test_describe_command_redacts_only_environment_values(
@@ -406,7 +540,102 @@ def test_describe_command_redacts_only_environment_values(
     """``-e`` is an env pair on some subcommands and a boolean on others."""
     from libtmux._internal.log_context import describe_command
 
-    assert describe_command(argv).command == expected
+    context = describe_command(argv)
+    assert context.subcommand == argv[1]
+    assert context.command == expected
+
+
+def test_describe_command_redacts_every_environment_spelling() -> None:
+    """Every built-in and default alias that accepts ``-e`` hides its value."""
+    from libtmux._internal.log_context import describe_command
+
+    subcommands = (
+        "new-session",
+        "new",
+        "new-window",
+        "neww",
+        "new-pane",
+        "newp",
+        "display-popup",
+        "popup",
+        "respawn-pane",
+        "respawnp",
+        "respawn-window",
+        "respawnw",
+        "split-window",
+        "splitw",
+        "split-pane",
+        "splitp",
+        "new-s",
+        "new-w",
+        "new-p",
+        "display-po",
+        "respawn-p",
+        "respawn-w",
+        "sp",
+    )
+    for subcommand in subcommands:
+        joined = describe_command(["tmux", subcommand, "-eKEY=secret"])
+        separated = describe_command(["tmux", subcommand, "-e", "KEY=secret"])
+        assert joined.command == f"tmux {subcommand} -eKEY=REDACTED"
+        assert separated.command == f"tmux {subcommand} -e KEY=REDACTED"
+
+
+def test_redact_output_suppresses_sensitive_command_spellings() -> None:
+    """Environment, terminal, buffer, and history output stays off records."""
+    from libtmux._internal.log_context import redact_output
+
+    subcommands = (
+        "show-environment",
+        "showenv",
+        "capture-pane",
+        "capturep",
+        "save-buffer",
+        "saveb",
+        "show-buffer",
+        "showb",
+        "list-buffers",
+        "lsb",
+        "show-messages",
+        "showmsgs",
+        "show-prompt-history",
+        "showphist",
+        "show-e",
+        "ca",
+        "sa",
+        "show-b",
+        "list-b",
+        "show-m",
+        "show-p",
+    )
+    for subcommand in subcommands:
+        assert redact_output(subcommand, ["KEY=secret", "continuation"]) == []
+
+
+@pytest.mark.parametrize(
+    ("line_break", "escaped"),
+    (
+        ("\n", r"\n"),
+        ("\x85", r"\u0085"),
+        ("\u2028", r"\u2028"),
+        ("\u2029", r"\u2029"),
+    ),
+)
+def test_socket_identity_cannot_forge_a_log_line(
+    line_break: str,
+    escaped: str,
+) -> None:
+    """Socket identity stays scalar when tmux accepts a control character."""
+    from libtmux._internal.log_context import describe_command
+
+    context = describe_command(
+        ["tmux", "-L", f"safe{line_break}ERROR libtmux forged", "list-sessions"],
+    )
+
+    assert context.socket is not None
+    assert line_break not in context.socket
+    assert escaped in context.socket
+    assert context.socket.splitlines() == [context.socket]
 
 
 def test_command_records_carry_socket_identity(
@@ -518,22 +747,32 @@ def test_command_content_cannot_forge_a_log_line(
     assert "$'echo hi\\nCRITICAL libtmux.server forged'" in rec.tmux_cmd
 
 
+def test_lookup_path_cannot_forge_a_log_line(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failed caller-provided lookup stays on one diagnostic line."""
+    from libtmux._internal.query_list import keygetter
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux._internal.query_list"):
+        keygetter({}, "missing\nERROR libtmux forged")
+
+    record = caplog.records[-1]
+    assert "\n" not in record.getMessage()
+    assert "\\nERROR libtmux forged" in record.getMessage()
+
+
 def test_oversized_command_is_capped_in_the_record(
     server: Server,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A command tmux refuses must not put its whole payload in the log.
-
-    tmux caps a command at ``MAX_IMSGSIZE``, so a payload past that never runs;
-    a shortened record ends in an ellipsis to say so.
-    """
+    """An oversized rejected command must not put its whole payload in the log."""
     from libtmux._internal.log_context import _COMMAND_CAP
 
     with (
         caplog.at_level(logging.DEBUG, logger="libtmux.common"),
         contextlib.suppress(Exception),
     ):
-        server.set_buffer("x" * (_COMMAND_CAP * 4))
+        server.cmd("list-sessions", "-F", "x" * (_COMMAND_CAP * 4))
 
     records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
     assert len(records) >= 1
@@ -564,6 +803,35 @@ def test_environment_values_are_hidden_in_both_directions(
         if secret in str(getattr(r, key, ""))
     ]
     assert leaked == [], f"secret reached {len(leaked)} record(s)"
+
+
+def test_multiline_environment_and_buffer_content_are_withheld(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Known multiline and buffer content reaches callers, not records."""
+    continuation = "logging-continuation-secret"
+    buffer_content = "logging-buffer-secret"
+    server.new_session(session_name="logging_sensitive_content")
+    server.set_environment("DEPLOY_KEY", f"first\n{continuation}")
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        environment = server.cmd("show-environment", "-g", "DEPLOY_KEY")
+        server.set_buffer(buffer_content)
+        buffer = server.cmd("show-buffer")
+
+    assert continuation in environment.stdout
+    assert buffer.stdout == [buffer_content]
+    leaked = [
+        record
+        for record in caplog.records
+        for key in ("tmux_cmd", "tmux_stdout")
+        if any(
+            marker in str(getattr(record, key, ""))
+            for marker in (continuation, buffer_content)
+        )
+    ]
+    assert leaked == []
 
 
 def test_pane_content_is_not_written_to_records(
@@ -624,20 +892,42 @@ def test_parse_failure_is_logged(caplog: pytest.LogCaptureFixture) -> None:
     assert rec.tmux_fields_expected != rec.tmux_fields_received
 
 
-def test_records_share_no_mutable_state(
+def test_concurrent_records_share_no_mutable_state(
     session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """No two records may point at the same mutable value.
+    """Concurrent commands keep their fields isolated.
 
     Handler locks make :mod:`logging` itself thread-safe, so the only way
     libtmux could introduce a race is by handing the same list or dict to more
-    than one record. Nothing else here needs a lock, and this is what would
-    notice if that changed.
+    than one record.
     """
-    with caplog.at_level(logging.DEBUG, logger="libtmux"):
-        window = session.new_window(window_name="threadsafe")
-        window.kill()
+    server = session.server
+    markers = [f"concurrent-{index}" for index in range(8)]
+    with (
+        caplog.at_level(logging.DEBUG, logger="libtmux.common"),
+        concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor,
+    ):
+        futures = [
+            executor.submit(server.cmd, "display-message", "-p", marker)
+            for marker in markers
+        ]
+        results = [future.result() for future in futures]
+
+    assert [result.stdout for result in results] == [[marker] for marker in markers]
+    completed = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "tmux command completed"
+        and getattr(record, "tmux_subcommand", None) == "display-message"
+    ]
+    assert len(completed) == len(markers)
+    assert {tuple(t.cast(t.Any, record).tmux_stdout) for record in completed} == {
+        (marker,) for marker in markers
+    }
+    assert all(
+        t.cast(t.Any, record).tmux_socket == server.socket_name for record in completed
+    )
 
     containers = [
         (id(value), record.getMessage(), key)

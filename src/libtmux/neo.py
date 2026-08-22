@@ -1031,9 +1031,7 @@ def parse_output(
         values = values[:-1]
 
     if len(values) != len(formats):
-        # zip(strict=True) is about to raise, and its message names zip rather
-        # than tmux. A field holding FORMAT_SEPARATOR splits in two and shows up
-        # here as a surplus field.
+        # Preserve field counts before zip(strict=True) loses tmux context.
         logger.error(
             "tmux output parse failed",
             extra={
@@ -1333,10 +1331,7 @@ def fetch_obj(
             list_extra_args=list_extra_args,
         )
     except exc.LibTmuxException as e:
-        # A ``-t``-scoped listing pushes the "does it exist?" question down
-        # into tmux, which answers on stderr rather than with an empty listing.
-        # Re-raise those as the same TmuxObjectDoesNotExist an unscoped listing
-        # would have produced; anything else (a dead server) keeps propagating.
+        # Scoped missing targets arrive on stderr; keep lookup semantics aligned.
         if not _is_target_not_found_error(str(e)):
             raise
         raise exc.TmuxObjectDoesNotExist(
