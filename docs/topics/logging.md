@@ -16,6 +16,15 @@ Most readers need only the next two sections: turn it on, and read a failure.
 The field schema and the testing and formatting sections below are for when you
 route these records somewhere — a test assertion, a log aggregator, a trace.
 
+## Running the examples
+
+Every Python block in this topic executes in the documentation test suite. The
+standard-library-only blocks paste directly into a Python shell. Blocks using
+`caplog`, `server`, or `session` run in pytest: request those fixtures in a test
+function, then paste the block's statements into its body. `caplog` comes from
+pytest; `server` and `session` come from libtmux's pytest plugin. Any `pane` or
+`window` used below is derived inside its block or from `session`.
+
 ## Turn it on
 
 The shortest thing that works — lifecycle events, no tmux command noise:
@@ -160,8 +169,9 @@ apart without changing your code:
 'no-such-socket'
 ```
 
-Polling with {meth}`Server.is_alive() <libtmux.Server.is_alive>` stays quiet, so
-a health check loop does not fill your logs with errors.
+Polling with {meth}`Server.is_alive() <libtmux.Server.is_alive>` stays quiet,
+including when the configured tmux executable is missing or unusable, so a
+health check loop does not fill your logs with errors.
 
 A failure record is attributed to the libtmux method that ran the command, not
 to the helper that raised. So `%(filename)s:%(lineno)d` in a format string —
@@ -388,7 +398,8 @@ This covers `environment=` on {meth}`Server.new_session()
 <libtmux.Server.new_session>`, {meth}`Session.new_window()
 <libtmux.Session.new_window>`, and {meth}`Pane.split() <libtmux.Pane.split>`, as
 well as {meth}`set_environment()
-<libtmux.common.EnvironmentMixin.set_environment>`.
+<libtmux.common.EnvironmentMixin.set_environment>`. Boolean options may be
+bundled before tmux's value-taking `-e`; those forms are redacted too.
 
 tmux hands those values straight back, and a value may span output lines.
 {meth}`getenv() <libtmux.common.EnvironmentMixin.getenv>` and
@@ -430,10 +441,11 @@ classify content you compose yourself:
 - **A format string that prints a variable**, such as
   `display-message -p '#{q:DEPLOY_KEY}'`.
 
-The built-in names, aliases, and command abbreviations are covered. A command
-defined in `command-alias` has server-specific grammar that libtmux cannot
-inspect on this path. An alias name that shares a protected command prefix is
-handled conservatively; any other custom alias remains unclassified.
+The protected command names, their built-in aliases, tmux's relevant default
+`command-alias` entries, and policy-safe abbreviations are covered. A custom
+`command-alias` has server-specific grammar that libtmux cannot inspect on this
+path. An alias name that shares a protected command prefix is handled
+conservatively; any other custom alias remains unclassified.
 
 Only your application knows which of those carry secrets, so redacting them is
 its job — with a {class}`~logging.Filter` that rewrites the fields you care
@@ -443,8 +455,8 @@ Placement matters more than the filter does. A filter on a logger runs only for
 records that logger made; {meth}`Logger.callHandlers()
 <logging.Logger.callHandlers>` walks to ancestor loggers for their *handlers*
 and never consults their filters. Since every record comes from a child such as
-`libtmux.common`, attaching one to `logging.getLogger("libtmux")` protects
-nothing, and says nothing about it. Attach it to a **handler**:
+`libtmux.common`, a filter on `logging.getLogger("libtmux")` never sees those
+records. Attach the redacting filter to a **handler**:
 
 ```python
 >>> import logging
