@@ -93,9 +93,9 @@ sequences are rendered rather than passed through to whatever reads the log.
 A command larger than tmux accepts was rejected by tmux but still written to
 three log records in full, so a single oversized {meth}`Server.set_buffer()
 <libtmux.Server.set_buffer>` could put hundreds of kilobytes into a `DEBUG` log.
-`tmux_cmd` is now capped at the largest command tmux will run, which leaves
-every command tmux actually accepted reproducible from its record, and
-`tmux_cmd_len` reports the length before capping.
+`tmux_cmd` is now capped at the size of the largest command tmux will run, and
+`tmux_cmd_len` reports the length before capping, so a shortened record is
+always recognisable as one.
 
 #### Environment values no longer appear in logs (#744)
 

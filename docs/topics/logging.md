@@ -71,7 +71,10 @@ as a log record of its own:
 >>> pane = session.active_window.active_pane
 >>> with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
 ...     pane.send_keys("echo one\necho two", enter=False)
->>> record = caplog.records[0]
+>>> record = next(
+...     r for r in caplog.records
+...     if getattr(r, "tmux_subcommand", None) == "send-keys"
+... )
 >>> "\n" in record.tmux_cmd
 False
 >>> record.tmux_cmd.endswith("$'echo one\\necho two'")
@@ -333,10 +336,11 @@ counts stay available as `tmux_stdout_len` and `tmux_stderr_len`. A
 `list-panes` against a large server can still be a lot of text — prefer the
 `_len` fields when you only need volume.
 
-`tmux_cmd` is capped too, at the largest command tmux itself will accept. So a
-command tmux ran is always reproducible from its record, and only a command
-tmux refused as too long arrives shortened, with `tmux_cmd_len` reporting what
-the caller actually passed.
+`tmux_cmd` is capped too, at the size of the largest command tmux itself will
+run. Quoting expands what it measures — a single quote becomes five characters
+— so a command built almost entirely of quotes can be one tmux accepts and the
+record still shortens. Compare `tmux_cmd_len` against the string you got to
+know: they differ only when the record was shortened.
 
 ## Recipes
 
