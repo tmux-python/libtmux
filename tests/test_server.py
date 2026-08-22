@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 import pathlib
 import shutil
 import subprocess
@@ -209,7 +208,7 @@ def test_new_session_shell(server: Server) -> None:
 def test_new_session_shell_env(server: Server) -> None:
     """Verify ``Server.new_session`` creates valid session running w/ command (#553)."""
     cmd = "sleep 1m"
-    env = dict(os.environ)
+    env = {"LIBTMUX_TEST_ENV": "present"}
     mysession = server.new_session(
         "test_new_session_env",
         window_command=cmd,
@@ -220,6 +219,7 @@ def test_new_session_shell_env(server: Server) -> None:
     pane = window.panes[0]
     assert mysession.session_name == "test_new_session_env"
     assert server.has_session("test_new_session_env")
+    assert mysession.getenv("LIBTMUX_TEST_ENV") == "present"
 
     pane_start_command = pane.pane_start_command
     assert pane_start_command is not None

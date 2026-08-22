@@ -38,7 +38,7 @@ from libtmux._internal.constants import (
     Hooks,
 )
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import CmdMixin, has_lt_version
+from libtmux.common import CmdMixin, _log_if_stderr, has_lt_version
 from libtmux.constants import (
     DEFAULT_OPTION_SCOPE,
     HOOK_SCOPE_FLAG_MAP,
@@ -111,6 +111,7 @@ class HooksMixin(CmdMixin):
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
+            _log_if_stderr(cmd, "set-hook")
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -191,6 +192,7 @@ class HooksMixin(CmdMixin):
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
+            _log_if_stderr(cmd, "set-hook")
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -243,6 +245,7 @@ class HooksMixin(CmdMixin):
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
+            _log_if_stderr(cmd, "set-hook")
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -367,6 +370,7 @@ class HooksMixin(CmdMixin):
         cmd = self.cmd("show-hooks", *flags)
 
         if len(cmd.stderr):
+            _log_if_stderr(cmd, "show-hooks")
             handle_option_error(cmd.stderr[0])
 
         return cmd.stdout
