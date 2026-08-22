@@ -146,15 +146,13 @@ class CommandContext(t.NamedTuple):
         command addressed. ``None`` when tmux would use its default socket.
     command : str
         Shell-quoted command line with environment values replaced by
-        :data:`REDACTED`, shortened to :data:`_COMMAND_CAP`.
-    length : int
-        Length of the command line before shortening.
+        :data:`REDACTED`. A line longer than :data:`_COMMAND_CAP` is shortened
+        and ends in an ellipsis.
     """
 
     subcommand: str | None
     socket: str | None
     command: str
-    length: int
 
 
 def describe_command(argv: Sequence[str]) -> CommandContext:
@@ -238,7 +236,6 @@ def describe_command(argv: Sequence[str]) -> CommandContext:
             if len(command) <= _COMMAND_CAP
             else command[: _COMMAND_CAP - 1] + "\N{HORIZONTAL ELLIPSIS}"
         ),
-        length=len(command),
     )
 
 

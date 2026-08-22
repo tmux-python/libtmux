@@ -122,8 +122,7 @@ A command larger than tmux accepts was rejected by tmux but still written to
 three log records in full, so a single oversized {meth}`Server.set_buffer()
 <libtmux.Server.set_buffer>` could put hundreds of kilobytes into a `DEBUG` log.
 `tmux_cmd` is now capped at the size of the largest command tmux will run, and
-`tmux_cmd_len` reports the length before capping, so a shortened record is
-always recognisable as one.
+a shortened one ends in an ellipsis so it is recognisable as such.
 
 #### Environment values no longer appear in logs (#744)
 
@@ -161,7 +160,9 @@ command that was already logged.
 {ref}`logging` covers turning logging on, which logger emits what, the full
 `tmux_` field schema, how to assert on records with pytest's `caplog`, and the
 advisories that travel through {mod}`warnings` rather than a logger — along with
-the one call that routes them into the same stream. It
+the one call that routes them into the same stream. It also covers running under
+threads and `asyncio`, including the {class}`~logging.handlers.QueueHandler`
+formatter that discards records before they reach the queue. It
 also documents the {class}`~logging.Formatter` trap that silently drops records
 whose format string names a field they do not carry, and what libtmux redacts.
 The page's examples run as part of the test suite.

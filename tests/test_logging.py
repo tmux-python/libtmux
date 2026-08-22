@@ -525,7 +525,7 @@ def test_oversized_command_is_capped_in_the_record(
     """A command tmux refuses must not put its whole payload in the log.
 
     tmux caps a command at ``MAX_IMSGSIZE``, so a payload past that never runs;
-    the record keeps ``tmux_cmd_len`` to report what the caller actually passed.
+    a shortened record ends in an ellipsis to say so.
     """
     from libtmux._internal.log_context import _COMMAND_CAP
 
@@ -540,7 +540,7 @@ def test_oversized_command_is_capped_in_the_record(
 
     rec = t.cast(t.Any, records[0])
     assert len(rec.tmux_cmd) <= _COMMAND_CAP
-    assert rec.tmux_cmd_len > _COMMAND_CAP
+    assert rec.tmux_cmd.endswith("\N{HORIZONTAL ELLIPSIS}")
 
 
 def test_environment_values_are_hidden_in_both_directions(
@@ -622,3 +622,32 @@ def test_parse_failure_is_logged(caplog: pytest.LogCaptureFixture) -> None:
     assert rec.tmux_subcommand == "list-panes"
     assert rec.tmux_fields_received == 3
     assert rec.tmux_fields_expected != rec.tmux_fields_received
+
+
+def test_records_share_no_mutable_state(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No two records may point at the same mutable value.
+
+    Handler locks make :mod:`logging` itself thread-safe, so the only way
+    libtmux could introduce a race is by handing the same list or dict to more
+    than one record. Nothing else here needs a lock, and this is what would
+    notice if that changed.
+    """
+    with caplog.at_level(logging.DEBUG, logger="libtmux"):
+        window = session.new_window(window_name="threadsafe")
+        window.kill()
+
+    containers = [
+        (id(value), record.getMessage(), key)
+        for record in caplog.records
+        for key, value in record.__dict__.items()
+        if key.startswith("tmux_") and isinstance(value, (list, dict))
+    ]
+    assert containers, "expected records carrying list-valued fields"
+
+    identities = [identity for identity, _, _ in containers]
+    assert len(identities) == len(set(identities)), (
+        f"records share a mutable value: {containers}"
+    )
