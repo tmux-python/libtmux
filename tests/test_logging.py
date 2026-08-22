@@ -410,3 +410,29 @@ def test_command_records_carry_socket_identity(
     rec = t.cast(t.Any, records[0])
     assert rec.tmux_socket == server.socket_name
     assert rec.tmux_subcommand == "list-sessions"
+
+
+def test_server_kill_session_info_logging(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Server.kill_session() logs the same lifecycle event Session.kill() does."""
+    from libtmux.test.random import namer
+
+    name = f"log_kill_{next(namer)}"
+    server.new_session(session_name=name)
+
+    with caplog.at_level(logging.INFO, logger="libtmux.server"):
+        server.kill_session(name)
+
+    records = [
+        r
+        for r in caplog.records
+        if getattr(r, "tmux_subcommand", None) == "kill-session"
+        and r.levelno == logging.INFO
+    ]
+    assert len(records) >= 1, "expected INFO record for Server.kill_session()"
+
+    rec = t.cast(t.Any, records[0])
+    assert rec.getMessage() == "session killed"
+    assert rec.tmux_target == name
