@@ -77,6 +77,8 @@ _CANONICAL_SUBCOMMANDS = {
     "showb": "show-buffer",
     "lsb": "list-buffers",
     "showmsgs": "show-messages",
+    "server-info": "show-messages",
+    "info": "show-messages",
     "showphist": "show-prompt-history",
 }
 """Relevant tmux aliases mapped to the policy command they execute."""
@@ -97,6 +99,17 @@ _ENV_SUBCOMMANDS = frozenset(
 ``select-pane -e`` and ``copy-mode -e`` are booleans, so a bare ``-e`` is never
 read as an environment pair.
 """
+
+_ENV_BOOLEAN_FLAGS = {
+    "new-session": frozenset("AdDEPX"),
+    "new-window": frozenset("abdkPS"),
+    "new-pane": frozenset("bdEfhIkLPvZ"),
+    "display-popup": frozenset("BCEkN"),
+    "respawn-pane": frozenset("k"),
+    "respawn-window": frozenset("k"),
+    "split-window": frozenset("bdEfhIkPvZ"),
+}
+"""Boolean flags that tmux permits before bundled value-taking ``-e``."""
 
 _SETENV_SUBCOMMANDS = frozenset({"set-environment"})
 """Subcommands shaped ``[-Fhgru] [-t target] variable [value]``."""
@@ -384,21 +397,37 @@ def _redact(
 
     redacted = list(tokens)
     separated_pairs = policy == _ENVIRONMENT_POLICY
+    canonical_subcommand = _canonical_subcommand(subcommand)
+    matching_flags = [
+        flags
+        for command, flags in _ENV_BOOLEAN_FLAGS.items()
+        if canonical_subcommand is not None
+        and (
+            command == canonical_subcommand or command.startswith(canonical_subcommand)
+        )
+    ]
+    boolean_flags = frozenset().union(*matching_flags)
     index = subcommand_index + 1
     while index < len(redacted):
         token = redacted[index]
-        if (
-            policy == _ENVIRONMENT_POLICY
-            and token.startswith("-e")
-            and "=" in token[2:]
-        ):
-            name = token[2:].split("=", 1)[0]
-            redacted[index] = f"-e{name}={REDACTED}"
-        elif separated_pairs and token == "-e" and index + 1 < len(redacted):
-            following = redacted[index + 1]
-            if "=" in following:
-                redacted[index + 1] = f"{following.split('=', 1)[0]}={REDACTED}"
-            index += 1
+        if separated_pairs and token.startswith("-"):
+            options = token[1:]
+            for position, flag in enumerate(options):
+                if flag == "e":
+                    attached = options[position + 1 :]
+                    if "=" in attached:
+                        name = attached.split("=", 1)[0]
+                        redacted[index] = f"-{options[: position + 1]}{name}={REDACTED}"
+                    elif not attached and index + 1 < len(redacted):
+                        following = redacted[index + 1]
+                        if "=" in following:
+                            redacted[index + 1] = (
+                                f"{following.split('=', 1)[0]}={REDACTED}"
+                            )
+                        index += 1
+                    break
+                if flag not in boolean_flags:
+                    break
         index += 1
     return redacted
 
