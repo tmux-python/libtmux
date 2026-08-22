@@ -11,6 +11,7 @@ https://docs.pytest.org/en/stable/deprecations.html
 from __future__ import annotations
 
 import functools
+import logging
 import shutil
 import typing as t
 
@@ -58,6 +59,8 @@ def add_doctest_fixtures(
             session=session,
         )
         doctest_namespace["monkeypatch"] = request.getfixturevalue("monkeypatch")
+        doctest_namespace["caplog"] = request.getfixturevalue("caplog")
+        doctest_namespace["logging"] = logging
 
 
 @pytest.fixture(autouse=True)
