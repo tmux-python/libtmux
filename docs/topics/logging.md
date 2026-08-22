@@ -245,7 +245,6 @@ scalars.
 | `tmux_exit_code` | `int` | tmux process exit code |
 | `tmux_stdout` | `list[str]` | stdout lines, capped; empty for content commands |
 | `tmux_stderr` | `list[str]` | stderr lines, capped |
-| `tmux_cmd_len` | `int` | Command-line length before capping |
 | `tmux_stdout_len` | `int` | Total stdout line count before capping |
 | `tmux_stderr_len` | `int` | Total stderr line count before capping |
 
@@ -495,10 +494,42 @@ the caller already has it as a return value. This is the same line HTTP clients
 draw when they log a status and a content length but never a response body.
 
 `tmux_cmd` is capped too, at the size of the largest command tmux itself will
-run. Quoting expands what it measures — a single quote becomes five characters
-— so a command built almost entirely of quotes can be one tmux accepts and the
-record still shortens. Compare `tmux_cmd_len` against the string you got to
-know: they differ only when the record was shortened.
+run, and a shortened one ends in an ellipsis. Quoting expands what the cap
+measures — a single quote becomes five characters — so a command built almost
+entirely of quotes can be one tmux accepts whose record still shortens.
+
+## Threads and async
+
+libtmux adds no locking of its own and needs none. {mod}`logging` serialises
+handler output behind a lock, and libtmux never hands the same list or dict to
+two records, so concurrent tmux calls cannot interleave into one another's
+fields. Records name the server they came from through `tmux_socket`, which is
+what tells apart several servers driven at once.
+
+Blocking work belongs off the event loop, and a handler writing to a file or a
+socket is blocking work. The standard answer is
+{class}`~logging.handlers.QueueHandler` with a
+{class}`~logging.handlers.QueueListener`, and every `tmux_` field survives that
+round trip — including through a {mod}`multiprocessing` queue, since records
+pickle cleanly.
+
+One trap comes with it. `QueueHandler` runs **its own formatter** when it
+enqueues, so a format string there that names a field some records lack drops
+those records *before they reach the queue* — the listener's handlers never see
+them. Leave the `QueueHandler` unformatted and format in the listener, or give
+it the same `defaults` as any other formatter.
+
+```python
+import logging.handlers
+import queue
+
+log_queue: queue.Queue = queue.Queue()
+handler = logging.handlers.QueueHandler(log_queue)  # no formatter here
+```
+
+An `asyncio` task name does not follow work into
+{func}`asyncio.to_thread`, so records made there carry no `taskName`. Bind your
+own identifier if you need to correlate tmux calls back to a task.
 
 ## Recipes
 
