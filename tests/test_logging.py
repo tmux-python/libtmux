@@ -436,3 +436,18 @@ def test_server_kill_session_info_logging(
     rec = t.cast(t.Any, records[0])
     assert rec.getMessage() == "session killed"
     assert rec.tmux_target == name
+
+
+def test_session_fixture_setup_logs_no_errors(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The bundled fixtures must not leave ERROR records in a test's report.
+
+    pytest replays captured records into the report of every failing test, so a
+    fixture that provokes a tmux failure reads as the cause of that failure.
+    """
+    assert session.session_name is not None
+
+    errors = [r for r in caplog.get_records("setup") if r.levelno >= logging.ERROR]
+    assert errors == [], f"fixture setup logged: {[r.getMessage() for r in errors]}"
