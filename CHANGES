@@ -60,13 +60,22 @@ bespoke logging.
 
 {func}`~libtmux.common.raise_if_stderr` emits one `ERROR` record before raising,
 carrying the exit code, socket, and command line that the exception message does
-not. This matters most for the list accessors, which swallow tmux errors by
+not. The record is attributed to the libtmux method that ran the command, so
+`%(filename)s` and OpenTelemetry's `code.filepath` locate the failure. This matters most for the list accessors, which swallow tmux errors by
 design: {attr}`Server.sessions <libtmux.Server.sessions>` still returns an empty
 {class}`~libtmux._internal.query_list.QueryList` when tmux is unreachable, but
 now says why. Paths that expect a non-zero exit, such as
 {meth}`Server.is_alive() <libtmux.Server.is_alive>`, do not log an error.
 
 ### Fixes
+
+#### An unparseable option warns once, not once per entry (#744)
+
+An option whose value libtmux could not parse — `terminal-features`,
+`terminal-overrides`, `command-alias` — logged one `WARNING` per malformed
+entry, so a badly formed list produced a burst of identical records every time
+options were read. It now warns once for the option, with `tmux_option_skipped`
+counting what it dropped.
 
 #### Environment values no longer appear in logs (#744)
 
@@ -88,14 +97,6 @@ Killing a session through {meth}`Server.kill_session()
 <libtmux.Server.kill_session>` emitted no lifecycle record, while
 {meth}`Session.kill() <libtmux.Session.kill>` emitted one for the same
 user-visible operation. Both now log `session killed`.
-
-#### The pytest fixtures no longer pollute failure reports (#744)
-
-The bundled `session` fixture asked tmux to switch a client even when none was
-attached, which is a command failure. Now that libtmux logs failures at
-`ERROR`, pytest replayed that record into the captured-log section of every
-failing test, where it read as the cause rather than as fixture noise. The
-fixture now attempts the switch only when a client exists.
 
 #### One command line, one shape (#744)
 
