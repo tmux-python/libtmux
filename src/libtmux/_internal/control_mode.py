@@ -12,7 +12,7 @@ import os
 import subprocess
 import typing as t
 
-from libtmux._internal.log_context import describe_command
+from libtmux._internal.log_context import command_extra
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
@@ -86,14 +86,11 @@ class ControlMode:
             str(self.session.session_id),
         ]
 
-        context = describe_command(cmd)
         self._log_extra = {
-            "tmux_cmd": context.command,
+            **command_extra(cmd),
             "tmux_subcommand": "attach-session",
             "tmux_target": str(self.session.session_id),
         }
-        if context.socket is not None:
-            self._log_extra["tmux_socket"] = context.socket
 
         try:
             try:

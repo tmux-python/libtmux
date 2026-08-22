@@ -1429,7 +1429,8 @@ def test_lenient_list_accessors_log_and_return_empty(
     record = t.cast(t.Any, records[0])
     assert record.tmux_subcommand == list_cmd
     assert record.tmux_socket == server.socket_name
-    assert record.tmux_stderr == ["simulated list failure"]
+    assert record.tmux_stderr_len == 1
+    assert not hasattr(record, "tmux_stderr")
     assert record.funcName == ("clients" if accessor == "clients" else "sessions")
 
 

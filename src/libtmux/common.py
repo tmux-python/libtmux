@@ -17,15 +17,12 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
-from ._internal.log_context import describe_command, redact_output
+from ._internal.log_context import command_extra
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
-
-#: Maximum stdout/stderr lines attached to a debug record
-_LOG_LINE_CAP = 100
 
 #: Minimum version of tmux required to run libtmux
 TMUX_MIN_VERSION = "3.2a"
@@ -307,8 +304,9 @@ class tmux_cmd:
         if not resolved:
             raise exc.TmuxCommandNotFound
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("tmux command dispatched", extra=self._log_extra)
+        log_extra = command_extra(cmd) if logger.isEnabledFor(logging.DEBUG) else None
+        if log_extra is not None:
+            logger.debug("tmux command dispatched", extra=log_extra)
 
         try:
             self.process = subprocess.Popen(
@@ -341,37 +339,16 @@ class tmux_cmd:
         else:
             self.stdout = stdout_split
 
-        if logger.isEnabledFor(logging.DEBUG):
+        if log_extra is not None:
             logger.debug(
                 "tmux command completed",
                 extra={
-                    **self._log_extra,
+                    **log_extra,
                     "tmux_exit_code": self.returncode,
-                    "tmux_stdout": redact_output(
-                        self._log_extra.get("tmux_subcommand"),
-                        self.stdout[:_LOG_LINE_CAP],
-                    ),
-                    "tmux_stderr": self.stderr[:_LOG_LINE_CAP],
                     "tmux_stdout_len": len(self.stdout),
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
-
-    @functools.cached_property
-    def _log_extra(self) -> dict[str, t.Any]:
-        """Logging context every record for this command shares.
-
-        Derived once from :attr:`cmd`, so the command line a record reports is
-        the same string whichever layer emitted it, with environment values
-        already redacted.
-        """
-        context = describe_command(self.cmd)
-        extra: dict[str, t.Any] = {"tmux_cmd": context.command}
-        if context.subcommand is not None:
-            extra["tmux_subcommand"] = context.subcommand
-        if context.socket is not None:
-            extra["tmux_socket"] = context.socket
-        return extra
 
 
 class _TmuxVersionUnavailable(Exception):
