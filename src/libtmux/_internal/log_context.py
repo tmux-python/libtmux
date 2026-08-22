@@ -18,6 +18,7 @@ __all__ = (
     "CommandContext",
     "describe_command",
     "object_extra",
+    "redact_output",
 )
 
 REDACTED = "REDACTED"
@@ -74,6 +75,9 @@ read as an environment pair.
 
 _SETENV_SUBCOMMANDS = frozenset({"set-environment", "setenv"})
 """Subcommands shaped ``[-Fhgru] [-t target] variable [value]``."""
+
+_ENV_OUTPUT_SUBCOMMANDS = frozenset({"show-environment", "showenv"})
+"""Subcommands whose stdout reports ``NAME=VALUE`` for environment variables."""
 
 
 def _quote(token: str) -> str:
@@ -299,6 +303,48 @@ def _redact_set_environment(tokens: list[str], subcommand_index: int) -> list[st
     if len(positions) >= 2:
         redacted[positions[-1]] = REDACTED
     return redacted
+
+
+def redact_output(subcommand: str | None, lines: list[str]) -> list[str]:
+    """Hide values in output that reports environment variables.
+
+    Redacting what libtmux sends is only half of it: ``show-environment`` hands
+    the same values straight back on stdout, so
+    :meth:`~libtmux.common.EnvironmentMixin.getenv` would log a secret that
+    :meth:`~libtmux.common.EnvironmentMixin.set_environment` was careful not to.
+
+    Parameters
+    ----------
+    subcommand : str | None
+        tmux subcommand that produced ``lines``.
+    lines : list[str]
+        Output lines as tmux wrote them.
+
+    Returns
+    -------
+    list[str]
+        The lines, with any environment value replaced by :data:`REDACTED`.
+
+    Examples
+    --------
+    >>> redact_output("show-environment", ["EDITOR=vim", "API_TOKEN=hunter2"])
+    ['EDITOR=REDACTED', 'API_TOKEN=REDACTED']
+
+    An unset variable carries no value to hide:
+
+    >>> redact_output("show-environment", ["-EDITOR"])
+    ['-EDITOR']
+
+    Output from anything else is left alone, so a debug record stays useful:
+
+    >>> redact_output("list-sessions", ["mysession: 1 windows"])
+    ['mysession: 1 windows']
+    """
+    if subcommand not in _ENV_OUTPUT_SUBCOMMANDS:
+        return lines
+    return [
+        f"{line.split('=', 1)[0]}={REDACTED}" if "=" in line else line for line in lines
+    ]
 
 
 def object_extra(
