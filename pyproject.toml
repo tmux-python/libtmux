@@ -106,6 +106,15 @@ libtmux = "libtmux.pytest_plugin"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+# AGENTS.md (+ its CLAUDE.md symlink) is agent guidance for contributors,
+# not a package resource; hatchling's default src-layout packaging would
+# otherwise ship it inside every install.
+exclude = [
+  "src/libtmux/AGENTS.md",
+  "src/libtmux/CLAUDE.md",
+]
+
 [tool.uv.exclude-newer-package]
 # git-pull packages release in lockstep with their workspaces, so a
 # fresh release blocking on the 3-day cooldown blocks every
