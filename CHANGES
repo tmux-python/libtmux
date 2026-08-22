@@ -77,6 +77,15 @@ entry, so a badly formed list produced a burst of identical records every time
 options were read. It now warns once for the option, with `tmux_option_skipped`
 counting what it dropped.
 
+#### Pane and buffer content stays out of debug records (#744)
+
+{meth}`Pane.capture_pane() <libtmux.Pane.capture_pane>`, `show-buffer`, and
+`list-buffers` return whatever was on a screen or in a paste buffer, and every
+line of it was written to a `DEBUG` record — so a captured pane put its contents,
+including anything typed at a prompt, into the log. Those commands now report
+`tmux_stdout_len` alone, the way an HTTP client logs a content length rather
+than a body. The calls return exactly what they always did.
+
 #### Environment values are hidden coming back, too (#744)
 
 Redacting what libtmux sends only covered half the round trip: tmux returns the
