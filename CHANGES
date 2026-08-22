@@ -58,11 +58,12 @@ log line.
 
 #### Failed tmux commands are logged at `ERROR` (#744)
 
-Every public operation that cannot start tmux or treats tmux stderr as a
-failure now emits the same `ERROR` record before preserving its existing
-exception type. The record carries the socket and command line, plus the exit
-code when available, and points at the libtmux method that ran the command.
-This matters most for list accessors that swallow tmux errors:
+Command paths that surface a tmux failure, and list accessors that leniently
+convert one to an empty result, now emit the same `ERROR` record while
+preserving their existing API behavior. The record carries the socket and
+command line, plus the exit code when available, and points at the libtmux
+method that ran the command. This matters most for list accessors that swallow
+tmux errors:
 {attr}`Server.sessions <libtmux.Server.sessions>` still returns an empty
 {class}`~libtmux._internal.query_list.QueryList` when tmux is unreachable, but
 now says why. Expected non-zero probes such as
@@ -86,8 +87,9 @@ history now report `tmux_stdout_len` without copying their content into
 <libtmux.Server.set_buffer>` are replaced with `REDACTED` in `tmux_cmd`. The
 calls retain their existing results.
 
-tmux aliases and unambiguous command abbreviations inherit the same redaction
-policy as the corresponding full command names.
+tmux's built-in aliases, relevant default aliases, and policy-safe command
+abbreviations inherit the same redaction policy as the corresponding full
+command names.
 
 #### An unparseable row of tmux output says so (#744)
 
@@ -134,7 +136,7 @@ each `NAME=VALUE` pair on a tmux command line that `DEBUG` logging then recorded
 verbatim, so a token passed to a session appeared in any log the application
 shipped. Values are now replaced with `REDACTED` while the names stay visible.
 {meth}`set_environment() <libtmux.common.EnvironmentMixin.set_environment>` is
-covered too.
+covered too, including forms that bundle boolean options before `-e`.
 
 Keystrokes sent with {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` are still
 logged as given — libtmux cannot tell a password from a command.
