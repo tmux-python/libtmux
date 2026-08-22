@@ -17,6 +17,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
+from libtmux._internal.log_context import object_extra
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
@@ -478,7 +479,7 @@ class Server(
             if _is_daemon_not_up_error(stderr_text):
                 return
             raise exc.LibTmuxException(proc.stderr)
-        logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
+        logger.info("server killed", extra=object_extra("kill-server"))
 
     def kill_session(self, target_session: str | int) -> Server:
         """Kill tmux session.
@@ -2306,10 +2307,7 @@ class Server(
                     raise_if_stderr(proc, "kill-session")
                     logger.info(
                         "existing session killed",
-                        extra={
-                            "tmux_session": session_name,
-                            "tmux_subcommand": "kill-session",
-                        },
+                        extra=object_extra("kill-session", session=session_name),
                     )
                 else:
                     msg = f"Session named {session_name} exists"
@@ -2317,12 +2315,10 @@ class Server(
                         msg,
                     )
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "new-session",
-        }
-        if session_name is not None:
-            extra["tmux_session"] = str(session_name)
-        logger.debug("creating session", extra=extra)
+        logger.debug(
+            "creating session",
+            extra=object_extra("new-session", session=session_name),
+        )
 
         env = os.environ.get("TMUX")
 
@@ -2387,12 +2383,14 @@ class Server(
 
         session = Session(server=self, **session_data)
 
-        info_extra: dict[str, str] = {
-            "tmux_subcommand": "new-session",
-        }
-        if session.session_name is not None:
-            info_extra["tmux_session"] = str(session.session_name)
-        logger.info("session created", extra=info_extra)
+        logger.info(
+            "session created",
+            extra=object_extra(
+                "new-session",
+                session=session.session_name,
+                target=session.session_id,
+            ),
+        )
 
         return session
 
@@ -2411,7 +2409,9 @@ class Server(
         tmux's ``list-sessions`` fails for any reason — no running daemon, a
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no sessions" from "tmux unreachable", call
-        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`. The swallowed
+        failure is also logged once at ``ERROR`` on ``libtmux.common``; see
+        :ref:`logging`.
         """
         try:
             sessions: list[Session] = [
