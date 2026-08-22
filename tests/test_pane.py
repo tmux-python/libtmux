@@ -1350,7 +1350,7 @@ def test_break_pane_no_name_uses_natural_name(session: Session) -> None:
     """Pane.break_pane() without a name keeps tmux's default window name.
 
     The tmux 3.7 break-pane crash workaround injects a placeholder ``-n``
-    when no ``window_name`` is given. On tmux 3.7a/3.7b, where the crash is
+    when no ``window_name`` is given. On tmux 3.7a onward, where the crash is
     already fixed, that placeholder must not leak as the window name -- the
     broken window should keep tmux's own auto-name (here ``sleep``).
     """

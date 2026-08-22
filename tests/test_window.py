@@ -289,8 +289,8 @@ def test_new_window_name_colon_period_accepted(
     3.7a reverted the restriction (tmux commit 166267c8, "overly
     pernickety"). libtmux's version helpers strip the letter suffix, so
     :func:`~libtmux.common.get_version` cannot tell 3.7 from 3.7a -- both
-    report ``3.7`` -- so CI exercises 3.7a/3.7b rather than the superseded
-    3.7 release.
+    report ``3.7`` -- so CI exercises 3.7a and later point releases rather
+    than the superseded 3.7 release.
     """
     window = session.new_window(window_name=window_name)
     assert window.window_name == window_name
