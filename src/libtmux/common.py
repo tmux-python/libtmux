@@ -408,10 +408,7 @@ class tmux_cmd:
         already redacted.
         """
         context = describe_command(self.cmd)
-        extra: dict[str, t.Any] = {
-            "tmux_cmd": context.command,
-            "tmux_cmd_len": context.length,
-        }
+        extra: dict[str, t.Any] = {"tmux_cmd": context.command}
         if context.subcommand is not None:
             extra["tmux_subcommand"] = context.subcommand
         if context.socket is not None:
