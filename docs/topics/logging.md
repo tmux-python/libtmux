@@ -409,6 +409,16 @@ leaving `DEBUG` off costs a level comparison per command. Messages use lazy
 `%s` interpolation, which keeps a given event under one message template in an
 aggregator instead of producing a distinct string per occurrence.
 
+`DEBUG` is dominated by `tmux_cmd`, because libtmux queries tmux with large
+`-F` format templates and each command is recorded twice — once on dispatch,
+once on completion — so that either line stands on its own. If you want object
+lifecycle without that, leave `libtmux` at `DEBUG` and raise just the command
+logger:
+
+```python
+logging.getLogger("libtmux.common").setLevel(logging.INFO)
+```
+
 At `DEBUG`, `tmux_stdout` and `tmux_stderr` are capped, and the untruncated
 counts stay available as `tmux_stdout_len` and `tmux_stderr_len`. A
 `list-panes` against a large server can still be a lot of text — prefer the
