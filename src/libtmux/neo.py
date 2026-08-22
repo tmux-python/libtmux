@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import logging
-import shlex
 import typing as t
 from collections.abc import Iterable
 
@@ -19,9 +17,6 @@ if t.TYPE_CHECKING:
     ListExtraArgs = Iterable[str] | None
 
     from libtmux.server import Server
-
-logger = logging.getLogger(__name__)
-
 
 OutputRaw = dict[str, t.Any]
 OutputsRaw = list[OutputRaw]
@@ -1118,18 +1113,6 @@ def fetch_objs(
 
     tmux_cmds.append(f"-F{format_string}")
 
-    cmd_str: str | None = None
-
-    if logger.isEnabledFor(logging.DEBUG):
-        cmd_str = shlex.join([str(x) for x in tmux_cmds])
-        logger.debug(
-            "tmux list queried",
-            extra={
-                "tmux_subcommand": list_cmd,
-                "tmux_cmd": cmd_str,
-            },
-        )
-
     proc = tmux_cmd(
         *tmux_cmds,
         tmux_bin=server.tmux_bin,
@@ -1137,21 +1120,7 @@ def fetch_objs(
 
     raise_if_stderr(proc, list_cmd)
 
-    outputs = [parse_output(line, list_cmd, tmux_version) for line in proc.stdout]
-
-    if logger.isEnabledFor(logging.DEBUG):
-        if cmd_str is None:
-            cmd_str = shlex.join([str(x) for x in tmux_cmds])
-        logger.debug(
-            "tmux list parsed",
-            extra={
-                "tmux_subcommand": list_cmd,
-                "tmux_cmd": cmd_str,
-                "tmux_stdout_len": len(proc.stdout),
-            },
-        )
-
-    return outputs
+    return [parse_output(line, list_cmd, tmux_version) for line in proc.stdout]
 
 
 def _is_target_not_found_error(stderr_text: str) -> bool:
