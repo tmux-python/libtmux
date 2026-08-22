@@ -75,7 +75,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import CmdMixin, _log_if_stderr
+from libtmux.common import CmdMixin
 from libtmux.constants import (
     DEFAULT_OPTION_SCOPE,
     OPTION_SCOPE_FLAG_MAP,
@@ -715,7 +715,6 @@ class OptionsMixin(CmdMixin):
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
-            _log_if_stderr(cmd, "set-option")
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -803,7 +802,6 @@ class OptionsMixin(CmdMixin):
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
-            _log_if_stderr(cmd, "set-option")
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -1200,7 +1198,6 @@ class OptionsMixin(CmdMixin):
         )
 
         if cmd.stderr is not None and len(cmd.stderr):
-            _log_if_stderr(cmd, "show-options")
             handle_option_error(cmd.stderr[0])
 
         options_output = cmd.stdout

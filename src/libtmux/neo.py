@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import logging
 import typing as t
 from collections.abc import Iterable
 
@@ -18,8 +17,6 @@ if t.TYPE_CHECKING:
     ListExtraArgs = Iterable[str] | None
 
     from libtmux.server import Server
-
-logger = logging.getLogger(__name__)
 
 OutputRaw = dict[str, t.Any]
 OutputsRaw = list[OutputRaw]
@@ -1029,17 +1026,6 @@ def parse_output(
     # Remove the trailing empty string from the split
     if values and values[-1] == "":
         values = values[:-1]
-
-    if len(values) != len(formats):
-        # Preserve field counts before zip(strict=True) loses tmux context.
-        logger.error(
-            "tmux output parse failed",
-            extra={
-                "tmux_subcommand": list_cmd,
-                "tmux_fields_expected": len(formats),
-                "tmux_fields_received": len(values),
-            },
-        )
 
     formatter = dict(zip(formats, values, strict=True))
     return {k: v for k, v in formatter.items() if v}
