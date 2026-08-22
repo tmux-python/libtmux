@@ -405,6 +405,38 @@ def test_missing_tmux_binary_logs_before_public_exception(
     assert not hasattr(record, "tmux_exit_code")
 
 
+@pytest.mark.parametrize(
+    "binary_case",
+    ["configured-missing", "default-missing", "invalid-format"],
+)
+def test_is_alive_unusable_binary_stays_quiet(
+    binary_case: str,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A health check converts an unusable executable to a quiet ``False``."""
+    from libtmux.server import Server
+
+    tmux_bin: str | None = str(tmp_path / "missing-tmux")
+    if binary_case == "default-missing":
+        tmux_bin = None
+        monkeypatch.setenv("PATH", "")
+    elif binary_case == "invalid-format":
+        invalid_tmux = tmp_path / "invalid-tmux"
+        invalid_tmux.write_text("not an executable format\n")
+        invalid_tmux.chmod(0o755)
+        tmux_bin = str(invalid_tmux)
+    server = Server(tmux_bin=tmux_bin)
+
+    with caplog.at_level(logging.ERROR, logger="libtmux.common"):
+        assert not server.is_alive()
+
+    assert [
+        record for record in caplog.records if record.levelno == logging.ERROR
+    ] == []
+
+
 def test_options_warning_logging_schema(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -510,6 +542,10 @@ def test_describe_command_reads_tmux_global_flags(
         (["tmux", "select-pane", "-eK=v"], "tmux select-pane -eK=v"),
         (["tmux", "copy-mode", "-e"], "tmux copy-mode -e"),
         (
+            ["tmux", "new-session", "-c/tmp/secret=path"],
+            "tmux new-session -c/tmp/secret=path",
+        ),
+        (
             ["tmux", "set-buffer", "-b", "named", "secret data"],
             "tmux set-buffer -b named REDACTED",
         ),
@@ -527,6 +563,7 @@ def test_describe_command_reads_tmux_global_flags(
         "select-pane-boolean-e",
         "select-pane-joined-boolean-e",
         "copy-mode-boolean-e",
+        "other-option-attached-value",
         "set-buffer-content",
         "setb-content",
         "set-environment-prefix",
@@ -581,6 +618,32 @@ def test_describe_command_redacts_every_environment_spelling() -> None:
         assert separated.command == f"tmux {subcommand} -e KEY=REDACTED"
 
 
+@pytest.mark.parametrize(
+    ("subcommand", "boolean_flags"),
+    (
+        ("new-session", "-d"),
+        ("new-window", "-d"),
+        ("new-pane", "-df"),
+        ("display-popup", "-BE"),
+        ("respawn-pane", "-k"),
+        ("respawn-window", "-k"),
+        ("split-window", "-dP"),
+    ),
+)
+def test_describe_command_redacts_bundled_environment_options(
+    subcommand: str,
+    boolean_flags: str,
+) -> None:
+    """Boolean flags before value-taking ``-e`` cannot expose its value."""
+    from libtmux._internal.log_context import describe_command
+
+    option = f"{boolean_flags}eKEY=secret"
+
+    context = describe_command(["tmux", subcommand, option])
+
+    assert context.command == f"tmux {subcommand} {boolean_flags}eKEY=REDACTED"
+
+
 def test_redact_output_suppresses_sensitive_command_spellings() -> None:
     """Environment, terminal, buffer, and history output stays off records."""
     from libtmux._internal.log_context import redact_output
@@ -598,6 +661,8 @@ def test_redact_output_suppresses_sensitive_command_spellings() -> None:
         "lsb",
         "show-messages",
         "showmsgs",
+        "server-info",
+        "info",
         "show-prompt-history",
         "showphist",
         "show-e",
