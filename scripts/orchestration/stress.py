@@ -6,7 +6,7 @@
 """Find where the active orchestration workload buckles, and on which axis.
 
 This is a pressure test, not a comparison. It answers a different question
-from ``orchestration_matrix.py``: not "which lane is faster" but "how far can
+from ``matrix.py``: not "which lane is faster" but "how far can
 this host be pushed before a phase stops completing, and which dimension is
 responsible".
 
@@ -48,7 +48,7 @@ import time
 import types
 import typing as t
 
-_BENCHMARK = pathlib.Path(__file__).with_name("bench_orchestration.py")
+_BENCHMARK = pathlib.Path(__file__).with_name("benchmark.py")
 _SCRATCH_PREFIX = "lts-"
 _MEMORY_FLOOR_BYTES = 8 * 1024**3
 
@@ -77,7 +77,7 @@ def child_interpreter() -> str:
         "This happens when the script is run as a PEP 723 script, whose "
         "environment is isolated from the project.\n"
         "Run it through the project environment instead:\n"
-        f"  uv run python scripts/orchestration_stress.py"
+        f"  uv run python scripts/orchestration/stress.py"
     )
     raise SystemExit(message)
 
@@ -345,10 +345,10 @@ def build_parser() -> argparse.ArgumentParser:
     Examples
     --------
     >>> build_parser().prog
-    'orchestration_stress.py'
+    'scripts/orchestration/stress.py'
     """
     parser = argparse.ArgumentParser(
-        prog="orchestration_stress.py",
+        prog="scripts/orchestration/stress.py",
         description=(
             "Escalate one topology dimension at a time until a phase stops "
             "completing, recording which phase surrendered and at what pane "
@@ -357,7 +357,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Each rung uses a single timed invocation and no warmup, because "
             "only the outcome matters. This is a pressure test; use "
-            "orchestration_matrix.py to compare lanes."
+            "matrix.py to compare lanes."
         ),
     )
     parser.add_argument(

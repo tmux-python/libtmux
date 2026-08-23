@@ -85,7 +85,9 @@ _RUNNER_PHASES = (
 
 def _benchmark_script() -> pathlib.Path:
     """Return the real standalone benchmark entry point."""
-    return pathlib.Path(__file__).parents[1] / "scripts" / "bench_orchestration.py"
+    return (
+        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "benchmark.py"
+    )
 
 
 def _run_cli(*arguments: str, cwd: pathlib.Path) -> subprocess.CompletedProcess[str]:
@@ -194,8 +196,10 @@ def _assert_terminal_cleanup(payload: dict[str, t.Any]) -> None:
 @pytest.fixture()
 def benchmark_module() -> types.ModuleType:
     """Load the standalone benchmark script without contacting tmux."""
-    script = pathlib.Path(__file__).parents[1] / "scripts" / "bench_orchestration.py"
-    spec = importlib.util.spec_from_file_location("bench_orchestration", script)
+    script = (
+        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "benchmark.py"
+    )
+    spec = importlib.util.spec_from_file_location("orchestration_benchmark", script)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -2128,7 +2132,7 @@ def test_fuzzer_preview_runs_as_clean_isolated_pep723_script(
     tmp_path: pathlib.Path,
 ) -> None:
     """A zero-duration preview must resolve PEP 723 dependencies without state."""
-    fuzzer = _benchmark_script().with_name("orchestration_fuzzer.py")
+    fuzzer = _benchmark_script().with_name("fuzzer.py")
 
     completed = _run_pep723_script(
         fuzzer,
@@ -2432,7 +2436,9 @@ def test_plan_writes_original_predictive_decision_without_talking_to_tmux(
     tmp_path: pathlib.Path,
 ) -> None:
     """The planning path must remain an offline inspection even when forced."""
-    script = pathlib.Path(__file__).parents[1] / "scripts" / "bench_orchestration.py"
+    script = (
+        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "benchmark.py"
+    )
     output = tmp_path / "plan.json"
 
     completed = subprocess.run(
@@ -12790,7 +12796,7 @@ def test_stalled_worker_exits_when_its_spawner_dies(
     old, with its pytest temporary directory long deleted.
     """
     root = pathlib.Path(__file__).parents[1]
-    bench = root / "scripts" / "bench_orchestration.py"
+    bench = root / "scripts" / "orchestration" / "benchmark.py"
 
     stall = tmp_path / "stall.py"
     stall.write_text(
