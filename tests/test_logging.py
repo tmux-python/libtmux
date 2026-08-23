@@ -79,6 +79,27 @@ def test_tmux_cmd_debug_logging_schema(
     assert completed.tmux_stderr_len == 0
 
 
+def test_fetch_objs_emits_one_command_record_pair(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A query emits one dispatch/completion pair without duplicate records."""
+    from libtmux.neo import fetch_objs
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux"):
+        fetch_objs(server=session.server, list_cmd="list-sessions")
+
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "tmux_subcommand", None) == "list-sessions"
+    ]
+    assert [(record.name, record.getMessage()) for record in records] == [
+        ("libtmux.common", "tmux command dispatched"),
+        ("libtmux.common", "tmux command completed"),
+    ]
+
+
 def test_tmux_cmd_debug_logging_bounds_large_output(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
