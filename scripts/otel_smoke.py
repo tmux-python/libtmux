@@ -154,7 +154,7 @@ def _profile_lane(lane: str, *, enabled: bool) -> t.Iterator[None]:
     if not enabled:
         yield
         return
-    import pyroscope  # type: ignore[import-untyped]
+    import pyroscope
 
     with pyroscope.tag_wrapper({"tmux_lane": lane}):
         yield
