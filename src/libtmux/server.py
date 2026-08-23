@@ -33,6 +33,7 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     _literal,
+    _raise_if_unusable_tmux,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -535,6 +536,8 @@ class Server(
         ------
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
+            When the operating system attempted the launch, its diagnostic is
+            available as the exception message and cause.
         :exc:`~libtmux.exc.SocketPathTooLong`
             When the socket this server names cannot fit in a UNIX socket
             address, so no tmux command could ever reach it.
@@ -551,7 +554,8 @@ class Server(
         """
         resolved = self.tmux_bin or shutil.which("tmux")
         if resolved is None:
-            raise exc.TmuxCommandNotFound
+            msg = "tmux executable not found on PATH"
+            raise exc.TmuxCommandNotFound(msg)
 
         cmd_args: list[str] = [*self._socket_args(), "list-sessions"]
         if self.config_file:
@@ -559,8 +563,9 @@ class Server(
 
         try:
             subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        except OSError as error:
+            _raise_if_unusable_tmux(error)
+            raise
 
     #
     # Command

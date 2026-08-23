@@ -367,37 +367,119 @@ def test_environment_failure_propagates_without_logging(
     ] == []
 
 
-@pytest.mark.parametrize(
-    "binary_case",
-    ["configured-missing", "default-missing", "not-executable", "invalid-format"],
-)
-def test_unusable_tmux_binary_propagates_without_logging(
+_UNUSABLE_TMUX_CASES = [
+    pytest.param("configured-missing", errno.ENOENT, id="configured-missing"),
+    pytest.param("default-missing", None, id="default-missing"),
+    pytest.param("not-executable", errno.EACCES, id="not-executable"),
+    pytest.param("invalid-format", errno.ENOEXEC, id="invalid-format"),
+]
+
+
+def _prepare_unusable_tmux_binary(
     binary_case: str,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str | None, pathlib.Path]:
+    """Build one unusable executable case and return its configured path."""
+    tmux_path = tmp_path / "tmux"
+    if binary_case == "default-missing":
+        monkeypatch.setenv("PATH", "")
+        return None, tmux_path
+    if binary_case in {"not-executable", "invalid-format"}:
+        tmux_path.write_text("not an executable format\n")
+        tmux_path.chmod(0o644 if binary_case == "not-executable" else 0o755)
+    return str(tmux_path), tmux_path
+
+
+@pytest.mark.parametrize("loud_api", ["tmux-cmd", "raise-if-dead"])
+@pytest.mark.parametrize(("binary_case", "expected_errno"), _UNUSABLE_TMUX_CASES)
+def test_loud_apis_preserve_unusable_tmux_diagnostics_without_logging(
+    loud_api: str,
+    binary_case: str,
+    expected_errno: int | None,
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """An unusable executable remains exception data, not a log record."""
+    """Loud APIs preserve available launch facts in one domain exception."""
     from libtmux import exc
     from libtmux.common import tmux_cmd
+    from libtmux.server import Server
 
-    tmux_path = tmp_path / "tmux"
-    tmux_bin: str | None = str(tmux_path)
-    if binary_case == "default-missing":
-        tmux_bin = None
-        monkeypatch.setattr("libtmux.common.shutil.which", lambda _: None)
-    elif binary_case in {"not-executable", "invalid-format"}:
-        tmux_path.write_text("not an executable format\n")
-        tmux_path.chmod(0o644 if binary_case == "not-executable" else 0o755)
+    tmux_bin, tmux_path = _prepare_unusable_tmux_binary(
+        binary_case, tmp_path, monkeypatch
+    )
+
+    def run_tmux_cmd() -> object:
+        return tmux_cmd("list-sessions", tmux_bin=tmux_bin)
+
+    action = (
+        run_tmux_cmd
+        if loud_api == "tmux-cmd"
+        else Server(tmux_bin=tmux_bin).raise_if_dead
+    )
+
     with (
         caplog.at_level(logging.ERROR, logger="libtmux.common"),
-        pytest.raises(exc.TmuxCommandNotFound),
+        pytest.raises(exc.TmuxCommandNotFound) as exc_info,
     ):
-        tmux_cmd("list-sessions", tmux_bin=tmux_bin)
+        action()
 
     assert [
         record for record in caplog.records if record.levelno == logging.ERROR
     ] == []
+    if expected_errno is None:
+        assert str(exc_info.value) == "tmux executable not found on PATH"
+        assert exc_info.value.__cause__ is None
+    else:
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, OSError)
+        assert cause.errno == expected_errno
+        assert str(exc_info.value) == str(cause)
+        assert str(tmux_path) in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("accessor", "list_cmd"),
+    [
+        ("sessions", "list-sessions"),
+        ("attached_sessions", "list-sessions"),
+        ("clients", "list-clients"),
+    ],
+)
+@pytest.mark.parametrize(("binary_case", "expected_errno"), _UNUSABLE_TMUX_CASES)
+def test_lenient_accessors_log_unusable_tmux_diagnostics(
+    accessor: str,
+    list_cmd: str,
+    binary_case: str,
+    expected_errno: int | None,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A swallowed launch failure keeps its diagnostic in the boundary record."""
+    from libtmux.server import Server
+
+    tmux_bin, tmux_path = _prepare_unusable_tmux_binary(
+        binary_case, tmp_path, monkeypatch
+    )
+    server = Server(tmux_bin=tmux_bin)
+
+    with caplog.at_level(logging.ERROR, logger="libtmux.server"):
+        assert list(getattr(server, accessor)) == []
+
+    records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert len(records) == 1
+    record = t.cast(t.Any, records[0])
+    assert record.tmux_subcommand == list_cmd
+    assert record.tmux_stderr_len == 1
+    assert len(record.tmux_stderr) == 1
+    diagnostic = record.tmux_stderr[0]
+    if expected_errno is None:
+        assert diagnostic == "tmux executable not found on PATH"
+    else:
+        assert os.strerror(expected_errno) in diagnostic
+        assert str(tmux_path) in diagnostic
 
 
 def test_unrelated_tmux_launch_failure_preserves_diagnostics() -> None:
@@ -415,9 +497,25 @@ def test_unrelated_tmux_launch_failure_preserves_diagnostics() -> None:
     assert str(exc_info.value) == str(cause)
 
 
+def test_raise_if_dead_unrelated_launch_failure_stays_os_error() -> None:
+    """The loud server probe does not classify resource errors as unavailable."""
+    from libtmux import exc
+    from libtmux.server import Server
+
+    server = Server(
+        tmux_bin=sys.executable,
+        config_file="x" * os.sysconf("SC_ARG_MAX"),
+    )
+    with pytest.raises(OSError) as exc_info:
+        server.raise_if_dead()
+
+    assert not isinstance(exc_info.value, exc.TmuxCommandNotFound)
+    assert exc_info.value.errno == errno.E2BIG
+
+
 @pytest.mark.parametrize(
     "binary_case",
-    ["configured-missing", "default-missing", "invalid-format"],
+    ["configured-missing", "default-missing", "not-executable", "invalid-format"],
 )
 def test_is_alive_unusable_binary_stays_quiet(
     binary_case: str,
@@ -432,10 +530,10 @@ def test_is_alive_unusable_binary_stays_quiet(
     if binary_case == "default-missing":
         tmux_bin = None
         monkeypatch.setenv("PATH", "")
-    elif binary_case == "invalid-format":
+    elif binary_case in {"not-executable", "invalid-format"}:
         invalid_tmux = tmp_path / "invalid-tmux"
         invalid_tmux.write_text("not an executable format\n")
-        invalid_tmux.chmod(0o755)
+        invalid_tmux.chmod(0o644 if binary_case == "not-executable" else 0o755)
         tmux_bin = str(invalid_tmux)
     server = Server(tmux_bin=tmux_bin)
 
