@@ -5794,7 +5794,7 @@ def start_fuzzer(
         )
         raise ValueError(message)
     output_dir = scratch / "fuzzer"
-    script = pathlib.Path(__file__).with_name("orchestration_fuzzer.py")
+    script = pathlib.Path(__file__).with_name("fuzzer.py")
     environment = os.environ.copy()
     environment.pop("TMUX", None)
     environment.pop("TMUX_PANE", None)
@@ -14777,14 +14777,14 @@ def _hidden_worker_parser() -> argparse.ArgumentParser:
 
     >>> parser = _hidden_worker_parser()
     >>> parser.prog
-    'bench_orchestration.py _worker'
+    'scripts/orchestration/benchmark.py _worker'
 
     Returns
     -------
     argparse.ArgumentParser
         Parser for arguments emitted only by :func:`supervise_worker`.
     """
-    parser = argparse.ArgumentParser(prog="bench_orchestration.py _worker")
+    parser = argparse.ArgumentParser(prog="scripts/orchestration/benchmark.py _worker")
     parser.add_argument("--shape", required=True)
     parser.add_argument("--lane", required=True, choices=("subprocess", "control"))
     parser.add_argument("--mode", required=True, choices=("sync", "async"))
@@ -14850,6 +14850,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
         worker_arguments = _hidden_worker_parser().parse_args(raw_arguments[1:])
         return _run_hidden_worker(worker_arguments)
     parser = argparse.ArgumentParser(
+        prog="scripts/orchestration/benchmark.py",
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(

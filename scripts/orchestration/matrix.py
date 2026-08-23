@@ -5,7 +5,7 @@
 # ///
 """Run the active orchestration benchmark comparison matrix safely.
 
-This is a thin supervisor around ``bench_orchestration.py``. It measures
+This is a thin supervisor around ``benchmark.py``. It measures
 nothing itself; it exists so a multi-cell comparison can be started without
 the hazards that make ad-hoc invocations unreliable:
 
@@ -49,7 +49,7 @@ import time
 import types
 import typing as t
 
-_BENCHMARK = pathlib.Path(__file__).with_name("bench_orchestration.py")
+_BENCHMARK = pathlib.Path(__file__).with_name("benchmark.py")
 _LANES = ("subprocess", "control")
 _MODES = ("sync", "async")
 # A Unix socket path must fit in sockaddr_un.sun_path. Keeping scratch short
@@ -82,7 +82,7 @@ def child_interpreter() -> str:
         "This happens when the script is run as a PEP 723 script, whose "
         "environment is isolated from the project.\n"
         "Run it through the project environment instead:\n"
-        f"  uv run python scripts/orchestration_matrix.py"
+        f"  uv run python scripts/orchestration/matrix.py"
     )
     raise SystemExit(message)
 
@@ -238,7 +238,7 @@ def checkout_residue(checkout: pathlib.Path) -> tuple[str, ...]:
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return ()
-    needles = ("bench_orchestration.py", "orchestration_fuzzer.py")
+    needles = ("orchestration/benchmark.py", "orchestration/fuzzer.py")
     return tuple(
         line.strip()[:120]
         for line in listing.splitlines()
@@ -803,10 +803,10 @@ def build_parser() -> argparse.ArgumentParser:
     Examples
     --------
     >>> build_parser().prog
-    'orchestration_matrix.py'
+    'scripts/orchestration/matrix.py'
     """
     parser = argparse.ArgumentParser(
-        prog="orchestration_matrix.py",
+        prog="scripts/orchestration/matrix.py",
         description=(
             "Run the orchestration benchmark across execution lanes, one cell "
             "at a time, with preflight checks, an exclusive lock, durable "

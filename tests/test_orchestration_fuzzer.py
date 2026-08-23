@@ -23,7 +23,9 @@ import pytest
 @pytest.fixture()
 def fuzzer_module() -> types.ModuleType:
     """Load the standalone fuzzer script without requiring Rich."""
-    script = pathlib.Path(__file__).parents[1] / "scripts" / "orchestration_fuzzer.py"
+    script = (
+        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "fuzzer.py"
+    )
     spec = importlib.util.spec_from_file_location("orchestration_fuzzer", script)
     assert spec is not None
     assert spec.loader is not None
@@ -828,7 +830,7 @@ def start_serve(output_dir: pathlib.Path) -> subprocess.Popen[str]:
     return subprocess.Popen(
         (
             sys.executable,
-            str(root / "scripts" / "orchestration_fuzzer.py"),
+            str(root / "scripts" / "orchestration" / "fuzzer.py"),
             "serve",
             "--output-dir",
             str(output_dir),

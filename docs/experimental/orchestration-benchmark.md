@@ -14,14 +14,14 @@ shape, a completed shape, and a host-resource cutoff.
 
 ## Deliverables
 
-- `scripts/orchestration_fuzzer.py`: a PEP 723 Rich workload generator with
+- `scripts/orchestration/fuzzer.py`: a PEP 723 Rich workload generator with
   `preview` and `serve` commands.
-- `scripts/bench_orchestration.py`: a PEP 723 benchmark with `plan`, `run`, and
+- `scripts/orchestration/benchmark.py`: a PEP 723 benchmark with `plan`, `run`, and
   `ramp` commands. Only `plan` runs standalone; `run` and `ramp` import libtmux
   from the working tree and need the project environment.
-- `scripts/orchestration_matrix.py`: a supervisor comparing execution lanes one
+- `scripts/orchestration/matrix.py`: a supervisor comparing execution lanes one
   cell at a time.
-- `scripts/orchestration_stress.py`: a pressure ladder locating where each
+- `scripts/orchestration/stress.py`: a pressure ladder locating where each
   topology dimension stops completing.
 - Focused unit and live-tmux tests for workload determinism, delayed matching,
   topology truth, phase correctness, cleanup, and machine-readable results.
@@ -39,7 +39,7 @@ because `run` and `ramp` re-invoke their own worker process and that worker
 imports libtmux from the working tree.
 
 Only `plan` is genuinely standalone — it reads host files, imports no libtmux,
-and starts no server, so `uv run --script scripts/bench_orchestration.py plan`
+and starts no server, so `uv run --script scripts/orchestration/benchmark.py plan`
 works anywhere. Everything else needs the project environment; running a
 supervisor as a PEP 723 script gives its children an interpreter without
 libtmux, which they now refuse with an explanatory message rather than a bare
@@ -51,7 +51,7 @@ without exact process identity. If a fresh checkout refuses this way, select a
 different interpreter with `UV_PYTHON`.
 
 The `env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE` prefix below is defensive, not
-required. Dropping it is safe: `bench_orchestration.py` unsets the tmux
+required. Dropping it is safe: `benchmark.py` unsets the tmux
 variables before importing libtmux, and the supervisors strip all three from
 every child they spawn. Clearing `VIRTUAL_ENV` only silences a uv warning when
 another project's environment is active; the resolved interpreter is identical
@@ -61,7 +61,7 @@ Preview the workload without starting tmux. This renders the same frames the
 pane processes will follow:
 
 ```console
-$ uv run python scripts/orchestration_fuzzer.py preview \
+$ uv run python scripts/orchestration/fuzzer.py preview \
     --seed 20260818 \
     --duration 5
 ```
@@ -70,14 +70,14 @@ Inspect a topology and the host guard without writing anything. `plan` imports
 no libtmux and starts no tmux server:
 
 ```console
-$ uv run python scripts/bench_orchestration.py plan \
+$ uv run python scripts/orchestration/benchmark.py plan \
     --shape 80x20x1
 ```
 
 Run a small smoke topology first. It exercises every phase in seconds:
 
 ```console
-$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration/benchmark.py run \
     --shape 2x2x2 \
     --lane control \
     --mode async \
@@ -90,7 +90,7 @@ Run the large active cell. Async control mode keeps one persistent client and
 attributes pipelined requests individually:
 
 ```console
-$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py run \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration/benchmark.py run \
     --shape 80x20x1 \
     --lane control \
     --mode async \
@@ -105,7 +105,7 @@ Attempt the canonical ramp, which cleans each disposable server before the next
 shape and records a structured cutoff when a resource guard trips:
 
 ```console
-$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/bench_orchestration.py ramp \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration/benchmark.py ramp \
     --runs 5 \
     --warmup 1 \
     --output ramp.json
@@ -116,7 +116,7 @@ because overlapping scale runs perturb the timings they produce. The defaults
 are the combination measured to finish four cells in just under 24 minutes:
 
 ```console
-$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration/matrix.py \
     --with-orm
 ```
 
@@ -125,7 +125,7 @@ grows superlinearly with pane count — roughly 9 seconds at 800 panes against 4
 at 1,600 — so four cells at `80x20x1` take about an hour:
 
 ```console
-$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration_matrix.py \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration/matrix.py \
     --shape 80x20x1 \
     --runs 20 \
     --warmup 2 \
@@ -135,7 +135,7 @@ $ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration_ma
 Re-render a finished matrix without running anything:
 
 ```console
-$ uv run python scripts/orchestration_matrix.py \
+$ uv run python scripts/orchestration/matrix.py \
     --render-only
 ```
 
@@ -144,7 +144,7 @@ test, not a comparison: each rung is a single invocation, so only the outcome
 means anything:
 
 ```console
-$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration_stress.py \
+$ env -u VIRTUAL_ENV -u TMUX -u TMUX_PANE uv run python scripts/orchestration/stress.py \
     --axis all \
     --budget-seconds 2400
 ```
@@ -153,7 +153,7 @@ Validate a finished artifact tree. `validate` is read-only and contacts no tmux
 server:
 
 ```console
-$ uv run python scripts/bench_orchestration.py validate \
+$ uv run python scripts/orchestration/benchmark.py validate \
     --input n100.json
 ```
 
@@ -161,7 +161,7 @@ Render Markdown from validated JSON. The destination is replaced atomically and
 only after validation succeeds:
 
 ```console
-$ uv run python scripts/bench_orchestration.py render \
+$ uv run python scripts/orchestration/benchmark.py render \
     --input n100.json \
     --output n100.md
 ```

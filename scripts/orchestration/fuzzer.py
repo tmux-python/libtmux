@@ -1042,7 +1042,7 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     dedicated functional test file so its process lifecycle stays observable.
     """
     parser = argparse.ArgumentParser(
-        prog="orchestration_fuzzer.py",
+        prog="scripts/orchestration/fuzzer.py",
         description=(
             "Render deterministic frames into append-only stream files. One "
             "process serves every stream, and benchmark panes follow one "
