@@ -126,8 +126,8 @@ def test_lifecycle_info_logging(
         "window killed",
         lambda: session.kill_window(window.window_id),
     )
-    doomed_name = f"log_session_{next(namer)}"
-    doomed, _ = _capture_info(
+    doomed_name = f"log_session_{next(namer)}\u2028ERROR forged"
+    _capture_info(
         caplog,
         "libtmux.server",
         "session created",
@@ -182,7 +182,7 @@ def test_lifecycle_info_logging(
     assert pane_created.tmux_pane == split_pane.pane_id
     assert pane_killed.tmux_pane == split_pane.pane_id
     assert window_killed.tmux_target == window.window_id
-    assert session_killed.tmux_target == doomed.session_name
+    assert session_killed.tmux_target == ascii(doomed_name)
 
 
 def test_all_except_lifecycle_logging(

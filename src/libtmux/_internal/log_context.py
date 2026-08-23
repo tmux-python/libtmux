@@ -102,5 +102,5 @@ def object_extra(
         ("tmux_target", target),
     ):
         if value is not None:
-            extra[key] = str(value)
+            extra[key] = _safe_scalar(str(value))
     return extra
