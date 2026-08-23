@@ -1,7 +1,7 @@
 """Structural contracts for the generated Grafana dashboards.
 
 These run offline. They cannot tell whether a panel has data -- that is
-``scripts/otel_acceptance.py`` against a live stack -- but they do keep the
+``scripts/lgtm/acceptance.py`` against a live stack -- but they do keep the
 committed JSON honest about its generator and about the datasources it binds
 to, which is where a board rots silently.
 """
@@ -135,7 +135,7 @@ def test_acceptance_expands_every_template_variable() -> None:
     through as text and match nothing.
     """
     spec = importlib.util.spec_from_file_location(
-        "otel_acceptance", _ROOT / "scripts" / "otel_acceptance.py"
+        "lgtm_acceptance", _ROOT / "scripts" / "lgtm" / "acceptance.py"
     )
     assert spec is not None
     assert spec.loader is not None

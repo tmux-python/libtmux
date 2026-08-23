@@ -9,8 +9,8 @@ The generated JSON is committed. ``scripts/lgtm/up.sh`` regenerates it on every
 start and ``tests/test_lgtm_dashboards.py`` fails if the committed copy differs,
 so the two cannot silently diverge.
 
-Every panel must be backed by telemetry ``scripts/otel_smoke.py`` actually
-emits. ``scripts/otel_acceptance.py`` executes each panel's own queries and
+Every panel must be backed by telemetry ``scripts/lgtm/smoke.py`` actually
+emits. ``scripts/lgtm/acceptance.py`` executes each panel's own queries and
 fails on any that returns nothing, which is what keeps a board honest.
 """
 

@@ -286,7 +286,7 @@ engine instrumentation seam, so the exporters are ordinary sinks and libtmux
 itself gains no OpenTelemetry dependency.
 
 The Grafana dashboards under `scripts/lgtm/dashboards/` are generated rather
-than hand-edited, and `scripts/otel_acceptance.py` runs each panel's own query
+than hand-edited, and `scripts/lgtm/acceptance.py` runs each panel's own query
 and fails naming any panel that came back empty. See `scripts/lgtm/README.md`.
 
 Every run is stamped with its branch, revision, repository, worktree, and an

@@ -82,7 +82,7 @@ $ just otel-ports
 
 ## What the workload emits
 
-`scripts/otel_smoke.py` runs every transport — subprocess and control mode,
+`scripts/lgtm/smoke.py` runs every transport — subprocess and control mode,
 sync and async — against a throwaway tmux server, and emits four signals:
 
 Metrics are `tmux_requests_total`, `tmux_commands_total`, `tmux_inlined_total`,
@@ -273,7 +273,7 @@ mid-run -- `destroy-unattached off` only survives *detach*.
 A dashboard that renders is not a dashboard that works. A panel whose query
 returns nothing looks exactly like a panel reporting a healthy zero.
 
-`scripts/otel_acceptance.py` reads the generated JSON, expands the template
+`scripts/lgtm/acceptance.py` reads the generated JSON, expands the template
 variables the way Grafana would, runs every panel's own query against
 Prometheus, Loki, Tempo, or Pyroscope, and fails naming any panel that returned
 nothing. Because it reads the dashboards themselves, a panel added to the

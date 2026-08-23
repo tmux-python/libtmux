@@ -28,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 DASHBOARDS = ROOT / "scripts" / "lgtm" / "dashboards"
 SERVICE = "libtmux-engines"
 
@@ -327,7 +327,9 @@ def check_until(endpoints: Endpoints, timeout: float, poll: float) -> list[Resul
 
 def main(argv: list[str] | None = None) -> int:
     """Run the acceptance sweep and print a per-panel report."""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="scripts/lgtm/acceptance.py", description=__doc__
+    )
     parser.add_argument("--prometheus", default="http://127.0.0.1:9099")
     parser.add_argument("--loki", default="http://127.0.0.1:3100")
     parser.add_argument("--tempo", default="http://127.0.0.1:3200")
@@ -336,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         "--start-stack", action="store_true", help="run scripts/lgtm/up.sh first"
     )
     parser.add_argument(
-        "--smoke", action="store_true", help="run scripts/otel_smoke.py first"
+        "--smoke", action="store_true", help="run scripts/lgtm/smoke.py first"
     )
     parser.add_argument(
         "--settle",
@@ -362,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
         subprocess.run([str(ROOT / "scripts" / "lgtm" / "up.sh")], check=True)
     if args.smoke:
         subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "otel_smoke.py")], check=True
+            [sys.executable, str(ROOT / "scripts" / "lgtm" / "smoke.py")], check=True
         )
     if args.start_stack or args.smoke:
         time.sleep(args.settle)

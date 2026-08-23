@@ -173,17 +173,17 @@ otel-dashboards:
 # Drive a real tmux workload through the engine seam into LGTM
 [group: 'otel']
 otel-smoke *args:
-    uv run --group otel python scripts/otel_smoke.py {{ args }}
+    uv run --group otel python scripts/lgtm/smoke.py {{ args }}
 
 # Verify every dashboard panel's own queries return data
 [group: 'otel']
 otel-acceptance *args:
-    uv run --group otel python scripts/otel_acceptance.py {{ args }}
+    uv run --group otel python scripts/lgtm/acceptance.py {{ args }}
 
 # Start the stack, run the workload, then verify every panel end to end
 [group: 'otel']
 otel-verify:
-    uv run --group otel python scripts/otel_acceptance.py --start-stack --smoke
+    uv run --group otel python scripts/lgtm/acceptance.py --start-stack --smoke
 
 # Drive the engines under a load shape (ramping arrival rate) via rampa
 [group: 'otel']
