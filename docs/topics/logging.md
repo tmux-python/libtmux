@@ -7,9 +7,9 @@ does not install handlers or choose a level. Configure the `libtmux` logger in
 your application; `INFO` reports object lifecycle events, while `DEBUG` adds
 tmux subprocess boundaries.
 
-Command records identify the operation without retaining its operands, stdout,
-or stderr. This keeps shell commands, keystrokes, environment values, buffer
-contents, and pane contents out of logs by default.
+Command records include the complete tmux command. Completion records also
+include bounded stdout and stderr snapshots. Applications choose which fields
+reach each destination through standard-library handlers and formatters.
 
 ## Enable records
 
@@ -59,14 +59,14 @@ Each tmux subprocess can produce two `DEBUG` records:
 - `tmux command dispatched` before execution;
 - `tmux command completed` after execution.
 
-Both carry a safe `tmux_cmd` summary. It contains the executable, effective
-socket selector, subcommand, and the number of operands omitted after the
-subcommand. The completion record adds the exit code and stdout/stderr line
-counts.
+Both carry `tmux_cmd`, a one-line rendering of the complete argv. Printable
+values use shell quoting; control characters use escaped representations. The
+completion record adds the exit code, the first 100 stdout and stderr lines,
+and the total line counts.
 
 ```python
 >>> import logging
->>> marker = "caller-secret"
+>>> marker = "caller-payload"
 >>> with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
 ...     proc = session.server.cmd("list-sessions", "-F", marker)
 >>> marker in proc.stdout
@@ -80,18 +80,23 @@ True
 'list-sessions'
 >>> dispatched.tmux_socket == session.server.socket_name
 True
->>> dispatched.tmux_cmd.endswith("list-sessions <2 arguments omitted>")
+>>> dispatched.tmux_cmd.endswith("list-sessions -F caller-payload")
 True
 >>> marker in dispatched.tmux_cmd
-False
+True
+>>> completed.tmux_stdout == proc.stdout
+True
+>>> completed.tmux_stderr == proc.stderr
+True
 >>> completed.tmux_stdout_len == len(proc.stdout)
 True
->>> hasattr(completed, "tmux_stdout") or hasattr(completed, "tmux_stderr")
-False
 ```
 
-The result object still returns stdout and stderr normally. Only the record
-omits their bodies.
+The result object retains every output line. The completion record snapshots
+at most 100 lines from each stream and reports the full lengths separately.
+`tmux_subcommand` and `tmux_socket` are best-effort conveniences. An unknown
+global option leaves uncertain derived fields absent; `tmux_cmd` remains
+complete.
 
 ## Failures
 
@@ -108,8 +113,8 @@ Three list-shaped accessors intentionally hide
 - {attr}`Server.clients <libtmux.Server.clients>`.
 
 They return an empty collection and emit one `ERROR` record on
-`libtmux.server`. The record carries the subcommand, socket, and error line
-count, but not the error text. Use {meth}`Server.raise_if_dead()
+`libtmux.server`. The record carries the subcommand, socket, the first 100 lines
+of exception text, and the total line count. Use {meth}`Server.raise_if_dead()
 <libtmux.Server.raise_if_dead>` when an unreachable server must be loud.
 
 A non-zero exit code alone does not produce an `ERROR`; tmux also uses
@@ -121,7 +126,7 @@ Records contain only fields relevant to their event.
 
 | Field | Type | Meaning |
 | ----- | ---- | ------- |
-| `tmux_cmd` | `str` | executable/socket/subcommand summary |
+| `tmux_cmd` | `str` | quoted, one-line complete command |
 | `tmux_subcommand` | `str` | tmux subcommand |
 | `tmux_socket` | `str` | socket name or path |
 | `tmux_target` | `str` | target specifier |
@@ -129,6 +134,8 @@ Records contain only fields relevant to their event.
 | `tmux_window` | `str` | window name or index |
 | `tmux_pane` | `str` | pane identifier |
 | `tmux_exit_code` | `int` | subprocess exit status |
+| `tmux_stdout` | `list[str]` | first 100 stdout lines |
+| `tmux_stderr` | `list[str]` | first 100 stderr lines |
 | `tmux_stdout_len` | `int` | stdout line count |
 | `tmux_stderr_len` | `int` | stderr or swallowed-error line count |
 | `tmux_option_key` | `str` | option whose entries could not be parsed |
@@ -137,7 +144,7 @@ Records contain only fields relevant to their event.
 All identity fields are strings. Unknown identities are omitted rather than
 set to `None`.
 
-## Format records safely
+## Format records
 
 Not every record carries every field. A formatter that requires
 `%(tmux_cmd)s` drops lifecycle records unless it supplies a default. Python
@@ -158,6 +165,49 @@ Not every record carries every field. A formatter that requires
 ```
 
 Use the same defaulting rule in JSON formatters and telemetry exporters.
+
+### Select fields at the handler
+
+A handler's filter chooses its records, and its formatter chooses the fields
+written to that destination. This Python 3.10-compatible example retains the
+payload fields on each record but writes only event names and bounded metadata:
+
+```python
+>>> import io
+>>> import logging
+>>> stream = io.StringIO()
+>>> handler = logging.StreamHandler(stream)
+>>> handler.addFilter(
+...     lambda record: getattr(record, "tmux_subcommand", None) == "display-message"
+... )
+>>> handler.setFormatter(logging.Formatter(
+...     "%(levelname)s %(message)s subcommand=%(tmux_subcommand)s "
+...     "stdout_lines=%(tmux_stdout_len)s",
+...     defaults={"tmux_subcommand": "-", "tmux_stdout_len": "-"},
+... ))
+>>> command_logger = logging.getLogger("libtmux.common")
+>>> previous_level = command_logger.level
+>>> command_logger.setLevel(logging.DEBUG)
+>>> command_logger.addHandler(handler)
+>>> proc = session.server.cmd("display-message", "-p", "payload-marker")
+>>> _ = session.server.cmd("list-sessions")  # filtered from this handler
+>>> command_logger.removeHandler(handler)
+>>> command_logger.setLevel(previous_level)
+>>> handler.close()
+>>> "payload-marker" in proc.stdout
+True
+>>> "payload-marker" in stream.getvalue()
+False
+>>> "list-sessions" in stream.getvalue()
+False
+>>> stream.getvalue().count("tmux command")
+2
+```
+
+The standard library documents handler-level
+[filters](https://docs.python.org/3/library/logging.html#filter-objects).
+Its [Logging Cookbook](https://docs.python.org/3/howto/logging-cookbook.html)
+covers contextual fields, routing, handlers, and custom formatting.
 
 ## Assert on records in tests
 
@@ -196,14 +246,16 @@ them through the `py.warnings` logger:
 
 libtmux does not duplicate a warning as a log record.
 
-## Privacy and cost
+## Payload size and application policy
 
-Command operands and process output bodies never enter libtmux records. Socket
-identities, executable paths, object names, and target specifiers do, because
-they identify the operation. Choose handler destinations and retention with
-that metadata in mind.
+`DEBUG` records contain caller-provided command operands and output lines.
+Choose handler destinations, formatting, and retention for the data your
+application sends through tmux. libtmux does not redact command or output
+payloads; use a handler formatter such as the example above when a destination
+needs metadata only.
 
 When `DEBUG` is disabled, command-context construction is skipped. With it
-enabled, records contain scalars and counts only; their size does not grow with
-command payloads or terminal output. libtmux keeps no shared logging state, so
-threads and async callers rely on the standard library's logging guarantees.
+enabled, `tmux_cmd` grows with argv, and each completion record retains up to
+100 lines from each stream. Individual lines are not truncated. libtmux keeps
+no shared logging state, so threads and async callers rely on the standard
+library's logging guarantees.
