@@ -1,6 +1,6 @@
 """Load-shape the tmux engines with rampa, and export the result to LGTM.
 
-``otel_smoke.py`` answers "does telemetry flow" by running flat out for a fixed
+``smoke.py`` answers "does telemetry flow" by running flat out for a fixed
 duration. That is the wrong shape for asking where a transport stops keeping
 up, because a closed loop of N workers slows down with the system: offered load
 falls as latency rises, and the graph bends politely instead of breaking.
