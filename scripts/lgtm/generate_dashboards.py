@@ -73,7 +73,7 @@ def quantile_by(quantile: float, label: str) -> str:
     )
 
 
-ERR_THRESHOLDS = [
+ERR_THRESHOLDS: list[dict[str, t.Any]] = [
     {"color": "green", "value": None},
     {"color": "orange", "value": 1},
     {"color": "red", "value": 5},
