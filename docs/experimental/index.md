@@ -23,6 +23,12 @@ result.
 - [Engines](engines.md) explains how to choose a transport without changing the
   operation contract.
 - [Plans](plans.md) covers deferred execution, planners, and the fluent builder.
+- [Instrumentation](instrumentation.md) explains how to count and trace the tmux
+  commands an engine dispatches, without changing a program that does not.
+- [Active orchestration benchmark](orchestration-benchmark.md) documents the
+  persistent, high-cardinality workload used to measure construction, mutation,
+  waiting, enumeration, capture, and search under pane activity, how to run it,
+  and how to read the evidence it retains.
 
 ## Run one operation
 
@@ -50,4 +56,6 @@ operations/index
 results
 engines
 plans
+instrumentation
+orchestration-benchmark
 ```
