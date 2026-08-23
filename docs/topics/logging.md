@@ -51,6 +51,7 @@ The main emitters are:
 | `libtmux.window` | window lifecycle |
 | `libtmux.pane` | pane lifecycle |
 | `libtmux.options` | aggregated option parsing warnings |
+| `libtmux.hooks` | hook parsing warnings |
 
 ## Command records
 
