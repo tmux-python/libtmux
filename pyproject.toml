@@ -186,6 +186,30 @@ files = [
   "tests",
 ]
 
+# The observability scripts import third-party packages from the optional
+# `otel` group, which CI does not install so the ordinary gates stay lean.
+# `mypy .` still reaches those scripts, so their imports must be allowed to
+# be absent. `rampa` ships no stubs either way.
+[[tool.mypy.overrides]]
+module = [
+  "opentelemetry.*",
+  "pyroscope",
+  "rampa",
+]
+ignore_missing_imports = true
+
+# Those same packages ship no stubs, so anything derived from them is `Any`:
+# a SpanProcessor subclass and rampa's scenario decorators. Relaxing the two
+# strictness flags here is scoped to these scripts and, unlike an inline
+# ignore, stays correct whether or not the optional group is installed.
+[[tool.mypy.overrides]]
+module = [
+  "telemetry",
+  "load_tmux",
+]
+disallow_subclassing_any = false
+disallow_untyped_decorators = false
+
 
 [tool.ty.environment]
 python-version = "3.10"
