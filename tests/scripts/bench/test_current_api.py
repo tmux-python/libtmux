@@ -13,7 +13,7 @@ if t.TYPE_CHECKING:
 
     from libtmux.server import Server
 
-_BENCH = pathlib.Path(__file__).parent.parent / "scripts" / "bench"
+_BENCH = pathlib.Path(__file__).parents[3] / "scripts" / "bench"
 
 
 @pytest.fixture(scope="module")

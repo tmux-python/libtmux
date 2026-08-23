@@ -16,7 +16,7 @@ import pytest
 if t.TYPE_CHECKING:
     import types
 
-_BENCH = pathlib.Path(__file__).parent.parent / "scripts" / "bench"
+_BENCH = pathlib.Path(__file__).parents[3] / "scripts" / "bench"
 
 
 @pytest.fixture(scope="module")
