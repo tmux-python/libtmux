@@ -6,7 +6,7 @@ arithmetic, so hand-maintaining six of them guarantees drift. Here a board is a
 list of panel calls and :class:`Board` does the grid math.
 
 The generated JSON is committed. ``scripts/lgtm/up.sh`` regenerates it on every
-start and ``tests/test_lgtm_dashboards.py`` fails if the committed copy differs,
+start and ``tests/scripts/lgtm/test_dashboards.py`` fails if the committed copy differs,
 so the two cannot silently diverge.
 
 Every panel must be backed by telemetry ``scripts/lgtm/smoke.py`` actually

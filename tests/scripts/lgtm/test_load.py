@@ -20,7 +20,7 @@ import textwrap
 
 import pytest
 
-_ROOT = pathlib.Path(__file__).parents[1]
+_ROOT = pathlib.Path(__file__).parents[3]
 
 
 _PREAMBLE = (
