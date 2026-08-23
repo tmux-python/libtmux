@@ -296,20 +296,28 @@ def test_environment_failure_propagates_without_logging(
     ] == []
 
 
-@pytest.mark.parametrize("configured", [True, False], ids=["configured", "default"])
-def test_missing_tmux_binary_propagates_without_logging(
-    configured: bool,
+@pytest.mark.parametrize(
+    "binary_case",
+    ["configured-missing", "default-missing", "not-executable", "invalid-format"],
+)
+def test_unusable_tmux_binary_propagates_without_logging(
+    binary_case: str,
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A missing executable remains exception data, not a log record."""
+    """An unusable executable remains exception data, not a log record."""
     from libtmux import exc
     from libtmux.common import tmux_cmd
 
-    tmux_bin = str(tmp_path / "missing-tmux") if configured else None
-    if not configured:
+    tmux_path = tmp_path / "tmux"
+    tmux_bin: str | None = str(tmux_path)
+    if binary_case == "default-missing":
+        tmux_bin = None
         monkeypatch.setattr("libtmux.common.shutil.which", lambda _: None)
+    elif binary_case in {"not-executable", "invalid-format"}:
+        tmux_path.write_text("not an executable format\n")
+        tmux_path.chmod(0o644 if binary_case == "not-executable" else 0o755)
     with (
         caplog.at_level(logging.ERROR, logger="libtmux.common"),
         pytest.raises(exc.TmuxCommandNotFound),

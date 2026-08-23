@@ -317,12 +317,11 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except Exception as error:
-            if isinstance(error, FileNotFoundError):
-                raise exc.TmuxCommandNotFound from None
-            raise
+        except OSError:
+            raise exc.TmuxCommandNotFound from None
+
+        stdout, stderr = self.process.communicate()
+        returncode = self.process.returncode
 
         self.returncode = returncode
 
