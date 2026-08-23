@@ -154,7 +154,7 @@ def _profile_lane(lane: str, *, enabled: bool) -> t.Iterator[None]:
     if not enabled:
         yield
         return
-    import pyroscope
+    import pyroscope  # type: ignore[import-untyped]
 
     with pyroscope.tag_wrapper({"tmux_lane": lane}):
         yield
@@ -345,10 +345,10 @@ def main(argv: list[str] | None = None) -> int:
             ("subprocess-async", lambda: AsyncSubprocessEngine.for_server(server)),
             ("control-async", lambda: AsyncControlModeEngine.for_server(server)),
         )
-        for lane, factory in async_lanes:
+        for lane, async_factory in async_lanes:
             counts = CountingSink()
             engine = instrument(
-                factory(),
+                async_factory(),
                 counts,
                 telemetry.OTelSink(
                     signals.tracer, signals.meter, lane, signals.metric_labels
