@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import importlib.util
 import math
+import os
 import pathlib
+import subprocess
+import sys
+import time
 import typing as t
 
 import pytest
@@ -112,13 +116,13 @@ def test_build_classic_creates_the_requested_shape(
         server.kill()
 
 
-def test_reap_leaves_a_live_scratch_dir_alone(
+def test_reap_never_removes_its_own_scratch_dir(
     primitives: types.ModuleType,
 ) -> None:
-    """A directory with a running server may belong to a concurrent run.
+    """The reaper must not delete the directory it is running out of.
 
-    Stealing another run's servers would be worse than leaking, so the reaper
-    is deliberately conservative and this pins that choice.
+    This pins only the own-directory case, which the reaper answers by identity.
+    The concurrent-run cases are below; they are the ones that needed a rule.
     """
     server = primitives.new_server()
     try:
@@ -158,3 +162,93 @@ def test_new_server_ignores_the_calling_user_s_tmux_config(
         assert limit != ["4242"]
     finally:
         server.kill()
+
+
+def test_reap_spares_a_directory_a_live_run_owns(
+    primitives: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A concurrent run owns its directory from import, before any server exists.
+
+    ``SOCK_DIR`` is created when a run imports this module; its first server
+    arrives only at the first :func:`new_server`. Deciding liveness by looking
+    for a tmux therefore called every run "stale" during that window and deleted
+    it, which surfaced as ``new-session: error creating ... (No such file or
+    directory)`` in a run whose directory had been removed underneath it.
+    """
+    monkeypatch.setattr(primitives.tempfile, "gettempdir", lambda: str(tmp_path))
+    victim = tmp_path / "ltbench-concurrent"
+    victim.mkdir()
+    (victim / primitives.OWNER_PID).write_text(f"{os.getpid()}\n", encoding="utf-8")
+
+    reaped = primitives.reap_stale_scratch()
+
+    assert victim.is_dir()
+    assert reaped == 0
+
+
+def test_reap_removes_a_directory_whose_owner_is_gone(
+    primitives: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reaping still happens; sparing live runs must not disable it.
+
+    The owner here is a process that has been waited on, so its pid names
+    nothing. Ageing the directory past the grace period keeps this about the
+    owner rather than about the clock.
+    """
+    monkeypatch.setattr(primitives.tempfile, "gettempdir", lambda: str(tmp_path))
+    dead = subprocess.Popen([sys.executable, "-c", ""])
+    dead.wait()
+    stale = tmp_path / "ltbench-abandoned"
+    stale.mkdir()
+    (stale / primitives.OWNER_PID).write_text(f"{dead.pid}\n", encoding="utf-8")
+
+    reaped = primitives.reap_stale_scratch()
+
+    assert not stale.exists()
+    assert reaped == 1
+
+
+def test_reap_spares_a_young_directory_that_names_no_owner(
+    primitives: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Between creating a directory and claiming it, no owner is readable.
+
+    That instant looks exactly like a directory from a version that never wrote
+    an owner, so both are answered the same way: too young to judge, keep it.
+    """
+    monkeypatch.setattr(primitives.tempfile, "gettempdir", lambda: str(tmp_path))
+    unclaimed = tmp_path / "ltbench-unclaimed"
+    unclaimed.mkdir()
+
+    reaped = primitives.reap_stale_scratch()
+
+    assert unclaimed.is_dir()
+    assert reaped == 0
+
+
+def test_reap_removes_an_old_directory_that_names_no_owner(
+    primitives: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The grace period is a delay, not an exemption.
+
+    A directory left by an older version is still debris; it is simply given
+    long enough that a directory being created right now is not mistaken for it.
+    """
+    monkeypatch.setattr(primitives.tempfile, "gettempdir", lambda: str(tmp_path))
+    ancient = tmp_path / "ltbench-ancient"
+    ancient.mkdir()
+    old = time.time() - primitives._ADOPTION_GRACE_SECONDS - 60
+    os.utime(ancient, (old, old))
+
+    reaped = primitives.reap_stale_scratch()
+
+    assert not ancient.exists()
+    assert reaped == 1

@@ -23,12 +23,14 @@ import shutil
 import statistics
 import subprocess
 import tempfile
+import time
 import uuid
 
 from libtmux.server import Server
 
 __all__ = [
     "KEEPALIVE",
+    "OWNER_PID",
     "SERVERS",
     "SOCK_DIR",
     "STAT_LABELS",
@@ -46,9 +48,22 @@ STAT_LABELS = ("n", "min", "avg", "median", "p90", "p95", "p99", "max")
 
 _ctr = itertools.count()
 
+#: Names the process that owns a scratch directory. A concurrent run is
+#: identified by its pid rather than by whether a tmux happens to be running in
+#: its directory: the directory exists from import, but no server does until the
+#: first :func:`new_server`, and a reaper that only looks for tmux deletes other
+#: runs during that window.
+OWNER_PID = "owner.pid"
+
+#: How long a scratch directory carrying no owner file is left alone. It covers
+#: the instant between creating a directory and claiming it, and directories
+#: left by versions that predate the owner file.
+_ADOPTION_GRACE_SECONDS = 300.0
+
 #: Short scratch root: an AF_UNIX path is capped at 107 bytes, and a socket
 #: under a deep temporary directory is how that limit gets hit.
 SOCK_DIR = pathlib.Path(tempfile.mkdtemp(prefix="ltbench-"))
+(SOCK_DIR / OWNER_PID).write_text(f"{os.getpid()}\n", encoding="utf-8")
 SERVERS: list[Server] = []
 #: A session every bench server keeps for its whole life, so killing a cell's
 #: session never drops the server to zero and trips tmux's exit-empty teardown.
@@ -107,6 +122,28 @@ def cleanup() -> None:
         shutil.rmtree(SOCK_DIR, ignore_errors=True)
 
 
+def _owner_is_alive(path: pathlib.Path) -> bool | None:
+    """Say whether *path*'s owning process still exists.
+
+    Returns ``None`` when the directory names no owner, which is not the same
+    answer as "the owner is gone": a directory written by a version that predates
+    :data:`OWNER_PID`, or caught in the instant between being created and being
+    claimed, has an owner this cannot see.
+    """
+    try:
+        pid = int((path / OWNER_PID).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        # Someone else's process: running, merely not ours to signal.
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def reap_stale_scratch() -> int:
     """Remove scratch dirs left by runs that died before their cleanup.
 
@@ -116,10 +153,18 @@ def reap_stale_scratch() -> int:
     descriptors, and machine load is precisely what makes the server-teardown
     race fire, so an unreaped leak feeds the very failure it came from.
 
-    A dir with a live tmux is left alone: it may belong to a concurrent run, and
-    stealing another run's servers would be worse than leaking. That means hung
-    clients are only reclaimed once their server is gone, which is the
-    conservative trade.
+    A directory belonging to a live run is left alone: stealing another run's
+    servers is worse than leaking. Liveness is decided by the owning process
+    named in :data:`OWNER_PID`, not by whether a tmux is running there -- a
+    directory exists from the moment its run imports this module, while its
+    first server appears only at the first :func:`new_server`. A reaper that
+    asked only about tmux deleted concurrent runs during that window, taking
+    the socket directory out from under them mid-benchmark.
+
+    Where no owner is named -- a directory from before this file recorded one,
+    or one caught between creation and its claim -- the choice is made by age,
+    and only then does the tmux probe decide. Every unknown resolves toward
+    keeping the directory, so the failure mode stays a leak.
 
     Returns
     -------
@@ -132,6 +177,13 @@ def reap_stale_scratch() -> int:
         if path == SOCK_DIR or not path.is_dir():
             continue
         with contextlib.suppress(Exception):
+            owner = _owner_is_alive(path)
+            if owner:
+                continue
+            if owner is None and (
+                time.time() - path.stat().st_mtime < _ADOPTION_GRACE_SECONDS
+            ):
+                continue
             alive = subprocess.run(
                 ["pgrep", "-f", f"tmux .*-S{path}/"],
                 capture_output=True,
