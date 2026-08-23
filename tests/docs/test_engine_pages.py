@@ -12,7 +12,15 @@ _ROOT = pathlib.Path(__file__).parents[2]
 _ENGINE_LANDING = _ROOT / "docs" / "experimental" / "engines.md"
 _ENGINE_ROOT = _ROOT / "docs" / "experimental" / "engines"
 _TUTORIAL_ROOT = _ROOT / "docs" / "experimental" / "tutorials"
-_INSTRUMENTATION = "libtmux.experimental.engines.instrumentation"
+# The observer surface and the synchronous wrapper live at the command
+# execution seam; only the async wrapper is experimental. Both modules
+# define wrappers, and neither should demand a transport page.
+_INSTRUMENTATION = frozenset(
+    {
+        "libtmux.engines.instrumentation",
+        "libtmux.experimental.engines.instrumentation",
+    }
+)
 _PYTHON_BLOCK = re.compile(
     r"^```python\n(?P<body>.*?)^```$",
     re.MULTILINE | re.DOTALL,
@@ -91,7 +99,7 @@ def test_engine_reference_inventory_is_exact() -> None:
         for name in engines.__all__
         if name.endswith("Engine")
         and name not in {"AsyncTmuxEngine", "TmuxEngine"}
-        and getattr(getattr(engines, name), "__module__", "") != _INSTRUMENTATION
+        and getattr(getattr(engines, name), "__module__", "") not in _INSTRUMENTATION
     }
 
     assert set(_ENGINE_PAGES) == exported_engines
