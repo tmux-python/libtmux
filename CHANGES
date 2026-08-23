@@ -277,6 +277,38 @@ it.
 
 ### Development
 
+#### Local observability stack
+
+`just otel-verify` starts a Grafana LGTM container, drives a real tmux workload
+through every engine transport, and checks that each dashboard panel returns
+data. Metrics, traces, logs, and continuous profiles are emitted through the
+engine instrumentation seam, so the exporters are ordinary sinks and libtmux
+itself gains no OpenTelemetry dependency.
+
+The Grafana dashboards under `scripts/lgtm/dashboards/` are generated rather
+than hand-edited, and `scripts/lgtm/acceptance.py` runs each panel's own query
+and fails naming any panel that came back empty. See `scripts/lgtm/README.md`.
+
+Every run is stamped with its branch, revision, repository, worktree, and an
+optional spike name, so two runs can be compared rather than merely observed.
+Which signal carries which fact is a deliberate split: metrics take only the
+dimensions worth grouping by, while the revision, worktree, and per-test
+identity ride on traces and profiles where high cardinality is expected.
+Values that change within a process, such as the phase a workload is in, travel
+as OpenTelemetry baggage and are copied onto spans by a processor instead of
+being threaded through engine calls.
+
+`just otel-load` drives the engines under a ramping arrival rate, an open model
+that keeps offering work regardless of latency and so exposes where a transport
+saturates -- something a fixed-worker loop hides, because it slows down along
+with the system. The schedule comes from rampa; the telemetry still comes from
+this project's own sink, so a load-shaped run is directly comparable with every
+other run rather than speaking a second vocabulary.
+
+The dashboards follow Grafana's guidance: a Home board says which board answers
+which question, Overview is organized as rate, errors, and duration, and its
+panels link down to the board that explains them.
+
 #### CI actions updated to current majors
 
 Workflow actions moved to their current major releases: `actions/checkout` v7,
