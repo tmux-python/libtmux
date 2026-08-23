@@ -89,6 +89,39 @@ def is_command_separator(token: str) -> bool:
     return type(token) is CommandSeparator and token == ";"
 
 
+def command_count(argv: tuple[str, ...]) -> int:
+    """Return how many tmux commands a rendered *argv* runs.
+
+    A command group is one argv carrying several commands, separated by
+    :class:`CommandSeparator`, so the count is the separators plus one. Callers
+    that measure engine traffic need this to tell a request that ran one tmux
+    command from a request that inlined several into a single dispatch.
+
+    Parameters
+    ----------
+    argv : tuple of str
+        A request's arguments, before any engine-specific encoding.
+
+    Returns
+    -------
+    int
+
+    Examples
+    --------
+    >>> command_count(("list-panes", "-a"))
+    1
+    >>> group = ("set-option", "-g", "@x", "1", CommandSeparator(";"), "show-options")
+    >>> command_count(group)
+    2
+
+    A literal ``";"`` is data, not a boundary, so it does not add a command:
+
+    >>> command_count(("send-keys", ";"))
+    1
+    """
+    return sum(1 for token in argv if is_command_separator(token)) + 1
+
+
 @dataclass(frozen=True)
 class CommandRequest:
     """A tmux command, ready for an engine to execute.
