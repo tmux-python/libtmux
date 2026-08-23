@@ -494,6 +494,13 @@ class tmux_cmd:
 
         $ tmux new-session -s my session
 
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxCommandNotFound`
+        When the tmux binary cannot be found or executed.
+    :class:`OSError`
+        When the operating system rejects the launch for another reason.
+
     Notes
     -----
     Arguments are passed to tmux unchanged, so an argument ending in ``;``
@@ -531,7 +538,7 @@ class tmux_cmd:
             )
         except OSError as error:
             _raise_if_unusable_tmux(error)
-            raise exc.LibTmuxException(str(error)) from error
+            raise
 
         stdout, stderr = self.process.communicate()
         returncode = self.process.returncode
