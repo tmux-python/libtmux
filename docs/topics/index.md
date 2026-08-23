@@ -58,8 +58,8 @@ Common patterns for scripting and automation.
 :::{grid-item-card} Logging
 :link: logging
 :link-type: doc
-Structured log records, the `tmux_` field schema, and reading them with
-`caplog`.
+Structured log records, the `tmux_` field schema, and application-owned
+handlers.
 :::
 
 :::{grid-item-card} Context Managers
