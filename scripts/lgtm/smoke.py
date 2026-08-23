@@ -28,7 +28,7 @@ import time
 import typing as t
 import uuid
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent / "lgtm"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import telemetry
 
@@ -46,7 +46,7 @@ from libtmux.experimental.engines.base import (
 from libtmux.experimental.engines.instrumentation import CountingSink
 from libtmux.server import Server
 
-logger = logging.getLogger("libtmux.otel_smoke")
+logger = logging.getLogger("libtmux.lgtm.smoke")
 
 PLAIN = CommandRequest.from_args("list-panes", "-a", "-F", "#{pane_id}")
 LISTING = CommandRequest.from_args("list-windows", "-a", "-F", "#{window_id}")
@@ -253,7 +253,7 @@ def lane_totals(counts: CountingSink) -> dict[str, int]:
 
 def main(argv: list[str] | None = None) -> int:
     """Run every lane under full telemetry and print the local counts."""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(prog="scripts/lgtm/smoke.py", description=__doc__)
     parser.add_argument("--run-id", default=f"smoke-{uuid.uuid4().hex[:8]}")
     parser.add_argument(
         "--spike",
