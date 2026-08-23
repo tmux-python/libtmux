@@ -17,7 +17,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
-from libtmux._internal.log_context import object_extra
+from libtmux._internal.log_context import LOG_OUTPUT_LINE_LIMIT, object_extra
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import (
@@ -94,6 +94,7 @@ def _log_swallowed_list_error(
     error: exc.LibTmuxException,
 ) -> None:
     """Record a list failure at the boundary that converts it to empty."""
+    stderr = str(error).splitlines()
     logger.error(
         "tmux command failed",
         extra={
@@ -101,7 +102,8 @@ def _log_swallowed_list_error(
                 list_cmd,
                 socket=server.socket_path or server.socket_name,
             ),
-            "tmux_stderr_len": len(str(error).splitlines()),
+            "tmux_stderr": stderr[:LOG_OUTPUT_LINE_LIMIT],
+            "tmux_stderr_len": len(stderr),
         },
         stacklevel=2,
     )

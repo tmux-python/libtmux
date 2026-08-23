@@ -1415,7 +1415,8 @@ def test_lenient_list_accessors_log_and_return_empty(
     list_cmd: str,
 ) -> None:
     """Lenient list accessors log once where they swallow a tmux failure."""
-    sentinel = exc.LibTmuxException("simulated list failure")
+    stderr = [f"simulated list failure {index}" for index in range(125)]
+    sentinel = exc.LibTmuxException("\n".join(stderr))
 
     def _boom(**_: object) -> list[dict[str, str]]:
         raise sentinel
@@ -1429,8 +1430,8 @@ def test_lenient_list_accessors_log_and_return_empty(
     record = t.cast(t.Any, records[0])
     assert record.tmux_subcommand == list_cmd
     assert record.tmux_socket == server.socket_name
-    assert record.tmux_stderr_len == 1
-    assert not hasattr(record, "tmux_stderr")
+    assert record.tmux_stderr_len == len(stderr)
+    assert record.tmux_stderr == stderr[:100]
     assert record.funcName == ("clients" if accessor == "clients" else "sessions")
 
 

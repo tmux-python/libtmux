@@ -43,17 +43,13 @@ for loud failure rather than changing an existing accessor's contract.
 ### Command records
 
 `tmux_cmd` emits `DEBUG` before and after a subprocess. The
-`tmux_cmd` field contains only:
-
-- executable;
-- effective `-L` socket name or `-S` socket path;
-- subcommand;
-- the number of operands omitted after the subcommand.
-
-Never add command operands, stdout, or stderr bodies to records. Keep
-`tmux_stdout_len` and `tmux_stderr_len` on completion records.
-This omission is the privacy boundary: do not add command-specific
-redaction tables, alias maps, or output classifiers.
+`tmux_cmd` field contains a quoted, one-line rendering of the complete argv.
+Printable values use shell quoting; control characters use escaped forms.
+Completion records retain the first 100 stdout and stderr lines alongside
+`tmux_stdout_len` and `tmux_stderr_len`. Keep command-specific redaction,
+alias maps, and output classifiers out of the producer; applications select
+fields through standard-library handlers and formatters. Treat derived
+subcommand and socket fields as best effort and stop parsing unknown options.
 
 Guard command-context construction with
 `logger.isEnabledFor(logging.DEBUG)`. Use lazy interpolation for any
@@ -77,7 +73,7 @@ an `ERROR` because probes use it to answer false.
 `libtmux.server` when they convert `LibTmuxException` to an empty
 result. `Server.attached_sessions` inherits that behavior through
 `Server.sessions`. The boundary record includes the subcommand,
-socket, and stderr line count, not stderr text.
+socket, first 100 stderr lines, and total stderr line count.
 
 Deprecations and ignored arguments use `warnings.warn`, not a second
 log record. Applications can route them through
@@ -90,7 +86,7 @@ context.
 
 | Field | Type | Meaning |
 | ----- | ---- | ------- |
-| `tmux_cmd` | `str` | Safe operation summary |
+| `tmux_cmd` | `str` | Quoted, one-line complete command |
 | `tmux_subcommand` | `str` | tmux subcommand |
 | `tmux_socket` | `str` | Socket name or path |
 | `tmux_target` | `str` | Target specifier |
@@ -98,13 +94,16 @@ context.
 | `tmux_window` | `str` | Window name or index |
 | `tmux_pane` | `str` | Pane identifier |
 | `tmux_exit_code` | `int` | Subprocess exit status |
+| `tmux_stdout` | `list[str]` | First 100 stdout lines |
+| `tmux_stderr` | `list[str]` | First 100 stderr lines |
 | `tmux_stdout_len` | `int` | stdout line count |
 | `tmux_stderr_len` | `int` | stderr or error line count |
 | `tmux_option_key` | `str` | Option whose entries could not be parsed |
 | `tmux_option_skipped` | `int` | Entries skipped for that option |
 
 Treat field names and types as compatibility-sensitive. Omit unknown
-values instead of storing `None`. Keep context scalar.
+values instead of storing `None`. Keep identity and count fields scalar;
+stdout and stderr snapshots are lists of lines.
 
 ### Messages and tests
 

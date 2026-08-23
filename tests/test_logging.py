@@ -6,12 +6,15 @@ import errno
 import logging
 import os
 import pathlib
+import shlex
+import sys
 import typing as t
 from collections.abc import Callable
 
 import pytest
 
 if t.TYPE_CHECKING:
+    from libtmux._internal.control_mode import ControlMode
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -40,9 +43,9 @@ def test_tmux_cmd_debug_logging_schema(
     session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Command records expose bounded metadata, never operands or output bodies."""
+    """Command records expose the command and bounded output snapshots."""
     server = session.server
-    marker = "caller-secret"
+    marker = "caller-payload"
 
     with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
         proc = server.cmd("list-sessions", "-F", marker)
@@ -61,15 +64,76 @@ def test_tmux_cmd_debug_logging_schema(
         rec = t.cast(t.Any, record)
         assert rec.tmux_subcommand == "list-sessions"
         assert rec.tmux_socket == server.socket_name
-        assert rec.tmux_cmd.endswith("list-sessions <2 arguments omitted>")
-        assert marker not in rec.tmux_cmd
-        assert not hasattr(rec, "tmux_stdout")
-        assert not hasattr(rec, "tmux_stderr")
+        assert rec.tmux_cmd.endswith(f"list-sessions -F {marker}")
 
+    dispatched = t.cast(t.Any, records[0])
+    assert not hasattr(dispatched, "tmux_stdout")
+    assert not hasattr(dispatched, "tmux_stderr")
     completed = t.cast(t.Any, records[-1])
     assert isinstance(completed.tmux_exit_code, int)
+    assert completed.tmux_stdout == proc.stdout
+    assert completed.tmux_stderr == proc.stderr
     assert completed.tmux_stdout_len == len(proc.stdout)
     assert completed.tmux_stderr_len == 0
+
+
+def test_tmux_cmd_debug_logging_bounds_large_output(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Completion records retain 100 lines and report the full stream lengths."""
+    from libtmux.common import tmux_cmd
+
+    stdout_lines = [f"stdout-{index}-π-\x1b[31m" for index in range(150)]
+    stderr_lines = [f"stderr-{index}-π-\x1b[31m" for index in range(150)]
+    script = (
+        "import sys\n"
+        "for index in range(150):\n"
+        " print(f'stdout-{index}-π-\\x1b[31m')\n"
+        " print(f'stderr-{index}-π-\\x1b[31m', file=sys.stderr)\n"
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        proc = tmux_cmd("-c", script, tmux_bin=sys.executable)
+
+    completed = t.cast(
+        t.Any,
+        next(
+            record
+            for record in caplog.records
+            if record.getMessage() == "tmux command completed"
+        ),
+    )
+    assert proc.stdout == stdout_lines
+    assert proc.stderr == stderr_lines
+    assert completed.tmux_stdout == stdout_lines[:100]
+    assert completed.tmux_stderr == stderr_lines[:100]
+    assert completed.tmux_stdout_len == 150
+    assert completed.tmux_stderr_len == 150
+
+
+def test_control_mode_debug_logging_keeps_command_context(
+    control_mode: Callable[[], ControlMode],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Control mode exposes the spawned command and structured target fields."""
+    with (
+        caplog.at_level(logging.DEBUG, logger="libtmux._internal.control_mode"),
+        control_mode() as client,
+    ):
+        target = str(client.session.session_id)
+
+    record = t.cast(
+        t.Any,
+        next(
+            record
+            for record in caplog.records
+            if record.getMessage() == "control mode client started"
+        ),
+    )
+    assert record.tmux_subcommand == "attach-session"
+    assert record.tmux_target == target
+    assert "-C attach-session -t" in record.tmux_cmd
+    assert shlex.split(record.tmux_cmd)[-1] == target
 
 
 def test_lifecycle_info_logging(
@@ -414,7 +478,7 @@ def test_options_warning_logging_schema(
         (
             ["tmux", "-Lsock", "new-session", "-eKEY=secret"],
             {
-                "tmux_cmd": "tmux -L sock new-session <1 arguments omitted>",
+                "tmux_cmd": "tmux -Lsock new-session -eKEY=secret",
                 "tmux_subcommand": "new-session",
                 "tmux_socket": "sock",
             },
@@ -422,7 +486,7 @@ def test_options_warning_logging_schema(
         (
             ["tmux", "-S", "/tmp/s", "set-buffer", "secret"],
             {
-                "tmux_cmd": "tmux -S /tmp/s set-buffer <1 arguments omitted>",
+                "tmux_cmd": "tmux -S /tmp/s set-buffer secret",
                 "tmux_subcommand": "set-buffer",
                 "tmux_socket": "/tmp/s",
             },
@@ -430,14 +494,14 @@ def test_options_warning_logging_schema(
         (
             ["tmux", "-f", "secret-conf", "run-shell", "secret"],
             {
-                "tmux_cmd": "tmux run-shell <1 arguments omitted>",
+                "tmux_cmd": "tmux -f secret-conf run-shell secret",
                 "tmux_subcommand": "run-shell",
             },
         ),
         (
             ["tmux", "-2L", "sock", "list-panes"],
             {
-                "tmux_cmd": "tmux -L sock list-panes",
+                "tmux_cmd": "tmux -2L sock list-panes",
                 "tmux_subcommand": "list-panes",
                 "tmux_socket": "sock",
             },
@@ -445,24 +509,99 @@ def test_options_warning_logging_schema(
         (
             ["tmux", "-L", "safe\nforged", "future-command", "secret"],
             {
-                "tmux_cmd": (
-                    "tmux -L 'safe\\nforged' future-command <1 arguments omitted>"
-                ),
+                "tmux_cmd": "tmux -L 'safe\\nforged' future-command secret",
                 "tmux_subcommand": "future-command",
                 "tmux_socket": "'safe\\nforged'",
             },
         ),
-        (["tmux", "-V"], {"tmux_cmd": "tmux"}),
+        (
+            ["tmux", "-Z", "operand-secret"],
+            {
+                "tmux_cmd": "tmux -Z operand-secret",
+            },
+        ),
+        (
+            ["tmux", "--future-option=value", "list-sessions", "payload"],
+            {
+                "tmux_cmd": "tmux --future-option=value list-sessions payload",
+            },
+        ),
+        (
+            ["tmux", "--", "future-command", "payload"],
+            {
+                "tmux_cmd": "tmux -- future-command payload",
+                "tmux_subcommand": "future-command",
+            },
+        ),
+        (["tmux", "-V"], {"tmux_cmd": "tmux -V"}),
     ],
 )
-def test_command_extra_separates_operation_from_parameters(
+def test_command_extra_preserves_command_and_extracts_context(
     argv: list[str],
     expected: dict[str, str],
 ) -> None:
-    """Operation records identify tmux without carrying parameter data."""
+    """Command records retain argv while deriving optional structured fields."""
     from libtmux._internal.log_context import command_extra
 
     assert command_extra(argv) == expected
+
+
+@pytest.mark.parametrize("flag", tuple("2CDdhlNquUvV"))
+def test_command_extra_parses_boolean_global_flags(flag: str) -> None:
+    """Known boolean flags leave the following token as the subcommand."""
+    from libtmux._internal.log_context import command_extra
+
+    result = command_extra(["tmux", f"-{flag}", "list-sessions"])
+
+    assert result["tmux_subcommand"] == "list-sessions"
+
+
+@pytest.mark.parametrize("flag", tuple("cfLST"))
+@pytest.mark.parametrize("attached", [False, True])
+def test_command_extra_parses_value_global_flags(
+    flag: str,
+    attached: bool,
+) -> None:
+    """Known value flags accept attached and separate values."""
+    from libtmux._internal.log_context import command_extra
+
+    option = f"-{flag}value" if attached else f"-{flag}"
+    argv = ["tmux", option]
+    if not attached:
+        argv.append("value")
+    argv.append("list-sessions")
+
+    result = command_extra(argv)
+
+    assert result["tmux_subcommand"] == "list-sessions"
+    if flag in "LS":
+        assert result["tmux_socket"] == "value"
+
+
+def test_command_extra_preserves_unicode_and_escapes_controls() -> None:
+    """Printable Unicode remains readable and controls cannot forge log lines."""
+    from libtmux._internal.log_context import command_extra
+
+    payload = "snowman ☃ and Ελληνικά"
+    result = command_extra(
+        ["tmux", "set-buffer", payload, "line\nERROR forged", "nul\0byte"]
+    )
+
+    assert payload in result["tmux_cmd"]
+    assert "\n" not in result["tmux_cmd"]
+    assert "\\nERROR forged" in result["tmux_cmd"]
+    assert "\\x00" in result["tmux_cmd"]
+
+
+def test_command_extra_preserves_large_operand() -> None:
+    """Command logging does not truncate a large argv operand."""
+    from libtmux._internal.log_context import command_extra
+
+    payload = "x" * 1_000_000
+    result = command_extra(["tmux", "set-buffer", payload])
+
+    assert result["tmux_cmd"].endswith(payload)
+    assert len(result["tmux_cmd"]) == len(payload) + len("tmux set-buffer ")
 
 
 def test_session_fixture_setup_logs_no_errors(

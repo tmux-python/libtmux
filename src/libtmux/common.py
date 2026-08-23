@@ -18,7 +18,7 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
-from ._internal.log_context import command_extra
+from ._internal.log_context import LOG_OUTPUT_LINE_LIMIT, command_extra
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -347,6 +347,8 @@ class tmux_cmd:
                 extra={
                     **log_extra,
                     "tmux_exit_code": self.returncode,
+                    "tmux_stdout": self.stdout[:LOG_OUTPUT_LINE_LIMIT],
+                    "tmux_stderr": self.stderr[:LOG_OUTPUT_LINE_LIMIT],
                     "tmux_stdout_len": len(self.stdout),
                     "tmux_stderr_len": len(self.stderr),
                 },
