@@ -790,7 +790,7 @@ def run_serve(options: WorkloadOptions) -> int:
     Notes
     -----
     The service owns signals and a real marker tree, so its gate, timing, and
-    shutdown behavior is exercised in ``tests/test_orchestration_fuzzer.py``.
+    shutdown behavior is exercised in ``tests/scripts/orchestration/test_fuzzer.py``.
     """
     _validate_workload_identity(options)
     if options.frame_rate_hz <= 0:

@@ -86,7 +86,7 @@ _RUNNER_PHASES = (
 def _benchmark_script() -> pathlib.Path:
     """Return the real standalone benchmark entry point."""
     return (
-        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "benchmark.py"
+        pathlib.Path(__file__).parents[3] / "scripts" / "orchestration" / "benchmark.py"
     )
 
 
@@ -197,7 +197,7 @@ def _assert_terminal_cleanup(payload: dict[str, t.Any]) -> None:
 def benchmark_module() -> types.ModuleType:
     """Load the standalone benchmark script without contacting tmux."""
     script = (
-        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "benchmark.py"
+        pathlib.Path(__file__).parents[3] / "scripts" / "orchestration" / "benchmark.py"
     )
     spec = importlib.util.spec_from_file_location("orchestration_benchmark", script)
     assert spec is not None
@@ -2437,7 +2437,7 @@ def test_plan_writes_original_predictive_decision_without_talking_to_tmux(
 ) -> None:
     """The planning path must remain an offline inspection even when forced."""
     script = (
-        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "benchmark.py"
+        pathlib.Path(__file__).parents[3] / "scripts" / "orchestration" / "benchmark.py"
     )
     output = tmp_path / "plan.json"
 
@@ -12795,7 +12795,7 @@ def test_stalled_worker_exits_when_its_spawner_dies(
     refuses every subsequent run until reboot. Observed in practice at 1h44m
     old, with its pytest temporary directory long deleted.
     """
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     bench = root / "scripts" / "orchestration" / "benchmark.py"
 
     stall = tmp_path / "stall.py"
