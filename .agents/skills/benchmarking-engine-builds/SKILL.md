@@ -1,13 +1,13 @@
 ---
 name: benchmarking-engine-builds
-description: Use when measuring or profiling how fast libtmux.experimental engines build tmux workspaces — comparing classic vs subprocess/control_mode/imsg/mock/pipelined, chasing a build-latency regression, reading percentile grids, or finding where a control-mode build spends its time (cProfile). Runs scripts/bench_engines.py hermetically on throwaway sockets.
+description: Use when measuring or profiling how fast libtmux.experimental engines build tmux workspaces — comparing classic vs subprocess/control_mode/imsg/mock/pipelined, chasing a build-latency regression, reading percentile grids, or finding where a control-mode build spends its time (cProfile). Runs scripts/bench/engines.py hermetically on throwaway sockets.
 ---
 
 # Benchmarking engine builds
 
 ## Overview
 
-`scripts/bench_engines.py` times how long each experimental engine takes to
+`scripts/bench/engines.py` times how long each experimental engine takes to
 build a tmux session structure (`W` windows × `P` panes-per-window), sweeping
 shapes × engines × wait-modes and reporting min/avg/median/p90/p95/p99/max.
 
@@ -32,12 +32,12 @@ Run from the repo root.
 
 | Command | What it does |
 |---|---|
-| `uv run scripts/bench_engines.py run` | full engine grid (the clean signal) |
-| `uv run scripts/bench_engines.py matrix --shapes 1x4,3x3,5x4` | 4-axis factorial: which choice drives build cost |
-| `uv run scripts/bench_engines.py concurrency --transport control_mode --k 4` | K builds sync-serial vs async-`gather` |
-| `uv run scripts/bench_engines.py contract` | mock-parity ops-language check only (for CI) |
-| `uv run scripts/bench_engines.py profile --engine control_mode --shape 8x4` | cProfile one engine, print slowest by cumtime |
-| `uv run scripts/bench_engines.py cell control_mode 8x4` | one isolated build (for wrapping in hyperfine) |
+| `uv run scripts/bench/engines.py run` | full engine grid (the clean signal) |
+| `uv run scripts/bench/engines.py matrix --shapes 1x4,3x3,5x4` | 4-axis factorial: which choice drives build cost |
+| `uv run scripts/bench/engines.py concurrency --transport control_mode --k 4` | K builds sync-serial vs async-`gather` |
+| `uv run scripts/bench/engines.py contract` | mock-parity ops-language check only (for CI) |
+| `uv run scripts/bench/engines.py profile --engine control_mode --shape 8x4` | cProfile one engine, print slowest by cumtime |
+| `uv run scripts/bench/engines.py cell control_mode 8x4` | one isolated build (for wrapping in hyperfine) |
 
 `run` flags: `--shapes 1x1,1x4,3x3,5x4,8x4`, `--engines classic,subprocess,control_mode,imsg,mock,pipelined`,
 `--wait` (ALSO measure with shell-readiness wait), `--runs 20`, `--warmup 3`,
