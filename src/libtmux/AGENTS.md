@@ -71,14 +71,14 @@ an `ERROR` because probes use it to answer false.
 
 Normalize executable-launch `ENOENT`, `EACCES`, and `ENOEXEC` errors to
 `TmuxCommandNotFound`, preserving the operating-system message and cause.
-Keep unrelated `OSError` behavior caller-specific. A failed `PATH` preflight
-uses a factual message without inventing a cause.
+Keep unrelated `OSError` values native at direct loud APIs. A failed `PATH`
+preflight uses a factual message without inventing a cause.
 
 `Server.sessions` and `Server.clients` log once in
-`libtmux.server` when they convert `LibTmuxException` to an empty
-result. `Server.attached_sessions` inherits that behavior through
-`Server.sessions`. The boundary record includes the subcommand,
-socket, first 100 stderr lines, and total stderr line count.
+`libtmux.server` when they convert `LibTmuxException` or an OS launch failure
+to an empty result. `Server.attached_sessions` inherits that behavior through
+`Server.sessions`. The boundary record includes the subcommand, socket, first
+100 stderr lines, and total stderr line count.
 
 Deprecations and ignored arguments use `warnings.warn`, not a second
 log record. Applications can route them through
