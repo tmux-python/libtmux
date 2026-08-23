@@ -2,6 +2,9 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = ["libtmux"]
+#
+# [tool.uv.sources]
+# libtmux = { path = "../..", editable = true }
 # ///
 """Measure what libtmux's current API costs against a live tmux server.
 
