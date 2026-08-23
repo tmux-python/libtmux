@@ -1,24 +1,24 @@
 # libtmux engine build-benchmark — results
 
-Produced by `scripts/bench_engines.py` (a hermetic PEP 723 grid runner) plus a
+Produced by `scripts/bench/engines.py` (a hermetic PEP 723 grid runner) plus a
 one-off hyperfine end-to-end run. All builds are isolated: per-run sockets under
 a throwaway dir, `TMUX` unset, servers killed on exit — the default tmux server
 is never contacted. Run the default grid:
 
 ```console
-$ uv run scripts/bench_engines.py run
+$ uv run scripts/bench/engines.py run
 ```
 
 Compare selected engines with shell-readiness waits:
 
 ```console
-$ uv run scripts/bench_engines.py run --engines classic,control_mode,pipelined --wait
+$ uv run scripts/bench/engines.py run --engines classic,control_mode,pipelined --wait
 ```
 
 Profile one larger control-mode build:
 
 ```console
-$ uv run scripts/bench_engines.py profile --engine control_mode --shape 8x4
+$ uv run scripts/bench/engines.py profile --engine control_mode --shape 8x4
 ```
 
 Raw data: `grid.json` (no-wait grid), `wait.json` (wait comparison).
@@ -103,7 +103,7 @@ workspace compiles to a lazy plan, the valid expression layers are five —
 transports × 2 modes = 20 cells, against a `classic` reference. Reproduce:
 
 ```console
-$ uv run scripts/bench_engines.py matrix --shapes 1x4,3x3,5x4
+$ uv run scripts/bench/engines.py matrix --shapes 1x4,3x3,5x4
 ```
 
 `mock` is absent from the table by design: it is the offline correctness
@@ -112,7 +112,7 @@ $ uv run scripts/bench_engines.py matrix --shapes 1x4,3x3,5x4
 mock, so the benchmark doubles as an ops-language contract test:
 
 ```console
-$ uv run scripts/bench_engines.py contract
+$ uv run scripts/bench/engines.py contract
 ```
 
 Illustrative 1×4 snapshot (small run; absolute ms are machine-dependent — the
@@ -138,7 +138,7 @@ builds K independent sessions sync-serial vs `asyncio.gather` over one
 connection:
 
 ```console
-$ uv run scripts/bench_engines.py concurrency --transport control_mode --k 4
+$ uv run scripts/bench/engines.py concurrency --transport control_mode --k 4
 ```
 
 Over one `control_mode` connection, async-gather runs ~2.4× the sync-serial
