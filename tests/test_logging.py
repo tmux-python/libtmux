@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import errno
 import logging
+import os
 import pathlib
 import typing as t
 from collections.abc import Callable
@@ -327,6 +329,21 @@ def test_unusable_tmux_binary_propagates_without_logging(
     assert [
         record for record in caplog.records if record.levelno == logging.ERROR
     ] == []
+
+
+def test_unrelated_tmux_launch_failure_preserves_diagnostics() -> None:
+    """A launch resource failure is not mislabeled as a missing executable."""
+    from libtmux import exc
+    from libtmux.common import tmux_cmd
+
+    with pytest.raises(exc.LibTmuxException) as exc_info:
+        tmux_cmd("set-buffer", "x" * os.sysconf("SC_ARG_MAX"))
+
+    assert not isinstance(exc_info.value, exc.TmuxCommandNotFound)
+    cause = exc_info.value.__cause__
+    assert isinstance(cause, OSError)
+    assert cause.errno == errno.E2BIG
+    assert str(exc_info.value) == str(cause)
 
 
 @pytest.mark.parametrize(

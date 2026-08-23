@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import errno
 import functools
 import logging
 import re
@@ -317,8 +318,10 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-        except OSError:
-            raise exc.TmuxCommandNotFound from None
+        except OSError as error:
+            if error.errno in {errno.EACCES, errno.ENOENT, errno.ENOEXEC}:
+                raise exc.TmuxCommandNotFound from None
+            raise exc.LibTmuxException(str(error)) from error
 
         stdout, stderr = self.process.communicate()
         returncode = self.process.returncode
