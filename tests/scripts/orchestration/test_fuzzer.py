@@ -24,7 +24,7 @@ import pytest
 def fuzzer_module() -> types.ModuleType:
     """Load the standalone fuzzer script without requiring Rich."""
     script = (
-        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "fuzzer.py"
+        pathlib.Path(__file__).parents[3] / "scripts" / "orchestration" / "fuzzer.py"
     )
     spec = importlib.util.spec_from_file_location("orchestration_fuzzer", script)
     assert spec is not None
@@ -824,7 +824,7 @@ def read_json(path: pathlib.Path) -> dict[str, t.Any]:
 
 def start_serve(output_dir: pathlib.Path) -> subprocess.Popen[str]:
     """Start the standalone fuzzer with a short deterministic service cadence."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     environment = os.environ.copy()
     environment.pop("VIRTUAL_ENV", None)
     return subprocess.Popen(

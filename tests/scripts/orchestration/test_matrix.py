@@ -15,7 +15,7 @@ import pytest
 def matrix_module() -> types.ModuleType:
     """Load the standalone matrix script without installing it."""
     script = (
-        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "matrix.py"
+        pathlib.Path(__file__).parents[3] / "scripts" / "orchestration" / "matrix.py"
     )
     spec = importlib.util.spec_from_file_location("orchestration_matrix", script)
     assert spec is not None
