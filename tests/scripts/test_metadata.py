@@ -20,7 +20,7 @@ import pytest
 # growing a dependency to parse a handful of comment lines.
 tomllib = pytest.importorskip("tomllib")
 
-_REPO_ROOT = pathlib.Path(__file__).parent.parent
+_REPO_ROOT = pathlib.Path(__file__).parents[2]
 _SCRIPTS = _REPO_ROOT / "scripts"
 
 _BLOCK_OPEN = "# /// script"
