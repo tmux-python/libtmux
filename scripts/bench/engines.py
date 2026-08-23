@@ -65,24 +65,18 @@ Run:  uv run scripts/bench/engines.py run
 from __future__ import annotations
 
 import asyncio
-import atexit
 import contextlib
 import cProfile
 import dataclasses
 import io
 import itertools
 import json
-import math
 import os
 import pathlib
 import pstats
-import shutil
-import statistics
-import subprocess
-import tempfile
+import sys
 import time
 import typing as t
-import uuid
 
 # Never inherit the ambient tmux session -- do this BEFORE importing libtmux.
 os.environ.pop("TMUX", None)
@@ -101,6 +95,17 @@ from libtmux.experimental.engines import (
     MockEngine,
     SubprocessEngine,
 )
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+from primitives import (
+    STAT_LABELS,
+    new_server,
+    reap_stale_scratch,
+    summarize,
+    uniq,
+)
+
 from libtmux.experimental.engines.base import CommandRequest
 from libtmux.experimental.ops import (
     BatchingPlanner,
@@ -124,147 +129,15 @@ console = rich.console.Console()
 # · mode) overflow an 80-col pipe, so render them at a fixed width so each row
 # stays on one line under redirection.
 wide_console = rich.console.Console(width=132)
+
+_reaped = reap_stale_scratch()
+if _reaped:
+    console.print(f"[dim]reaped {_reaped} stale bench scratch dir(s)[/dim]")
 R = CommandRequest.from_args
-_ctr = itertools.count()
-STAT_LABELS = ("n", "min", "avg", "median", "p90", "p95", "p99", "max")
 BENCH_OPTIONS = (
     ("@libtmux_bench_one", "1"),
     ("@libtmux_bench_two", "2"),
 )
-
-# --------------------------------------------------------------------------- #
-# Hermetic isolation                                                          #
-# --------------------------------------------------------------------------- #
-#: Names the process owning a scratch dir. A concurrent run is identified by its
-#: pid, not by whether a tmux happens to be running in its dir: the dir exists
-#: from import, its first server only from the first `new_server`. Same filename
-#: `scripts/bench/primitives.py` writes, so the two reapers spare each other.
-_OWNER_PID = "owner.pid"
-
-#: How long a scratch dir naming no owner is left alone -- the instant between
-#: creating a dir and claiming it, and dirs from before the owner file existed.
-_ADOPTION_GRACE_SECONDS = 300.0
-
-_SOCK_DIR = pathlib.Path(
-    tempfile.mkdtemp(prefix="ltbench-")
-)  # short: /tmp/ltbench-XXXX
-(_SOCK_DIR / _OWNER_PID).write_text(f"{os.getpid()}\n", encoding="utf-8")
-_SERVERS: list[Server] = []
-#: A session every bench server keeps for its whole life, so killing a cell's
-#: session never drops the server to zero and trips tmux's exit-empty teardown.
-_KEEPALIVE = "keepalive"
-
-
-def new_server() -> Server:
-    """Return a fresh isolated server on a unique socket under the scratch dir.
-
-    The server is pinned alive by a keepalive session. Every cell kills its
-    session between builds, which would otherwise drop the server to zero
-    sessions; under tmux's ``exit-empty`` default the server then starts
-    exiting, and the next build's ``new-session`` can reach the still-bound
-    socket mid-shutdown and fail with "server exited unexpectedly". The race is
-    load-dependent, so it surfaced as an intermittent create failure rather than
-    an obvious teardown bug. Control mode never hit it -- its ``tmux -C``
-    phantom session already pinned the server -- which is exactly why only the
-    subprocess cells were affected.
-    """
-    srv = Server(
-        socket_path=str(_SOCK_DIR / f"{uuid.uuid4().hex[:8]}.sock"),
-        config_file=os.devnull,
-    )
-    _SERVERS.append(srv)
-    # The keepalive has to come first: `start-server` alone leaves a server with
-    # zero sessions, which exits immediately under the default, so there is no
-    # server left to set the option on. Creating a session that is never killed
-    # is what actually holds the floor above zero.
-    srv.cmd("new-session", "-d", "-s", _KEEPALIVE)
-    srv.cmd("set-option", "-s", "exit-empty", "off")
-    return srv
-
-
-def _cleanup() -> None:
-    for srv in _SERVERS:
-        with contextlib.suppress(Exception):
-            srv.kill()
-    # Backstop: SIGKILL any tmux server still bound to a socket in our dir.
-    with contextlib.suppress(Exception):
-        out = subprocess.run(
-            ["pgrep", "-f", f"tmux .*-S{_SOCK_DIR}/"],
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.split()
-        for pid in out:
-            with contextlib.suppress(Exception):
-                os.kill(int(pid), 9)
-    with contextlib.suppress(Exception):
-        shutil.rmtree(_SOCK_DIR, ignore_errors=True)
-
-
-def _owner_is_alive(path: pathlib.Path) -> bool | None:
-    """Say whether *path*'s owning process still exists, or None if unnamed."""
-    try:
-        pid = int((path / _OWNER_PID).read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        return None
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
-
-
-def _reap_stale_scratch() -> None:
-    """Remove scratch dirs left behind by runs that died before their cleanup.
-
-    :func:`_cleanup` only knows *this* process's socket dir, so a run killed
-    before its ``atexit`` hook leaves its dir -- and any tmux still bound to
-    it -- behind for good. Those survivors keep consuming CPU and file
-    descriptors, and machine load is precisely what makes the server-teardown
-    race fire, so an unreaped leak feeds the very failure it came from.
-
-    A dir belonging to a live run is left alone. Liveness is the owning process
-    named in ``_OWNER_PID``, not whether a tmux is running there: a dir exists
-    from the moment its run starts, while its first server appears later, and a
-    reaper that asked only about tmux deleted concurrent runs during that
-    window. An unnamed owner is judged by age, then by the tmux probe, so every
-    unknown resolves toward keeping the dir.
-    """
-    reaped = 0
-    for path in pathlib.Path(tempfile.gettempdir()).glob("ltbench-*"):
-        if path == _SOCK_DIR or not path.is_dir():
-            continue
-        with contextlib.suppress(Exception):
-            owner = _owner_is_alive(path)
-            if owner:
-                continue
-            if owner is None and (
-                time.time() - path.stat().st_mtime < _ADOPTION_GRACE_SECONDS
-            ):
-                continue
-            alive = subprocess.run(
-                ["pgrep", "-f", f"tmux .*-S{path}/"],
-                capture_output=True,
-                text=True,
-                check=False,
-            ).stdout.split()
-            if alive:
-                continue
-            shutil.rmtree(path, ignore_errors=True)
-            reaped += 1
-    if reaped:
-        console.print(f"[dim]reaped {reaped} stale bench scratch dir(s)[/dim]")
-
-
-atexit.register(_cleanup)
-_reap_stale_scratch()
-
-
-def uniq() -> str:
-    """Return a process-unique session name (never collides across builds)."""
-    return f"b{next(_ctr)}"
 
 
 # --------------------------------------------------------------------------- #
@@ -639,32 +512,6 @@ def run_cell(
     finally:
         with contextlib.suppress(Exception):
             server.kill()
-
-
-# --------------------------------------------------------------------------- #
-# Stats (nearest-rank percentiles, like agentgrep's benchmark)                #
-# --------------------------------------------------------------------------- #
-def percentile(sorted_vals: list[float], pct: float) -> float:
-    """Nearest-rank percentile of a pre-sorted sequence."""
-    if not sorted_vals:
-        return float("nan")
-    rank = max(1, math.ceil(pct / 100.0 * len(sorted_vals)))
-    return sorted_vals[min(rank, len(sorted_vals)) - 1]
-
-
-def summarize(samples: list[float]) -> dict[str, float]:
-    """Return min/avg/median/p90/p95/p99/max (and n) for *samples*."""
-    s = sorted(samples)
-    return {
-        "n": float(len(s)),
-        "min": s[0],
-        "avg": statistics.fmean(s),
-        "median": statistics.median(s),
-        "p90": percentile(s, 90),
-        "p95": percentile(s, 95),
-        "p99": percentile(s, 99),
-        "max": s[-1],
-    }
 
 
 def summary_json(summary: dict[str, float]) -> dict[str, float | int]:
