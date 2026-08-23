@@ -1,8 +1,8 @@
-"""Batch declarative workspaces into one folded Core plan.
+"""Compile declarative workspaces into batched Core plans.
 
 ``WorkspaceSet`` is the Declarative tier's collection primitive: a group of
 workspace specs that compile into one :class:`~libtmux.experimental.ops.LazyPlan`
-and therefore run through the same chainable, async-capable engine path as a
+and therefore run through the same typed, async-capable engine path as a
 single workspace. It is deliberately still a library value -- no database, server
 process, or product workflow -- so callers can layer worktrees, dashboards, or
 agent launch policy outside libtmux.
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from libtmux.experimental.ops import LazyPlan
 from libtmux.experimental.ops._types import SlotRef, Target
 from libtmux.experimental.ops.plan import PlanResult, StepReport
-from libtmux.experimental.ops.planner import BoundedPlanner, MarkedPlanner
+from libtmux.experimental.ops.planner import BatchingPlanner, BoundedPlanner
 from libtmux.experimental.workspace.compiler import Compiled, HostStep, compile_full
 from libtmux.experimental.workspace.events import WorkspaceBuilt, events_for
 from libtmux.experimental.workspace.expand import (
@@ -369,7 +369,7 @@ def build_workspaces(
         engine,
         version=version,
         planner=BoundedPlanner(
-            planner or MarkedPlanner(),
+            planner or BatchingPlanner(),
             frozenset(compiled.host_after),
         ),
         on_step=on_step,
@@ -421,7 +421,7 @@ async def abuild_workspaces(
         engine,
         version=version,
         planner=BoundedPlanner(
-            planner or MarkedPlanner(),
+            planner or BatchingPlanner(),
             frozenset(compiled.host_after),
         ),
         on_step=on_step,

@@ -81,7 +81,7 @@ class BreakPane(SourceTargetOperation[CreateResult]):
     scope = "window"
     result_cls = CreateResult
     safety = "mutating"
-    chainable = False
+    batchable = False
     primitive = False
     effects = Effects(creates="window")
 

@@ -14,15 +14,18 @@ import subprocess
 import typing as t
 import warnings
 
+import libtmux.engines.subprocess
 from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
-from libtmux.engines.base import SupportsConnection
-from libtmux.engines.connection import ServerConnection
-from libtmux.engines.subprocess import SubprocessEngine
+from libtmux.engines.base import HasConnection, SupportsConnection
+from libtmux.engines.connection import (
+    ServerConnection,
+    _merge_connection_constraints,
+)
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
@@ -107,14 +110,16 @@ class Server(
     socket_name : str, optional
     socket_path : str, optional
     config_file : str, optional
-    colors : str, optional
+    colors : int, optional
+        Set to ``256`` to request tmux's 256-colour client mode.
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
     engine : :class:`~libtmux.engines.base.TmuxEngine`, optional
         Executor every tmux command runs through. Defaults to
         :class:`~libtmux.engines.subprocess.SubprocessEngine` bound to this
-        server's :attr:`connection`.
+        server's :attr:`connection`. Explicit Server connection values must be
+        compatible with an inspectable injected engine.
 
     Examples
     --------
@@ -161,7 +166,7 @@ class Server(
     config_file = None
     """Passthrough to ``[-f file]``"""
     colors = None
-    """``256`` or ``88``"""
+    """``256`` to request a 256-colour client."""
     child_id_attribute = "session_id"
     """Unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`"""
     formatter_prefix = "server_"
@@ -176,14 +181,16 @@ class Server(
 
     _engine: TmuxEngine | None = None
     """Caller-supplied executor, or ``None`` for the default subprocess engine."""
-    _default_engine: SubprocessEngine | None = None
+    _default_engine: libtmux.engines.subprocess.SubprocessEngine | None = None
     """Lazily built default engine, rebuilt whenever :attr:`connection` changes."""
     _connection: ServerConnection | None = None
     """Cached connection, valid while :attr:`_connection_key` still matches."""
     _connection_key: tuple[t.Any, ...] | None = None
     """Snapshot of the public connection attributes the cache was built from."""
-    _adopted_engine: tuple[ServerConnection, TmuxEngine] | None = None
-    """Injected engine rebound to :attr:`connection`, with the connection it used."""
+    _adopted_engine: (
+        tuple[TmuxEngine, ServerConnection, ServerConnection, TmuxEngine] | None
+    ) = None
+    """Injected engine, source connection, target, and cached rebound engine."""
 
     def __init__(
         self,
@@ -245,7 +252,7 @@ class Server(
         Raises
         ------
         :exc:`~libtmux.exc.UnknownColorOption`
-            :attr:`colors` is set to something other than ``256`` or ``88``.
+            :attr:`colors` is set to something other than ``256``.
 
         Examples
         --------
@@ -281,20 +288,23 @@ class Server(
         :class:`~libtmux.engines.subprocess.SubprocessEngine` is built from
         :attr:`connection` and rebuilt whenever that connection changes.
 
-        A caller-supplied ``engine=`` carrying connection flags of its own
-        already names a tmux server, and is returned untouched. One carrying
-        none -- a bare ``SubprocessEngine()`` -- *adopts* this server's
-        :attr:`connection`, because returning it untouched would dispatch to
-        whichever server a flagless ``tmux`` reaches rather than to this one. A
-        ``tmux_bin`` does not count as naming a server: it selects which tmux
-        program to exec, so an engine carrying only a binary adopts this
-        server's flags and keeps its own binary. Engines with no connection at
-        all, such as in-memory fakes, are always returned untouched.
+        Explicit Server values constrain an inspectable injected engine at
+        dispatch time. Matching values preserve the engine. Missing values are
+        merged only when the engine advertises safe rebinding; conflicts and
+        pinned engines that would need rebinding raise
+        :exc:`~libtmux.exc.EngineConfigurationMismatch`. An unscoped Server and
+        an engine with no connection capability are both preserved untouched.
 
         Returns
         -------
         :class:`~libtmux.engines.base.TmuxEngine`
             The engine.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.EngineConfigurationMismatch`
+            Explicit Server constraints conflict with the engine, require an
+            unsafe rebind, or the rebound engine reports the wrong connection.
 
         Examples
         --------
@@ -308,11 +318,11 @@ class Server(
         >>> tmux.engine.server_args
         ('-Lengine_adopt_docs',)
 
-        An engine that names a server keeps it:
+        Matching connections keep their instance:
 
-        >>> pinned = SubprocessEngine.of(server_args=("-Lelsewhere",))
-        >>> Server(socket_name="engine_adopt_docs", engine=pinned).engine.server_args
-        ('-Lelsewhere',)
+        >>> pinned = SubprocessEngine.of(server_args=("-Lengine_adopt_docs",))
+        >>> Server(socket_name="engine_adopt_docs", engine=pinned).engine is pinned
+        True
 
         A binary names no server, so an engine carrying only one still binds,
         and keeps that binary:
@@ -327,25 +337,69 @@ class Server(
         connection = self.connection
         engine = self._engine
         if engine is not None:
-            if not isinstance(engine, SupportsConnection):
+            if connection.is_unconfigured or not isinstance(engine, HasConnection):
                 return engine
             engine_connection = engine.connection
-            if connection.is_unconfigured or engine_connection.names_server:
+            if not isinstance(engine_connection, ServerConnection):
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    "connection capability reported a non-ServerConnection value",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
+            resolution = _merge_connection_constraints(
+                engine_connection,
+                connection,
+            )
+            if resolution.conflicts:
+                fields = ", ".join(resolution.conflicts)
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    f"explicit Server {fields} constraint conflicts with engine",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
+            target = resolution.connection
+            if not resolution.missing:
                 return engine
+            if not isinstance(engine, SupportsConnection):
+                fields = ", ".join(resolution.missing)
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    f"pinned engine cannot safely rebind to add {fields}",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
             adopted = self._adopted_engine
-            if adopted is None or adopted[0] is not connection:
-                target = connection
-                if engine_connection.tmux_bin is not None:
-                    target = ServerConnection.of(
-                        engine_connection.tmux_bin,
-                        connection.args,
-                    )
-                adopted = (connection, engine.with_connection(target))
-                self._adopted_engine = adopted
-            return adopted[1]
+            if (
+                adopted is not None
+                and adopted[0] is engine
+                and adopted[1] == engine_connection
+                and adopted[2] == target
+                and isinstance(adopted[3], HasConnection)
+                and adopted[3].connection == target
+            ):
+                return adopted[3]
+            rebound = engine.with_connection(target)
+            if not isinstance(rebound, HasConnection) or rebound.connection != target:
+                reported = (
+                    rebound.connection
+                    if isinstance(rebound, HasConnection)
+                    else "no connection"
+                )
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    "with_connection() reported a connection other than the "
+                    f"requested target: {reported!r}",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
+            adopted = (engine, engine_connection, target, rebound)
+            self._adopted_engine = adopted
+            return rebound
         default = self._default_engine
         if default is None or default.connection is not connection:
-            default = SubprocessEngine(connection)
+            default = libtmux.engines.subprocess.SubprocessEngine(connection)
             self._default_engine = default
         return default
 
@@ -445,6 +499,8 @@ class Server(
         """
         try:
             res = self.cmd("list-sessions")
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
+            raise
         except Exception:
             return False
         return res.returncode == 0
@@ -464,12 +520,14 @@ class Server(
         Raises
         ------
         :exc:`~libtmux.exc.UnknownColorOption`
-            :attr:`colors` is set to something other than ``256`` or ``88``.
+            :attr:`colors` is set to something other than ``256``.
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
         :exc:`~libtmux.exc.AsyncEngineMismatch`
             An injected engine's ``run()`` returned an awaitable; this path
             cannot await it.
+        :exc:`~libtmux.exc.EngineConfigurationMismatch`
+            The injected engine cannot satisfy explicit Server constraints.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``), carrying tmux's own message.
@@ -548,6 +606,8 @@ class Server(
             The engine is asynchronous -- its ``run()`` (or ``command_line()``,
             while rendering a DEBUG log line) returned an awaitable, which this
             synchronous dispatch cannot await.
+        :exc:`~libtmux.exc.EngineConfigurationMismatch`
+            The injected engine cannot satisfy explicit Server constraints.
 
         Notes
         -----
@@ -2568,16 +2628,17 @@ class Server(
         distinguish "no sessions" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
 
-        :exc:`~libtmux.exc.AsyncEngineMismatch` is not a tmux failure -- it
-        means the injected engine cannot be dispatched synchronously at all --
-        so it is not part of that leniency and always propagates.
+        Engine integration errors --
+        :exc:`~libtmux.exc.AsyncEngineMismatch` and
+        :exc:`~libtmux.exc.EngineConfigurationMismatch` -- are not tmux
+        failures, so they always propagate.
         """
         try:
             sessions: list[Session] = [
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
-        except exc.AsyncEngineMismatch:
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
             raise
         except exc.LibTmuxException:
             return QueryList([])
@@ -2635,9 +2696,10 @@ class Server(
         distinguish "no clients attached" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
 
-        :exc:`~libtmux.exc.AsyncEngineMismatch` is not a tmux failure -- it
-        means the injected engine cannot be dispatched synchronously at all --
-        so it is not part of that leniency and always propagates.
+        Engine integration errors --
+        :exc:`~libtmux.exc.AsyncEngineMismatch` and
+        :exc:`~libtmux.exc.EngineConfigurationMismatch` -- are not tmux
+        failures, so they always propagate.
 
         Returns
         -------
@@ -2655,7 +2717,7 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
-        except exc.AsyncEngineMismatch:
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
             raise
         except exc.LibTmuxException:
             return QueryList([])

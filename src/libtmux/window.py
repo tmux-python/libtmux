@@ -317,9 +317,10 @@ class Window(
         holders takes two list commands total, independent of how many there
         are.
         If either listing fails, the result is empty.
-        :exc:`~libtmux.exc.AsyncEngineMismatch` is not a listing failure --
-        it means the server's engine cannot be dispatched synchronously at
-        all -- so it always propagates instead.
+        Engine integration errors --
+        :exc:`~libtmux.exc.AsyncEngineMismatch` and
+        :exc:`~libtmux.exc.EngineConfigurationMismatch` -- are not listing
+        failures, so they always propagate instead.
 
         Returns
         -------
@@ -366,7 +367,7 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
-        except exc.AsyncEngineMismatch:
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
             raise
         except exc.LibTmuxException:
             return QueryList([])

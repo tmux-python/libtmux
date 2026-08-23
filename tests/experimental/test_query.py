@@ -212,7 +212,7 @@ def test_commands_empty_match_is_noop() -> None:
 
 
 def test_commands_run_live(session: Session) -> None:
-    """commands().run reads live panes, builds, and dispatches (folded)."""
+    """commands().run reads live panes, builds, and dispatches a request batch."""
     from libtmux.experimental.engines import SubprocessEngine
     from libtmux.experimental.ops import SplitWindow, run
     from libtmux.experimental.ops._types import WindowId

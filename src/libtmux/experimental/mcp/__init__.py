@@ -133,13 +133,17 @@ def default_async_server(
 
     The default deployment: tools are awaited on FastMCP's loop and the live
     event stream is wired up. The control-mode connection opens lazily on first
-    use. Requires the ``mcp`` extra.
+    use and is owned by the server lifespan, which closes it at shutdown.
+    Requires the ``mcp`` extra.
     """
     import typing as t
 
     from libtmux.experimental.engines import AsyncControlModeEngine
     from libtmux.experimental.mcp.events import EventMode, EventSource
-    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+    from libtmux.experimental.mcp.fastmcp_adapter import (
+        EngineOwnership,
+        build_async_server,
+    )
     from libtmux.experimental.mcp.vocabulary._caller import CallerContext
 
     ctx = CallerContext.discover()
@@ -148,6 +152,7 @@ def default_async_server(
         engine,
         caller=ctx,
         expose_operations=expose_operations,
+        engine_ownership=EngineOwnership.OWNED,
         events=t.cast("EventMode", events),
         event_source=t.cast("EventSource", event_source),
     )
@@ -246,13 +251,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         else:
             from libtmux.experimental.engines import AsyncControlModeEngine
             from libtmux.experimental.mcp.events import EventMode, EventSource
-            from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+            from libtmux.experimental.mcp.fastmcp_adapter import (
+                EngineOwnership,
+                build_async_server,
+            )
 
             server = build_async_server(
                 AsyncControlModeEngine(server_args=srv_args),
                 name=args.name,
                 expose_operations=args.operations,
                 safety_level=args.safety,
+                engine_ownership=EngineOwnership.OWNED,
                 events=t.cast("EventMode", args.events),
                 event_source=t.cast("EventSource", args.event_source),
                 caller=ctx,

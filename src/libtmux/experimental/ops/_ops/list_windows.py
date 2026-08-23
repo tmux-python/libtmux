@@ -42,7 +42,6 @@ class ListWindows(Operation[ListWindowsResult]):
     scope = "server"
     result_cls = ListWindowsResult
     safety = "readonly"
-    chainable = False
     effects = Effects(read_only=True, idempotent=True)
 
     all_windows: bool = True

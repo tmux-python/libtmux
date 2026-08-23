@@ -7,6 +7,10 @@ exercised end to end without a pytest-asyncio dependency.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
+import signal
+import sys
 import typing as t
 
 import pytest
@@ -17,6 +21,8 @@ from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.results import SplitWindowResult
 
 if t.TYPE_CHECKING:
+    import pathlib
+
     from libtmux.session import Session
 
 
@@ -49,6 +55,236 @@ def test_async_run_cancellation_suppresses_terminate_lookup(
             await engine.run(CommandRequest.from_args("display-message", "-p", "x"))
 
     asyncio.run(_check())
+
+
+def test_async_cancellation_shields_escalation_from_second_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated cancellation cannot bypass bounded kill or leak pipe tasks."""
+    import libtmux.experimental.engines.asyncio as asyncio_engine
+    from libtmux.experimental.engines.base import CommandRequest
+
+    class _FakeProc:
+        returncode: int | None = None
+
+        def __init__(self) -> None:
+            self.communicating = asyncio.Event()
+            self.communication_finished = asyncio.Event()
+            self.terminated = asyncio.Event()
+            self.signals: list[str] = []
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            self.communicating.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.communication_finished.set()
+            return (b"", b"")
+
+        def terminate(self) -> None:
+            self.signals.append("terminate")
+            self.terminated.set()
+
+        def kill(self) -> None:
+            self.signals.append("kill")
+            self.returncode = -signal.SIGKILL
+
+        async def wait(self) -> int:
+            await asyncio.Event().wait()
+            return t.cast("int", self.returncode)
+
+    process = _FakeProc()
+
+    async def _fake_exec(*_args: object, **_kwargs: object) -> _FakeProc:
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+    monkeypatch.setattr(asyncio_engine, "_TERMINATE_TIMEOUT", 0.01, raising=False)
+    monkeypatch.setattr(asyncio_engine, "_KILL_TIMEOUT", 0.01, raising=False)
+
+    async def _check() -> None:
+        engine = AsyncSubprocessEngine(tmux_bin="tmux")
+        task = asyncio.create_task(
+            engine.run(CommandRequest.from_args("display-message", "-p", "x")),
+        )
+        await process.communicating.wait()
+        task.cancel()
+        await process.terminated.wait()
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=0.25)
+
+        assert process.signals == ["terminate", "kill"]
+        assert process.communication_finished.is_set()
+        assert asyncio.all_tasks() == {asyncio.current_task()}
+
+    asyncio.run(_check())
+
+
+def test_async_cancellation_reaps_real_sigterm_ignoring_child(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bounded escalation reaps a real child and its pipe-reader task."""
+    import libtmux.experimental.engines.asyncio as asyncio_engine
+    from libtmux.experimental.engines.base import CommandRequest
+
+    monkeypatch.setattr(asyncio_engine, "_TERMINATE_TIMEOUT", 0.05, raising=False)
+    monkeypatch.setattr(asyncio_engine, "_KILL_TIMEOUT", 0.05, raising=False)
+    tmux_bin = tmp_path / "tmux-blocking"
+    pid_file = tmp_path / "child.pid"
+    tmux_bin.write_text(
+        f"""#!{sys.executable}
+import os
+import pathlib
+import signal
+import sys
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+pathlib.Path(sys.argv[-1]).write_text(str(os.getpid()), encoding="utf-8")
+signal.pause()
+""",
+        encoding="utf-8",
+    )
+    tmux_bin.chmod(0o755)
+
+    async def _check() -> None:
+        child_pid: int | None = None
+        task = asyncio.create_task(
+            AsyncSubprocessEngine(tmux_bin=tmux_bin).run(
+                CommandRequest.from_args("display-message", pid_file),
+            ),
+        )
+        try:
+            for _ in range(100):
+                if pid_file.exists():
+                    break
+                await asyncio.sleep(0.01)
+            assert pid_file.exists()
+            child_pid = int(pid_file.read_text(encoding="utf-8"))
+
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            with pytest.raises(ProcessLookupError):
+                os.kill(child_pid, 0)
+            assert asyncio.all_tasks() == {asyncio.current_task()}
+        finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            if child_pid is not None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(child_pid, signal.SIGKILL)
+
+    asyncio.run(_check())
+
+
+def test_async_cancellation_drains_a_killed_childs_full_pipe(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation keeps pipe readers alive through TERM, KILL, and EOF."""
+    import libtmux.experimental.engines.asyncio as asyncio_engine
+    from libtmux.experimental.engines.base import CommandRequest
+
+    monkeypatch.setattr(asyncio_engine, "_TERMINATE_TIMEOUT", 0.05, raising=False)
+    monkeypatch.setattr(asyncio_engine, "_KILL_TIMEOUT", 0.05, raising=False)
+    tmux_bin = tmp_path / "tmux-full-pipe"
+    pid_file = tmp_path / "child.pid"
+    tmux_bin.write_text(
+        f"""#!{sys.executable}
+import os
+import pathlib
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+pathlib.Path(sys.argv[-1]).write_text(str(os.getpid()), encoding="utf-8")
+chunk = b"x" * 65536
+while True:
+    os.write(sys.stdout.fileno(), chunk)
+    time.sleep(0.001)
+""",
+        encoding="utf-8",
+    )
+    tmux_bin.chmod(0o755)
+    real_exec = asyncio.create_subprocess_exec
+    processes: list[asyncio.subprocess.Process] = []
+
+    async def _tracked_exec(
+        *args: object,
+        **kwargs: object,
+    ) -> asyncio.subprocess.Process:
+        process = await real_exec(*args, **kwargs)  # type: ignore[arg-type]
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _tracked_exec)
+
+    async def _check() -> None:
+        loop = asyncio.get_running_loop()
+        diagnostics: list[dict[str, t.Any]] = []
+        loop.set_debug(True)
+        loop.set_exception_handler(lambda _loop, context: diagnostics.append(context))
+        task = asyncio.create_task(
+            AsyncSubprocessEngine(tmux_bin=tmux_bin).run(
+                CommandRequest.from_args("display-message", pid_file),
+            ),
+        )
+        for _ in range(100):
+            if pid_file.exists():
+                break
+            await asyncio.sleep(0.01)
+        assert pid_file.exists()
+        await asyncio.sleep(0.05)
+
+        started = loop.time()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert loop.time() - started < 0.5
+
+        process = processes[0]
+        assert process.returncode == -signal.SIGKILL
+        transport = t.cast("t.Any", process)._transport
+        stdout_transport = t.cast("t.Any", process.stdout)._transport
+        assert transport.is_closing()
+        assert stdout_transport.is_closing()
+        assert asyncio.all_tasks() == {asyncio.current_task()}
+        await asyncio.sleep(0)
+        assert diagnostics == []
+
+    asyncio.run(_check())
+
+
+@pytest.mark.parametrize("reported", ("3.4a", "next-3.8", "master"))
+def test_async_version_probe_matches_sync_and_is_cached(
+    reported: str,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Native async version I/O matches sync normalization and probes once."""
+    tmux_bin = tmp_path / "tmux-version"
+    tmux_bin.write_text(
+        f"#!{sys.executable}\nprint('tmux {reported}')\n",
+        encoding="utf-8",
+    )
+    tmux_bin.chmod(0o755)
+    sync_version = SubprocessEngine(tmux_bin=tmux_bin).tmux_version()
+
+    async def _probe_twice() -> tuple[str | None, str | None]:
+        engine = AsyncSubprocessEngine(tmux_bin=tmux_bin)
+        first = await engine.atmux_version()
+        tmux_bin.unlink()
+        return first, await engine.atmux_version()
+
+    first, second = asyncio.run(_probe_twice())
+    assert first == second == sync_version
+    assert first is not None
 
 
 def test_async_subprocess_preserves_global_option_semicolon(

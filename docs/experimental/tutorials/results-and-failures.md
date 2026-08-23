@@ -108,15 +108,14 @@ result for diagnosis instead of constructing an object with an empty target.
 ('new_session', ('self',), True)
 ```
 
-## Distinguish failed and skipped plan steps
+## Continue after a failed batch request
 
-A folding planner dispatches adjacent chainable operations as one tmux command
-group. If the first command fails, tmux does not run the remainder; the result
-attribution marks that remainder `skipped`.
+A batching planner keeps every operation as a distinct request and result. A
+failed request therefore does not prevent the next request from running.
 
 ```python
 >>> from libtmux.experimental.engines import SubprocessEngine
->>> from libtmux.experimental.ops import FoldingPlanner, LazyPlan, RenameWindow
+>>> from libtmux.experimental.ops import BatchingPlanner, LazyPlan, RenameWindow
 >>> from libtmux.experimental.ops._types import WindowId
 >>> assert window.window_id is not None
 >>> plan = LazyPlan()
@@ -124,15 +123,21 @@ attribution marks that remainder `skipped`.
 ...     RenameWindow(target=WindowId("@999999999"), name="unreachable")
 ... )
 >>> _ = plan.add(
-...     RenameWindow(target=WindowId(window.window_id), name="not-applied")
+...     RenameWindow(target=WindowId(window.window_id), name="applied")
 ... )
 >>> outcome = plan.execute(
 ...     SubprocessEngine.for_server(server),
-...     planner=FoldingPlanner(),
+...     planner=BatchingPlanner(),
 ... )
 >>> [result.status for result in outcome.results]
-['failed', 'skipped']
+['failed', 'complete']
+>>> _ = window.refresh()
+>>> window.window_name
+'applied'
 ```
 
-With the default sequential planner, each step is a separate dispatch, so one
-failed result does not by itself imply that the next operation was skipped.
+Subprocess engines execute the requests in order; persistent control engines
+may pipeline them. Both transports preserve the same per-request result model.
+A raw request containing a typed command separator is different: tmux treats it
+as one fail-stop command group, so subprocess cannot attribute its error to an
+individual member.

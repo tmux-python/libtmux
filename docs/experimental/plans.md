@@ -44,23 +44,24 @@ True
 ## Choose a planner
 
 A {class}`~libtmux.experimental.ops.planner.Planner` turns a plan into
-dispatches:
+ordered execution steps:
 
 - {class}`~libtmux.experimental.ops.planner.SequentialPlanner` sends one
-  dispatch per operation.
-- {class}`~libtmux.experimental.ops.planner.FoldingPlanner` combines adjacent
-  chainable operations.
-- {class}`~libtmux.experimental.ops.planner.MarkedPlanner` folds creation and
-  follow-up work by using tmux's `{marked}` register.
+  request per step.
+- {class}`~libtmux.experimental.ops.planner.BatchingPlanner` combines adjacent
+  ready-to-render primitive operations while preserving one request and result
+  per operation.
 
-All planners preserve per-operation results. They differ only in dispatch
-shape. The callback in this live example records the dispatches: two chainable
-option writes fold, while the output-bearing read stays separate.
+All planners preserve per-operation results. They differ only in step shape;
+the engine decides whether a batch is a control-mode pipeline or a series of
+subprocess calls. The callback in this live example records one step containing
+two option writes and an output-bearing read. Each result retains its own
+stdout.
 
 ```python
 >>> from libtmux.experimental.engines import SubprocessEngine
 >>> from libtmux.experimental.ops import (
-...     FoldingPlanner,
+...     BatchingPlanner,
 ...     LazyPlan,
 ...     SessionId,
 ...     SetOption,
@@ -79,11 +80,11 @@ option writes fold, while the output-bearing read stays separate.
 >>> steps = []
 >>> outcome = operation_plan.execute(
 ...     SubprocessEngine.for_server(server),
-...     planner=FoldingPlanner(),
+...     planner=BatchingPlanner(),
 ...     on_step=lambda report: steps.append(report.step.indices),
 ... ).raise_for_status()
 >>> steps
-[(0, 1), (2,)]
+[(0, 1, 2)]
 >>> type(outcome.results[2]).__name__
 'ShowOptionsResult'
 >>> (
@@ -120,9 +121,9 @@ True
 Execution records the handle's concrete pane identifier in
 {attr}`~libtmux.experimental.ops.plan.PlanResult.bindings`.
 
-See {doc}`tutorials/async-control-plans` to compose chainable operations, inspect
-their compiled tmux sequence, and execute the plan over one persistent async
-control-mode client.
+See {doc}`tutorials/async-control-plans` to compose ordered operations, inspect
+their planner steps, and execute them over one persistent async control-mode
+client.
 
 ## API reference
 
@@ -157,10 +158,7 @@ control-mode client.
 .. autoclass:: libtmux.experimental.ops.planner.SequentialPlanner
    :members:
 
-.. autoclass:: libtmux.experimental.ops.planner.FoldingPlanner
-   :members:
-
-.. autoclass:: libtmux.experimental.ops.planner.MarkedPlanner
+.. autoclass:: libtmux.experimental.ops.planner.BatchingPlanner
    :members:
 
 .. autoclass:: libtmux.experimental.ops.planner.BoundedPlanner

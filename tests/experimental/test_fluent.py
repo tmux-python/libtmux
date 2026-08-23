@@ -60,7 +60,7 @@ def test_builder_records_ops(case: _BuildCase) -> None:
 
 @pytest.mark.parametrize("case", _BUILD_CASES, ids=[c.test_id for c in _BUILD_CASES])
 def test_builder_runs_offline(case: _BuildCase) -> None:
-    """The build resolves forward refs and folds over the in-memory engine."""
+    """The build resolves forward refs and runs over the in-memory engine."""
     p = plan()
     case.build(p)
     assert p.run(MockEngine()).ok
@@ -130,8 +130,8 @@ def test_host_step_recorded_after_last_op(case: _HostCase) -> None:
     assert p._host_after[0][0].kind == case.kind
 
 
-def test_host_boundary_prevents_fold_across_it() -> None:
-    """No dispatch step may span a recorded host boundary (a true blocker)."""
+def test_host_boundary_prevents_batch_across_it() -> None:
+    """No planner step may span a recorded host boundary."""
     p = plan()
     pane = p.new_session("dev").window().pane()
     pane.do(lambda c: c.send_keys("a"))  # op 1
@@ -140,7 +140,7 @@ def test_host_boundary_prevents_fold_across_it() -> None:
 
     steps = p._planner(None).plan(p.plan.operations)
     spanning = [s for s in steps if min(s.indices) <= 1 < max(s.indices)]
-    assert not spanning  # nothing folds across the boundary at index 1
+    assert not spanning  # Nothing batches across the boundary at index 1.
 
 
 def test_sleep_runs_offline() -> None:

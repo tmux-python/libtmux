@@ -119,6 +119,37 @@ def test_imsg_parses_global_options_before_encoding_command_argv() -> None:
     assert parsed.command_argv == ("display-message", "literal\\;")
 
 
+def test_imsg_does_not_reparse_command_options_after_end_marker() -> None:
+    """The explicit client boundary keeps command-region suffixes protected."""
+    request = CommandRequest.from_args("--", "-L", "value;", "kill-server")
+
+    parsed = ImsgEngine()._parse_args(request.args)
+
+    assert parsed.global_args == ("--",)
+    assert parsed.command_argv == ("-L", "value\\;", "kill-server")
+
+
+@pytest.mark.parametrize(
+    ("global_arg", "attribute", "expected"),
+    (
+        ("-uLnamed", "socket_name", "named"),
+        ("-2S/tmp/tmux.sock", "socket_path", "/tmp/tmux.sock"),
+        ("-qf/tmp/tmux.conf", "config_file", "/tmp/tmux.conf"),
+    ),
+)
+def test_imsg_parses_clustered_client_option_values(
+    global_arg: str,
+    attribute: str,
+    expected: str,
+) -> None:
+    """Legal getopt clusters retain their server and config constraints."""
+    request = CommandRequest.from_args(global_arg, "list-sessions")
+
+    parsed = ImsgEngine()._parse_args(request.args)
+
+    assert getattr(parsed, attribute) == expected
+
+
 class IdentifyFrameCase(t.NamedTuple):
     """One expected identify-burst frame count."""
 
