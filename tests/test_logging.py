@@ -27,13 +27,15 @@ def _capture_info(
 ) -> tuple[t.Any, t.Any]:
     """Run one action and return its single matching lifecycle record."""
     caplog.clear()
-    with caplog.at_level(logging.INFO, logger=logger_name):
+    with caplog.at_level(logging.DEBUG, logger=logger_name):
         result = action()
 
     records = [
         record
         for record in caplog.records
-        if record.levelno == logging.INFO and record.getMessage() == message
+        if record.name == logger_name
+        and record.levelno == logging.INFO
+        and record.getMessage() == message
     ]
     assert len(records) == 1
     return result, t.cast(t.Any, records[0])
@@ -155,6 +157,15 @@ def test_lifecycle_info_logging(
         "session created",
         lambda: server.new_session(session_name=session_name),
     )
+    session_creating = t.cast(
+        t.Any,
+        next(
+            record
+            for record in caplog.records
+            if record.levelno == logging.DEBUG
+            and record.getMessage() == "creating session"
+        ),
+    )
     _, session_renamed = _capture_info(
         caplog,
         "libtmux.session",
@@ -206,6 +217,13 @@ def test_lifecycle_info_logging(
         "session killed",
         lambda: server.kill_session(doomed_name),
     )
+    replacement, existing_session_killed = _capture_info(
+        caplog,
+        "libtmux.server",
+        "existing session killed",
+        lambda: server.new_session(session_name=renamed_session, kill_session=True),
+    )
+    assert replacement.session_name == renamed_session
 
     records = [
         session_created,
@@ -216,6 +234,7 @@ def test_lifecycle_info_logging(
         pane_killed,
         window_killed,
         session_killed,
+        existing_session_killed,
     ]
     assert [
         (record.name, record.getMessage(), record.tmux_subcommand) for record in records
@@ -228,6 +247,7 @@ def test_lifecycle_info_logging(
         ("libtmux.pane", "pane killed", "kill-pane"),
         ("libtmux.session", "window killed", "kill-window"),
         ("libtmux.server", "session killed", "kill-session"),
+        ("libtmux.server", "existing session killed", "kill-session"),
     ]
     for record in records:
         assert record.tmux_socket == server.socket_name
@@ -243,6 +263,12 @@ def test_lifecycle_info_logging(
             assert value is None or isinstance(value, str)
 
     assert session_created.tmux_session == session_name
+    assert (
+        session_creating.name,
+        session_creating.tmux_subcommand,
+        session_creating.tmux_socket,
+        session_creating.tmux_session,
+    ) == ("libtmux.server", "new-session", server.socket_name, session_name)
     assert session_renamed.tmux_session == renamed_session
     assert window_created.tmux_window == window_name
     assert window_renamed.tmux_window == renamed_window
@@ -250,17 +276,18 @@ def test_lifecycle_info_logging(
     assert pane_killed.tmux_pane == split_pane.pane_id
     assert window_killed.tmux_target == window.window_id
     assert session_killed.tmux_target == doomed.session_name
+    assert existing_session_killed.tmux_session == renamed_session
     assert (
         object_extra("kill-session", target="safe\u2028ERROR forged")["tmux_target"]
         == "'safe\\u2028ERROR forged'"
     )
 
 
-def test_all_except_lifecycle_logging(
+def test_direct_kill_lifecycle_logging(
     server: Server,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """The three all-except branches identify the object they preserve."""
+    """Direct kill branches identify the affected or preserved object."""
     from libtmux.test.random import namer
 
     workspace = server.new_session(session_name=f"log_workspace_{next(namer)}")
@@ -272,7 +299,6 @@ def test_all_except_lifecycle_logging(
         "other windows killed",
         lambda: window.kill(all_except=True),
     )
-
     window.resize(height=100, width=100)
     pane = window.split()
     window.split()
@@ -281,6 +307,13 @@ def test_all_except_lifecycle_logging(
         "libtmux.pane",
         "other panes killed",
         lambda: pane.kill(all_except=True),
+    )
+    workspace.new_window(window_name=f"log_spare_{next(namer)}")
+    _, window_killed = _capture_info(
+        caplog,
+        "libtmux.window",
+        "window killed",
+        window.kill,
     )
 
     survivor = server.new_session(session_name=f"log_survivor_{next(namer)}")
@@ -291,22 +324,31 @@ def test_all_except_lifecycle_logging(
         "other sessions killed",
         lambda: survivor.kill(all_except=True),
     )
+    server.new_session(session_name=f"log_spare_{next(namer)}")
+    _, session_killed = _capture_info(
+        caplog,
+        "libtmux.session",
+        "session killed",
+        survivor.kill,
+    )
 
-    assert (
-        windows_killed.tmux_subcommand,
-        windows_killed.tmux_window,
-        windows_killed.tmux_target,
-    ) == ("kill-window", window.window_name, window.window_id)
+    for record in (windows_killed, window_killed):
+        assert (
+            record.tmux_subcommand,
+            record.tmux_window,
+            record.tmux_target,
+        ) == ("kill-window", window.window_name, window.window_id)
     assert (
         panes_killed.tmux_subcommand,
         panes_killed.tmux_pane,
         panes_killed.tmux_target,
     ) == ("kill-pane", pane.pane_id, pane.pane_id)
-    assert (
-        sessions_killed.tmux_subcommand,
-        sessions_killed.tmux_session,
-        sessions_killed.tmux_target,
-    ) == ("kill-session", survivor.session_name, survivor.session_id)
+    for record in (sessions_killed, session_killed):
+        assert (
+            record.tmux_subcommand,
+            record.tmux_session,
+            record.tmux_target,
+        ) == ("kill-session", survivor.session_name, survivor.session_id)
 
 
 def test_server_kill_info_logging(caplog: pytest.LogCaptureFixture) -> None:
@@ -575,28 +617,37 @@ def test_is_alive_unusable_binary_stays_quiet(
     ] == []
 
 
+@pytest.mark.parametrize(
+    ("option_key", "bad_values"),
+    [
+        ("terminal-features", tuple(range(25))),
+        ("command-alias", ("split-pane", "server-info", "choose-tree")),
+    ],
+)
 def test_options_warning_logging_schema(
     caplog: pytest.LogCaptureFixture,
+    option_key: str,
+    bad_values: tuple[str | int, ...],
 ) -> None:
     """Malformed values produce one aggregate warning without traceback data."""
     from libtmux._internal.sparse_array import SparseArray
     from libtmux.options import explode_complex
 
-    bad_features: SparseArray[str | int | bool | None] = SparseArray()
-    for index in range(25):
-        bad_features[index] = index
+    bad_options: SparseArray[str | int] = SparseArray()
+    for index, bad_value in enumerate(bad_values):
+        bad_options[index] = bad_value
 
     with caplog.at_level(logging.WARNING, logger="libtmux.options"):
-        explode_complex({"terminal-features": bad_features})  # type: ignore[dict-item]
+        explode_complex({option_key: bad_options})  # type: ignore[dict-item]
 
     records = [
         record
         for record in caplog.records
-        if getattr(record, "tmux_option_key", None) == "terminal-features"
+        if getattr(record, "tmux_option_key", None) == option_key
     ]
     assert len(records) == 1
     record = t.cast(t.Any, records[0])
-    assert record.tmux_option_skipped == 25
+    assert record.tmux_option_skipped == len(bad_values)
     assert record.exc_info is None
 
 
