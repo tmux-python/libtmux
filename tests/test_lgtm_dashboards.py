@@ -277,7 +277,11 @@ def test_telemetry_doctests_execute() -> None:
     """
     import doctest
 
-    pytest.importorskip("opentelemetry", reason="otel dependency group not installed")
+    # The namespace package arrives transitively; the SDK is what this module
+    # actually imports, and it only ships in the optional group.
+    pytest.importorskip(
+        "opentelemetry.sdk", reason="otel dependency group not installed"
+    )
 
     spec = importlib.util.spec_from_file_location("telemetry", _LGTM / "telemetry.py")
     assert spec is not None
@@ -463,7 +467,10 @@ def test_a_failing_load_setup_is_attempted_once(
     input into thousands of servers and enough threads to saturate the machine.
     It did exactly that once, which is why this is pinned.
     """
-    pytest.importorskip("opentelemetry", reason="otel dependency group not installed")
+    pytest.importorskip(
+        "opentelemetry.sdk", reason="otel dependency group not installed"
+    )
+    pytest.importorskip("rampa", reason="otel dependency group not installed")
 
     monkeypatch.syspath_prepend(str(_LGTM))
     spec = importlib.util.spec_from_file_location("load_tmux", _LGTM / "load_tmux.py")
