@@ -18,7 +18,7 @@ import typing as t
 
 import pytest
 
-_ROOT = pathlib.Path(__file__).parents[1]
+_ROOT = pathlib.Path(__file__).parents[3]
 _LGTM = _ROOT / "scripts" / "lgtm"
 _DASHBOARDS = _LGTM / "dashboards"
 

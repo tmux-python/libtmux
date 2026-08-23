@@ -210,7 +210,7 @@ changing the generator:
 $ just otel-dashboards
 ```
 
-`up.sh` regenerates on every start, and `tests/test_lgtm_dashboards.py` fails if
+`up.sh` regenerates on every start, and `tests/scripts/lgtm/test_dashboards.py` fails if
 the committed JSON differs from what the generator produces, so the two cannot
 diverge quietly. Editing a board in the Grafana UI is fine for exploring; move
 the change into the generator to keep it.
