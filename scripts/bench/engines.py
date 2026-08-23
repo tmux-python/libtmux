@@ -4,7 +4,7 @@
 # dependencies = ["rich>=13", "typer>=0.12", "libtmux"]
 #
 # [tool.uv.sources]
-# libtmux = { path = "..", editable = true }
+# libtmux = { path = "../..", editable = true }
 # ///
 
 # ``typer`` is a PEP 723 inline dependency, resolved only inside ``uv run``'s
@@ -45,13 +45,13 @@ layer x mode renders identical tmux argv to it, so the grid doubles as an
 ops-language contract test. ``concurrency`` measures async's real lever -- K
 independent builds sync-serial vs ``asyncio.gather`` over one connection.
 
-Run:  uv run bench_engines.py run
-      uv run bench_engines.py run --engines control_mode,pipelined --wait
-      uv run bench_engines.py profile --engine control_mode --shape 8x4
-      uv run bench_engines.py cell control_mode 8x4     # one build (for hyperfine)
-      uv run bench_engines.py matrix --shapes 1x4,3x3,5x4
-      uv run bench_engines.py concurrency --transport control_mode --k 4
-      uv run bench_engines.py contract              # parity only, for CI
+Run:  uv run scripts/bench/engines.py run
+      uv run scripts/bench/engines.py run --engines control_mode,pipelined --wait
+      uv run scripts/bench/engines.py profile --engine control_mode --shape 8x4
+      uv run scripts/bench/engines.py cell control_mode 8x4   # one build, for hyperfine
+      uv run scripts/bench/engines.py matrix --shapes 1x4,3x3,5x4
+      uv run scripts/bench/engines.py concurrency --transport control_mode --k 4
+      uv run scripts/bench/engines.py contract              # parity only, for CI
 """
 
 from __future__ import annotations
