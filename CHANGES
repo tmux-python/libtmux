@@ -90,6 +90,26 @@ dispatch to the ambient tmux server. Engines that name a server keep it. A
 custom `tmux_bin` selects a program rather than a server, so an engine carrying
 only one adopts the server's flags and keeps its own binary.
 
+#### Observing what an engine runs (#739)
+
+{class}`~libtmux.engines.instrumentation.InstrumentedEngine` wraps any engine
+and implements the same protocol, so counting or tracing tmux traffic no longer
+means patching {mod}`subprocess` from outside — an approach that under-reports
+an engine which never forks. Because observation is composed rather than
+installed, a program that does not ask for it constructs nothing and runs the
+code it ran before.
+
+{class}`~libtmux.engines.instrumentation.Sink` is the observer surface: a
+before hook, an after hook, and an error hook, matching what OpenTelemetry and
+Sentry already attach to on SQLAlchemy, so an exporter written for one reads
+naturally here. {class}`~libtmux.engines.instrumentation.CountingSink` ships as
+the worked example, reporting requests, tmux commands, and the commands that
+rode inside another request's argv.
+
+{func}`~libtmux.engines.base.command_count` exposes that last distinction on its
+own: a command group is one dispatch carrying several tmux commands, and a
+literal `";"` a caller meant as data is not a boundary.
+
 {class}`~libtmux.engines.connection.ServerConnection` is now the single place
 the tmux binary and the `-L`/`-S`/`-f`/`-2`/`-8` flags are computed; three
 separate copies previously disagreed about which flags to emit. It is derived
