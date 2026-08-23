@@ -55,3 +55,14 @@ single place either is computed.
 .. automodule:: libtmux.engines.subprocess
    :members:
 ```
+
+## Observing an engine
+
+{class}`~libtmux.engines.instrumentation.InstrumentedEngine` wraps an engine and
+satisfies the same protocol, so observation is a substitution rather than a
+feature the engine carries. A program that wraps nothing constructs nothing.
+
+```{eval-rst}
+.. automodule:: libtmux.engines.instrumentation
+   :members:
+```
