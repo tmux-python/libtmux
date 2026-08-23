@@ -155,10 +155,8 @@ parallel = true
 omit = [
   "*/_compat.py",
   "docs/conf.py",
-  "scripts/*.py",
-  "scripts/*/*.py",
-  "tests/test_*.py",
-  "tests/*/test_*.py",
+  "scripts/**/*.py",
+  "tests/**/test_*.py",
 ]
 
 [tool.coverage.report]
