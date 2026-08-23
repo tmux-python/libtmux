@@ -67,8 +67,16 @@ def new_server() -> Server:
     an obvious teardown bug. Control mode never hit it -- its ``tmux -C``
     phantom session already pinned the server -- which is exactly why only the
     subprocess cells were affected.
+
+    The configuration is excluded too. A unique socket isolates this server
+    from other servers; it says nothing about ``~/.tmux.conf``, which tmux
+    reads at server start and which would otherwise fold the machine's
+    history limits, hooks, and shell choice into every measurement.
     """
-    srv = Server(socket_path=str(SOCK_DIR / f"{uuid.uuid4().hex[:8]}.sock"))
+    srv = Server(
+        socket_path=str(SOCK_DIR / f"{uuid.uuid4().hex[:8]}.sock"),
+        config_file=os.devnull,
+    )
     SERVERS.append(srv)
     # The keepalive has to come first: `start-server` alone leaves a server with
     # zero sessions, which exits immediately under the default, so there is no
