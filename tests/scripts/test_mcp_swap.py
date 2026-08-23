@@ -22,7 +22,7 @@ import typing as t
 
 import pytest
 
-_REPO = pathlib.Path(__file__).resolve().parent.parent
+_REPO = pathlib.Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO / "scripts" / "mcp_swap.py"
 
 
