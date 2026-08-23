@@ -14,7 +14,9 @@ import pytest
 @pytest.fixture()
 def stress_module() -> types.ModuleType:
     """Load the standalone stress script without installing it."""
-    script = pathlib.Path(__file__).parents[1] / "scripts" / "orchestration_stress.py"
+    script = (
+        pathlib.Path(__file__).parents[1] / "scripts" / "orchestration" / "stress.py"
+    )
     spec = importlib.util.spec_from_file_location("orchestration_stress", script)
     assert spec is not None
     assert spec.loader is not None

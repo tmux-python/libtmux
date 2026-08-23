@@ -1,7 +1,7 @@
 # Orchestration benchmark: scale ceiling and open defects
 
 Working notes for the active orchestration benchmark
-(`scripts/bench_orchestration.py`). These are engineering notes, not user
+(`scripts/orchestration/benchmark.py`). These are engineering notes, not user
 documentation; the user-facing page is
 `docs/experimental/orchestration-benchmark.md`.
 
@@ -187,8 +187,8 @@ like the promise was already kept.
 
 ## How to run this safely
 
-Use `scripts/orchestration_matrix.py`. It measures nothing itself; it supervises
-`bench_orchestration.py` so a comparison can be started without the hazards that
+Use `scripts/orchestration/matrix.py`. It measures nothing itself; it supervises
+`benchmark.py` so a comparison can be started without the hazards that
 made every ad-hoc invocation here unreliable. It holds an exclusive lock so two
 scale runs cannot overlap, clears `TMUX` and `TMUX_PANE`, keeps scratch short
 enough that a socket path stays under the kernel's 107-byte limit, writes
