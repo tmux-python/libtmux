@@ -129,3 +129,32 @@ def test_reap_leaves_a_live_scratch_dir_alone(
         assert primitives.SOCK_DIR.is_dir()
     finally:
         server.kill()
+
+
+def test_new_server_ignores_the_calling_user_s_tmux_config(
+    primitives: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A benchmark that reads ``~/.tmux.conf`` measures that file, not libtmux.
+
+    tmux loads the invoking user's configuration when a server starts, so
+    without an explicit one the numbers move with whatever the machine happens
+    to set -- history limits, hooks, a slow ``default-shell``. A unique socket
+    isolates the server from other servers; it does nothing about the
+    configuration, and this module promises isolation rather than a fresh
+    socket.
+    """
+    (tmp_path / ".tmux.conf").write_text(
+        "set-option -g history-limit 4242\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+
+    server = primitives.new_server()
+    try:
+        limit = server.cmd("show-options", "-gv", "history-limit").stdout
+
+        assert limit != ["4242"]
+    finally:
+        server.kill()
