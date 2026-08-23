@@ -77,6 +77,7 @@ def test_lifecycle_info_logging(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Lifecycle call sites emit the shared string-valued context schema."""
+    from libtmux._internal.log_context import object_extra
     from libtmux.test.random import namer
 
     session_name = f"log_session_{next(namer)}"
@@ -128,8 +129,8 @@ def test_lifecycle_info_logging(
         "window killed",
         lambda: session.kill_window(window.window_id),
     )
-    doomed_name = f"log_session_{next(namer)}\u2028ERROR forged"
-    _capture_info(
+    doomed_name = f"log_session_{next(namer)}"
+    doomed, _ = _capture_info(
         caplog,
         "libtmux.server",
         "session created",
@@ -184,7 +185,11 @@ def test_lifecycle_info_logging(
     assert pane_created.tmux_pane == split_pane.pane_id
     assert pane_killed.tmux_pane == split_pane.pane_id
     assert window_killed.tmux_target == window.window_id
-    assert session_killed.tmux_target == ascii(doomed_name)
+    assert session_killed.tmux_target == doomed.session_name
+    assert (
+        object_extra("kill-session", target="safe\u2028ERROR forged")["tmux_target"]
+        == "'safe\\u2028ERROR forged'"
+    )
 
 
 def test_all_except_lifecycle_logging(
