@@ -50,18 +50,28 @@ from libtmux.engines.base import (
     is_command_separator,
 )
 from libtmux.engines.connection import ServerConnection
+from libtmux.engines.instrumentation import (
+    CountingSink,
+    InstrumentedEngine,
+    Sink,
+    instrument,
+)
 from libtmux.engines.subprocess import SubprocessEngine
 
 __all__ = (
     "CommandRequest",
     "CommandResult",
     "CommandSeparator",
+    "CountingSink",
+    "InstrumentedEngine",
     "ServerConnection",
+    "Sink",
     "SubprocessEngine",
     "SupportsCommandLine",
     "SupportsConnection",
     "SupportsTmuxVersion",
     "TmuxEngine",
     "command_count",
+    "instrument",
     "is_command_separator",
 )
