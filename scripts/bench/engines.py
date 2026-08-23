@@ -122,9 +122,20 @@ STAT_LABELS = ("n", "min", "avg", "median", "p90", "p95", "p99", "max")
 # --------------------------------------------------------------------------- #
 # Hermetic isolation                                                          #
 # --------------------------------------------------------------------------- #
+#: Names the process owning a scratch dir. A concurrent run is identified by its
+#: pid, not by whether a tmux happens to be running in its dir: the dir exists
+#: from import, its first server only from the first `new_server`. Same filename
+#: `scripts/bench/primitives.py` writes, so the two reapers spare each other.
+_OWNER_PID = "owner.pid"
+
+#: How long a scratch dir naming no owner is left alone -- the instant between
+#: creating a dir and claiming it, and dirs from before the owner file existed.
+_ADOPTION_GRACE_SECONDS = 300.0
+
 _SOCK_DIR = pathlib.Path(
     tempfile.mkdtemp(prefix="ltbench-")
 )  # short: /tmp/ltbench-XXXX
+(_SOCK_DIR / _OWNER_PID).write_text(f"{os.getpid()}\n", encoding="utf-8")
 _SERVERS: list[Server] = []
 #: A session every bench server keeps for its whole life, so killing a cell's
 #: session never drops the server to zero and trips tmux's exit-empty teardown.
@@ -174,6 +185,21 @@ def _cleanup() -> None:
         shutil.rmtree(_SOCK_DIR, ignore_errors=True)
 
 
+def _owner_is_alive(path: pathlib.Path) -> bool | None:
+    """Say whether *path*'s owning process still exists, or None if unnamed."""
+    try:
+        pid = int((path / _OWNER_PID).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def _reap_stale_scratch() -> None:
     """Remove scratch dirs left behind by runs that died before their cleanup.
 
@@ -183,16 +209,25 @@ def _reap_stale_scratch() -> None:
     descriptors, and machine load is precisely what makes the server-teardown
     race fire, so an unreaped leak feeds the very failure it came from.
 
-    A dir with a live tmux is left alone: it may belong to a concurrent run, and
-    stealing another run's servers would be worse than leaking. That means hung
-    clients are only reclaimed once their server is gone, which is the
-    conservative trade.
+    A dir belonging to a live run is left alone. Liveness is the owning process
+    named in ``_OWNER_PID``, not whether a tmux is running there: a dir exists
+    from the moment its run starts, while its first server appears later, and a
+    reaper that asked only about tmux deleted concurrent runs during that
+    window. An unnamed owner is judged by age, then by the tmux probe, so every
+    unknown resolves toward keeping the dir.
     """
     reaped = 0
     for path in pathlib.Path(tempfile.gettempdir()).glob("ltbench-*"):
         if path == _SOCK_DIR or not path.is_dir():
             continue
         with contextlib.suppress(Exception):
+            owner = _owner_is_alive(path)
+            if owner:
+                continue
+            if owner is None and (
+                time.time() - path.stat().st_mtime < _ADOPTION_GRACE_SECONDS
+            ):
+                continue
             alive = subprocess.run(
                 ["pgrep", "-f", f"tmux .*-S{path}/"],
                 capture_output=True,
