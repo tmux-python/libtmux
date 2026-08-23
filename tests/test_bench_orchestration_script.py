@@ -3702,9 +3702,16 @@ def test_missing_socket_capability_escalates_retained_server_without_pathname(
     tmp_path: pathlib.Path,
 ) -> None:
     """Missing socket authority still permits TERM/KILL through the retained pidfd."""
-    private = tmp_path / "missing-socket-capability"
+    # AF_UNIX bounds a bound path at 107 bytes plus its NUL, and pytest has
+    # already spent most of that on the user name, the test name, and -- under
+    # xdist -- a per-worker segment. The directory name stays short so the
+    # budget survives a longer user name than the one you happen to run as.
+    private = tmp_path / "missing-cap"
     private.mkdir(mode=0o700)
     socket_path = private / "tmux.sock"
+    assert len(os.fsencode(socket_path)) <= 107, (
+        f"socket path is {len(os.fsencode(socket_path))} bytes: {socket_path}"
+    )
     node = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     node.bind(str(socket_path))
     child = subprocess.Popen(
