@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import os
 import pathlib
 import shutil
@@ -33,13 +34,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import rampa
 import telemetry
 
+from libtmux.engines.base import command_count
 from libtmux.experimental.engines import (
     AsyncControlModeEngine,
     AsyncSubprocessEngine,
     instrument,
 )
 from libtmux.experimental.engines.base import CommandRequest, CommandSeparator
-from libtmux.experimental.engines.control_mode import command_count
 from libtmux.server import Server
 
 # Transports this scenario can drive, and how to build each.
@@ -248,8 +249,9 @@ def _engine() -> t.Any:
                 spike=os.environ.get("LIBTMUX_SPIKE"),
             )
             _STATE["signals"] = signals
+            engine_factory = t.cast("t.Callable[[t.Any], t.Any]", factory)
             _STATE["engine"] = instrument(
-                factory(server),
+                engine_factory(server),
                 telemetry.OTelSink(
                     signals.tracer, signals.meter, LANE, signals.metric_labels
                 ),
@@ -284,8 +286,8 @@ async def steady(worker: rampa.Worker) -> None:
 @rampa.scenario(
     executor="ramping-arrival-rate",
     stages=[
-        rampa.Stage(duration="8s", target=200),
-        rampa.Stage(duration="8s", target=1200),
+        rampa.Stage(duration=datetime.timedelta(seconds=8), target=200),
+        rampa.Stage(duration=datetime.timedelta(seconds=8), target=1200),
     ],
     pre_allocated_vus=32,
     max_vus=256,

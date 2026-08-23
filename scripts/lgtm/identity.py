@@ -134,8 +134,10 @@ def vcs_attributes(root: pathlib.Path | None = None) -> dict[str, str]:
     # the label too, since that is how sibling checkouts are told apart.
     git_dir = _git(root, "rev-parse", "--git-dir")
     checkout = pathlib.Path(toplevel).name
-    linked = bool(git_dir) and (
-        pathlib.Path(git_dir[0]).resolve() != pathlib.Path(common_dir).resolve()
+    linked = (
+        git_dir is not None
+        and bool(git_dir)
+        and (pathlib.Path(git_dir[0]).resolve() != pathlib.Path(common_dir).resolve())
     )
     if linked or checkout != attributes["vcs.repository.name"]:
         attributes["libtmux.worktree"] = checkout

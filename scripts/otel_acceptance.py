@@ -99,14 +99,17 @@ def expand(expr: str) -> str:
     )
 
 
-def fetch(url: str, params: dict[str, str], *, timeout: float = 30.0) -> dict:
+def fetch(
+    url: str, params: dict[str, str], *, timeout: float = 30.0
+) -> dict[str, t.Any]:
     """GET *url* with *params* and decode the JSON body."""
     query = urllib.parse.urlencode(params)
     with urllib.request.urlopen(f"{url}?{query}", timeout=timeout) as response:
-        return json.loads(response.read().decode())
+        decoded: dict[str, t.Any] = json.loads(response.read().decode())
+        return decoded
 
 
-def _finite_series(rows: list[dict], *, ranged: bool) -> int:
+def _finite_series(rows: list[dict[str, t.Any]], *, ranged: bool) -> int:
     """Count series carrying at least one real number.
 
     ``histogram_quantile`` over empty buckets yields NaN rather than an empty
@@ -259,7 +262,9 @@ def unreachable(endpoints: Endpoints, timeout: float = 5.0) -> list[str]:
     return [name for name, url in probes if not answers(url)]
 
 
-def check_panel(panel: dict, board: str, endpoints: Endpoints) -> list[Result]:
+def check_panel(
+    panel: dict[str, t.Any], board: str, endpoints: Endpoints
+) -> list[Result]:
     """Verify every target on one panel."""
     results: list[Result] = []
     title = panel.get("title", "<untitled>")

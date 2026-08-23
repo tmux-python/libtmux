@@ -38,7 +38,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from libtmux.experimental.engines.control_mode import command_count
+from libtmux.engines.base import command_count
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import CommandRequest, CommandResult
