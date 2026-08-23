@@ -92,7 +92,7 @@ def _fetch_or_empty(
 def _log_swallowed_list_error(
     server: Server,
     list_cmd: str,
-    error: exc.LibTmuxException,
+    error: Exception,
 ) -> None:
     """Record a list failure at the boundary that converts it to empty."""
     stderr = str(error).splitlines()
@@ -339,6 +339,8 @@ class Server(
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``).
+        :class:`OSError`
+            When the operating system rejects the launch for another reason.
 
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
@@ -2473,7 +2475,7 @@ class Server(
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
-        except exc.LibTmuxException as error:
+        except (exc.LibTmuxException, OSError) as error:
             _log_swallowed_list_error(self, "list-sessions", error)
             return QueryList([])
         return QueryList(sessions)
@@ -2547,7 +2549,7 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
-        except exc.LibTmuxException as error:
+        except (exc.LibTmuxException, OSError) as error:
             _log_swallowed_list_error(self, "list-clients", error)
             return QueryList([])
         return QueryList(clients)

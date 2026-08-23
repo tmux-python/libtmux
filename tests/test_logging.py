@@ -482,19 +482,49 @@ def test_lenient_accessors_log_unusable_tmux_diagnostics(
         assert str(tmux_path) in diagnostic
 
 
-def test_unrelated_tmux_launch_failure_preserves_diagnostics() -> None:
-    """A launch resource failure is not mislabeled as a missing executable."""
+def test_tmux_cmd_unrelated_launch_failure_stays_os_error() -> None:
+    """A direct launch resource failure retains trunk's native exception."""
     from libtmux import exc
     from libtmux.common import tmux_cmd
 
-    with pytest.raises(exc.LibTmuxException) as exc_info:
+    with pytest.raises(OSError) as exc_info:
         tmux_cmd("set-buffer", "x" * os.sysconf("SC_ARG_MAX"))
 
     assert not isinstance(exc_info.value, exc.TmuxCommandNotFound)
-    cause = exc_info.value.__cause__
-    assert isinstance(cause, OSError)
-    assert cause.errno == errno.E2BIG
-    assert str(exc_info.value) == str(cause)
+    assert exc_info.value.errno == errno.E2BIG
+
+
+@pytest.mark.parametrize(
+    ("accessor", "list_cmd"),
+    [
+        ("sessions", "list-sessions"),
+        ("attached_sessions", "list-sessions"),
+        ("clients", "list-clients"),
+    ],
+)
+def test_lenient_accessors_log_unrelated_launch_failure(
+    accessor: str,
+    list_cmd: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Lenient list boundaries still swallow a raw launch resource error."""
+    from libtmux.server import Server
+
+    def raise_e2big(*args: object, **kwargs: object) -> None:
+        raise OSError(errno.E2BIG, os.strerror(errno.E2BIG), "/configured/tmux")
+
+    monkeypatch.setattr("libtmux.common.subprocess.Popen", raise_e2big)
+    server = Server(tmux_bin="/configured/tmux")
+    with caplog.at_level(logging.ERROR, logger="libtmux.server"):
+        assert list(getattr(server, accessor)) == []
+
+    records = [record for record in caplog.records if record.levelno == logging.ERROR]
+    assert len(records) == 1
+    record = t.cast(t.Any, records[0])
+    assert record.tmux_subcommand == list_cmd
+    assert record.tmux_stderr_len == 1
+    assert os.strerror(errno.E2BIG) in record.tmux_stderr[0]
 
 
 def test_raise_if_dead_unrelated_launch_failure_stays_os_error() -> None:

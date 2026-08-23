@@ -105,13 +105,15 @@ failures remain exception data, so callers decide whether and where to log
 them. Expected probes such as {meth}`Server.is_alive()
 <libtmux.Server.is_alive>` also stay quiet.
 
-Executable launch failures use {exc}`~libtmux.exc.TmuxCommandNotFound`.
-When the operating system attempted the launch, the exception retains its
-message and cause. A failed `PATH` lookup has a factual message without a
-synthetic cause.
+Missing, non-executable, and malformed tmux executables use
+{exc}`~libtmux.exc.TmuxCommandNotFound`. When the operating system attempted
+the launch, the exception retains its message and cause. A failed `PATH`
+lookup has a factual message without a synthetic cause. Other operating-system
+launch errors remain native exceptions at direct APIs.
 
-Three list-shaped accessors intentionally hide
-{exc}`~libtmux.exc.LibTmuxException`:
+Three list-shaped accessors intentionally hide tmux execution failures,
+including {exc}`~libtmux.exc.LibTmuxException` and operating-system launch
+errors:
 
 - {attr}`Server.sessions <libtmux.Server.sessions>`;
 - {attr}`Server.attached_sessions <libtmux.Server.attached_sessions>`;
