@@ -544,7 +544,10 @@ def render_matrix(root: pathlib.Path, *, baseline: str | None = None) -> str:
         return "\n".join(lines)
 
     counts = {
-        label: max((len(v) for v in t.cast("dict", cell["phases"]).values()), default=0)
+        label: max(
+            (len(v) for v in t.cast("dict[str, t.Any]", cell["phases"]).values()),
+            default=0,
+        )
         for label, cell in cells.items()
     }
     smallest = min(counts.values()) if counts else 0
@@ -584,7 +587,11 @@ def render_matrix(root: pathlib.Path, *, baseline: str | None = None) -> str:
         return "\n".join(lines)
 
     phase_names = sorted(
-        {name for cell in completed.values() for name in t.cast("dict", cell["phases"])}
+        {
+            name
+            for cell in completed.values()
+            for name in t.cast("dict[str, t.Any]", cell["phases"])
+        }
     )
     del baseline
 
@@ -607,7 +614,7 @@ def render_matrix(root: pathlib.Path, *, baseline: str | None = None) -> str:
         cells_row = []
         medians: dict[str, float] = {}
         for label in labels:
-            values = t.cast("dict", completed[label]["phases"]).get(name)
+            values = t.cast("dict[str, t.Any]", completed[label]["phases"]).get(name)
             if not values:
                 cells_row.append("n/a")
                 continue
@@ -625,10 +632,10 @@ def render_matrix(root: pathlib.Path, *, baseline: str | None = None) -> str:
                 # separate. Overlapping intervals mean the difference is
                 # inside this benchmark's noise, not a finding.
                 _, best_high = median_interval(
-                    t.cast("dict", completed[winner]["phases"])[name]
+                    t.cast("dict[str, t.Any]", completed[winner]["phases"])[name]
                 )
                 worst_low, _ = median_interval(
-                    t.cast("dict", completed[loser]["phases"])[name]
+                    t.cast("dict[str, t.Any]", completed[loser]["phases"])[name]
                 )
                 if worst_low > best_high:
                     spread = f"{medians[loser] / best:.1f}x"
@@ -650,7 +657,9 @@ def render_matrix(root: pathlib.Path, *, baseline: str | None = None) -> str:
         for name in phase_names:
             row = []
             for label in labels:
-                values = t.cast("dict", completed[label]["phases"]).get(name)
+                values = t.cast("dict[str, t.Any]", completed[label]["phases"]).get(
+                    name
+                )
                 row.append(
                     f"{_quantile(values, percentile):.1f} ms" if values else "n/a"
                 )
