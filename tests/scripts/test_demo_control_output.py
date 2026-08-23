@@ -33,7 +33,7 @@ def _run_demo(
     *args: str,
 ) -> tuple[subprocess.CompletedProcess[str], dict[str, t.Any]]:
     """Run the real CLI in an isolated temporary directory and read its report."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[2]
     output = tmp_path / f"report-{len(list(tmp_path.glob('report-*.json')))}.json"
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)

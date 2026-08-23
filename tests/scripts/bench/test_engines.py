@@ -13,7 +13,7 @@ import pytest
 
 def test_contract_scales_counts_across_sequential_sessions() -> None:
     """An SxWxP scenario counts every session without adding concurrency."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
 
@@ -42,7 +42,7 @@ def test_contract_scales_counts_across_sequential_sessions() -> None:
 @pytest.mark.parametrize("scenario", ["0x1x1", "1x0x1", "1x1x0", "wat", "1x1x1x1"])
 def test_contract_rejects_invalid_scenarios_without_a_traceback(scenario: str) -> None:
     """Invalid cardinality is a concise CLI usage error, not an internal crash."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
 
@@ -71,7 +71,7 @@ def test_matrix_executes_and_reports_a_multi_session_sample(
     tmp_path: pathlib.Path,
 ) -> None:
     """A live matrix sample builds S sessions serially and reports SxWxP totals."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     output = tmp_path / "matrix.json"
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
@@ -134,7 +134,7 @@ def test_matrix_executes_and_reports_a_multi_session_sample(
 
 def test_sync_matrix_warms_every_session_before_topology_verification() -> None:
     """A multi-session warmup validates only after building every session."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
 
@@ -142,7 +142,7 @@ def test_sync_matrix_warms_every_session_before_topology_verification() -> None:
         (
             "uv",
             "run",
-            "scripts/bench_engines.py",
+            "scripts/bench/engines.py",
             "matrix",
             "--shapes",
             "2x1x1",
@@ -171,7 +171,7 @@ def test_sync_matrix_warms_every_session_before_topology_verification() -> None:
 @pytest.mark.parametrize("mode", ["sync", "async"])
 def test_build_driver_rejects_a_failed_operation(mode: str) -> None:
     """A partial plan failure cannot be recorded as a successful timing sample."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
     source = textwrap.dedent(
@@ -243,7 +243,7 @@ def test_build_driver_rejects_a_failed_operation(mode: str) -> None:
 
 def test_live_topology_verifier_rejects_a_partial_build() -> None:
     """A command-successful but incomplete tmux hierarchy is not a valid sample."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
     source = textwrap.dedent(
@@ -274,7 +274,7 @@ def test_live_topology_verifier_rejects_a_partial_build() -> None:
 
 def test_benchmark_server_uses_an_empty_tmux_config() -> None:
     """A benchmark daemon cannot inherit geometry or options from user config."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
     source = textwrap.dedent(
@@ -310,7 +310,7 @@ def test_benchmark_server_uses_an_empty_tmux_config() -> None:
 )
 def test_matrix_rejects_unknown_axis_values(option: str, value: str) -> None:
     """A misspelled matrix axis cannot silently shrink the benchmark grid."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
 
@@ -344,7 +344,7 @@ def test_matrix_rejects_unknown_axis_values(option: str, value: str) -> None:
 
 def test_cleanup_failure_is_rejected() -> None:
     """A failed session cleanup cannot contaminate later timing samples."""
-    root = pathlib.Path(__file__).parents[1]
+    root = pathlib.Path(__file__).parents[3]
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
     source = textwrap.dedent(
