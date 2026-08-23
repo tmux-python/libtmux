@@ -3,9 +3,9 @@
 # Logging
 
 libtmux emits structured records through Python's {mod}`logging` module. It
-does not install handlers or choose a level. Configure the `libtmux` logger in
-your application; `INFO` reports object lifecycle events, while `DEBUG` adds
-tmux subprocess boundaries.
+does not install an output handler or choose a level. Configure the `libtmux`
+logger in your application; `INFO` reports object lifecycle events, while
+`DEBUG` adds tmux subprocess boundaries.
 
 Command records include the complete tmux command. Completion records also
 include bounded stdout and stderr snapshots. Applications choose which fields
@@ -192,13 +192,14 @@ payload fields on each record but writes only event names and bounded metadata:
 ...     "stdout_lines=%(tmux_stdout_len)s",
 ...     defaults={"tmux_subcommand": "-", "tmux_stdout_len": "-"},
 ... ))
+>>> package_logger = logging.getLogger("libtmux")
 >>> command_logger = logging.getLogger("libtmux.common")
 >>> previous_level = command_logger.level
 >>> command_logger.setLevel(logging.DEBUG)
->>> command_logger.addHandler(handler)
+>>> package_logger.addHandler(handler)
 >>> proc = session.server.cmd("display-message", "-p", "payload-marker")
 >>> _ = session.server.cmd("list-sessions")  # filtered from this handler
->>> command_logger.removeHandler(handler)
+>>> package_logger.removeHandler(handler)
 >>> command_logger.setLevel(previous_level)
 >>> handler.close()
 >>> "payload-marker" in proc.stdout
