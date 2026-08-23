@@ -46,6 +46,7 @@ from libtmux.engines.base import (
     SupportsConnection,
     SupportsTmuxVersion,
     TmuxEngine,
+    command_count,
     is_command_separator,
 )
 from libtmux.engines.connection import ServerConnection
@@ -61,5 +62,6 @@ __all__ = (
     "SupportsConnection",
     "SupportsTmuxVersion",
     "TmuxEngine",
+    "command_count",
     "is_command_separator",
 )
