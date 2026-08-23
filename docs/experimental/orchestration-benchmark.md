@@ -28,7 +28,7 @@ shape, a completed shape, and a host-resource cutoff.
 - JSON results containing raw samples and environment/resource metadata.
 - A Markdown summary generated from the JSON evidence after the large runs.
 
-The new scripts remain separate from `scripts/bench_engines.py`. That script
+The new scripts remain separate from `scripts/bench/engines.py`. That script
 measures repeated construction of short-lived topologies; this benchmark builds
 one persistent active topology and performs several distinct workloads on it.
 
