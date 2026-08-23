@@ -25,6 +25,8 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_UNUSABLE_TMUX_ERRNOS = frozenset({errno.EACCES, errno.ENOENT, errno.ENOEXEC})
+
 #: Minimum version of tmux required to run libtmux
 TMUX_MIN_VERSION = "3.2a"
 
@@ -35,6 +37,12 @@ SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
+
+
+def _raise_if_unusable_tmux(error: OSError) -> None:
+    """Translate an unavailable executable while preserving its OS diagnostic."""
+    if error.errno in _UNUSABLE_TMUX_ERRNOS:
+        raise exc.TmuxCommandNotFound(str(error)) from error
 
 
 class CmdProtocol(t.Protocol):
@@ -303,7 +311,8 @@ class tmux_cmd:
         self.cmd = cmd
 
         if not resolved:
-            raise exc.TmuxCommandNotFound
+            msg = "tmux executable not found on PATH"
+            raise exc.TmuxCommandNotFound(msg)
 
         log_extra = command_extra(cmd) if logger.isEnabledFor(logging.DEBUG) else None
         if log_extra is not None:
@@ -319,8 +328,7 @@ class tmux_cmd:
                 errors="backslashreplace",
             )
         except OSError as error:
-            if error.errno in {errno.EACCES, errno.ENOENT, errno.ENOEXEC}:
-                raise exc.TmuxCommandNotFound from None
+            _raise_if_unusable_tmux(error)
             raise exc.LibTmuxException(str(error)) from error
 
         stdout, stderr = self.process.communicate()

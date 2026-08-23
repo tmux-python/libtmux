@@ -105,6 +105,11 @@ failures remain exception data, so callers decide whether and where to log
 them. Expected probes such as {meth}`Server.is_alive()
 <libtmux.Server.is_alive>` also stay quiet.
 
+Executable launch failures use {exc}`~libtmux.exc.TmuxCommandNotFound`.
+When the operating system attempted the launch, the exception retains its
+message and cause. A failed `PATH` lookup has a factual message without a
+synthetic cause.
+
 Three list-shaped accessors intentionally hide
 {exc}`~libtmux.exc.LibTmuxException`:
 

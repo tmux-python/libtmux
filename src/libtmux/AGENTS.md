@@ -69,6 +69,11 @@ catch, log, and re-raise. A non-zero tmux exit is not enough to justify
 an `ERROR` because probes use it to answer false.
 `Server.is_alive()` stays quiet.
 
+Normalize executable-launch `ENOENT`, `EACCES`, and `ENOEXEC` errors to
+`TmuxCommandNotFound`, preserving the operating-system message and cause.
+Keep unrelated `OSError` behavior caller-specific. A failed `PATH` preflight
+uses a factual message without inventing a cause.
+
 `Server.sessions` and `Server.clients` log once in
 `libtmux.server` when they convert `LibTmuxException` to an empty
 result. `Server.attached_sessions` inherits that behavior through

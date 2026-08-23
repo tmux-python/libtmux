@@ -21,6 +21,7 @@ from libtmux._internal.log_context import LOG_OUTPUT_LINE_LIMIT, object_extra
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import (
+    _raise_if_unusable_tmux,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -333,6 +334,8 @@ class Server(
         ------
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
+            When the operating system attempted the launch, its diagnostic is
+            available as the exception message and cause.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``).
@@ -346,7 +349,8 @@ class Server(
         """
         resolved = self.tmux_bin or shutil.which("tmux")
         if resolved is None:
-            raise exc.TmuxCommandNotFound
+            msg = "tmux executable not found on PATH"
+            raise exc.TmuxCommandNotFound(msg)
 
         cmd_args: list[str] = ["list-sessions"]
         if self.socket_name:
@@ -358,8 +362,9 @@ class Server(
 
         try:
             subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        except OSError as error:
+            _raise_if_unusable_tmux(error)
+            raise
 
     #
     # Command
