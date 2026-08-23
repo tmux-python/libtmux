@@ -20,7 +20,7 @@ libtmux:
 3. the classic ORM as an optional reference, deliberately kept out of engine
    speedup claims when its request graph differs.
 
-The predecessor `scripts/bench_engines.py` was archived because its numbers
+The predecessor `scripts/bench/engines.py` was archived because its numbers
 measured transport and tmux server cost while being labelled as planner
 optimization. That is the mistake this harness exists to avoid, which is why it
 reports planner steps, engine batches, tmux requests, and process starts as
