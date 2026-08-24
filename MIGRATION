@@ -113,6 +113,111 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+## libtmux 0.63.x: Failure and logging channels (#748)
+
+### An unusable tmux binary raises `TmuxCommandNotFound`
+
+{class}`~libtmux.common.tmux_cmd` and
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` translate a
+missing, non-executable, or malformed tmux executable into
+{exc}`~libtmux.exc.TmuxCommandNotFound`. That exception subclasses
+{exc}`~libtmux.exc.LibTmuxException`, not `OSError`. Through 0.62.0 a
+non-executable binary surfaced as `PermissionError` and a malformed one as
+`OSError`, so a handler written for either class stops firing.
+
+**Who is affected:** code catching `OSError` or `PermissionError` around a
+tmux launch. Launch failures carrying any other errno still propagate as a
+native `OSError`.
+
+**Before:**
+
+```python
+try:
+    server.raise_if_dead()
+except OSError:
+    available = False
+```
+
+**After:**
+
+```python
+from libtmux import exc
+
+try:
+    server.raise_if_dead()
+except exc.TmuxCommandNotFound:
+    available = False
+```
+
+The operating system's diagnostic survives the translation whenever the launch
+was attempted: the message carries it and `__cause__` holds the original
+`OSError`. A tmux binary absent from `PATH` is never launched, so its
+`__cause__` is `None`.
+
+```python
+from libtmux import exc
+
+try:
+    server.raise_if_dead()
+except exc.TmuxCommandNotFound as error:
+    errno = getattr(error.__cause__, "errno", None)
+```
+
+### Raised failures no longer emit an `ERROR` record
+
+Through 0.62.0 libtmux logged an `ERROR` record before propagating or
+translating a failure. A raised failure now reaches the caller through the
+exception channel alone. `ERROR` records mark the opposite case, a boundary
+that swallowed a failure and returned an empty result:
+{attr}`Server.sessions <libtmux.Server.sessions>`,
+{attr}`Server.attached_sessions <libtmux.Server.attached_sessions>`, and
+{attr}`Server.clients <libtmux.Server.clients>`.
+
+**Who is affected:** alerting and log scraping that counted libtmux `ERROR`
+records to detect failed operations. Log at your own exception boundary:
+
+```python
+import logging
+
+from libtmux import exc
+
+logger = logging.getLogger(__name__)
+
+try:
+    operation()
+except exc.LibTmuxException:
+    logger.exception("libtmux operation failed")
+    raise
+```
+
+### Query `DEBUG` records come from `libtmux.common`
+
+{func}`~libtmux.neo.fetch_objs`, the query path behind the object list
+accessors, emitted `tmux list queried` and `tmux list parsed` on `libtmux.neo`
+through 0.62.0. The shared command producer emits `tmux command dispatched`
+and `tmux command completed` on `libtmux.common` in their place.
+
+**Who is affected:** logging configuration naming `libtmux.neo`, and
+assertions on the old message text. `libtmux.common` carries every tmux
+subprocess rather than list queries alone; filter a handler on the
+`tmux_subcommand` field to isolate queries. See {ref}`logging`.
+
+**Before:**
+
+```python
+import logging
+
+logging.getLogger("libtmux.neo").setLevel(logging.DEBUG)
+```
+
+**After:**
+
+```python
+import logging
+
+logging.getLogger("libtmux.common").setLevel(logging.DEBUG)
+```
+
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
 {exc}`~libtmux.exc.ObjectDoesNotExist` and
