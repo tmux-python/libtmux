@@ -65,6 +65,10 @@ query_logger = logging.getLogger("libtmux.neo")
 query_logger = logging.getLogger("libtmux.common")
 ```
 
+`libtmux.common` carries every tmux subprocess rather than list queries alone.
+Filter a handler on the `tmux_subcommand` field to isolate queries again;
+{ref}`logging` shows the filter.
+
 #### Raised failures stay in the exception channel (#748)
 
 A failure that libtmux propagates or translates no longer emits an `ERROR`
