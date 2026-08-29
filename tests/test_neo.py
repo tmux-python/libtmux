@@ -13,12 +13,15 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
+from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import (
     _CONTEXT_ONLY_TOKENS,
     FIELD_VERSION,
     SCOPES_BY_LIST_CMD,
     Obj,
     _is_target_not_found_error,
+    _split_records,
     _token_scope,
     get_output_format,
 )
@@ -258,3 +261,75 @@ def test_every_obj_field_classifies_to_known_scope() -> None:
         "(add them to _SCOPE_OVERRIDES, _SCOPE_PREFIXES, "
         f"_UNIVERSAL_TOKENS, or _CONTEXT_ONLY_TOKENS): {unclassified}"
     )
+
+
+class SplitRecordsFixture(t.NamedTuple):
+    """Test fixture for :func:`_split_records`."""
+
+    test_id: str
+    values: list[list[str]]
+
+
+SPLIT_RECORDS_FIXTURES: list[SplitRecordsFixture] = [
+    SplitRecordsFixture("single_clean_record", [["a", "b", "c"]]),
+    SplitRecordsFixture("two_clean_records", [["a", "b", "c"], ["d", "e", "f"]]),
+    SplitRecordsFixture("newline_in_first_field", [["a\nx", "b", "c"]]),
+    SplitRecordsFixture("newline_in_middle_field", [["a", "b\nx", "c"]]),
+    SplitRecordsFixture("newline_in_last_field", [["a", "b", "c\nx"]]),
+    SplitRecordsFixture("consecutive_newlines", [["a", "b\n\n\nx", "c"]]),
+    SplitRecordsFixture(
+        "poisoned_record_between_clean_ones",
+        [["a", "b", "c"], ["d", "e\npath", "f"], ["g", "h", "i"]],
+    ),
+    SplitRecordsFixture("empty_values", [["", "", ""]]),
+]
+
+
+@pytest.mark.parametrize(
+    SplitRecordsFixture._fields,
+    SPLIT_RECORDS_FIXTURES,
+    ids=[fixture.test_id for fixture in SPLIT_RECORDS_FIXTURES],
+)
+def test_split_records_round_trips_newlines(
+    test_id: str,
+    values: list[list[str]],
+) -> None:
+    """A newline inside a value must not split its record.
+
+    tmux emits one record per line, so a value containing a newline --
+    ``pane_current_path`` under a directory whose name has one -- used
+    to arrive as two short fragments and fail ``parse_output``'s strict
+    ``zip``. Because every pane row carries ``pane_current_path``, that
+    broke enumeration for the whole server, not just the one pane.
+    """
+    assert test_id
+    field_count = len(values[0])
+    # Rebuild exactly what tmux writes: each record's fields, every one
+    # terminated by the separator, and records terminated by newlines.
+    stdout_text = "".join(
+        "".join(f"{value}{FORMAT_SEPARATOR}" for value in record) + "\n"
+        for record in values
+    )
+    stdout = stdout_text.split("\n")
+    while stdout and stdout[-1] == "":
+        stdout.pop()
+
+    records = _split_records(stdout, field_count)
+
+    assert len(records) == len(values)
+    for record, expected in zip(records, values, strict=True):
+        parsed = record.split(FORMAT_SEPARATOR)[:-1]
+        assert parsed == expected
+
+
+def test_split_records_reports_a_forged_separator() -> None:
+    """A value carrying the separator is named, not a ``zip`` message."""
+    stdout = [f"a{FORMAT_SEPARATOR}b{FORMAT_SEPARATOR}c{FORMAT_SEPARATOR}"]
+
+    with pytest.raises(exc.LibTmuxException, match="could not be parsed"):
+        _split_records(stdout, 2)
+
+
+def test_split_records_handles_no_objects() -> None:
+    """An empty listing yields no records rather than a bogus one."""
+    assert _split_records([], 5) == []
