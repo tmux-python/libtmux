@@ -366,7 +366,7 @@ class HooksMixin(CmdMixin):
         if len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
 
-        return cmd.stdout
+        return list(cmd.stdout)
 
     def show_hook(
         self,

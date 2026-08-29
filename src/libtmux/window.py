@@ -15,7 +15,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import has_gte_version, raise_if_stderr
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -23,6 +23,7 @@ from libtmux.constants import (
     ResizeAdjustmentDirection,
     WindowDirection,
 )
+from libtmux.engines.base import CommandResult
 from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
@@ -463,7 +464,7 @@ class Window(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux subcommand within window context.
 
         Automatically binds target by adding  ``-t`` for object's window ID to the
@@ -1353,7 +1354,7 @@ class Window(
             )
 
         if get_text:
-            return proc.stdout
+            return list(proc.stdout)
 
         return None
 
