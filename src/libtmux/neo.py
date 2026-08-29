@@ -1189,7 +1189,10 @@ def fetch_objs(
 
     raise_if_stderr(proc, list_cmd)
 
-    outputs = [parse_output(line, list_cmd, tmux_version) for line in proc.stdout]
+    outputs = [
+        parse_output(record, list_cmd, tmux_version)
+        for record in _split_records(proc.stdout, len(_fields))
+    ]
 
     if logger.isEnabledFor(logging.DEBUG):
         if cmd_str is None:
