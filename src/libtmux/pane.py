@@ -2492,8 +2492,18 @@ class Pane(
         proc = self.server.cmd("break-pane", *tmux_args)
 
         raise_if_stderr(proc, "break-pane")
+        if proc.returncode != 0:
+            msg = f"tmux exited with status {proc.returncode}"
+            raise exc.LibTmuxException(msg, subcommand="break-pane")
 
-        window_id = proc.stdout[0].strip()
+        window_id: str | None = proc.stdout[0].strip() if proc.stdout else None
+        if not window_id:
+            # tmux 3.2a through 3.5 can move a one-pane window without output.
+            self.refresh()
+            window_id = self.window_id
+        if not window_id:
+            msg = "destination window could not be resolved; state may have changed"
+            raise exc.LibTmuxException(msg, subcommand="break-pane")
 
         from libtmux.window import Window
 
