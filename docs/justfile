@@ -143,8 +143,7 @@ linkcheck:
 # Run doctests embedded in documentation
 [group: 'validate']
 doctest:
-    {{ sphinxbuild }} -b doctest {{ allsphinxopts }} {{ builddir }}/doctest
-    @echo "Testing of doctests in the sources finished, look at the results in {{ builddir }}/doctest/output.txt."
+    uv run py.test --reruns 0 . ../tests/docs
 
 # Check build from scratch
 [group: 'validate']

@@ -45,7 +45,197 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### `raise_if_dead()` no longer echoes tmux's error (#739)
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` previously let
+tmux write its message straight to the terminal. It now captures that text onto
+the raised {exc}`subprocess.CalledProcessError`. The exception type is
+unchanged.
+
+#### `tmux_cmd.process` is a property (#739)
+
+{attr}`~libtmux.common.tmux_cmd.process` was a plain attribute holding the
+{class}`subprocess.Popen` that ran the command; it is now a read-only property.
+Reading it is unchanged under the default engine. Assigning to it no longer
+works, and reading it after a command ran through an engine that forks no
+process raises {exc}`~libtmux.exc.LibTmuxException` rather than returning
+`None`.
+
+### Dependencies
+
+`PyYAML>=6.0` is now a runtime dependency for declarative YAML workspace
+loading.
+
+### What's new
+
+#### Pluggable command engines (#739)
+
+Every tmux command libtmux runs now goes through an *engine* — an object that
+takes a rendered argv and returns a structured result. The default,
+{class}`~libtmux.engines.subprocess.SubprocessEngine`, forks the tmux binary
+exactly as before, so existing code is unaffected.
+
+Pass `engine=` to {class}`~libtmux.Server` and every command on that server runs
+through your object instead. {class}`~libtmux.engines.base.TmuxEngine` is a
+{class}`typing.Protocol`, so any object with `run()` and `run_batch()` qualifies
+— there is no base class to inherit. That makes it possible to drive libtmux
+against a recorded or in-memory tmux with no server running, and it is the seam
+the control-mode, asyncio, and native-protocol engines plug into.
+
+This ships the seam only. {meth}`Server.cmd() <libtmux.Server.cmd>` still
+returns a {class}`~libtmux.common.tmux_cmd`, arguments still reach tmux
+unchanged, and nothing about the default path is new — an engine is the one
+thing you can now replace.
+
+An engine that names no tmux server of its own adopts the server's connection,
+so injecting one into a socket-scoped {class}`~libtmux.Server` cannot silently
+dispatch to the ambient tmux server. Engines that name a server keep it. A
+custom `tmux_bin` selects a program rather than a server, so an engine carrying
+only one adopts the server's flags and keeps its own binary.
+
+#### Observing what an engine runs (#739)
+
+{class}`~libtmux.engines.instrumentation.InstrumentedEngine` wraps any engine
+and implements the same protocol, so counting or tracing tmux traffic no longer
+means patching {mod}`subprocess` from outside — an approach that under-reports
+an engine which never forks. Because observation is composed rather than
+installed, a program that does not ask for it constructs nothing and runs the
+code it ran before.
+
+{class}`~libtmux.engines.instrumentation.Sink` is the observer surface: a
+before hook, an after hook, and an error hook, matching what OpenTelemetry and
+Sentry already attach to on SQLAlchemy, so an exporter written for one reads
+naturally here. {class}`~libtmux.engines.instrumentation.CountingSink` ships as
+the worked example, reporting requests, tmux commands, and the commands that
+rode inside another request's argv.
+
+{func}`~libtmux.engines.base.command_count` exposes that last distinction on its
+own: a command group is one dispatch carrying several tmux commands, and a
+literal `";"` a caller meant as data is not a boundary.
+
+{class}`~libtmux.engines.connection.ServerConnection` is now the single place
+the tmux binary and the `-L`/`-S`/`-f`/`-2`/`-8` flags are computed; three
+separate copies previously disagreed about which flags to emit. It is derived
+from the server's public attributes on each use, so reassigning `socket_name`
+takes effect on the next command, and it memoizes its {func}`shutil.which`
+lookup instead of re-walking `$PATH` for every command. It can also report the
+tmux version it targets via
+{meth}`~libtmux.engines.connection.ServerConnection.tmux_version`, memoizing one
+`tmux -V` probe; an engine that forwards it satisfies the optional
+{class}`~libtmux.engines.base.SupportsTmuxVersion` capability, which callers
+rendering version-gated argv read to decide whether a flag is safe to send.
+
+An engine that folds several commands into one dispatch needs to know which `;`
+in an argv is a boundary and which is data.
+{class}`~libtmux.engines.base.CommandSeparator` marks the boundary and
+{func}`~libtmux.engines.base.is_command_separator` finds it, so a `;` a caller
+passes as an ordinary argument can never become one by accident.
+
+See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
+
+#### Experimental operations and engines (#690)
+
+Operations describe tmux commands as data. Each renders its argv against a tmux
+version (dropping flags an older tmux cannot accept), adapts raw output into a
+typed result, and serializes to and from plain dicts -- all without a running
+tmux server. The set spans the read seam (``list-*``, ``has-session``,
+``display-message``, ``show-options``, ``show-buffer``) and the
+mutating/creating surface for panes, windows, the server, options, environment,
+hooks, and paste buffers. A registry-generated catalog on the {ref}`experimental`
+page always matches the code.
+
+Engines run those operations behind one protocol, so the same operation returns
+the same typed result whether it goes through a subprocess (the classic path
+that reproduces today's libtmux behavior), an in-memory simulator for tests and
+dry runs, a persistent ``tmux -C`` control connection, an async transport, or
+tmux's native binary peer protocol. Results never raise on construction;
+raising is opt-in via ``raise_for_status()``, and how a failed result is handled
+is each engine's policy.
+
+A {class}`~libtmux.experimental.ops.plan.LazyPlan` records operations and yields
+forward references so a later operation can target an object that does not exist
+yet, resolved against captured ids at execution time. How a plan becomes tmux
+dispatches is a pluggable {class}`~libtmux.experimental.ops.planner.Planner`
+(sequential, ``;``-folding, or ``{marked}``-folding), so dispatch strategies can
+be A/B tested against the same plan with identical results.
+
+#### Declarative workspace builds fold to a few tmux calls (#690)
+
+A {class}`~libtmux.experimental.workspace.ir.Workspace` declares a session as a
+tree of windows and panes and lowers to a Core
+{class}`~libtmux.experimental.ops.plan.LazyPlan`, so a tmuxp-style spec can be
+analyzed, inspected, and built over any engine.
+{meth}`~libtmux.experimental.workspace.ir.Workspace.build` and its async twin
+{meth}`~libtmux.experimental.workspace.ir.Workspace.abuild` fold the build's
+dispatches by default: a multi-pane window collapses from one tmux call per
+operation into a handful of ``;``-chained and ``{marked}`` dispatches, so a
+session renders in a few round-trips instead of dozens.
+
+The resulting {class}`~libtmux.experimental.ops.plan.PlanResult` is identical to
+an unfolded build -- only the dispatch count changes -- because host-side steps
+(per-command sleeps, the ``wait_pane`` anti-race, ``before_script``) stay hard
+fold boundaries that a fold never crosses. Pass a
+{class}`~libtmux.experimental.ops.planner.SequentialPlanner` to ``build`` for one
+legible tmux call per operation when debugging.
+
+#### Floating panes on tmux 3.7 (#690)
+
+On tmux 3.7, the operations create floating panes -- overlays with an absolute
+size, position, and optional zoom. A ``new-pane`` operation, ``new_pane()`` on
+the pane wrappers, and a curated MCP tool each open one, and a
+{class}`~libtmux.experimental.workspace.ir.Workspace` can declare floating panes
+on a window, including a pane that overlays a different window.
+
+#### Query and command live panes with `panes()` (#690)
+
+{func}`~libtmux.experimental.query.panes` is a lazy, chainable query over the
+panes a running server has: ``filter``, ``order_by``, ``limit``, and ``map``
+compose and read nothing until a terminal call. The same query commands what it
+selects -- ``commands()`` attaches per-pane actions (send keys, resize, select,
+respawn, clear history, kill) that run as one folded tmux dispatch. A query
+resolves against a live engine or a plain list of pane snapshots, so the same
+code runs offline in tests.
+
+#### Drive tmux from an MCP server (#690)
+
+An optional Model Context Protocol server exposes tmux as tools an AI agent can
+call, installed with the ``libtmux[mcp]`` extra and launched as
+``libtmux-engine-mcp``. It offers a curated vocabulary of intuitive verbs
+(``send_input``, ``wait_for_output``, ``split_pane``, ``capture_pane``,
+``new_pane``, and the session, window, and pane lifecycle), a tool for every
+individual operation, and plan tools that preview or build a whole workspace in
+one call.
+
+The typed tools are caller-aware: because a control-mode agent shares the server
+with the panes it drives, they know which pane launched it and refuse to kill or
+respawn its own pane, window, or session. The explicitly destructive raw,
+shell, and configuration escape hatches cannot provide target-aware liveness
+checks for commands they interpret later. By default,
+``LIBTMUX_SAFETY`` permits mutations while destructive tools and payload
+variants require an explicit opt-in; it can also restrict the server to reads.
+A needle-free ``wait_for_output`` reports when a pane goes quiet after a
+command -- no sentinel string -- and whether its process exited.
+
+### Fixes
+
+#### Listing queries honor `config_file` and `colors` (#739)
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` and the listing
+queries behind {attr}`~libtmux.Server.sessions` built their own connection flags
+and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
+`colors=` passed those flags on some commands and not others. All paths now
+share one connection. A `colors=` value other than `256` or `88` raises
+{exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
+
 ### Documentation
+
+#### Engines guide and API reference (#739)
+
+{ref}`engines` covers what an engine is, writing one, the optional capability
+protocols, and explicit command separators. {ref}`engines-api` documents the
+module.
 
 #### Cleaner `from_env` examples (#719)
 
@@ -86,6 +276,14 @@ flake8-blind-except, and flake8-bandit checks now apply; the tmux output
 parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
+
+#### Inspect and isolate MCP config swaps (#690)
+
+The development config-swap helper's read-only ``doctor`` command reports the
+effective server name, registration mismatches, active swaps, orphaned or
+missing backups, and auth-overriding environment variables. Its ``use-local
+--env KEY=VALUE`` option writes an isolated environment into the server entry
+without manual config edits.
 
 ## libtmux 0.62.0 (2026-07-12)
 
