@@ -1335,6 +1335,56 @@ def test_break_pane_basic(session: Session) -> None:
     assert new_window.window_id is not None
 
 
+def test_break_pane_returns_a_moved_single_pane_window(session: Session) -> None:
+    """Return the window when tmux moves it without formatted output."""
+    source_window = session.active_window
+    session.new_window(window_name="spare")
+    target_session = session.server.new_session(session_name="break_target")
+    pane = source_window.active_pane
+    assert pane is not None
+
+    moved_window = pane.break_pane()
+
+    assert moved_window.window_id == source_window.window_id
+    assert moved_window.session_id == target_session.session_id
+
+
+@pytest.mark.parametrize(
+    ("returncode", "message"),
+    [
+        (1, "break-pane: tmux exited with status 1"),
+        (0, "break-pane: destination window could not be resolved"),
+    ],
+    ids=("silent-command-failure", "unresolved-destination"),
+)
+def test_break_pane_rejects_invalid_results(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    returncode: int,
+    message: str,
+) -> None:
+    """Reject silent failures and successful results with no destination."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    class _Command(t.NamedTuple):
+        returncode: int
+        stdout: list[str]
+        stderr: list[str]
+
+    monkeypatch.setattr(
+        pane.server,
+        "cmd",
+        lambda *_args, **_kwargs: _Command(returncode, [], []),
+    )
+    if returncode == 0:
+        monkeypatch.setattr(pane, "refresh", lambda: None)
+        pane.window_id = None
+
+    with pytest.raises(exc.LibTmuxException, match=message):
+        pane.break_pane()
+
+
 def test_break_pane_with_name(session: Session) -> None:
     """Test Pane.break_pane() with window_name."""
     window = session.new_window(window_name="test_break_name")
