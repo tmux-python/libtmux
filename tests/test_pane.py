@@ -152,12 +152,16 @@ def test_capture_pane_end(session: Session) -> None:
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == '$ printf "%s"\n$'
+    expected = '$ printf "%s"\n$'
+    retry_until(
+        lambda: "\n".join(pane.capture_pane()) == expected,
+        1,
+        raises=True,
+    )
     pane_contents = "\n".join(pane.capture_pane(end=0))
     assert pane_contents == '$ printf "%s"'
     pane_contents = "\n".join(pane.capture_pane(end="-"))
-    assert pane_contents == '$ printf "%s"\n$'
+    assert pane_contents == expected
 
 
 def test_pane_split_window_zoom(
