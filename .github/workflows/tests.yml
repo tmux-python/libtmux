@@ -8,16 +8,19 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
 
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.14']
+        python-version: ['3.15']
         tmux-version: ['3.2a', '3.3a', '3.4', '3.5', '3.6', '3.7a', '3.7b', 'master']
     steps:
       - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
@@ -36,36 +39,52 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      - name: Setup tmux build cache for tmux ${{ matrix.tmux-version }}
-        id: tmux-build-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/tmux-builds/tmux-${{ matrix.tmux-version }}
-          key: tmux-${{ matrix.tmux-version }}
-
-      - name: Build tmux ${{ matrix.tmux-version }}
-        if: steps.tmux-build-cache.outputs.cache-hit != 'true'
+      - name: Install tmux build and runtime dependencies
         run: |
-          sudo apt install libevent-dev libncurses5-dev libtinfo-dev libutempter-dev bison
-          mkdir ~/tmux-builds
-          mkdir ~/tmux-src
-          git clone https://github.com/tmux/tmux.git ~/tmux-src/tmux-${{ matrix.tmux-version }}
-          cd ~/tmux-src/tmux-${{ matrix.tmux-version }}
-          git checkout ${{ matrix.tmux-version }}
-          sh autogen.sh
-          ./configure --prefix=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }} && make && make install
-          export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
-          cd ~
-          tmux -V
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            autoconf automake bison build-essential libevent-dev \
+            libncurses-dev libutempter-dev pkg-config
+
+      - name: Identify tmux source and build environment
+        id: tmux-build
+        run: uv run python .github/scripts/tmux_build.py plan "$TMUX_VERSION"
+        env:
+          TMUX_VERSION: ${{ matrix.tmux-version }}
+
+      - name: Restore tmux ${{ matrix.tmux-version }}
+        id: tmux-build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.tmux-build.outputs.prefix }}
+          key: ${{ steps.tmux-build.outputs.key }}
+
+      - name: Validate or rebuild tmux ${{ matrix.tmux-version }}
+        run: uv run python .github/scripts/tmux_build.py prepare "$TMUX_VERSION"
+        env:
+          TMUX_VERSION: ${{ matrix.tmux-version }}
+          CACHE_HIT: ${{ steps.tmux-build-cache.outputs.cache-hit }}
+
+      - name: Save validated tmux ${{ matrix.tmux-version }}
+        if: steps.tmux-build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.tmux-build.outputs.prefix }}
+          key: ${{ steps.tmux-build.outputs.key }}
+
+      - name: Test native cache recovery
+        run: uv run pytest .github/scripts/test_tmux_build.py --reruns=0
 
       - name: Lint with ruff check
-        run: uv run ruff check .
+        run: uv run ruff check . .github/scripts
 
       - name: Format with ruff format
-        run: uv run ruff format . --check
+        run: uv run ruff format . .github/scripts --check
 
       - name: Lint with mypy
-        run: uv run mypy .
+        run: |
+          uv run mypy .
+          uv run mypy --python-version 3.11 .github/scripts
 
       - name: Print python versions
         run: |
@@ -75,9 +94,6 @@ jobs:
       - name: Test with pytest
         continue-on-error: ${{ matrix.tmux-version == 'master' }}
         run: |
-          sudo apt install libevent-2.1-7
-          export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
-          ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
           tmux -V
           uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
         env:
@@ -104,7 +120,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 

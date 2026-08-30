@@ -128,6 +128,38 @@ Include doctests in the watch loop:
 $ uv run ptw . --now --doctest-modules
 ```
 
+### Native tmux in CI
+
+The test workflow builds the versions in its existing matrix. Stable
+versions use the official release archives and SHA256 pins in
+`.github/tmux-releases.toml`, including tmux 3.8. The selected release's
+checksum is part of its cache identity. `master` resolves once to a commit and
+fetches that exact commit. The build follows tmux's
+[release and source-checkout instructions](https://github.com/tmux/tmux/blob/3.8/README#L23-L37).
+Only the installed prefix is cached. Each build uses a fresh source tree
+and up to four available processors.
+
+Cache keys include the actual runner image and image version, architecture,
+compiler and dependency versions, source identity, and build script.
+Dependencies are installed before validation on hits and misses. Every
+restored executable must match its recorded hash and version, start a
+private daemon, and report the same connected version. A failed check
+discards that job's prefix and rebuilds it.
+
+The workflow saves a validated installation before library tests run.
+GitHub caches are immutable: repairing an invalid exact hit fixes the
+current job, but cannot overwrite that entry. A build-script change
+invalidates its key for later jobs. Never add a broad restore-key fallback
+for native binaries.
+
+The CI scripts require Python 3.11+ for the standard-library TOML reader;
+the library keeps its Python 3.10 floor. Run the cache regressions against
+an installed tmux:
+
+```console
+$ uv run pytest .github/scripts/test_tmux_build.py --reruns=0
+```
+
 ## Debugging
 
 Stuck in a debugging loop: pause and acknowledge it rather than trying
