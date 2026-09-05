@@ -65,7 +65,7 @@ conf = merge_sphinx_config(
     # served from a stable URL (never copied) so a chrome fix reaches this
     # already-published build without a rebuild.
     html_css_files=["css/custom.css", "libtmux-org.css"],
-    html_js_files=[("https://libtmux.org/_shell/shell.js", {"defer": "defer"})],
+    html_js_files=[("/_shell/shell.js", {"defer": "defer"})],
     html_extra_path=["manifest.json"],
     rediraffe_redirects="redirects.txt",
     # AGENTS.md (+ its CLAUDE.md symlink) is agent guidance, not a site
