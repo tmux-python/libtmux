@@ -1,0 +1,116 @@
+/*
+ * libtmux.org design-token adapter for Furo (sphinx-gp-theme inherits it
+ * unchanged — see notes/research/00-DECISIONS.md §4 for that theme-chain
+ * correction).
+ *
+ * tokens.css does not restyle anything by itself (~25 semantic --lt-*
+ * names); this file is the missing half — the per-generator translation
+ * table onto Furo's own --color-* contract, loaded through Furo's own
+ * light_css_variables/dark_css_variables mechanism's sibling,
+ * html_css_files (see docs/conf.py). Without this file a Sphinx page has
+ * tokens.css's variables sitting unused in the cascade and still paints
+ * with Furo's stock blue. See notes/research/03-design-token-bridge.md §3.
+ *
+ * Import, never copy: the *values* stay live at the CDN, so a chrome-color
+ * fix reaches this already-published build without a rebuild here. Only
+ * the mapping below — which --lt-* name feeds which --color-* name — is
+ * fixed at this build's time, and only changes when Furo's own variable
+ * contract changes.
+ *
+ * Scope: Furo's own --color-* tokens are read from `body` context (its
+ * own light/dark blocks target `body` and `body[data-theme="dark"]`; see
+ * the built output at _site/py/*/api/_static/styles/furo-tw.css). This
+ * file matches that scope and specificity exactly, and is listed LAST in
+ * html_css_files so it loads after furo-tw.css and wins the cascade at
+ * equal specificity.
+ */
+@import url('https://libtmux.org/_shell/tokens.css');
+
+body {
+  --color-background-primary: var(--lt-color-bg);
+  --color-background-secondary: var(--lt-color-bg-secondary);
+  --color-background-hover: var(--lt-color-bg-hover);
+
+  --color-foreground-primary: var(--lt-color-fg);
+  --color-foreground-secondary: var(--lt-color-fg-secondary);
+  --color-foreground-muted: var(--lt-color-fg-muted);
+
+  --color-background-border: var(--lt-color-border);
+
+  --color-brand-primary: var(--lt-color-accent);
+  --color-brand-content: var(--lt-color-link);
+  --color-brand-visited: var(--lt-color-link-visited);
+
+  --color-inline-code-background: var(--lt-color-code-bg);
+  --color-highlighted-background: var(--lt-color-highlighted-bg);
+
+  --color-api-added: var(--lt-color-added);
+  --color-api-removed: var(--lt-color-removed);
+  --color-api-changed: var(--lt-color-changed);
+  --color-api-deprecated: var(--lt-color-deprecated);
+
+  --color-admonition-title--danger: var(--lt-color-danger);
+  --color-admonition-title--error: var(--lt-color-danger);
+  --color-admonition-title--attention: var(--lt-color-danger);
+  --color-admonition-title--warning: var(--lt-color-warning);
+  --color-admonition-title--caution: var(--lt-color-warning);
+  --color-admonition-title--note: var(--lt-color-info);
+  --color-admonition-title--seealso: var(--lt-color-info);
+  --color-admonition-title--hint: var(--lt-color-success);
+  --color-admonition-title--tip: var(--lt-color-success);
+
+  --font-stack: var(--lt-font-sans);
+  --font-stack--monospace: var(--lt-font-mono);
+}
+
+@media not print {
+  body[data-theme='dark'] {
+    --color-background-primary: var(--lt-color-bg);
+    --color-background-secondary: var(--lt-color-bg-secondary);
+    --color-background-hover: var(--lt-color-bg-hover);
+
+    --color-foreground-primary: var(--lt-color-fg);
+    --color-foreground-secondary: var(--lt-color-fg-secondary);
+    --color-foreground-muted: var(--lt-color-fg-muted);
+
+    --color-background-border: var(--lt-color-border);
+
+    --color-brand-primary: var(--lt-color-accent);
+    --color-brand-content: var(--lt-color-link);
+    --color-brand-visited: var(--lt-color-link-visited);
+
+    --color-inline-code-background: var(--lt-color-code-bg);
+    --color-highlighted-background: var(--lt-color-highlighted-bg);
+
+    --color-api-added: var(--lt-color-added);
+    --color-api-removed: var(--lt-color-removed);
+    --color-api-changed: var(--lt-color-changed);
+    --color-api-deprecated: var(--lt-color-deprecated);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme='light']) {
+      --color-background-primary: var(--lt-color-bg);
+      --color-background-secondary: var(--lt-color-bg-secondary);
+      --color-background-hover: var(--lt-color-bg-hover);
+
+      --color-foreground-primary: var(--lt-color-fg);
+      --color-foreground-secondary: var(--lt-color-fg-secondary);
+      --color-foreground-muted: var(--lt-color-fg-muted);
+
+      --color-background-border: var(--lt-color-border);
+
+      --color-brand-primary: var(--lt-color-accent);
+      --color-brand-content: var(--lt-color-link);
+      --color-brand-visited: var(--lt-color-link-visited);
+
+      --color-inline-code-background: var(--lt-color-code-bg);
+      --color-highlighted-background: var(--lt-color-highlighted-bg);
+
+      --color-api-added: var(--lt-color-added);
+      --color-api-removed: var(--lt-color-removed);
+      --color-api-changed: var(--lt-color-changed);
+      --color-api-deprecated: var(--lt-color-deprecated);
+    }
+  }
+}
