@@ -48,8 +48,24 @@ conf = merge_sphinx_config(
             " throughout 2026."
         ),
     },
+    # Explicit rather than relying on gp_sphinx's own default of the same
+    # value: docs/_templates/search.html overrides Furo's search page (see
+    # its own header comment) to redirect to the shell's Pagefind search
+    # instead of rendering a UI with no index at this path
+    # (notes/status.md, "Sphinx's own search page is a dead end", in the
+    # docs-site repo). A future change to gp_sphinx's own default should
+    # not silently stop that override from loading.
+    templates_path=["_templates"],
     html_favicon="_static/favicon.ico",
-    html_css_files=["css/custom.css"],
+    # libtmux-org.css is the design-token adapter closing notes/status.md's
+    # "Python and C++ are unskinned islands" glitch — it maps the shared
+    # --lt-* tokens onto Furo's own --color-* contract (see the file's own
+    # header) and must load after css/custom.css so its overrides win.
+    # shell.js injects the header/footer/version-switcher chrome; both are
+    # served from a stable URL (never copied) so a chrome fix reaches this
+    # already-published build without a rebuild.
+    html_css_files=["css/custom.css", "libtmux-org.css"],
+    html_js_files=[("/_shell/shell.js", {"defer": "defer"})],
     html_extra_path=["manifest.json"],
     rediraffe_redirects="redirects.txt",
     # AGENTS.md (+ its CLAUDE.md symlink) is agent guidance, not a site

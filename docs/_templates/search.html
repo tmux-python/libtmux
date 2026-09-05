@@ -1,0 +1,28 @@
+{#
+  Overrides the theme's search.html (Sphinx always renders the built-in
+  search page from a template literally named "search.html", independent of
+  which extension is active) so that neither self-hosted Sphinx port serves
+  Furo's search UI: it needs a client-side index this build does not emit at
+  this path, while the shell already serves Pagefind, covering every port,
+  at /search/. See notes/status.md, "Sphinx's own search page is a dead
+  end", in the docs-site repo.
+
+  No {% extends %} — this replaces the page outright rather than filling one
+  of layout.html's blocks. The wording matches the existing rediraffe stubs
+  in this tree (redirects.txt) so scripts/audit-site.mjs's redirect check
+  (matching "You should have been redirected") skips it instead of flagging
+  it as an empty page.
+#}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ _('Search') }}</title>
+    <meta http-equiv="refresh" content="0; url=/search/" />
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <p>You should have been redirected to the site-wide search.</p>
+    <p><a href="/search/">If not, click here to continue.</a></p>
+  </body>
+</html>

@@ -1,0 +1,141 @@
+/*
+ * libtmux.org design-token adapter for Furo (sphinx-gp-theme inherits it
+ * unchanged — see notes/research/00-DECISIONS.md §4 for that theme-chain
+ * correction).
+ *
+ * tokens.css does not restyle anything by itself (~25 semantic --lt-*
+ * names); this file is the missing half — the per-generator translation
+ * table onto Furo's own --color-* contract, loaded through Furo's own
+ * light_css_variables/dark_css_variables mechanism's sibling,
+ * html_css_files (see docs/conf.py). Without this file a Sphinx page has
+ * tokens.css's variables sitting unused in the cascade and still paints
+ * with Furo's stock blue. See notes/research/03-design-token-bridge.md §3.
+ *
+ * Import, never copy: the *values* stay live at the CDN, so a chrome-color
+ * fix reaches this already-published build without a rebuild here. Only
+ * the mapping below — which --lt-* name feeds which --color-* name — is
+ * fixed at this build's time, and only changes when Furo's own variable
+ * contract changes.
+ *
+ * Every var(--lt-x, ...) carries Furo's own stock value as its fallback.
+ * This is load-bearing, not decoration: the site has never been deployed
+ * (notes/status.md) and every page here loads
+ * https://libtmux.org/_shell/tokens.css across-origin from wherever this
+ * build is actually served (local preview, a PR preview, any deploy before
+ * DNS resolves). If that fetch 404s, --lt-color-bg etc. are undefined, and
+ * per the CSS custom-properties spec a var() with an undefined property and
+ * NO fallback resolves to the guaranteed-invalid value — every rule reading
+ * --color-background-primary would compute to `unset` instead of white,
+ * i.e. this file would make a stock-Furo page render *worse* (transparent
+ * backgrounds, UA-default black text) than the glitch it exists to close.
+ * The fallback is Furo's own stock color (from
+ * ~/work/python/gp-sphinx/packages/gp-furo-tokens/src/{light,dark}.ts),
+ * not a libtmux value — degrading to plain Furo, not vendoring our palette,
+ * so this does not reopen "Rejected: vendoring" in
+ * notes/research/03-design-token-bridge.md §1.
+ *
+ * Scope: Furo's own --color-* tokens are read from `body` context (its
+ * own light/dark blocks target `body` and `body[data-theme="dark"]`; see
+ * the built output at _site/py/*/api/_static/styles/furo-tw.css). This
+ * file matches that scope and specificity exactly, and is listed LAST in
+ * html_css_files so it loads after furo-tw.css and wins the cascade at
+ * equal specificity.
+ */
+@import url('https://libtmux.org/_shell/tokens.css');
+
+body {
+  --color-background-primary: var(--lt-color-bg, white);
+  --color-background-secondary: var(--lt-color-bg-secondary, #f8f9fb);
+  --color-background-hover: var(--lt-color-bg-hover, #efeff4);
+
+  --color-foreground-primary: var(--lt-color-fg, black);
+  --color-foreground-secondary: var(--lt-color-fg-secondary, #5a5c63);
+  --color-foreground-muted: var(--lt-color-fg-muted, #6b6f76);
+
+  --color-background-border: var(--lt-color-border, #eeebee);
+
+  --color-brand-primary: var(--lt-color-accent, #0a4bff);
+  --color-brand-content: var(--lt-color-link, #2757dd);
+  --color-brand-visited: var(--lt-color-link-visited, #872ee0);
+
+  --color-inline-code-background: var(--lt-color-code-bg, #f8f9fb);
+  --color-highlighted-background: var(--lt-color-highlighted-bg, #ddeeff);
+
+  --color-api-added: var(--lt-color-added, #21632c);
+  --color-api-removed: var(--lt-color-removed, #b30000);
+  --color-api-changed: var(--lt-color-changed, #046172);
+  --color-api-deprecated: var(--lt-color-deprecated, #605706);
+
+  /* Furo's own stock admonition colors diverge per kind even though this
+     adapter collapses them onto four shared --lt-* accents; the fallback
+     restores each kind's own stock value, not the collapsed one, since a
+     degrade should look like unmodified Furo, not a half-applied palette. */
+  --color-admonition-title--danger: var(--lt-color-danger, #ff5252);
+  --color-admonition-title--error: var(--lt-color-danger, #ff5252);
+  --color-admonition-title--attention: var(--lt-color-danger, #ff5252);
+  --color-admonition-title--warning: var(--lt-color-warning, #ff9100);
+  --color-admonition-title--caution: var(--lt-color-warning, #ff9100);
+  --color-admonition-title--note: var(--lt-color-info, #00b0ff);
+  --color-admonition-title--seealso: var(--lt-color-info, #448aff);
+  --color-admonition-title--hint: var(--lt-color-success, #00c852);
+  --color-admonition-title--tip: var(--lt-color-success, #00c852);
+
+  --font-stack:
+    var(--lt-font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial,
+      sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji');
+  --font-stack--monospace:
+    var(--lt-font-mono, 'SFMono-Regular', Menlo, Consolas, Monaco, 'Liberation Mono',
+      'Lucida Console', monospace);
+}
+
+@media not print {
+  body[data-theme='dark'] {
+    --color-background-primary: var(--lt-color-bg, #131416);
+    --color-background-secondary: var(--lt-color-bg-secondary, #1a1c1e);
+    --color-background-hover: var(--lt-color-bg-hover, #1e2124);
+
+    --color-foreground-primary: var(--lt-color-fg, #cfd0d0);
+    --color-foreground-secondary: var(--lt-color-fg-secondary, #9ca0a5);
+    --color-foreground-muted: var(--lt-color-fg-muted, #81868d);
+
+    --color-background-border: var(--lt-color-border, #303335);
+
+    --color-brand-primary: var(--lt-color-accent, #3d94ff);
+    --color-brand-content: var(--lt-color-link, #5ca5ff);
+    --color-brand-visited: var(--lt-color-link-visited, #b27aeb);
+
+    --color-inline-code-background: var(--lt-color-code-bg, #1a1c1e);
+    --color-highlighted-background: var(--lt-color-highlighted-bg, #083563);
+
+    --color-api-added: var(--lt-color-added, #3db854);
+    --color-api-removed: var(--lt-color-removed, #ff7575);
+    --color-api-changed: var(--lt-color-changed, #09b0ce);
+    --color-api-deprecated: var(--lt-color-deprecated, #b1a10b);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body:not([data-theme='light']) {
+      --color-background-primary: var(--lt-color-bg, #131416);
+      --color-background-secondary: var(--lt-color-bg-secondary, #1a1c1e);
+      --color-background-hover: var(--lt-color-bg-hover, #1e2124);
+
+      --color-foreground-primary: var(--lt-color-fg, #cfd0d0);
+      --color-foreground-secondary: var(--lt-color-fg-secondary, #9ca0a5);
+      --color-foreground-muted: var(--lt-color-fg-muted, #81868d);
+
+      --color-background-border: var(--lt-color-border, #303335);
+
+      --color-brand-primary: var(--lt-color-accent, #3d94ff);
+      --color-brand-content: var(--lt-color-link, #5ca5ff);
+      --color-brand-visited: var(--lt-color-link-visited, #b27aeb);
+
+      --color-inline-code-background: var(--lt-color-code-bg, #1a1c1e);
+      --color-highlighted-background: var(--lt-color-highlighted-bg, #083563);
+
+      --color-api-added: var(--lt-color-added, #3db854);
+      --color-api-removed: var(--lt-color-removed, #ff7575);
+      --color-api-changed: var(--lt-color-changed, #09b0ce);
+      --color-api-deprecated: var(--lt-color-deprecated, #b1a10b);
+    }
+  }
+}
