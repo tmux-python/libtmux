@@ -1036,6 +1036,58 @@ def parse_output(
     return {k: v for k, v in formatter.items() if v}
 
 
+def _split_records(stdout: list[str], field_count: int) -> list[str]:
+    """Regroup ``-F`` output into one string per object.
+
+    tmux writes one record per line, but any format value may itself
+    contain a newline -- ``pane_current_path`` for a directory whose
+    name has one -- and that splits the record across output lines.
+    Iterating lines then hands :func:`parse_output` a fragment with too
+    few values, which its strict ``zip`` rejects, so one directory
+    breaks every object on the server rather than the one pane in it.
+
+    Regrouping on the separator is exact rather than merely better: the
+    template from :func:`get_output_format` terminates *every* field
+    with a separator, so one record holds exactly ``field_count`` of
+    them and a newline is never one. Nothing is split on newlines, so a
+    value may contain any number of them, in any position.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.LibTmuxException`
+        If the values do not divide into whole records, which means a
+        value contained the separator itself.
+    """
+    blob = "\n".join(stdout)
+    if not blob:
+        return []
+
+    values = blob.split(FORMAT_SEPARATOR)
+    # Every record ends with a separator, so the split always leaves one
+    # trailing empty for the final record.
+    if values and values[-1] == "":
+        values.pop()
+
+    if field_count <= 0 or len(values) % field_count:
+        msg = (
+            f"tmux output could not be parsed: {len(values)} values for "
+            f"{field_count} fields per record. A format value probably "
+            f"contains the field separator ({FORMAT_SEPARATOR!r})."
+        )
+        raise exc.LibTmuxException(msg)
+
+    records: list[str] = []
+    for start in range(0, len(values), field_count):
+        chunk = values[start : start + field_count]
+        # The newline that terminated the previous record survives the
+        # join glued to this record's first value. It is a delimiter,
+        # not data.
+        if start and chunk[0].startswith("\n"):
+            chunk[0] = chunk[0][1:]
+        records.append(FORMAT_SEPARATOR.join(chunk) + FORMAT_SEPARATOR)
+    return records
+
+
 def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
@@ -1137,7 +1189,10 @@ def fetch_objs(
 
     raise_if_stderr(proc, list_cmd)
 
-    outputs = [parse_output(line, list_cmd, tmux_version) for line in proc.stdout]
+    outputs = [
+        parse_output(record, list_cmd, tmux_version)
+        for record in _split_records(proc.stdout, len(_fields))
+    ]
 
     if logger.isEnabledFor(logging.DEBUG):
         if cmd_str is None:

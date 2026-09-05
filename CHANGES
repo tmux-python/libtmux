@@ -45,6 +45,33 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### A newline in a format value no longer breaks every object listing
+
+A pane whose `pane_current_path` contained a newline — a directory whose
+name has one — made `Server.panes` and `Server.windows` raise
+`ValueError: zip() argument 2 is shorter than argument 1` for the
+*entire* server, healthy panes included. `fetch_objs` iterated stdout
+one line per object, so a value containing a newline split its record
+across two lines and each fragment reached `parse_output` with too few
+values for its strict `zip`.
+
+Because every pane row carries `pane_current_path`, and every
+pane-targeting lookup enumerates panes, one directory took out
+resolution for all of them. Which calls broke also depended on which
+pane happened to be active, since session and window rows resolve
+`pane_*` against the active pane — so the same server appeared to work
+or fail as the user switched panes.
+
+Records are now regrouped on the field separator instead of on
+newlines. The `-F` template terminates every field with a separator, so
+a record holds exactly as many separators as it has fields and a
+newline is never one of them; a value may now contain any number of
+newlines in any position. A value that carries the separator itself no
+longer corrupts the parse silently — it is reported as output that
+could not be parsed.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
