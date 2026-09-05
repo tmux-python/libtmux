@@ -312,7 +312,10 @@ class HooksMixin(CmdMixin):
             elif len(parts) == 1:
                 key, val = parts[0], None
             else:
-                logger.warning("failed to extract hook: %s", item)
+                logger.warning(
+                    "hook parse failed",
+                    extra={"tmux_subcommand": "show-hooks"},
+                )
                 continue
 
             if isinstance(val, str) and val.isdigit():
