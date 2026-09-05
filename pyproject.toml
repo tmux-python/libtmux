@@ -53,6 +53,10 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 dev = [
   # Docs (via gp-sphinx)
   "gp-sphinx==0.1.0a37",
+  # Declared directly so [tool.uv.sources] can redirect it; it would
+  # otherwise arrive transitively through gp-sphinx, where a source override
+  # does not reach.
+  "sphinx-gp-llms",
   "sphinx-autodoc-api-style==0.1.0a37",
   "sphinx-autodoc-pytest-fixtures==0.1.0a37",
   "sphinx-autobuild",
@@ -76,6 +80,7 @@ dev = [
 
 docs = [
   "gp-sphinx==0.1.0a37",
+  "sphinx-gp-llms",
   "sphinx-autodoc-api-style==0.1.0a37",
   "sphinx-autodoc-pytest-fixtures==0.1.0a37",
   "sphinx-autobuild",
@@ -288,3 +293,28 @@ testpaths = [
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
 ]
+
+[tool.uv.sources]
+# sphinx-gp-llms from the private fork, for the one fix libtmux.org needs.
+#
+# sphinx-gp-llms links a `.md` twin beside every page, including `genindex`
+# and `py-modindex`, which have no twin — four dead links in the assembled
+# site with nothing upstream to point at yet. The fix is on
+# `fix/md-twin-link-on-generated-pages`; upstream is public and takes no
+# push from here, so it lives on the private fork until a release carries it.
+#
+# Only this one sub-package is redirected, not the `gp-sphinx` meta-package:
+# pinning the whole thing makes uv resolve its siblings from the fork too, and
+# they are published on PyPI at a pinned version the fork does not carry.
+#
+# Pinned in this worktree only. `docs-site` is what libtmux.org's assembly
+# reads; the published package on PyPI is what everyone else gets, and this
+# does not change that.
+sphinx-gp-llms = { git = "ssh://git@github.com/tony/gp-sphinx.git", branch = "fix/md-twin-link-on-generated-pages", subdirectory = "packages/sphinx-gp-llms" }
+
+[tool.uv]
+# `gp-sphinx==0.1.0a37` pins `sphinx-gp-llms==0.1.0a37`, and the fork carries
+# 0.1.0a38 — the fix plus its own version bump. Overriding the constraint is
+# narrower than rewriting the fork's version to match a release it is ahead
+# of, and it is the only pin standing between this build and four dead links.
+override-dependencies = ["sphinx-gp-llms"]

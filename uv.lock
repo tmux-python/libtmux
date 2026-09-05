@@ -30,6 +30,9 @@ sphinx-autodoc-typehints-gp = false
 sphinx-gp-opengraph = false
 sphinx-gp-theme = false
 
+[manifest]
+overrides = [{ name = "sphinx-gp-llms", git = "ssh://git@github.com/tony/gp-sphinx.git?subdirectory=packages%2Fsphinx-gp-llms&branch=fix%2Fmd-twin-link-on-generated-pages" }]
+
 [[package]]
 name = "accessible-pygments"
 version = "0.0.5"
@@ -786,6 +789,7 @@ dev = [
     { name = "sphinx-autobuild", version = "2025.8.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-autodoc-api-style" },
     { name = "sphinx-autodoc-pytest-fixtures" },
+    { name = "sphinx-gp-llms" },
     { name = "types-docutils" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -795,6 +799,7 @@ docs = [
     { name = "sphinx-autobuild", version = "2025.8.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-autodoc-api-style" },
     { name = "sphinx-autodoc-pytest-fixtures" },
+    { name = "sphinx-gp-llms" },
 ]
 lint = [
     { name = "mypy" },
@@ -834,6 +839,7 @@ dev = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style", specifier = "==0.1.0a37" },
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.1.0a37" },
+    { name = "sphinx-gp-llms", git = "ssh://git@github.com/tony/gp-sphinx.git?subdirectory=packages%2Fsphinx-gp-llms&branch=fix%2Fmd-twin-link-on-generated-pages" },
     { name = "types-docutils" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -842,6 +848,7 @@ docs = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style", specifier = "==0.1.0a37" },
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.1.0a37" },
+    { name = "sphinx-gp-llms", git = "ssh://git@github.com/tony/gp-sphinx.git?subdirectory=packages%2Fsphinx-gp-llms&branch=fix%2Fmd-twin-link-on-generated-pages" },
 ]
 lint = [
     { name = "mypy" },
@@ -1607,15 +1614,11 @@ wheels = [
 
 [[package]]
 name = "sphinx-gp-llms"
-version = "0.1.0a37"
-source = { registry = "https://pypi.org/simple" }
+version = "0.1.0a38"
+source = { git = "ssh://git@github.com/tony/gp-sphinx.git?subdirectory=packages%2Fsphinx-gp-llms&branch=fix%2Fmd-twin-link-on-generated-pages#20bb45ba112cdab9e21889e4d91d3c67ceca9d4c" }
 dependencies = [
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/24/5a/e1dc00eb4ef5efc007737090b930ba415e00d4f25eb78954b619d0d61be7/sphinx_gp_llms-0.1.0a37.tar.gz", hash = "sha256:1ff4ce301374d31a7d36a740db71792bcd4fa1a23f1a92d854c719ad7b3064c5", size = 9996, upload-time = "2026-07-27T01:17:00.954Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/c7/189e3ff63ac0c54dfd3bb00ae690ade5dd1ae980faba8b30126ebe95aa38/sphinx_gp_llms-0.1.0a37-py3-none-any.whl", hash = "sha256:a8c437be5bdce3c15cdc83444c3c66277e0785a9f94153fa5c7dd21883680bc5", size = 12730, upload-time = "2026-07-27T01:16:41.093Z" },
 ]
 
 [[package]]
