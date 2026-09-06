@@ -79,6 +79,12 @@ jobs:
           # libtmux.org's shell, so the shell's chrome and site-wide search
           # are not reachable from here. Keep Furo's own search page and load
           # no chrome. See the note in docs/conf.py.
+          #
+          # Delete this when the sync below moves under libtmux.org, to a
+          # per-port prefix. Left behind, the build publishes nested and
+          # still unskinned — no chrome, and Furo's search where the site's
+          # own belongs — which reads as the shell having failed rather than
+          # as a stale flag. tests/test_docs_conf.py covers both shapes.
           LIBTMUX_DOCS_STANDALONE: '1'
         run: |
           cd docs && just html
