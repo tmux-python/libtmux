@@ -1,0 +1,41 @@
+{#
+  Replaces Sphinx's built-in search page (always rendered from a template
+  named "search.html") with a redirect to the shell's Pagefind search, which
+  covers every libtmux port. Furo's own search UI needs a client-side index
+  this build does not emit at that path.
+
+  Loaded only when docs/conf.py turns the shell integration on; the
+  standalone deploy keeps Sphinx's own search page. See conf.py.
+
+  No {% extends %} — this replaces the page outright rather than filling one
+  of layout.html's blocks. The wording matches the rediraffe stubs in this
+  tree (redirects.txt) so the site audit's redirect check, which matches "You
+  should have been redirected", skips it instead of flagging an empty page.
+
+  The redirect is guarded rather than a bare <meta refresh>: this build is
+  served nested under the shell (/py/<version>/api/search/), but the same
+  tree can be served at a root, where the page's own path *is* /search/ and
+  an unguarded refresh would reload itself forever.
+#}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ _('Search') }}</title>
+    <meta name="robots" content="noindex" />
+    <script>
+      (function () {
+        var here = window.location.pathname.replace(/\/+$/, '/');
+        if (here !== '/search/') {
+          window.location.replace('/search/');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <p>You should have been redirected to the site-wide search.</p>
+    <p>
+      <a href="https://libtmux.org/search/">If not, click here to continue.</a>
+    </p>
+  </body>
+</html>
