@@ -54,8 +54,14 @@ PANE_DIRECTION_FLAG_MAP: dict[PaneDirection, list[str]] = {
 
 
 class _DefaultOptionScope:
-    # Sentinel value for default scope
-    ...
+    """Sentinel meaning "whichever scope tmux would use".
+
+    Distinct from passing no scope at all: this is the default value of the
+    ``scope`` parameter, and a call carrying it sends no scope flag. tmux then
+    resolves the option itself, which for a pane option means falling back to
+    the window's and then to the global window options.
+    """
+
 
 
 DEFAULT_OPTION_SCOPE: _DefaultOptionScope = _DefaultOptionScope()
