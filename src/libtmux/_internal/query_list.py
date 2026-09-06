@@ -315,11 +315,24 @@ LOOKUP_NAME_MAP: Mapping[str, LookupProtocol] = {
 
 
 class PKRequiredException(Exception):
+    """Raised when :meth:`QueryList.items` is called without a primary key.
+
+    ``items()`` pairs each entry with a key, and the list has no opinion about
+    which field that should be. Set ``pk_key`` on the list before calling it.
+    """
+
     def __init__(self, *args: object) -> None:
         super().__init__("items() require a pk_key exists")
 
 
 class OpNotFound(ValueError):
+    """Raised when a filter names a lookup that does not exist.
+
+    The lookup is the part after the last ``__`` in a keyword, so a mistyped
+    one — or a field name that happens to end in ``__`` — reaches here rather
+    than silently matching nothing.
+    """
+
     def __init__(self, op: str, *args: object) -> None:
         super().__init__(f"{op} not in LOOKUP_NAME_MAP")
 
