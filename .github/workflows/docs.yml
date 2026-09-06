@@ -173,11 +173,17 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # Pinned to the tag reusable-deploy.yml's own header asks callers to use,
-    # and bumped on review like any other dependency. Not `@main`: this hands
-    # another repository execution inside ours, with `id-token: write` and a
-    # role that can write the bucket.
-    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@v2
+    # Pinned to a commit, with the release it belongs to named beside it.
+    #
+    # Not a tag: libtmux/docs's 0.x series is documented as moving, and this
+    # `uses:` runs another repository's workflow inside ours with
+    # `id-token: write` and a role that can write the bucket. A ref that can
+    # be repointed makes what executes here change with no diff in this
+    # repository and no review. A commit cannot be repointed, and Dependabot
+    # reads the trailing comment to offer the bump.
+    #
+    # Bump it on review, like any other dependency.
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@0cd5a3f10c70bf55130ab6a02d5177f6318beaca # v0.1.0-alpha.1
     with:
       path-prefix: py/latest
       artifact: docs-html
