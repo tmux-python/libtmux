@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+      # DO NOT MERGE: publishes /en/py/latest/ before anything merges — that
+      # tree 403s on libtmux.org today. Drop this line when merging to master.
+      - docs-site-deploy
 
 permissions:
   contents: read
@@ -184,7 +187,7 @@ jobs:
     # Bumping is manual. Dependabot reads a trailing version comment, but
     # only where the `github-actions` ecosystem is enabled, and this
     # repository has no dependabot.yml at all.
-    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@e30bcba4ca470e49ba798255ca4e3d36d58f95bf # v0.1.0-alpha.1
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@ce9d7edd63f6a543801d9b93366ecad5e158c0ec # v0.1.0-alpha.2
     with:
       path-prefix: py/latest
       artifact: docs-html
