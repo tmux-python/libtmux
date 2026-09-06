@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### libtmux.org chrome and site-wide search (#755)
+
+Documentation pages carry libtmux.org's header, footer, and version switcher,
+and take their colors from the site's shared design tokens. Sphinx's own
+search page redirects to the site-wide search, which covers every libtmux
+port. Pages render as stock Furo when the shared stylesheet is unreachable.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
