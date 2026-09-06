@@ -119,12 +119,11 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # Pinned to a commit, as reusable-deploy.yml's own header asks of
-    # callers. It says `@v1`; libtmux/docs carries no tags yet, and a
-    # floating `@main` would let another repository change what runs here
-    # with `id-token: write` and a role that can write the bucket. Move this
-    # to the tag once one exists.
-    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@dfe5b6c8f718992a3baec4ed0a03b840d8bdb623
+    # Pinned to the tag reusable-deploy.yml's own header asks callers to
+    # use, and bumped on review like any other dependency. Not `@main`:
+    # this hands another repository execution inside ours, with
+    # `id-token: write` and a role that can write the bucket.
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@v1
     with:
       path-prefix: py/latest
       artifact: docs-html
