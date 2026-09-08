@@ -47,6 +47,13 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### libtmux.org chrome and site-wide search (#755)
+
+Documentation pages carry libtmux.org's header, footer, and version switcher,
+and take their colors from the site's shared design tokens. Sphinx's own
+search page redirects to the site-wide search, which covers every libtmux
+port. Pages render as stock Furo when the shared stylesheet is unreachable.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
@@ -58,6 +65,13 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Docs toolchain on gp-sphinx 0.1.0a38 (#755)
+
+`gp-sphinx` and its sibling extensions move to 0.1.0a38. `sphinx-gp-llms`
+resolves from a pinned upstream commit until a release carries its fix:
+`genindex`, `py-modindex`, and `search` no longer link a `.md` twin that was
+never written.
 
 #### CI actions updated to current majors
 
