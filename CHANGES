@@ -66,6 +66,14 @@ it.
 
 ### Development
 
+#### Docs publish to libtmux.org (#756)
+
+The docs build publishes to `libtmux.org` under `en/py/latest/` through the
+shared deploy workflow every libtmux port calls, and keeps publishing to
+libtmux.git-pull.com unchanged. Each destination takes its own build:
+libtmux.org gets the site's shared shell with this port's reference nested
+at `api/`, libtmux.git-pull.com the Sphinx site at a root.
+
 #### Docs toolchain on gp-sphinx 0.1.0a38 (#755)
 
 `gp-sphinx` and its sibling extensions move to 0.1.0a38. `sphinx-gp-llms`

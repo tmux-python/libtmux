@@ -4,24 +4,38 @@ on:
   push:
     branches:
       - master
+      # DO NOT MERGE: publishes /en/py/latest/ before anything merges — that
+      # tree 403s on libtmux.org today. Drop this line when merging to master.
+      - docs-site-deploy
 
 permissions:
   contents: read
   id-token: write
 
+# Required of every caller of reusable-deploy.yml, and not something that
+# workflow can do for itself: concurrency groups do not cross repository
+# boundaries, so each port serialises its own publishes here. `queue: max`
+# runs the newest queued publish after the running one instead of cancelling
+# it, and cannot be combined with cancel-in-progress. See libtmux/docs
+# docs/ci.md.
+concurrency:
+  group: docs-deploy-${{ github.repository }}
+  queue: max
+
 jobs:
-  build:
+  # Its own job because the answer has to reach the deploy job, and a step's
+  # $GITHUB_ENV does not leave the job that wrote it. Every job below is
+  # gated on this one output rather than repeating the condition per step.
+  changes:
     runs-on: ubuntu-latest
-    environment: docs
-    strategy:
-      matrix:
-        python-version: ['3.14']
+    outputs:
+      publish: ${{ steps.gate.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Filter changed file paths to outputs
         uses: dorny/paths-filter@v4
-        id: changes
+        id: filter
         with:
           filters: |
             root_docs:
@@ -36,35 +50,57 @@ jobs:
               - pyproject.toml
 
       - name: Should publish
-        if: steps.changes.outputs.docs == 'true' || steps.changes.outputs.root_docs == 'true' || steps.changes.outputs.python_files == 'true'
-        run: echo "PUBLISH=$(echo true)" >> $GITHUB_ENV
+        id: gate
+        env:
+          MATCHED: ${{ steps.filter.outputs.docs == 'true' || steps.filter.outputs.root_docs == 'true' || steps.filter.outputs.python_files == 'true' }}
+        run: echo "publish=$MATCHED" >> "$GITHUB_OUTPUT"
+
+  # The two sites need different bytes, not the same tree published twice.
+  # libtmux.git-pull.com serves this build at a root, where /_shell/ is
+  # nothing and /search/ is the build's own search page — so it is built
+  # standalone, keeping Furo's search and loading no chrome. libtmux.org
+  # nests it at en/py/latest/, where both are reachable and belong on.
+  # Publishing one artifact to both gives an unskinned nested site or a
+  # root site whose search redirects to itself, depending which way the
+  # flag is set. tests/test_docs_conf.py pins both shapes.
+  build:
+    needs: changes
+    if: needs.changes.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: docs
+    strategy:
+      # Neither destination should lose its publish because the other
+      # failed to build.
+      fail-fast: false
+      matrix:
+        include:
+          - site: git-pull-com
+            standalone: '1'
+          - site: libtmux-org
+            standalone: ''
+    steps:
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        if: env.PUBLISH == 'true'
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 
-      - name: Set up Python ${{ matrix.python-version }}
-        if: env.PUBLISH == 'true'
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python
+        run: uv python install 3.14
 
       - name: Install dependencies [w/ docs]
-        if: env.PUBLISH == 'true'
         run: uv sync --all-extras --dev
 
       - name: Install just
-        if: env.PUBLISH == 'true'
         uses: extractions/setup-just@v4
 
       - name: Print python versions
-        if: env.PUBLISH == 'true'
         run: |
           python -V
           uv run python -V
 
       - name: Cache sphinx fonts
-        if: env.PUBLISH == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/sphinx-fonts
@@ -73,45 +109,132 @@ jobs:
             sphinx-fonts-
 
       - name: Build documentation
-        if: env.PUBLISH == 'true'
+        if: matrix.site == 'git-pull-com'
         env:
-          # This tree is published to the bucket root, not nested under
-          # libtmux.org's shell, so the shell's chrome and site-wide search
-          # are not reachable from here. Keep Furo's own search page and load
-          # no chrome. See the note in docs/conf.py.
-          #
-          # Delete this when the sync below moves under libtmux.org, to a
-          # per-port prefix. Left behind, the build publishes nested and
-          # still unskinned — no chrome, and Furo's search where the site's
-          # own belongs — which reads as the shell having failed rather than
-          # as a stale flag. tests/test_docs_conf.py covers both shapes.
-          LIBTMUX_DOCS_STANDALONE: '1'
+          LIBTMUX_DOCS_STANDALONE: ${{ matrix.standalone }}
         run: |
           cd docs && just html
 
-      - name: Configure AWS Credentials
-        if: env.PUBLISH == 'true'
+      # libtmux.org's tree is not this Sphinx build. en/py/latest/ is the
+      # shared shell rendered with Python's code fences, with this port's
+      # gp-sphinx output nested at api/ — build-site.sh produces both, running
+      # sphinx itself from this checkout. Publishing the Sphinx site directly
+      # replaced the whole tree with it: /en/py/latest/ served Furo and
+      # /en/py/latest/concepts/ 403'd.
+      - uses: actions/checkout@v7
+        if: matrix.site == 'libtmux-org'
+        with:
+          repository: libtmux/docs
+          ref: ce9d7edd63f6a543801d9b93366ecad5e158c0ec # v0.1.0-alpha.2
+          path: libtmux-docs
+
+      - uses: pnpm/action-setup@v6
+        if: matrix.site == 'libtmux-org'
+        with:
+          package_json_file: libtmux-docs/package.json
+      - uses: actions/setup-node@v7
+        if: matrix.site == 'libtmux-org'
+        with:
+          node-version: '26'
+          cache: pnpm
+          cache-dependency-path: libtmux-docs/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        if: matrix.site == 'libtmux-org'
+        working-directory: libtmux-docs
+
+      # No --skip-refs: for every other port api/ is a redirect to
+      # /reference/<slug>/, but Python's is the real gp-sphinx render that
+      # check-style-parity.mjs measures against, so it has to be built.
+      - name: Build the libtmux.org tree
+        if: matrix.site == 'libtmux-org'
+        working-directory: libtmux-docs
+        env:
+          LIBTMUX_DOCS_CHECKOUT_PY: ${{ github.workspace }}
+        run: ./scripts/build-site.sh --ports py --skip-pagefind
+
+      # libtmux.git-pull.com publishes from inside this job, as it always
+      # has. Kept in place rather than moved behind an artifact: this is a
+      # live site, and an artifact round trip does not preserve the symlinks
+      # the sync below is told to follow.
+      - name: Configure AWS credentials for libtmux.git-pull.com
+        if: matrix.site == 'git-pull-com'
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.LIBTMUX_DOCS_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Push documentation to S3
-        if: env.PUBLISH == 'true'
+        if: matrix.site == 'git-pull-com'
         run: |
           aws s3 sync docs/_build/html "s3://${{ secrets.LIBTMUX_DOCS_BUCKET }}" \
             --delete --follow-symlinks
 
       - name: Invalidate CloudFront
-        if: env.PUBLISH == 'true'
+        if: matrix.site == 'git-pull-com'
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ secrets.LIBTMUX_DOCS_DISTRIBUTION }}" \
             --paths "/index.html" "/objects.inv" "/searchindex.js"
 
       - name: Purge cache on Cloudflare
-        if: env.PUBLISH == 'true'
+        if: matrix.site == 'git-pull-com'
         uses: jakejarvis/cloudflare-purge-action@v0.3.0
         env:
           CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
           CLOUDFLARE_ZONE: ${{ secrets.CLOUDFLARE_ZONE }}
+
+      # libtmux.org publishes through the shared workflow instead, which
+      # only ever writes one port's own prefix. It downloads to dist/ and
+      # syncs dist/, so the tree has to sit at the artifact root.
+      - name: Upload the built site for libtmux.org
+        if: matrix.site == 'libtmux-org'
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: libtmux-docs/_site/en/py/latest
+          retention-days: 1
+
+  # Additive: a failure here leaves libtmux.git-pull.com serving exactly what
+  # it serves today, because that publish already happened in the job above.
+  #
+  # path-prefix is unprefixed by locale — reusable-deploy prepends `<locale>/`
+  # itself whenever `port` is set, so this publishes to en/py/latest/, and
+  # passing en/py/latest here would produce en/en/py/latest.
+  #
+  # `environment` is an input rather than `environment:` on this job, which
+  # `uses:` does not accept — and reusable-deploy's own job is the one whose
+  # OIDC subject has to carry `environment:docs` to match the role's trust
+  # policy. The three secrets are passed explicitly, never `secrets: inherit`.
+  #
+  # LIBTMUX_ORG_* is a separate set from LIBTMUX_DOCS_*, which keeps its
+  # current meaning: the libtmux.git-pull.com bucket, unchanged.
+  publish-libtmux-org:
+    needs: [changes, build]
+    if: needs.changes.outputs.publish == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    # Pinned to a commit, with the release it belongs to named beside it.
+    #
+    # Not a tag: this `uses:` runs another repository's workflow inside ours
+    # with `id-token: write` and a role that can write the bucket, and a tag
+    # can be repointed — so pinning one lets what executes here change with
+    # no diff in this repository and no review. A commit cannot be
+    # repointed. libtmux/docs asks callers for the same thing.
+    #
+    # Bumping is manual. Dependabot reads a trailing version comment, but
+    # only where the `github-actions` ecosystem is enabled, and this
+    # repository has no dependabot.yml at all.
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@ce9d7edd63f6a543801d9b93366ecad5e158c0ec # v0.1.0-alpha.2
+    with:
+      path-prefix: py/latest
+      artifact: docs-html
+      version-kind: trunk
+      port: py
+      version: latest
+      is-default: true
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+      distribution: ${{ secrets.LIBTMUX_ORG_DISTRIBUTION }}
