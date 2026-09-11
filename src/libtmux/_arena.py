@@ -7,8 +7,8 @@ import pathlib
 import typing as t
 
 ARENA_ARTIFACT_TARGETS = {
-    "python-exact-binary": "docs/topics/workspace_setup.md",
-    "python-workspace-setup": "docs/topics/workspace_setup.md",
+    "python-exact-binary": ("docs/topics/workspace_setup.md",),
+    "python-workspace-setup": ("docs/topics/workspace_setup.md",),
 }
 
 
@@ -37,6 +37,6 @@ class ArenaSpec:
             raise ValueError(msg)
         return cls(artifact=artifact, socket_path=socket_path, tmux_bin=tmux_bin)
 
-    def target_for(self, root: pathlib.Path) -> pathlib.Path:
-        """Resolve the source bound to this artifact inside ``root``."""
-        return root / ARENA_ARTIFACT_TARGETS[self.artifact]
+    def targets_for(self, root: pathlib.Path) -> tuple[pathlib.Path, ...]:
+        """Resolve every source bound to this artifact inside ``root``."""
+        return tuple(root / rel for rel in ARENA_ARTIFACT_TARGETS[self.artifact])

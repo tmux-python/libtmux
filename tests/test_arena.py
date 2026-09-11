@@ -186,8 +186,39 @@ def test_artifact_requires_the_workspace_setup_source(
     )
 
     assert spec is not None
-    assert spec.target_for(pathlib.Path("/repo")) == pathlib.Path(
-        "/repo/docs/topics/workspace_setup.md"
+    assert spec.targets_for(pathlib.Path("/repo")) == (
+        pathlib.Path("/repo/docs/topics/workspace_setup.md"),
+    )
+
+
+def test_an_artifact_may_bind_several_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One lend can audit more than one page, and every page is required.
+
+    The supervisor takes one evidence record per declared source, so an
+    artifact that names two pages and runs one is a failure rather than a
+    partial pass.
+    """
+    arena = importlib.import_module("libtmux._arena")
+    monkeypatch.setitem(
+        arena.ARENA_ARTIFACT_TARGETS,
+        "python-two-pages",
+        ("docs/topics/workspace_setup.md", "docs/topics/traversal.md"),
+    )
+    spec = arena.ArenaSpec.from_environ(
+        {
+            "LIBTMUX_ARENA_DESCRIPTOR": "arena",
+            "LIBTMUX_ARENA_ARTIFACT": "python-two-pages",
+            "LIBTMUX_SOCKET_PATH": "socket",
+            "LIBTMUX_TMUX_BIN": "tmux",
+        }
+    )
+
+    assert spec is not None
+    assert spec.targets_for(pathlib.Path("/repo")) == (
+        pathlib.Path("/repo/docs/topics/workspace_setup.md"),
+        pathlib.Path("/repo/docs/topics/traversal.md"),
     )
 
 

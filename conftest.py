@@ -34,11 +34,21 @@ pytest_plugins = ["pytester"]
 
 ARENA_EVIDENCE_PREFIX = "LIBTMUX_ARENA_EVIDENCE="
 ARENA_SPEC_KEY: pytest.StashKey[ArenaSpec] = pytest.StashKey()
-ARENA_TARGET_KEY: pytest.StashKey[pathlib.Path] = pytest.StashKey()
+# A set rather than one path: an artifact may audit several pages, and the
+# supervisor then expects one evidence record per page.
+ARENA_TARGETS_KEY: pytest.StashKey[frozenset[pathlib.Path]] = pytest.StashKey()
 ARENA_DISCOVERED_PATHS_KEY: pytest.StashKey[frozenset[pathlib.Path]] = pytest.StashKey()
-ARENA_DISCOVERED_KEY: pytest.StashKey[frozenset[str]] = pytest.StashKey()
-ARENA_COLLECTED_KEY: pytest.StashKey[frozenset[str]] = pytest.StashKey()
-ARENA_PASSED_KEY: pytest.StashKey[frozenset[str]] = pytest.StashKey()
+# Node ids per source rather than one flat set, so a record can name the page
+# that produced it, and a page that collected nothing is caught.
+ARENA_DISCOVERED_KEY: pytest.StashKey[dict[pathlib.Path, frozenset[str]]] = (
+    pytest.StashKey()
+)
+ARENA_COLLECTED_KEY: pytest.StashKey[dict[pathlib.Path, frozenset[str]]] = (
+    pytest.StashKey()
+)
+ARENA_PASSED_KEY: pytest.StashKey[dict[pathlib.Path, frozenset[str]]] = (
+    pytest.StashKey()
+)
 
 
 def _arena_spec(config: pytest.Config) -> ArenaSpec | None:
@@ -46,17 +56,23 @@ def _arena_spec(config: pytest.Config) -> ArenaSpec | None:
     return config.stash.get(ARENA_SPEC_KEY, None)
 
 
-def _arena_target(config: pytest.Config) -> pathlib.Path | None:
-    """Return the validated arena source for this pytest invocation."""
-    return config.stash.get(ARENA_TARGET_KEY, None)
+def _arena_targets(config: pytest.Config) -> frozenset[pathlib.Path] | None:
+    """Return the validated arena sources for this pytest invocation."""
+    return config.stash.get(ARENA_TARGETS_KEY, None)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Register the source selected by the arena adapter."""
+    """Register the source(s) selected by the arena adapter.
+
+    Repeatable: one flag per audited page. The adapter passes exactly the
+    pages its artifact declares, and nothing else may be collected.
+    """
     parser.addoption(
         "--libtmux-arena-target",
         metavar="PATH",
-        help="Run one audited doctest source against an external tmux server",
+        action="append",
+        help="Run one audited doctest source against an external tmux server "
+        "(repeatable)",
     )
 
 
@@ -69,58 +85,69 @@ def pytest_configure(config: pytest.Config) -> None:
     if spec is None:
         return
 
-    raw_target = config.getoption("libtmux_arena_target")
-    expected_relative = ArenaSpec.target_for(spec, pathlib.Path()).as_posix()
-    if raw_target != expected_relative:
-        msg = f"arena artifact {spec.artifact!r} requires {expected_relative!r}"
+    raw_targets = frozenset(config.getoption("libtmux_arena_target") or [])
+    expected_relative = frozenset(
+        p.as_posix() for p in spec.targets_for(pathlib.Path())
+    )
+    if raw_targets != expected_relative:
+        msg = f"arena artifact {spec.artifact!r} requires {sorted(expected_relative)!r}"
         raise pytest.UsageError(msg)
     root = pathlib.Path(config.rootpath).resolve()
-    target = spec.target_for(root).resolve(strict=True)
+    targets = frozenset(p.resolve(strict=True) for p in spec.targets_for(root))
     config.stash[ARENA_SPEC_KEY] = spec
-    config.stash[ARENA_TARGET_KEY] = target
+    config.stash[ARENA_TARGETS_KEY] = targets
 
 
 def pytest_collection_finish(session: pytest.Session) -> None:
-    """Reject selections that include anything besides the audited source."""
-    target = _arena_target(session.config)
-    if target is None:
+    """Reject selections that include anything besides the audited sources."""
+    targets = _arena_targets(session.config)
+    if targets is None:
         return
     paths = {item.path.resolve() for item in session.items}
     selected = frozenset(item.nodeid for item in session.items)
     discovered_paths = session.config.stash.get(ARENA_DISCOVERED_PATHS_KEY, frozenset())
-    discovered = session.config.stash.get(ARENA_DISCOVERED_KEY, frozenset())
+    discovered = session.config.stash.get(ARENA_DISCOVERED_KEY, {})
+    discovered_all = (
+        frozenset().union(*discovered.values()) if discovered else frozenset()
+    )
     if (
-        paths != {target}
-        or discovered_paths != {target}
-        or not discovered
-        or selected != discovered
+        paths != targets
+        or discovered_paths != targets
+        or discovered.keys() != targets
+        or any(not nodeids for nodeids in discovered.values())
+        or selected != discovered_all
     ):
-        msg = "arena requires collection of exactly one audited doctest source"
+        msg = "arena requires collection of exactly the audited doctest sources"
         raise pytest.UsageError(msg)
-    session.config.stash[ARENA_COLLECTED_KEY] = selected
+    session.config.stash[ARENA_COLLECTED_KEY] = dict(discovered)
 
 
 def pytest_itemcollected(item: pytest.Item) -> None:
     """Record every arena item before pytest applies filters."""
-    target = _arena_target(item.config)
-    if target is None:
+    targets = _arena_targets(item.config)
+    if targets is None:
         return
     path = item.path.resolve()
     discovered_paths = item.config.stash.get(ARENA_DISCOVERED_PATHS_KEY, frozenset())
     item.config.stash[ARENA_DISCOVERED_PATHS_KEY] = discovered_paths | {path}
-    if path == target:
-        discovered = item.config.stash.get(ARENA_DISCOVERED_KEY, frozenset())
-        item.config.stash[ARENA_DISCOVERED_KEY] = discovered | {item.nodeid}
+    if path in targets:
+        discovered = item.config.stash.get(ARENA_DISCOVERED_KEY, {})
+        discovered = dict(discovered)
+        discovered[path] = discovered.get(path, frozenset()) | {item.nodeid}
+        item.config.stash[ARENA_DISCOVERED_KEY] = discovered
 
 
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[t.Any]) -> None:
     """Record successful arena doctest calls for evidence publication."""
-    target = _arena_target(item.config)
-    if target is None or item.path.resolve() != target:
+    targets = _arena_targets(item.config)
+    path = item.path.resolve()
+    if targets is None or path not in targets:
         return
     if call.when == "call" and call.excinfo is None:
-        passed = item.config.stash.get(ARENA_PASSED_KEY, frozenset())
-        item.config.stash[ARENA_PASSED_KEY] = passed | {item.nodeid}
+        passed = item.config.stash.get(ARENA_PASSED_KEY, {})
+        passed = dict(passed)
+        passed[path] = passed.get(path, frozenset()) | {item.nodeid}
+        item.config.stash[ARENA_PASSED_KEY] = passed
 
 
 @pytest.fixture(autouse=True)
@@ -176,7 +203,18 @@ def add_doctest_fixtures(
     finally:
         if spec is not None:
             cleanup = server.cmd("kill-session", target=session_name)
-            if cleanup.returncode != 0:
+            # idempotent teardown. A doctest that kills its own
+            # last pane/window (tmux: last window dies -> session dies) has
+            # already achieved this fixture's goal -- "our session is gone"
+            # -- by the time we get here. Only a session that is *not* gone
+            # and *failed* to go is a real cleanup failure; do not conflate
+            # "already torn down" with "could not tear down" (see
+            # pane_interaction.md:467,477 in borrowed.md finding 2).
+            already_gone = cleanup.returncode != 0 and any(
+                "can't find session" in line or "session not found" in line
+                for line in cleanup.stderr
+            )
+            if cleanup.returncode != 0 and not already_gone:
                 msg = "arena session cleanup failed"
                 raise RuntimeError(msg)
 
@@ -210,14 +248,28 @@ def setup_session(
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Publish evidence only after the selected doctests pass."""
+    """Publish one evidence record per audited source, after all of them pass.
+
+    fail-closed is preserved because ``exitstatus`` is only
+    ``pytest.ExitCode.OK`` when every collected item passed; since collection
+    already required every target to contribute at least one item
+    (``pytest_collection_finish``), ``collected_by_target`` and
+    ``passed_by_target`` are equal for every target by construction once we
+    reach this point. No partial-source evidence is possible: either every
+    requested page gets a record, or (on any failure/error) none do.
+    """
     spec = _arena_spec(session.config)
-    target = _arena_target(session.config)
-    if spec is None or target is None or exitstatus != pytest.ExitCode.OK:
+    targets = _arena_targets(session.config)
+    if spec is None or targets is None or exitstatus != pytest.ExitCode.OK:
         return
-    collected = session.config.stash.get(ARENA_COLLECTED_KEY, frozenset())
-    passed = session.config.stash.get(ARENA_PASSED_KEY, frozenset())
-    if not collected or passed != collected or session.config.getoption("collectonly"):
+    collected_by_target = session.config.stash.get(ARENA_COLLECTED_KEY, {})
+    passed_by_target = session.config.stash.get(ARENA_PASSED_KEY, {})
+    if (
+        not collected_by_target
+        or collected_by_target.keys() != targets
+        or passed_by_target != collected_by_target
+        or session.config.getoption("collectonly")
+    ):
         return
 
     server = Server(socket_path=spec.socket_path, tmux_bin=spec.tmux_bin)
@@ -233,14 +285,16 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     if len(parts) != 3 or parts[1] != spec.socket_path or not parts[2]:
         msg = "arena server identity does not match the requested endpoint"
         raise RuntimeError(msg)
-    evidence = {
-        "artifact": spec.artifact,
-        "challenge": parts[2],
-        "schema": 1,
-        "server_pid": int(parts[0]),
-        "socket_path": parts[1],
-        "source": target.relative_to(session.config.rootpath).as_posix(),
-    }
-    print(
-        "\n" + ARENA_EVIDENCE_PREFIX + json.dumps(evidence, sort_keys=True), flush=True
-    )
+    for target in sorted(targets, key=lambda p: p.as_posix()):
+        evidence = {
+            "artifact": spec.artifact,
+            "challenge": parts[2],
+            "schema": 1,
+            "server_pid": int(parts[0]),
+            "socket_path": parts[1],
+            "source": target.relative_to(session.config.rootpath).as_posix(),
+        }
+        print(
+            "\n" + ARENA_EVIDENCE_PREFIX + json.dumps(evidence, sort_keys=True),
+            flush=True,
+        )
