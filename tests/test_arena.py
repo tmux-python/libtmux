@@ -19,6 +19,12 @@ from libtmux.server import Server
 
 ROOT = pathlib.Path(__file__).parents[1]
 TARGET = "docs/topics/workspace_setup.md"
+TWO_PAGE_ARTIFACT = "python-workspace-and-location"
+FIRST_PAGE = "docs/topics/workspace_setup.md"
+SECOND_PAGE = "docs/topics/self_location.md"
+# Must match conftest.py's ARENA_IDENTITY_FORMAT exactly -- the format string
+# the between-page identity check sends to `display-message`.
+ARENA_IDENTITY_PROBE = "#{pid}\t#{socket_path}\t#{@libtmux_arena_challenge}"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -107,6 +113,50 @@ def _failing_tmux_wrapper(
     )
     wrapper.chmod(0o755)
     return wrapper, invocation_log
+
+
+def _stop_after_first_page_wrapper(
+    tmp_path: pathlib.Path,
+    tmux_bin: str,
+    marker: str,
+) -> pathlib.Path:
+    """Build a wrapper that kills the real server partway through a run.
+
+    Trips on the *second* time it sees the between-page identity probe
+    (``marker``): the first is the baseline captured before any page runs,
+    the second is the check right after the first page finishes. That is
+    exactly where a doctest example stopping the lent server -- as
+    ``with Server()`` does in the excluded ``context_managers.md`` -- would
+    land, reproduced here without needing to run that page. The probing
+    command itself is then allowed to reach the now-dead socket and fail.
+    """
+    counter = tmp_path / "probe-count"
+    wrapper = tmp_path / "stop-after-first-page-tmux"
+    wrapper.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "import subprocess\n"
+        "import sys\n"
+        f"tmux_bin = {tmux_bin!r}\n"
+        f"marker = {marker!r}\n"
+        f"counter = {str(counter)!r}\n"
+        "args = sys.argv[1:]\n"
+        "if marker in args:\n"
+        "    seen = 0\n"
+        "    if os.path.exists(counter):\n"
+        "        with open(counter, encoding='utf-8') as fh:\n"
+        "            seen = int(fh.read())\n"
+        "    seen += 1\n"
+        "    with open(counter, 'w', encoding='utf-8') as fh:\n"
+        "        fh.write(str(seen))\n"
+        "    if seen == 2:\n"
+        "        socket_arg = next(a for a in args if a.startswith('-S'))\n"
+        "        subprocess.run([tmux_bin, socket_arg, 'kill-server'])\n"
+        "os.execv(tmux_bin, [tmux_bin, *args])\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    return wrapper
 
 
 def test_descriptor_is_the_only_arena_activation_switch() -> None:
@@ -222,6 +272,30 @@ def test_an_artifact_may_bind_several_sources(
     )
 
 
+def test_wiring_an_excluded_source_to_an_artifact_is_refused() -> None:
+    """The static wiring guard is a real check: it can fail, not just decorate.
+
+    ``context_managers.md`` stops the lent server through `with Server()`
+    (its `Server` name resolves to a factory pinned to the arena socket in
+    arena mode, so exiting the block runs `kill-server` against the
+    borrowed daemon). An artifact tuple can never bind it -- this proves
+    the guard actually rejects such a mapping rather than always agreeing.
+    """
+    arena = importlib.import_module("libtmux._arena")
+    conflicting = dict(arena.ARENA_ARTIFACT_TARGETS)
+    conflicting["python-broken"] = (next(iter(arena.ARENA_EXCLUDED_SOURCES)),)
+
+    with pytest.raises(AssertionError):
+        arena._assert_no_excluded_targets(conflicting)
+
+
+def test_the_committed_artifact_wiring_passes_the_same_guard() -> None:
+    """Control: today's real ARENA_ARTIFACT_TARGETS never trips the guard."""
+    arena = importlib.import_module("libtmux._arena")
+
+    arena._assert_no_excluded_targets(arena.ARENA_ARTIFACT_TARGETS)
+
+
 @pytest.mark.parametrize(
     ("artifact", "target"),
     [
@@ -255,6 +329,35 @@ def test_activated_pytest_rejects_invalid_contract_before_talking_to_tmux(
     assert result.returncode == 4
     assert not invocation_log.exists()
     assert "LIBTMUX_ARENA_EVIDENCE=" not in result.stdout
+
+
+def test_arena_refuses_a_source_known_to_stop_the_server(
+    TestServer: t.Callable[..., Server],
+) -> None:
+    """An excluded source is refused by name, not merely absent from a tuple.
+
+    A generic "artifact requires {...}" mismatch would look identical to a
+    typo from the outside. Requesting the excluded page proves the specific,
+    named reason fires instead -- before tmux is even touched.
+    """
+    endpoint = _external_endpoint(TestServer)
+    tmux_bin = shutil.which("tmux")
+    assert tmux_bin is not None
+    excluded = "docs/topics/context_managers.md"
+    result = _run_arena(
+        _arena_environ(endpoint, tmux_bin),
+        "--libtmux-arena-target",
+        excluded,
+        excluded,
+    )
+
+    assert result.returncode == 4
+    combined = result.stdout + result.stderr
+    assert excluded in combined
+    arena = importlib.import_module("libtmux._arena")
+    assert arena.ARENA_EXCLUDED_SOURCES[excluded] in combined
+    assert "LIBTMUX_ARENA_EVIDENCE=" not in result.stdout
+    _assert_only_hold(endpoint)
 
 
 def test_arena_runs_the_exact_doctest_on_an_external_server(
@@ -458,4 +561,92 @@ def test_arena_cleanup_does_not_treat_a_failed_probe_as_an_absent_session(
     finally:
         _remove_adapter_sessions(endpoint)
 
+
+def test_arena_runs_two_pages_and_proves_identity_between_them(
+    TestServer: t.Callable[..., Server],
+) -> None:
+    """A real multi-page artifact reaps only what it left, one record per page.
+
+    Passing control for the destructive test below. ``self_location.md``
+    creates sessions it never kills (``elsewhere``, ``aaa-home``,
+    ``zzz-guest``) -- the same kind of stray the borrowed six-page run this
+    artifact is modeled on found (there: ``97``, ``foo``, ``guest``,
+    ``home``). Teardown must reap them and leave the endpoint's own hold
+    session untouched, and both evidence records must show the same server
+    identity.
+    """
+    endpoint = _external_endpoint(TestServer)
+    tmux_bin = shutil.which("tmux")
+    assert tmux_bin is not None
+    environ = os.environ | {
+        "LIBTMUX_ARENA_DESCRIPTOR": "arena",
+        "LIBTMUX_ARENA_ARTIFACT": TWO_PAGE_ARTIFACT,
+        "LIBTMUX_SOCKET_PATH": endpoint.socket_path,
+        "LIBTMUX_TMUX_BIN": tmux_bin,
+    }
+    result = _run_arena(
+        environ,
+        "--libtmux-arena-target",
+        FIRST_PAGE,
+        "--libtmux-arena-target",
+        SECOND_PAGE,
+        FIRST_PAGE,
+        SECOND_PAGE,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    evidence = [
+        json.loads(line.removeprefix("LIBTMUX_ARENA_EVIDENCE="))
+        for line in result.stdout.splitlines()
+        if line.startswith("LIBTMUX_ARENA_EVIDENCE=")
+    ]
+    assert {record["source"] for record in evidence} == {FIRST_PAGE, SECOND_PAGE}
+    assert len({record["server_pid"] for record in evidence}) == 1
+    assert len({record["challenge"] for record in evidence}) == 1
     _assert_only_hold(endpoint)
+
+
+def test_arena_rejects_a_server_that_stops_between_pages(
+    TestServer: t.Callable[..., Server],
+    tmp_path: pathlib.Path,
+) -> None:
+    """A server stopped between pages is rejected and names the page.
+
+    Negative test for the between-page identity check: without it, a run
+    like this would keep going -- and publish evidence -- against whatever
+    silently answered after the break, exactly the "later call silently
+    started a replacement with no challenge set" failure mode the excluded
+    ``context_managers.md`` produces via ``with Server()``. The wrapper
+    stops the real server the moment the check runs for the first page,
+    without needing to run that excluded page to prove it.
+    """
+    endpoint = _external_endpoint(TestServer)
+    tmux_bin = shutil.which("tmux")
+    assert tmux_bin is not None
+    wrapper = _stop_after_first_page_wrapper(tmp_path, tmux_bin, ARENA_IDENTITY_PROBE)
+    environ = os.environ | {
+        "LIBTMUX_ARENA_DESCRIPTOR": "arena",
+        "LIBTMUX_ARENA_ARTIFACT": TWO_PAGE_ARTIFACT,
+        "LIBTMUX_SOCKET_PATH": endpoint.socket_path,
+        "LIBTMUX_TMUX_BIN": str(wrapper),
+    }
+    result = _run_arena(
+        environ,
+        "--libtmux-arena-target",
+        FIRST_PAGE,
+        "--libtmux-arena-target",
+        SECOND_PAGE,
+        FIRST_PAGE,
+        SECOND_PAGE,
+    )
+
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "LIBTMUX_ARENA_EVIDENCE=" not in result.stdout
+    assert FIRST_PAGE in combined
+    assert "identity" in combined.lower()
+    # The original endpoint (hold session included) is gone by design -- the
+    # wrapper's whole point is simulating that it got stopped. What answers
+    # the socket afterwards, if anything, is cleaned up by TestServer's own
+    # finalizer (`_reap_test_server`), which kills by socket name regardless
+    # of which daemon currently answers there.
