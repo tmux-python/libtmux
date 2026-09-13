@@ -9,7 +9,9 @@ import os
 import pickle
 import re
 import shlex
+import signal
 import sys
+import threading
 import time
 import typing as t
 
@@ -924,12 +926,37 @@ def test_tmux_cmd_timeout_survives_orphaned_pipe_holder(
 def test_tmux_cmd_without_timeout_still_waits(
     hanging_tmux: tuple[str, pathlib.Path],
 ) -> None:
-    """The bound is opt-in; omitting it keeps the historical behaviour."""
-    binary, _pid_file = hanging_tmux
-    started = time.monotonic()
+    """The bound is opt-in; omitting it keeps the historical behaviour.
 
-    with pytest.raises(exc.TmuxTimeout):
-        tmux_cmd("list-sessions", tmux_bin=binary, timeout=0.3)
+    The previous body passed ``timeout=0.3`` and asserted
+    :exc:`~libtmux.exc.TmuxTimeout`, which exercises the *bounded* path,
+    not the ``None`` case this test's name and docstring claim -- it
+    would pass identically whether or not a bare ``timeout=None`` call
+    ever waited at all. Runs the call on a thread bounded well under the
+    stub's 30s sleep: still running after that bound means it did not
+    raise early, and killing the stub directly lets the thread return
+    without this test itself waiting anywhere near 30s.
+    """
+    binary, pid_file = hanging_tmux
+    outcome: list[tmux_cmd | BaseException] = []
 
-    # A test that never waits would pass whether or not `timeout` is read.
-    assert time.monotonic() - started >= 0.3
+    def call() -> None:
+        try:
+            outcome.append(tmux_cmd("list-sessions", tmux_bin=binary))
+        except BaseException as e:  # noqa: BLE001
+            outcome.append(e)
+
+    thread = threading.Thread(target=call, daemon=True)
+    thread.start()
+    thread.join(timeout=0.3)
+    assert thread.is_alive(), "a bare `timeout=None` call must still be waiting"
+
+    # Unblock the thread by killing the stub directly, not through
+    # libtmux's own timeout/kill path -- that is what this test verifies
+    # was never invoked.
+    os.kill(int(pid_file.read_text()), signal.SIGKILL)
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+
+    assert len(outcome) == 1
+    assert not isinstance(outcome[0], exc.TmuxTimeout)
