@@ -84,6 +84,9 @@ whether a command is still running the same way a person would: by reading
 what's on screen. Capture the pane and look for a marker your command prints
 when it reaches a known state. Match whole lines and check the completion
 marker first: a start marker remains in the scrollback after a command ends.
+Joined captures can include right-padding spaces, including on tmux 3.2a.
+These markers have no trailing spaces, so comparisons remove ASCII spaces
+from each line's right edge before checking equality.
 
 ```python
 >>> import time
@@ -93,7 +96,7 @@ marker first: a start marker remains in the scrollback after a command ends.
 
 >>> def is_process_running(pane, marker='RUNNING', completed='DONE'):
 ...     """Check whether output records a start without completion."""
-...     lines = pane.capture_pane(join_wrapped=True)
+...     lines = [line.rstrip(' ') for line in pane.capture_pane(join_wrapped=True)]
 ...     return completed not in lines and marker in lines
 
 >>> is_process_running(status_pane)
@@ -104,7 +107,7 @@ False
 
 >>> deadline = time.monotonic() + 2.0
 >>> while time.monotonic() < deadline:
-...     if 'RUNNING' in status_pane.capture_pane(join_wrapped=True):
+...     if any(line.rstrip(' ') == 'RUNNING' for line in status_pane.capture_pane(join_wrapped=True)):
 ...         break
 ...     time.sleep(0.05)
 >>> is_process_running(status_pane)
@@ -116,10 +119,10 @@ True
 >>> # Wait for completion
 >>> deadline = time.monotonic() + 2.0
 >>> while time.monotonic() < deadline:
-...     if 'DONE' in status_pane.capture_pane(join_wrapped=True):
+...     if any(line.rstrip(' ') == 'DONE' for line in status_pane.capture_pane(join_wrapped=True)):
 ...         break
 ...     time.sleep(0.05)
->>> 'DONE' in status_pane.capture_pane(join_wrapped=True)
+>>> any(line.rstrip(' ') == 'DONE' for line in status_pane.capture_pane(join_wrapped=True))
 True
 >>> is_process_running(status_pane)
 False
@@ -146,7 +149,7 @@ controls how often the loop calls {meth}`~libtmux.Pane.capture_pane`.
 ...     """Wait for an exact line of pane output."""
 ...     deadline = time.monotonic() + timeout
 ...     while time.monotonic() < deadline:
-...         if text in pane.capture_pane(join_wrapped=True):
+...         if any(line.rstrip(' ') == text for line in pane.capture_pane(join_wrapped=True)):
 ...             return True
 ...         time.sleep(poll_interval)
 ...     return False
@@ -188,10 +191,10 @@ early instead of timing out on a command that already crashed.
 >>> error_pane.send_keys(r'printf "\nSuccess!\n"')
 >>> deadline = time.monotonic() + 2.0
 >>> while time.monotonic() < deadline:
-...     if 'Success!' in error_pane.capture_pane(join_wrapped=True):
+...     if any(line.rstrip(' ') == 'Success!' for line in error_pane.capture_pane(join_wrapped=True)):
 ...         break
 ...     time.sleep(0.05)
->>> 'Success!' in error_pane.capture_pane(join_wrapped=True)
+>>> any(line.rstrip(' ') == 'Success!' for line in error_pane.capture_pane(join_wrapped=True))
 True
 >>> check_for_errors(error_pane) is None
 True
@@ -215,7 +218,9 @@ True
 
 Bracket a command's output with distinct start and end markers. Match whole
 lines so echoed command text cannot satisfy the wait. The end marker confirms
-that the command has finished writing its output.
+that the command has finished writing its output. The helper preserves payload
+lines, including their trailing spaces; the example removes those spaces only
+when displaying its result.
 
 ```python
 >>> import time
@@ -228,9 +233,10 @@ that the command has finished writing its output.
 ...     deadline = time.monotonic() + timeout
 ...     while time.monotonic() < deadline:
 ...         lines = pane.capture_pane(join_wrapped=True)
+...         markers = [line.rstrip(' ') for line in lines]
 ...         try:
-...             start = lines.index(start_marker)
-...             end = lines.index(end_marker, start + 1)
+...             start = markers.index(start_marker)
+...             end = markers.index(end_marker, start + 1)
 ...         except ValueError:
 ...             time.sleep(0.05)
 ...             continue
@@ -241,7 +247,8 @@ that the command has finished writing its output.
 >>> capture_pane.send_keys(
 ...     r'printf "\n%s\n%s\n%s\n" "BEGIN" "captured data" "END"'
 ... )
->>> capture_between_markers(capture_pane, 'BEGIN', 'END', timeout=2.0)
+>>> captured = capture_between_markers(capture_pane, 'BEGIN', 'END', timeout=2.0)
+>>> [line.rstrip(' ') for line in captured]
 ['captured data']
 
 >>> # Clean up
@@ -279,7 +286,10 @@ Window(@... ...)
 
 >>> for pane, cmd, marker in tasks:
 ...     pane.send_keys(cmd, enter=False)
->>> any(marker in p.capture_pane(join_wrapped=True) for p, _, marker in tasks)
+>>> any(
+...     any(line.rstrip(' ') == marker for line in p.capture_pane(join_wrapped=True))
+...     for p, _, marker in tasks
+... )
 False
 >>> for pane, _, _ in tasks:
 ...     _ = pane.enter()
@@ -287,12 +297,18 @@ False
 >>> # Wait for all tasks
 >>> deadline = time.monotonic() + 2.0
 >>> while time.monotonic() < deadline:
-...     if all(marker in p.capture_pane(join_wrapped=True) for p, _, marker in tasks):
+...     if all(
+...         any(line.rstrip(' ') == marker for line in p.capture_pane(join_wrapped=True))
+...         for p, _, marker in tasks
+...     ):
 ...         break
 ...     time.sleep(0.05)
 
 >>> # Verify all completed
->>> all(marker in p.capture_pane(join_wrapped=True) for p, _, marker in tasks)
+>>> all(
+...     any(line.rstrip(' ') == marker for line in p.capture_pane(join_wrapped=True))
+...     for p, _, marker in tasks
+... )
 True
 
 >>> # Clean up
@@ -324,7 +340,7 @@ Window(@... ...)
 ...     remaining = set(range(len(panes)))
 ...     while remaining and time.monotonic() < deadline:
 ...         for i in list(remaining):
-...             if marker in panes[i].capture_pane(join_wrapped=True):
+...             if any(line.rstrip(' ') == marker for line in panes[i].capture_pane(join_wrapped=True)):
 ...                 remaining.remove(i)
 ...         if remaining:
 ...             time.sleep(0.05)
@@ -386,10 +402,10 @@ never outlives its purpose.
 ...     pane.send_keys(r'printf "\nSubtask running\n"')
 ...     deadline = time.monotonic() + 2.0
 ...     while time.monotonic() < deadline:
-...         if 'Subtask running' in pane.capture_pane(join_wrapped=True):
+...         if any(line.rstrip(' ') == 'Subtask running' for line in pane.capture_pane(join_wrapped=True)):
 ...             break
 ...         time.sleep(0.05)
-...     'Subtask running' in pane.capture_pane(join_wrapped=True)
+...     any(line.rstrip(' ') == 'Subtask running' for line in pane.capture_pane(join_wrapped=True))
 True
 
 >>> # Window cleaned up automatically
@@ -426,14 +442,14 @@ not cancel the command. This example kills its temporary window afterward.
 ...     deadline = time.monotonic() + timeout
 ...     while time.monotonic() < deadline:
 ...         lines = pane.capture_pane(join_wrapped=True)
-...         if marker in lines:
+...         if any(line.rstrip(' ') == marker for line in lines):
 ...             return '\n'.join(lines)
 ...         time.sleep(0.05)
 ...     raise CommandTimeout(f'Command timed out after {timeout}s')
 
 >>> # Test successful command
 >>> result = run_with_timeout(timeout_pane, r'printf "\nfast\n"', timeout=2.0)
->>> 'fast' in result.splitlines()
+>>> any(line.rstrip(' ') == 'fast' for line in result.splitlines())
 True
 
 >>> # This command waits for input; the previous marker must not complete it.
@@ -470,7 +486,7 @@ the temporary window.
 ...         pane.send_keys(fr'printf "\n%s\n" "{begin}"; {command}; printf "\n%s\n" "{end}"')
 ...         deadline = time.monotonic() + timeout
 ...         while time.monotonic() < deadline:
-...             lines = pane.capture_pane(start='-', join_wrapped=True)
+...             lines = [line.rstrip(' ') for line in pane.capture_pane(start='-', join_wrapped=True)]
 ...             try:
 ...                 first = lines.index(begin)
 ...                 last = lines.index(end, first + 1)
@@ -534,7 +550,7 @@ completion before the deadline, not the command's exit status.
 ...         # Wait for this task to complete
 ...         deadline = time.monotonic() + timeout
 ...         while time.monotonic() < deadline:
-...             if marker in pane.capture_pane(join_wrapped=True):
+...             if any(line.rstrip(' ') == marker for line in pane.capture_pane(join_wrapped=True)):
 ...                 results.append((i, True))
 ...                 break
 ...             time.sleep(0.05)
@@ -582,7 +598,7 @@ and the history tells you how far you got before it stopped.
 ...
 ...         deadline = time.monotonic() + timeout_per_state
 ...         while time.monotonic() < deadline:
-...             if next_marker in pane.capture_pane(join_wrapped=True):
+...             if any(line.rstrip(' ') == next_marker for line in pane.capture_pane(join_wrapped=True)):
 ...                 history.append(state_name)
 ...                 current_state += 1
 ...                 break
@@ -631,10 +647,10 @@ then reacts to what actually happened rather than to a clock.
 >>> import time
 >>> deadline = time.monotonic() + 2.0
 >>> while time.monotonic() < deadline:
-...     if '__DONE__' in bp_pane.capture_pane(join_wrapped=True):
+...     if any(line.rstrip(' ') == '__DONE__' for line in bp_pane.capture_pane(join_wrapped=True)):
 ...         break
 ...     time.sleep(0.05)
->>> '__DONE__' in bp_pane.capture_pane(join_wrapped=True)
+>>> any(line.rstrip(' ') == '__DONE__' for line in bp_pane.capture_pane(join_wrapped=True))
 True
 
 >>> bp_window.kill()

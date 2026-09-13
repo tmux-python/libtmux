@@ -358,7 +358,9 @@ def test_capture_pane_flags(
 
     # The echoed command contains the marker before its output arrives.
     def command_complete() -> bool:
-        return marker in pane.capture_pane(join_wrapped=True)
+        return any(
+            line.rstrip(" ") == marker for line in pane.capture_pane(join_wrapped=True)
+        )
 
     retry_until(command_complete, 5, raises=True)
 
