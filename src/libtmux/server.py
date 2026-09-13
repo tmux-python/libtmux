@@ -2583,16 +2583,23 @@ class Server(
         :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
 
         Returns an empty :class:`~libtmux._internal.query_list.QueryList` when
-        tmux's ``list-sessions`` fails for any reason — no running daemon, a
-        missing socket, a permission error, or a subprocess failure. To
-        distinguish "no sessions" from "tmux unreachable", call
+        tmux's ``list-sessions`` invocation fails for any reason — no running
+        daemon, a missing socket, a permission error, or a subprocess
+        failure. To distinguish "no sessions" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+
+        Does *not* absorb a :exc:`~libtmux.exc.TmuxRecordParseError` (the
+        invocation succeeded but its output could not be parsed) or a
+        :exc:`~libtmux.exc.TmuxTimeout` (unknown whether it took effect) —
+        both propagate, since neither means "no sessions".
         """
         try:
             sessions: list[Session] = [
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except exc.TmuxRecordParseError:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2644,10 +2651,16 @@ class Server(
         ``client.client_session`` etc. read tmux's ``client_*`` format tokens.
 
         Returns an empty :class:`~libtmux._internal.query_list.QueryList` when
-        tmux's ``list-clients`` fails for any reason — no running daemon, a
-        missing socket, a permission error, or a subprocess failure. To
-        distinguish "no clients attached" from "tmux unreachable", call
-        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        tmux's ``list-clients`` invocation fails for any reason — no running
+        daemon, a missing socket, a permission error, or a subprocess
+        failure. To distinguish "no clients attached" from "tmux
+        unreachable", call :meth:`Server.is_alive` or
+        :meth:`Server.raise_if_dead`.
+
+        Does *not* absorb a :exc:`~libtmux.exc.TmuxRecordParseError` (the
+        invocation succeeded but its output could not be parsed) or a
+        :exc:`~libtmux.exc.TmuxTimeout` (unknown whether it took effect) —
+        both propagate, since neither means "no clients".
 
         Returns
         -------
@@ -2665,6 +2678,8 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except exc.TmuxRecordParseError:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)

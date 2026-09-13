@@ -20,12 +20,20 @@ facts specific to this package.
 ## List-returning accessors: empty by default on tmux errors
 
 `Server.sessions`, `Server.clients`, and `Server.attached_sessions`
-return an empty `QueryList` when tmux's underlying list command fails
-for any reason — no running daemon, a missing socket, a permission
-error, a subprocess crash. This is a deliberate API contract:
-list-shaped accessors are lenient by default. Callers that need to
-distinguish "no rows" from "tmux unreachable" use the explicit
+return an empty `QueryList` when tmux's underlying list *invocation*
+fails for any reason — no running daemon, a missing socket, a
+permission error, a subprocess crash. This is a deliberate API
+contract: list-shaped accessors are lenient by default. Callers that
+need to distinguish "no rows" from "tmux unreachable" use the explicit
 `Server.is_alive()` or `Server.raise_if_dead()` primitives.
+
+Two exceptions propagate instead of collapsing to empty, because
+neither means "no rows": `exc.TmuxRecordParseError` (the invocation
+succeeded but a value contained the field separator, so the reply
+itself could not be parsed — see `neo._split_records`) and
+`exc.TmuxTimeout` (the command was killed mid-flight; whether it took
+effect is unknown). Swallowing either would tell a caller "nothing to
+list" when tmux may hold rows libtmux simply couldn't read back.
 
 When adding a new list-returning accessor, follow this convention. If a
 future feature genuinely benefits from loud-failure semantics, expose

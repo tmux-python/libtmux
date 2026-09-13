@@ -378,6 +378,21 @@ class TmuxTimeout(Exception):
         return f"tmux did not return within {self.timeout}s: {' '.join(self.cmd)}"
 
 
+class TmuxRecordParseError(LibTmuxException):
+    """A ``list-*`` record could not be split into its fields.
+
+    Raised by ``libtmux.neo._split_records`` when a value contains the
+    field separator itself, so the output no longer divides evenly into
+    whole records.
+
+    Deliberately not absorbed by the list-returning accessors'
+    empty-by-default contract: this means libtmux received a reply it
+    cannot interpret, not that tmux was unreachable, so treating it like
+    "nothing to list" would hide real rows behind a parsing bug rather
+    than a connectivity gap.
+    """
+
+
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 

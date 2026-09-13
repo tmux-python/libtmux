@@ -89,6 +89,16 @@ contains a newline. The captured path retains its original value.
 way, so a newline in ``start_directory`` no longer raises `ValueError` before
 the `Session` is built.
 
+#### `Server.sessions`/`Server.clients` agree with the other listings on parse failures (#758)
+
+A malformed record now raises the new {exc}`~libtmux.exc.TmuxRecordParseError`
+instead of the generic {exc}`~libtmux.exc.LibTmuxException`, and
+{attr}`~libtmux.Server.sessions` and {attr}`~libtmux.Server.clients` let it
+propagate rather than folding it into their empty-by-default contract, which
+covers an unreachable server, not a reply libtmux could not parse. This
+matches {attr}`~libtmux.Server.windows` and {attr}`~libtmux.Server.panes`,
+which already raised it.
+
 #### Expanded tmux hook decoding (#758)
 
 Reading hooks recognizes tmux's additional pane, window, client and command
