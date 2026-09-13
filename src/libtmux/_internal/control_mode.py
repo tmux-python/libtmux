@@ -116,14 +116,8 @@ class ControlMode:
 
         try:
             retry_until(client_registered, 3, raises=True)
-        except Exception:
-            os.close(self._write_fd)
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-                self._proc.wait()
+        except BaseException:
+            self._stop()
             raise
 
         return self
@@ -134,13 +128,19 @@ class ControlMode:
         exc_val: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Terminate control-mode client."""
-        # Close write end — causes the control-mode client to exit (EOF on stdin)
-        os.close(self._write_fd)
+        """Terminate the control-mode client and close its streams."""
+        self._stop()
 
-        self._proc.terminate()
+    def _stop(self) -> None:
         try:
-            self._proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self._proc.kill()
-            self._proc.wait()
+            os.close(self._write_fd)
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+        finally:
+            self.stdout.close()
+            if self._proc.stderr is not None:
+                self._proc.stderr.close()

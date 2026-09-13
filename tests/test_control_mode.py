@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import locale
 import os
+import signal
 import sys
 import typing as t
 
 import pytest
 
+from libtmux._internal import control_mode as control_module
 from libtmux._internal.control_mode import ControlMode
 from libtmux.formats import FORMAT_SEPARATOR
 
@@ -27,17 +29,55 @@ def test_control_mode_creates_client(
         assert ctl.client_name != ""
 
 
+@pytest.mark.parametrize("stop_client", [False, True], ids=["normal", "stopped"])
 def test_control_mode_cleanup(
     control_mode: t.Callable[[], ControlMode],
     server: Server,
+    stop_client: bool,
 ) -> None:
-    """Client is removed after ControlMode context exits."""
-    with control_mode():
+    """Exiting releases the client and its streams."""
+    with control_mode() as ctl:
         assert len(server.list_clients()) > 0
+        if stop_client:
+            os.kill(ctl._proc.pid, signal.SIGSTOP)
+            _, state = os.waitpid(ctl._proc.pid, os.WUNTRACED)
+            assert os.WIFSTOPPED(state)
 
-    # After context exit, client should be gone
+    assert ctl.stdout.closed
+    assert ctl._proc.stderr is not None and ctl._proc.stderr.closed
+    assert ctl._proc.poll() is not None
     clients = server.list_clients()
     assert len(clients) == 0
+
+
+@pytest.mark.parametrize("problem", [RuntimeError, KeyboardInterrupt])
+def test_control_mode_failed_registration_closes_streams(
+    control_mode: t.Callable[[], ControlMode],
+    monkeypatch: pytest.MonkeyPatch,
+    problem: type[BaseException],
+) -> None:
+    """A failed handshake must release the real subprocess and its pipes."""
+
+    def reject_registration(*args: object, **kwargs: object) -> None:
+        message = "registration failed"
+        raise problem(message)
+
+    monkeypatch.setattr(control_module, "retry_until", reject_registration)
+    ctl = control_mode()
+    try:
+        with pytest.raises(problem, match="registration failed"), ctl:
+            pytest.fail("Registration must fail before entering the body")
+        assert ctl.stdout.closed
+        assert ctl._proc.stderr is not None and ctl._proc.stderr.closed
+        assert ctl._proc.poll() is not None
+    finally:
+        if ctl._proc.poll() is None:
+            os.close(ctl._write_fd)
+            ctl._proc.kill()
+            ctl._proc.wait(timeout=5)
+        ctl.stdout.close()
+        if ctl._proc.stderr is not None:
+            ctl._proc.stderr.close()
 
 
 def test_control_mode_client_name(
