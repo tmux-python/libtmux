@@ -1712,6 +1712,31 @@ def test_server_clients_returns_empty_on_tmux_error(
     assert list(server.clients) == []
 
 
+def test_server_clients_propagates_record_parse_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.clients`` re-raises a malformed-record failure.
+
+    A :exc:`~libtmux.exc.TmuxRecordParseError` means ``list-clients``
+    ran and replied, but a value contained the field separator, so the
+    reply itself could not be split into records -- distinct from the
+    generic :exc:`~libtmux.exc.LibTmuxException` cases above, which mean
+    the invocation itself failed. Swallowing it into ``QueryList([])``
+    would tell a caller "no clients" when tmux may hold clients libtmux
+    simply could not read back; ``Server.windows``/``Server.panes``
+    already raise the same failure via ``_fetch_or_empty``.
+    """
+    sentinel = exc.TmuxRecordParseError("simulated malformed record")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.TmuxRecordParseError, match="simulated malformed record"):
+        list(server.clients)
+
+
 def test_server_search_sessions_propagates_errors(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
@@ -1751,6 +1776,27 @@ def test_server_sessions_returns_empty_on_tmux_error(
 
     monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
     assert list(server.sessions) == []
+
+
+def test_server_sessions_propagates_record_parse_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.sessions`` re-raises a malformed-record failure.
+
+    Mirrors ``test_server_clients_propagates_record_parse_error``: a
+    :exc:`~libtmux.exc.TmuxRecordParseError` means the reply could not
+    be parsed, not that ``list-sessions`` was unreachable, so it is not
+    a case the empty-by-default contract covers.
+    """
+    sentinel = exc.TmuxRecordParseError("simulated malformed record")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.TmuxRecordParseError, match="simulated malformed record"):
+        list(server.sessions)
 
 
 def test_server_sessions_missing_socket_returns_empty(tmp_path: pathlib.Path) -> None:

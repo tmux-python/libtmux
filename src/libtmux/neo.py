@@ -1054,7 +1054,7 @@ def _split_records(stdout: list[str], field_count: int) -> list[str]:
 
     Raises
     ------
-    :exc:`~libtmux.exc.LibTmuxException`
+    :exc:`~libtmux.exc.TmuxRecordParseError`
         If the values do not divide into whole records, which means a
         value contained the separator itself.
     """
@@ -1074,7 +1074,7 @@ def _split_records(stdout: list[str], field_count: int) -> list[str]:
             f"{field_count} fields per record. A format value probably "
             f"contains the field separator ({FORMAT_SEPARATOR!r})."
         )
-        raise exc.LibTmuxException(msg)
+        raise exc.TmuxRecordParseError(msg)
 
     records: list[str] = []
     for start in range(0, len(values), field_count):
@@ -1135,6 +1135,11 @@ def fetch_objs(
     ------
     :exc:`~libtmux.exc.LibTmuxException`
         If the tmux command writes to stderr.
+    :exc:`~libtmux.exc.TmuxRecordParseError`
+        If a returned value contains the field separator, so the output
+        cannot be regrouped into whole records.
+    :exc:`~libtmux.exc.TmuxTimeout`
+        If the command does not return within ``server.timeout``.
 
     Examples
     --------
