@@ -52,6 +52,23 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _NotSet:
+    """Sentinel for an omitted ``timeout`` argument, distinct from ``None``.
+
+    :meth:`Server.cmd`'s ``timeout`` has three meanings: omitted (fall back
+    to :attr:`Server.timeout`), ``None`` (run this one call unbounded, even
+    when the server has a timeout), or a number (override it). ``None`` as
+    the default would erase the second meaning by making it indistinguishable
+    from the first.
+    """
+
+    def __repr__(self) -> str:
+        return "<not set>"
+
+
+_NOT_SET = _NotSet()
+
+
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
     """Return True if the error indicates the tmux server is not running.
 
@@ -473,7 +490,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-        timeout: float | None = None,
+        timeout: float | _NotSet | None = _NOT_SET,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -511,6 +528,11 @@ class Server(
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Per-call override for :attr:`Server.timeout`. Omit to use the
+            server's timeout; pass ``None`` to run this one call without a
+            bound even when the server has one; pass a number to bound just
+            this call.
 
         Returns
         -------
@@ -540,11 +562,13 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
+        resolved_timeout = self.timeout if isinstance(timeout, _NotSet) else timeout
+
         return tmux_cmd(
             *svr_args,
             *cmd_args,
             tmux_bin=self.tmux_bin,
-            timeout=self.timeout if timeout is None else timeout,
+            timeout=resolved_timeout,
         )
 
     @property
