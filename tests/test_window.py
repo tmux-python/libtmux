@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
-import time
 import typing as t
 
 import pytest
@@ -20,6 +19,7 @@ from libtmux.constants import (
 )
 from libtmux.pane import Pane
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -577,10 +577,15 @@ def test_split_with_environment(
         environment=environment,
     )
     assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
+
+        def output_ready(expected: str = v) -> bool:
+            lines = pane.capture_pane()
+            return len(lines) >= 2 and lines[-2] == expected
+
+        retry_until(output_ready, 2, raises=True)
         assert pane.capture_pane()[-2] == v
 
 
