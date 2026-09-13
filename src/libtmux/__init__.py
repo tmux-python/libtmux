@@ -14,6 +14,7 @@ from .__about__ import (
     __title__,
     __version__,
 )
+from ._internal.query_list import QueryList
 from .client import Client
 from .formats import Format
 from .pane import Pane
@@ -27,6 +28,7 @@ __all__ = (
     "Client",
     "Format",
     "Pane",
+    "QueryList",
     "Server",
     "Session",
     "Window",
