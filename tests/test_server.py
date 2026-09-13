@@ -9,7 +9,9 @@ import os
 import pathlib
 import shlex
 import shutil
+import signal
 import subprocess
+import threading
 import time
 import typing as t
 
@@ -325,6 +327,52 @@ def test_raise_if_dead_propagates_timeout(
     with pytest.raises(exc.TmuxTimeout):
         wedged.raise_if_dead()
     assert time.monotonic() - started < 5
+
+
+def test_cmd_timeout_falls_back_to_server_default(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """Omitting ``timeout`` on ``Server.cmd`` uses the server's own bound."""
+    binary, _pid_file = hanging_tmux
+    bounded = Server(tmux_bin=binary, timeout=0.2)
+
+    with pytest.raises(exc.TmuxTimeout):
+        bounded.cmd("list-sessions")
+
+
+def test_cmd_timeout_none_opts_out_of_the_server_default(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """An explicit ``timeout=None`` on ``Server.cmd`` overrides the server bound.
+
+    ``timeout=self.timeout if timeout is None else timeout`` used to
+    collapse an explicit opt-out onto the server default -- indistinguishable
+    from omitting it -- so a caller could never run one command unbounded on
+    a server that has a timeout.
+    """
+    binary, pid_file = hanging_tmux
+    bounded = Server(tmux_bin=binary, timeout=0.2)
+    outcome: list[object] = []
+
+    def call() -> None:
+        try:
+            outcome.append(bounded.cmd("list-sessions", timeout=None))
+        except BaseException as e:  # noqa: BLE001
+            outcome.append(e)
+
+    thread = threading.Thread(target=call, daemon=True)
+    thread.start()
+    thread.join(timeout=0.5)
+    assert thread.is_alive(), "explicit timeout=None must not use the server bound"
+
+    # Unblock the thread directly; libtmux's own timeout/kill path is what
+    # this test verifies was never invoked.
+    os.kill(int(pid_file.read_text()), signal.SIGKILL)
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+
+    assert len(outcome) == 1
+    assert not isinstance(outcome[0], exc.TmuxTimeout)
 
 
 def test_context_manager_exit_kills_despite_is_alive_timeout(
