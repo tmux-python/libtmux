@@ -32,6 +32,13 @@ TMUX_MIN_VERSION = "3.2a"
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.7"
 
+#: Bound on draining stdout/stderr after :meth:`subprocess.Popen.kill`.
+#: SIGKILL ends the killed process itself immediately, but a surviving
+#: descendant that inherited its pipe file descriptors can keep them open
+#: indefinitely, which would otherwise make ``communicate()`` block past
+#: the caller's own deadline while waiting for EOF that never comes.
+_KILL_REAP_TIMEOUT = 1.0
+
 SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
@@ -380,7 +387,18 @@ def run_command(
         # unbounded call leaves the child running, so repeated
         # timeouts accumulate tmux clients that nothing is waiting on.
         process.kill()
-        process.communicate()
+        try:
+            process.communicate(timeout=_KILL_REAP_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            # A descendant inherited the stdout/stderr pipes and kept its
+            # own copy open, so reading for EOF would block indefinitely
+            # even though the killed process is already gone. Close our
+            # ends to stop waiting on it, then reap the process itself.
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+            process.wait()
         raise exc.TmuxTimeout(cmd, t.cast("float", timeout)) from None
     except FileNotFoundError:
         raise exc.TmuxCommandNotFound from None

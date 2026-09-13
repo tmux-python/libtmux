@@ -53,7 +53,9 @@ _Notes on the upcoming release will go here._
 {class}`~libtmux.common.CommandResult`; the existing
 {class}`~libtmux.common.tmux_cmd` facade remains compatible. Optional command
 and server timeouts bound calls, including listings, and raise
-{exc}`~libtmux.exc.TmuxTimeout` after cleanup when the deadline expires.
+{exc}`~libtmux.exc.TmuxTimeout` after a bounded cleanup when the deadline
+expires, even if a surviving descendant keeps the command's own
+stdout/stderr pipes open.
 
 #### Explicitly owned temporary resources (#758)
 
