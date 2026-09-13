@@ -82,6 +82,9 @@ filtering the existing collection locally.
 
 Session, window and pane listings remain usable when a pane's directory
 contains a newline. The captured path retains its original value.
+{meth}`~libtmux.Server.new_session` parses its own ``-P -F`` reply the same
+way, so a newline in ``start_directory`` no longer raises `ValueError` before
+the `Session` is built.
 
 #### Expanded tmux hook decoding (#758)
 

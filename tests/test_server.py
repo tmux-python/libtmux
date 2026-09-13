@@ -727,6 +727,36 @@ def test_new_session_start_directory_pathlib(
     assert actual_path == expected_path
 
 
+def test_new_session_start_directory_with_newline(
+    server: Server,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A newline in ``start_directory`` must not corrupt the ``-P -F`` record.
+
+    ``new_session`` parses its own record straight off ``proc.stdout[0]``, so
+    a value containing a newline -- here ``pane_current_path``, echoed back
+    because a session row also reports its active pane's fields -- used to
+    split the record across output lines. ``parse_output``'s strict ``zip``
+    then rejected the truncated fragment with ``ValueError: zip() argument 2
+    is shorter than argument 1`` before a ``Session`` was ever built.
+    """
+    weird_directory = tmp_path / "we\nird"
+    weird_directory.mkdir()
+
+    session = server.new_session(
+        session_name="test_newline_start_dir",
+        start_directory=weird_directory,
+    )
+
+    assert session.session_name == "test_newline_start_dir"
+    active_pane = session.active_window.active_pane
+    assert active_pane is not None
+    active_pane.refresh()
+    assert active_pane.pane_current_path is not None
+    actual_path = pathlib.Path(active_pane.pane_current_path).resolve()
+    assert actual_path == weird_directory.resolve()
+
+
 def test_tmux_bin_default(server: Server) -> None:
     """Default tmux_bin is None, falls back to shutil.which."""
     assert server.tmux_bin is None
