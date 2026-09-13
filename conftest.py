@@ -23,6 +23,7 @@ from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
 from libtmux.session import Session
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -52,6 +53,7 @@ def add_doctest_fixtures(
         doctest_namespace["pane"] = session.active_pane
         doctest_namespace["request"] = request
         doctest_namespace["ControlMode"] = ControlMode
+        doctest_namespace["retry_until"] = retry_until
         doctest_namespace["control_mode"] = functools.partial(
             ControlMode,
             server=session.server,
