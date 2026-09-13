@@ -1032,6 +1032,14 @@ class Session(
         """
         return self.session_name
 
+    @property
+    def attached_count(self) -> int | None:
+        """Captured attached-client count, or ``None`` when unavailable.
+
+        Reads locally. :attr:`session_attached` retains the raw tmux string.
+        """
+        return int(self.session_attached) if self.session_attached is not None else None
+
     #
     # Legacy: Redundant stuff we want to remove
     #

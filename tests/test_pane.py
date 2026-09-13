@@ -9,17 +9,49 @@ import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import Pane, Server, exc
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
-    from libtmux.pane import Pane
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize("raw", [None, "0", "1"])
+def test_decoded_pane_fields_are_local(raw: str | None) -> None:
+    """Decoded fields preserve absence and zero without executing tmux."""
+    pane = Pane(
+        server=Server(tmux_bin="missing-decoded-fields-tmux"),
+        pane_width="80",
+        pane_height="24",
+        pane_active=raw,
+        pane_dead=raw,
+    )
+    assert pane.width_cells == 80
+    assert pane.height_cells == 24
+    assert pane.width == "80"
+    assert pane.height == "24"
+    assert pane.is_active is (None if raw is None else raw == "1")
+    assert pane.is_dead is (None if raw is None else raw == "1")
+    pane.pane_width = None
+    pane.pane_height = None
+    assert pane.width_cells is None
+    assert pane.height_cells is None
+
+
+def test_decoded_pane_fields_match_live_capture(session: Session) -> None:
+    """Active and inactive panes retain distinct typed captured flags."""
+    window = session.active_window
+    window.split(attach=False)
+    panes = window.panes
+    assert len(panes) == 2
+    assert sum(pane.is_active is True for pane in panes) == 1
+    assert all(pane.is_dead is False for pane in panes)
+    assert all(isinstance(pane.width_cells, int) for pane in panes)
 
 
 def test_send_keys(session: Session) -> None:

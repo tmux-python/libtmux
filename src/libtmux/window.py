@@ -1722,6 +1722,30 @@ class Window(
         """
         return self.window_width
 
+    @property
+    def width_cells(self) -> int | None:
+        """Captured width in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`width` alias retains its raw string.
+        """
+        return int(self.window_width) if self.window_width is not None else None
+
+    @property
+    def height_cells(self) -> int | None:
+        """Captured height in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`height` alias retains its raw string.
+        """
+        return int(self.window_height) if self.window_height is not None else None
+
+    @property
+    def is_active(self) -> bool | None:
+        """Captured active flag within the session, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.window_active)) if self.window_active is not None else None
+
     #
     # Legacy: Redundant stuff we want to remove
     #
