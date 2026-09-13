@@ -67,7 +67,9 @@ without going through `__init__` still has a value to read.
 {meth}`~libtmux.Server.owned_session` creates a temporary session on an existing
 server. Cleanup affects the created resource and reports failures; legacy
 handle contexts retain their destructive behavior. See
-{doc}`topics/context_managers` for ownership and cleanup rules.
+{doc}`topics/context_managers` for ownership and cleanup rules. The yielded
+server's `socket_path` is a `str`, like every other constructor produces, so
+it compares equal to the same endpoint addressed by string.
 
 #### Decoded captured fields (#758)
 

@@ -225,7 +225,11 @@ class Server(
         self._panes: list[PaneDict] = []
 
         if socket_path is not None:
-            self.socket_path = socket_path
+            # str, not the pathlib.Path the type also accepts: __eq__
+            # compares socket_path by value, and Path("/x") != "/x", so a
+            # Path here would make an otherwise-identical endpoint compare
+            # unequal to one addressed by string.
+            self.socket_path = str(socket_path)
         elif socket_name is not None:
             self.socket_name = socket_name
         elif socket_name_factory is not None:
