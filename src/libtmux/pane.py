@@ -2709,6 +2709,38 @@ class Pane(
         return self.pane_title
 
     @property
+    def width_cells(self) -> int | None:
+        """Captured width in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`width` alias retains its raw string.
+        """
+        return int(self.pane_width) if self.pane_width is not None else None
+
+    @property
+    def height_cells(self) -> int | None:
+        """Captured height in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`height` alias retains its raw string.
+        """
+        return int(self.pane_height) if self.pane_height is not None else None
+
+    @property
+    def is_active(self) -> bool | None:
+        """Captured active flag within the window, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.pane_active)) if self.pane_active is not None else None
+
+    @property
+    def is_dead(self) -> bool | None:
+        """Captured pane-process exit flag, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.pane_dead)) if self.pane_dead is not None else None
+
+    @property
     def at_top(self) -> bool:
         """Typed, converted wrapper around :attr:`Pane.pane_at_top`.
 

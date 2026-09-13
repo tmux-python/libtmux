@@ -29,6 +29,26 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.parametrize("raw", [None, "0", "1"])
+def test_decoded_window_fields_are_local(raw: str | None) -> None:
+    """Window dimensions and flags decode without a running server."""
+    window = Window(
+        server=Server(tmux_bin="missing-decoded-fields-tmux"),
+        window_width="80",
+        window_height="24",
+        window_active=raw,
+    )
+    assert window.width_cells == 80
+    assert window.height_cells == 24
+    assert window.width == "80"
+    assert window.height == "24"
+    assert window.is_active is (None if raw is None else raw == "1")
+    window.window_width = None
+    window.window_height = None
+    assert window.width_cells is None
+    assert window.height_cells is None
+
+
 def test_select_window(session: Session) -> None:
     """Test Window.select_window()."""
     window_count = len(session.windows)
