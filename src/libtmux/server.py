@@ -7,10 +7,11 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
+import inspect
 import logging
 import os
 import pathlib
-import shutil
 import subprocess
 import typing as t
 import warnings
@@ -19,8 +20,22 @@ from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    dispatch,
+    dispatch_batch,
+    get_version,
+    has_gte_version,
+    raise_if_stderr,
+)
 from libtmux.constants import OptionScope
+from libtmux.engines.base import (
+    CommandResult,
+    SupportsConnection,
+    TmuxEngine,
+)
+from libtmux.engines.connection import ServerConnection
+from libtmux.engines.record import RecordingEngine
+from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
@@ -38,6 +53,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
+    from collections.abc import Sequence
     from typing import TypeAlias
 
     from typing_extensions import Self
@@ -47,6 +63,41 @@ if t.TYPE_CHECKING:
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+
+def _validated_engine(engine: TmuxEngine | None) -> TmuxEngine | None:
+    """Return *engine*, rejecting anything a synchronous server cannot drive.
+
+    :class:`~libtmux.engines.base.TmuxEngine` is a runtime-checkable
+    :class:`typing.Protocol`, so :func:`isinstance` confirms that ``run`` and
+    ``run_batch`` exist but says nothing about their signatures -- and an
+    :class:`~libtmux.engines.base.AsyncTmuxEngine` satisfies it too, because its
+    methods have the same names. Both failures otherwise surface far from the
+    constructor: a missing method as an :exc:`AttributeError` inside
+    :meth:`Server.cmd`, and a coroutine as a result object that has no
+    ``returncode``. Checking here names the real problem instead.
+    """
+    if engine is None:
+        return None
+    if not isinstance(engine, TmuxEngine):
+        missing = [
+            name
+            for name in ("run", "run_batch")
+            if not callable(getattr(engine, name, None))
+        ]
+        msg = (
+            f"{type(engine).__name__} is not a TmuxEngine: missing "
+            f"{', '.join(missing)}. Subclass libtmux.engines.TmuxEngine to "
+            f"inherit run_batch, or define both methods."
+        )
+        raise exc.LibTmuxException(msg)
+    if inspect.iscoroutinefunction(engine.run):
+        msg = (
+            f"{type(engine).__name__}.run() is async; Server is synchronous. "
+            f"Await an AsyncTmuxEngine directly instead of passing it to Server."
+        )
+        raise exc.LibTmuxException(msg)
+    return engine
 
 
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
@@ -108,6 +159,10 @@ class Server(
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
+    engine : :class:`~libtmux.engines.base.TmuxEngine`, optional
+        Executor every tmux command runs through. Defaults to
+        :class:`~libtmux.engines.subprocess.SubprocessEngine` bound to this
+        server's :attr:`connection`.
 
     Examples
     --------
@@ -167,6 +222,17 @@ class Server(
     tmux_bin: str | None = None
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
 
+    _engine: TmuxEngine | None = None
+    """Caller-supplied executor, or ``None`` for the default subprocess engine."""
+    _default_engine: SubprocessEngine | None = None
+    """Lazily built default engine, rebuilt whenever :attr:`connection` changes."""
+    _connection: ServerConnection | None = None
+    """Cached connection, valid while :attr:`_connection_key` still matches."""
+    _connection_key: tuple[t.Any, ...] | None = None
+    """Snapshot of the public connection attributes the cache was built from."""
+    _adopted_engine: tuple[ServerConnection, TmuxEngine] | None = None
+    """Injected engine rebound to :attr:`connection`, with the connection it used."""
+
     def __init__(
         self,
         socket_name: str | None = None,
@@ -176,10 +242,16 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
+        engine: TmuxEngine | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self._engine = _validated_engine(engine)
+        self._default_engine = None
+        self._adopted_engine = None
+        self._connection = None
+        self._connection_key = None
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
@@ -198,6 +270,245 @@ class Server(
 
         if on_init is not None:
             on_init(self)
+
+    @property
+    def connection(self) -> ServerConnection:
+        """Return the tmux binary and connection flags this server dispatches on.
+
+        :attr:`socket_name`, :attr:`socket_path`, :attr:`config_file`,
+        :attr:`colors` and :attr:`tmux_bin` are public and writable, and
+        :meth:`__eq__` reads two of them, so a connection captured once at
+        construction would silently keep pointing at the old socket after a
+        write. The connection is therefore *derived*, and cached against a
+        snapshot of exactly those five attributes: reassigning any of them
+        invalidates the cache on the next command, while an unchanged server
+        keeps one memoized :func:`shutil.which` lookup for its whole life.
+
+        Returns
+        -------
+        :class:`~libtmux.engines.connection.ServerConnection`
+            Flags in the order tmux receives them: color depth, ``-f``, ``-S``,
+            ``-L``.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.UnknownColorOption`
+            :attr:`colors` is set to something other than ``256`` or ``88``.
+
+        Examples
+        --------
+        >>> tmux = Server(socket_name="engine_conn_docs")
+        >>> tmux.connection.args
+        ('-Lengine_conn_docs',)
+
+        A later write is picked up:
+
+        >>> tmux.socket_name = "engine_conn_docs_moved"
+        >>> tmux.connection.args
+        ('-Lengine_conn_docs_moved',)
+
+        .. versionadded:: 0.63
+        """
+        key = (
+            self.socket_name,
+            None if self.socket_path is None else str(self.socket_path),
+            self.config_file,
+            self.colors,
+            self.tmux_bin,
+        )
+        if self._connection is None or self._connection_key != key:
+            self._connection = ServerConnection.from_server(self)
+            self._connection_key = key
+        return self._connection
+
+    @property
+    def engine(self) -> TmuxEngine:
+        """Return the executor every tmux command on this server runs through.
+
+        With no ``engine=``, a
+        :class:`~libtmux.engines.subprocess.SubprocessEngine` is built from
+        :attr:`connection` and rebuilt whenever that connection changes.
+
+        A caller-supplied ``engine=`` that already names a tmux server is
+        returned untouched. One that names none -- a bare
+        ``SubprocessEngine()`` -- *adopts* this server's :attr:`connection`,
+        because returning it untouched would dispatch to whichever server a
+        flagless ``tmux`` reaches rather than to this one. Engines with no
+        connection at all, such as in-memory fakes, are always returned
+        untouched.
+
+        Returns
+        -------
+        :class:`~libtmux.engines.base.TmuxEngine`
+            The engine.
+
+        Examples
+        --------
+        >>> from libtmux.engines import SubprocessEngine
+        >>> isinstance(server.engine, SubprocessEngine)
+        True
+
+        An injected engine that names no server adopts this one's socket:
+
+        >>> tmux = Server(socket_name="engine_adopt_docs", engine=SubprocessEngine())
+        >>> tmux.engine.server_args
+        ('-Lengine_adopt_docs',)
+
+        An engine that names a server keeps it:
+
+        >>> pinned = SubprocessEngine.of(server_args=("-Lelsewhere",))
+        >>> Server(socket_name="engine_adopt_docs", engine=pinned).engine.server_args
+        ('-Lelsewhere',)
+
+        .. versionadded:: 0.63
+        """
+        connection = self.connection
+        engine = self._engine
+        if engine is not None:
+            if not isinstance(engine, SupportsConnection):
+                return engine
+            if connection.is_unconfigured or not engine.connection.is_unconfigured:
+                return engine
+            adopted = self._adopted_engine
+            if adopted is None or adopted[0] is not connection:
+                adopted = (connection, engine.with_connection(connection))
+                self._adopted_engine = adopted
+            return adopted[1]
+        default = self._default_engine
+        if default is None or default.connection is not connection:
+            default = SubprocessEngine(connection)
+            self._default_engine = default
+        return default
+
+    def cmd_batch(
+        self,
+        commands: Sequence[Sequence[t.Any]],
+    ) -> list[CommandResult]:
+        """Run several tmux commands, handing the whole sequence to the engine.
+
+        The batch counterpart of :meth:`cmd`. Results come back in order, one
+        per command, and a failure does not truncate the rest -- a tmux-side
+        error is data on its own result.
+
+        Whether this is *faster* than repeated :meth:`cmd` calls depends on the
+        engine. The default subprocess engine forks per command either way, so
+        this is a convenience. An engine holding a persistent connection writes
+        every command before waiting for the first reply, which is where the
+        round trips collapse.
+
+        Each entry is a complete argv, so a target is written out rather than
+        passed separately as :meth:`cmd` allows.
+
+        Parameters
+        ----------
+        commands : Sequence[Sequence[typing.Any]]
+            One argv per command, each token stringified.
+
+        Returns
+        -------
+        list[:class:`~libtmux.engines.base.CommandResult`]
+            One result per command, in order.
+
+        Examples
+        --------
+        >>> results = server.cmd_batch(
+        ...     [
+        ...         ("display-message", "-p", "one"),
+        ...         ("display-message", "-p", "two"),
+        ...     ]
+        ... )
+        >>> [result.stdout for result in results]
+        [['one'], ['two']]
+
+        A failure is reported on its own result, not raised:
+
+        >>> failed = server.cmd_batch([("kill-window", "-t", "@99999")])[0]
+        >>> failed.ok
+        False
+
+        .. versionadded:: 0.63
+        """
+        return dispatch_batch(self.engine, commands)
+
+    @contextlib.contextmanager
+    def using(self, engine: TmuxEngine) -> t.Iterator[Server]:
+        """Dispatch through *engine* for the duration of the block.
+
+        The previous engine is restored on the way out, including when the block
+        raises. Scopes nest, unwinding in reverse.
+
+        Parameters
+        ----------
+        engine : :class:`~libtmux.engines.base.TmuxEngine`
+            The engine to use inside the block. Validated exactly as
+            ``Server(engine=...)`` validates.
+
+        Yields
+        ------
+        :class:`~libtmux.Server`
+            This server, so the block can name it.
+
+        Examples
+        --------
+        >>> from libtmux.engines import CommandResult, ReplayEngine
+        >>> tape = {("display-message", "-p", "x"): CommandResult(
+        ...     cmd=("tmux",), stdout=("canned",)
+        ... )}
+        >>> with server.using(ReplayEngine(tape)):
+        ...     server.cmd("display-message", "-p", "x").stdout
+        ['canned']
+
+        Outside the block the server is back on its own engine:
+
+        >>> server.cmd("display-message", "-p", "x").stdout
+        ['x']
+
+        .. versionadded:: 0.63
+        """
+        previous_engine = self._engine
+        previous_adopted = self._adopted_engine
+        self._engine = _validated_engine(engine)
+        self._adopted_engine = None
+        try:
+            yield self
+        finally:
+            self._engine = previous_engine
+            self._adopted_engine = previous_adopted
+
+    @contextlib.contextmanager
+    def recording(self) -> t.Iterator[RecordingEngine]:
+        """Record every tmux command the block issues.
+
+        Wraps whichever engine the server is already using, so the commands
+        still run for real; the recorder just keeps what tmux answered. Hand the
+        result to a :class:`~libtmux.engines.record.ReplayEngine` to replay the
+        same conversation with no tmux running.
+
+        Yields
+        ------
+        :class:`~libtmux.engines.record.RecordingEngine`
+            The recorder, live during the block and complete after it.
+
+        Examples
+        --------
+        >>> with server.recording() as recorder:
+        ...     _ = server.cmd("display-message", "-p", "hello")
+        >>> recorder.requests
+        [('display-message', '-p', 'hello')]
+
+        The tape replays without a tmux server:
+
+        >>> from libtmux.engines import ReplayEngine
+        >>> from libtmux.server import Server
+        >>> replayed = Server(engine=ReplayEngine(recorder.tape))
+        >>> replayed.cmd("display-message", "-p", "hello").stdout
+        ['hello']
+
+        .. versionadded:: 0.63
+        """
+        recorder = RecordingEngine(self.engine)
+        with self.using(recorder):
+            yield recorder
 
     @classmethod
     def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:
@@ -317,22 +628,9 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
-            raise exc.TmuxCommandNotFound
-
-        cmd_args: list[str] = ["list-sessions"]
-        if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        result = dispatch(self.engine, "list-sessions")
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, list(result.cmd))
 
     #
     # Command
@@ -342,13 +640,13 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux command respective of socket name and file, return output.
 
         Examples
         --------
         >>> server.cmd('display-message', 'hi')
-        <libtmux.common.tmux_cmd object at ...>
+        CommandResult(cmd=[...], stdout=[], stderr=[], returncode=0)
 
         New session:
 
@@ -386,29 +684,19 @@ class Server(
 
         Notes
         -----
+        Dispatches through :attr:`Server.engine`; the connection flags come
+        from :attr:`Server.connection`, so this method and every other tmux
+        call on this server target the same socket.
+
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [cmd]
-        cmd_args: list[str | int] = []
-        if self.socket_name:
-            svr_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            svr_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            svr_args.insert(0, f"-f{self.config_file}")
-        if self.colors:
-            if self.colors == 256:
-                svr_args.insert(0, "-2")
-            elif self.colors == 88:
-                svr_args.insert(0, "-8")
-            else:
-                raise exc.UnknownColorOption
+        cmd_args: list[str | int] = (
+            ["-t", str(target), *args] if target is not None else [*args]
+        )
 
-        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
-
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return dispatch(self.engine, cmd, *cmd_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -615,7 +903,7 @@ class Server(
 
         if background:
             return None
-        return proc.stdout
+        return list(proc.stdout)
 
     def wait_for(
         self,
@@ -796,7 +1084,7 @@ class Server(
 
         raise_if_stderr(proc, "list-keys")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def list_commands(self, *, command_name: str | None = None) -> list[str]:
         """List tmux commands via ``$ tmux list-commands``.
@@ -826,7 +1114,7 @@ class Server(
 
         raise_if_stderr(proc, "list-commands")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def lock_server(self) -> None:
         """Lock the tmux server via ``$ tmux lock-server``.
@@ -912,7 +1200,7 @@ class Server(
         raise_if_stderr(proc, "server-access")
 
         if list_access:
-            return proc.stdout
+            return list(proc.stdout)
         return None
 
     def refresh_client(
@@ -1553,7 +1841,7 @@ class Server(
 
         raise_if_stderr(proc, "show-messages")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     @t.overload
     def display_message(
@@ -1726,7 +2014,7 @@ class Server(
             )
 
         if get_text:
-            return proc.stdout
+            return list(proc.stdout)
 
         return None
 
@@ -1771,7 +2059,7 @@ class Server(
 
         raise_if_stderr(proc, "show-prompt-history")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def clear_prompt_history(
         self,
@@ -2049,7 +2337,7 @@ class Server(
 
         raise_if_stderr(proc, "list-buffers")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def if_shell(
         self,
@@ -2160,7 +2448,7 @@ class Server(
 
         raise_if_stderr(proc, "list-clients")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.
@@ -2418,6 +2706,11 @@ class Server(
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except exc.UnscriptedCommand:
+            # An incomplete tape is a bug in the caller's fixture, not a tmux
+            # that is merely unreachable. Leniency here would report "no rows"
+            # for a command the engine was never taught to answer.
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2490,6 +2783,11 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except exc.UnscriptedCommand:
+            # An incomplete tape is a bug in the caller's fixture, not a tmux
+            # that is merely unreachable. Leniency here would report "no rows"
+            # for a command the engine was never taught to answer.
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)
