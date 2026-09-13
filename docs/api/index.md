@@ -31,7 +31,8 @@ Use {meth}`pane.send_keys() <libtmux.Pane.send_keys>` and
 :::{grid-item-card} Capture output from a pane?
 :link: libtmux.pane
 :link-type: doc
-Use {meth}`pane.capture_pane() <libtmux.Pane.capture_pane>`.
+Use {meth}`pane.capture_pane() <libtmux.Pane.capture_pane>` for a snapshot, or
+{meth}`pane.capture_since() <libtmux.Pane.capture_since>` for only what is new.
 :::
 
 :::{grid-item-card} Write tests against tmux?
@@ -108,6 +109,12 @@ tmux option get/set.
 tmux hook management.
 :::
 
+:::{grid-item-card} Capture
+:link: libtmux.capture
+:link-type: doc
+Cursors for incremental pane reads.
+:::
+
 :::{grid-item-card} Constants
 :link: libtmux.constants
 :link-type: doc
@@ -176,6 +183,7 @@ Common <libtmux.common>
 Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
+Capture <libtmux.capture>
 Constants <libtmux.constants>
 Exceptions <libtmux.exc>
 ```
