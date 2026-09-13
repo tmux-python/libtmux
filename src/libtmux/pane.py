@@ -132,6 +132,9 @@ class Pane(
     ) -> None:
         """Exit the context, killing the pane if it exists.
 
+        This also destroys a pane obtained through lookup, not only one
+        created in this process. Keep borrowed handles outside a ``with`` block.
+
         Parameters
         ----------
         exc_type : type[BaseException] | None
