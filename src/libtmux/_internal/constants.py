@@ -834,6 +834,50 @@ class Hooks(
         Runs after 'unbind-key' completes.
     command_error : SparseArray[str]
         Runs when a command fails (tmux 3.5+).
+    after_swap_window : SparseArray[str]
+        Runs after swapping windows. Requires tmux 3.8+.
+    client_closed : SparseArray[str]
+        Runs when a client closes. Requires tmux 3.8+.
+    client_created : SparseArray[str]
+        Runs when a client is created. Requires tmux 3.8+.
+    marked_pane_changed : SparseArray[str]
+        Runs when the marked pane changes. Requires tmux 3.8+.
+    pane_activity : SparseArray[str]
+        Runs when pane output arrives. Requires tmux 3.8+.
+    pane_bell : SparseArray[str]
+        Runs when a pane receives a bell. Requires tmux 3.8+.
+    pane_command_finished : SparseArray[str]
+        Runs when an OSC 133 command finishes. Requires tmux 3.8+.
+    pane_command_started : SparseArray[str]
+        Runs when an OSC 133 command starts. Requires tmux 3.8+.
+    pane_created : SparseArray[str]
+        Runs when a pane is created or respawned. Requires tmux 3.8+.
+    pane_mode_entered : SparseArray[str]
+        Runs when a pane enters a mode. Requires tmux 3.8+.
+    pane_mode_exited : SparseArray[str]
+        Runs when a pane leaves a mode. Requires tmux 3.8+.
+    pane_moved : SparseArray[str]
+        Runs when a pane moves between windows. Requires tmux 3.8+.
+    pane_prompt_closed : SparseArray[str]
+        Runs when a pane prompt closes. Requires tmux 3.8+.
+    pane_prompt_opened : SparseArray[str]
+        Runs when a pane prompt opens. Requires tmux 3.8+.
+    pane_resized : SparseArray[str]
+        Runs when a pane changes size. Requires tmux 3.8+.
+    pane_shell_prompt : SparseArray[str]
+        Runs when an OSC 133 shell prompt starts. Requires tmux 3.8+.
+    session_added_to_group : SparseArray[str]
+        Runs when a session joins a group. Requires tmux 3.8+.
+    session_removed_from_group : SparseArray[str]
+        Runs when a session leaves a group. Requires tmux 3.8+.
+    window_closed : SparseArray[str]
+        Runs when a window closes. Requires tmux 3.8+.
+    window_created : SparseArray[str]
+        Runs when a window is created. Requires tmux 3.8+.
+    window_unzoomed : SparseArray[str]
+        Runs when a window leaves zoom mode. Requires tmux 3.8+.
+    window_zoomed : SparseArray[str]
+        Runs when a window enters zoom mode. Requires tmux 3.8+.
 
     Examples
     --------
@@ -1092,6 +1136,29 @@ class Hooks(
     after_unbind_key: SparseArray[str] = field(default_factory=SparseArray)
     # Runs when a command fails (tmux 3.5+)
     command_error: SparseArray[str] = field(default_factory=SparseArray)
+
+    after_swap_window: SparseArray[str] = field(default_factory=SparseArray)
+    client_closed: SparseArray[str] = field(default_factory=SparseArray)
+    client_created: SparseArray[str] = field(default_factory=SparseArray)
+    marked_pane_changed: SparseArray[str] = field(default_factory=SparseArray)
+    pane_activity: SparseArray[str] = field(default_factory=SparseArray)
+    pane_bell: SparseArray[str] = field(default_factory=SparseArray)
+    pane_command_finished: SparseArray[str] = field(default_factory=SparseArray)
+    pane_command_started: SparseArray[str] = field(default_factory=SparseArray)
+    pane_created: SparseArray[str] = field(default_factory=SparseArray)
+    pane_mode_entered: SparseArray[str] = field(default_factory=SparseArray)
+    pane_mode_exited: SparseArray[str] = field(default_factory=SparseArray)
+    pane_moved: SparseArray[str] = field(default_factory=SparseArray)
+    pane_prompt_closed: SparseArray[str] = field(default_factory=SparseArray)
+    pane_prompt_opened: SparseArray[str] = field(default_factory=SparseArray)
+    pane_resized: SparseArray[str] = field(default_factory=SparseArray)
+    pane_shell_prompt: SparseArray[str] = field(default_factory=SparseArray)
+    session_added_to_group: SparseArray[str] = field(default_factory=SparseArray)
+    session_removed_from_group: SparseArray[str] = field(default_factory=SparseArray)
+    window_closed: SparseArray[str] = field(default_factory=SparseArray)
+    window_created: SparseArray[str] = field(default_factory=SparseArray)
+    window_unzoomed: SparseArray[str] = field(default_factory=SparseArray)
+    window_zoomed: SparseArray[str] = field(default_factory=SparseArray)
 
     @classmethod
     def from_stdout(cls, value: list[str]) -> Hooks:
