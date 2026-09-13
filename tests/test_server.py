@@ -867,6 +867,20 @@ def test_tmux_bin_default(server: Server) -> None:
     assert server.tmux_bin is None
 
 
+def test_timeout_has_class_level_default() -> None:
+    """``Server.timeout`` falls back like ``tmux_bin`` for a skipped ``__init__``.
+
+    Every other configuration attribute (``socket_name``, ``socket_path``,
+    ``tmux_bin``, ...) is declared at class level, so an instance built
+    without going through ``__init__`` -- ``object.__new__``, or a subclass
+    whose own ``__init__`` does not call ``super().__init__()`` -- still has
+    a value to read. ``timeout`` was assigned only inside ``__init__``, so
+    the same construction path raised ``AttributeError`` on first use.
+    """
+    bare = object.__new__(Server)
+    assert bare.timeout is None
+
+
 def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
     """Custom tmux_bin path is used for commands.
 
