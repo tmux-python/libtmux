@@ -60,6 +60,10 @@ stdout/stderr pipes open. {exc}`~libtmux.exc.TmuxTimeout` round-trips through
 {attr}`~libtmux.Server.timeout` has a class-level default of `None`, matching
 `tmux_bin` and the other configuration attributes, so an instance built
 without going through `__init__` still has a value to read.
+{meth}`~libtmux.Server.cmd`'s `timeout` distinguishes an omitted argument
+(falls back to `Server.timeout`) from an explicit `None` (runs that one call
+unbounded even when the server has a timeout) -- the two used to collapse
+onto the same behavior.
 
 #### Explicitly owned temporary resources (#758)
 
