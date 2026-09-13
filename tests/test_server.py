@@ -13,7 +13,7 @@ import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import common, exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux.server import Server
 
@@ -363,6 +363,159 @@ def test_server_context_manager(TestServer: type[Server]) -> None:
 
     # Server should be killed after exiting context
     assert not server.is_alive()
+
+
+def test_owned_server_keeps_its_private_endpoint(
+    server: Server,
+    session: Session,
+) -> None:
+    """Cleanup targets the created endpoint even if the yielded handle changes."""
+    with Server.owned(tmux_bin=server.tmux_bin) as owned:
+        owned.new_session("temporary")
+        assert owned.socket_path is not None
+        socket_path = pathlib.Path(owned.socket_path)
+        assert socket_path.parent.stat().st_mode & 0o777 == 0o700
+        assert owned.is_alive()
+        owned.socket_path = server.socket_path
+        owned.socket_name = server.socket_name
+
+    assert not socket_path.parent.exists()
+    assert not Server(socket_path=socket_path).is_alive()
+    assert session in server.sessions
+
+
+def test_owned_server_cleans_up_after_body_failure(server: Server) -> None:
+    """An exception still terminates the private daemon and removes its socket."""
+    body_error = RuntimeError("body failed")
+    with (
+        pytest.raises(RuntimeError, match="body failed"),
+        Server.owned(tmux_bin=server.tmux_bin) as owned,
+    ):
+        owned.new_session("temporary")
+        assert owned.socket_path is not None
+        socket_path = pathlib.Path(owned.socket_path)
+        raise body_error
+    assert not socket_path.parent.exists()
+
+
+def test_owned_session_cleans_up_by_id_after_rename(
+    server: Server,
+    session: Session,
+) -> None:
+    """The created session is removed while pre-existing sessions survive."""
+    with server.owned_session("temporary") as owned:
+        session_id = owned.session_id
+        owned.rename_session("renamed")
+    assert server.sessions.get(session_id=session_id, default=None) is None
+    assert session in server.sessions
+
+
+def test_owned_session_refuses_an_existing_name(
+    server: Server,
+    session: Session,
+) -> None:
+    """A failed creation never adopts or destroys the existing session."""
+    with (
+        pytest.raises(exc.TmuxSessionExists),
+        server.owned_session(session.session_name),
+    ):
+        pytest.fail("an existing session must not be yielded")
+    assert session in server.sessions
+
+
+def test_owned_session_preserves_same_name_replacement(server: Server) -> None:
+    """Deleting the owned session does not transfer ownership to its old name."""
+    with server.owned_session("temporary") as owned:
+        owned.kill()
+        replacement = server.new_session("temporary")
+    assert replacement in server.sessions
+
+
+def test_owned_session_preserves_restarted_daemon(server: Server) -> None:
+    """Reused ids on a new daemon must not receive cleanup for the old daemon."""
+    with Server.owned(tmux_bin=server.tmux_bin) as private:
+        with private.owned_session("original") as owned:
+            original_id = owned.session_id
+            private.kill()
+            replacement = private.new_session("replacement")
+            assert replacement.session_id == original_id
+        assert replacement in private.sessions
+
+
+def test_owned_session_cleans_up_after_body_failure(server: Server) -> None:
+    """Cleanup runs during exception unwinding without swallowing the body error."""
+    body_error = RuntimeError("body failed")
+    with (
+        pytest.raises(RuntimeError, match="body failed"),
+        server.owned_session("temporary") as owned,
+    ):
+        session_id = owned.session_id
+        raise body_error
+    assert server.sessions.get(session_id=session_id, default=None) is None
+
+
+def test_owned_session_preserves_body_and_cleanup_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cleanup timeout remains visible with the original body error chained."""
+    run_command = common.run_command
+    body_error = RuntimeError("body failed")
+
+    def run(
+        *args: object,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> common.CommandResult:
+        if "if-shell" in args:
+            raise exc.TmuxTimeout([str(arg) for arg in args], 0.1)
+        return run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
+
+    with (
+        monkeypatch.context() as patch,
+        pytest.raises(exc.TmuxTimeout) as caught,
+        server.owned_session() as owned,
+    ):
+        patch.setattr(common, "run_command", run)
+        raise body_error
+    assert caught.value.__context__ is body_error
+    assert caught.value.timeout == 0.1
+    assert owned in server.sessions
+    owned.kill()
+
+
+def test_owned_server_preserves_socket_after_cleanup_failure(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed cleanup retains a reachable endpoint so the caller can retry."""
+    run_command = common.run_command
+    cleanup_error = PermissionError("cleanup denied")
+
+    def run(
+        *args: object,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> common.CommandResult:
+        if "kill-server" in args:
+            raise cleanup_error
+        return run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
+
+    try:
+        with (
+            monkeypatch.context() as patch,
+            pytest.raises(PermissionError),
+            Server.owned(tmux_bin=server.tmux_bin) as owned,
+        ):
+            owned.new_session()
+            assert owned.socket_path is not None
+            socket_path = pathlib.Path(owned.socket_path)
+            patch.setattr(common, "run_command", run)
+        assert socket_path.exists()
+        assert owned.is_alive()
+    finally:
+        owned.kill()
+        shutil.rmtree(socket_path.parent)
 
 
 class StartDirectoryTestFixture(t.NamedTuple):

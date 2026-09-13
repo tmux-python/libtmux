@@ -7,11 +7,13 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 import typing as t
 import warnings
 
@@ -38,6 +40,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
+    from collections.abc import Iterator
     from typing import TypeAlias
 
     from typing_extensions import Self
@@ -259,6 +262,69 @@ class Server(
         """
         return cls(socket_path=socket_path_from_env(env))
 
+    @classmethod
+    @contextlib.contextmanager
+    def owned(
+        cls,
+        *,
+        config_file: str = os.devnull,
+        tmux_bin: str | pathlib.Path | None = None,
+        timeout: float | None = None,
+    ) -> Iterator[Self]:
+        """Own a private server endpoint for the duration of a block.
+
+        Creates a private socket directory on entry. tmux starts when the
+        first session is created. On exit, kills that endpoint's server and
+        removes the directory. No existing endpoint can be supplied.
+
+        Parameters
+        ----------
+        config_file : str, optional
+            Configuration for the new daemon; defaults to an empty config.
+        tmux_bin : str or Path, optional
+            Executable path; defaults to ``tmux`` on ``PATH``.
+        timeout : float, optional
+            Per-command timeout, including cleanup, in seconds.
+
+        Yields
+        ------
+        Server
+            Server addressed by the private socket.
+
+        Notes
+        -----
+        Cleanup retains its original endpoint if the yielded handle changes.
+        A cleanup failure propagates and leaves the socket directory available
+        for retry; a body exception remains in the exception chain.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server as TmuxServer
+        >>> with TmuxServer.owned() as temporary:
+        ...     created = temporary.new_session("build")
+        ...     temporary.is_alive()
+        True
+        >>> temporary.is_alive()
+        False
+        """
+        directory = pathlib.Path(tempfile.mkdtemp(prefix="libtmux-owned-"))
+        socket_path = directory / "socket"
+        try:
+            yield cls(
+                socket_path=socket_path,
+                config_file=config_file,
+                tmux_bin=tmux_bin,
+                timeout=timeout,
+            )
+        finally:
+            if socket_path.exists():
+                Server(
+                    socket_path=socket_path,
+                    tmux_bin=tmux_bin,
+                    timeout=timeout,
+                ).kill()
+            shutil.rmtree(directory)
+
     def __enter__(self) -> Self:
         """Enter the context, returning self.
 
@@ -276,6 +342,9 @@ class Server(
         exc_tb: types.TracebackType | None,
     ) -> None:
         """Exit the context, killing the server if it exists.
+
+        This legacy scope also kills a daemon that existed before entry.
+        Use :meth:`owned` to create and own a private endpoint instead.
 
         Parameters
         ----------
@@ -2403,6 +2472,93 @@ class Server(
         logger.info("session created", extra=info_extra)
 
         return session
+
+    @contextlib.contextmanager
+    def owned_session(
+        self,
+        session_name: str | None = None,
+        *,
+        start_directory: StrPath | None = None,
+        window_name: str | None = None,
+        window_command: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> Iterator[Session]:
+        """Create a detached session and kill only that session on exit.
+
+        Existing names are rejected. Cleanup follows the created session's
+        ID after a rename and leaves a replacement session or daemon alone.
+        Deleting the session inside the block makes cleanup a no-op.
+
+        Parameters
+        ----------
+        session_name : str, optional
+            Name for the new session; tmux chooses one when omitted.
+        start_directory : str or PathLike, optional
+            Working directory for the initial window.
+        window_name : str, optional
+            Name for the initial window.
+        window_command : str, optional
+            Command for the initial window.
+        environment : dict[str, str], optional
+            Environment variables for the new session.
+
+        Yields
+        ------
+        Session
+            The newly created session.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxSessionExists`
+            The requested name already exists; it is never adopted or killed.
+        :exc:`~libtmux.exc.LibTmuxException`
+            Creation or cleanup fails.
+        :exc:`~libtmux.exc.TmuxTimeout`
+            A command exceeds this server's timeout. Its effects may be unknown.
+
+        Examples
+        --------
+        >>> with server.owned_session("temporary") as created:
+        ...     created.session_name
+        'temporary'
+        >>> server.has_session("temporary")
+        False
+        """
+        cleanup_server = Server(
+            socket_name=self.socket_name,
+            socket_path=self.socket_path,
+            tmux_bin=self.tmux_bin,
+            timeout=self.timeout,
+        )
+        session = self.new_session(
+            session_name,
+            start_directory=start_directory,
+            window_name=window_name,
+            window_command=window_command,
+            environment=environment,
+        )
+        assert session.session_id is not None
+        assert session.pid is not None
+        assert session.start_time is not None
+        session_id = f"${int(session.session_id.removeprefix('$'))}"
+        pid = int(session.pid)
+        started = int(session.start_time)
+        generation = f"#{{&&:#{{==:#{{pid}},{pid}}},#{{==:#{{start_time}},{started}}}}}"
+        exists = f"#{{S:#{{?#{{==:#{{session_id}},{session_id}}},1,}}}}"
+        predicate = f"#{{&&:{generation},{exists}}}"
+        try:
+            yield session
+        finally:
+            # Check identity and kill within tmux's synchronous command queue.
+            proc = cleanup_server.cmd(
+                "if-shell", "-F", predicate, f"kill-session -t {session_id}"
+            )
+            if (proc.returncode or proc.stderr) and not _is_daemon_not_up_error(
+                " ".join(proc.stderr)
+            ):
+                raise exc.LibTmuxException(
+                    proc.stderr or f"Session cleanup exited with {proc.returncode}"
+                )
 
     #
     # Relations
