@@ -2307,15 +2307,14 @@ def test_server_display_message_flags(
         assert expected_in_output in output
 
 
+@pytest.mark.filterwarnings("error")
 def test_server_display_message_no_text_returns_none(
     control_mode: t.Callable[..., t.Any],
     server: Server,
 ) -> None:
     """Without ``get_text=True`` the call renders to status line and returns None."""
-    with control_mode() as ctl:
-        result = server.display_message(
-            "hi from libtmux", target_client=ctl.client_name
-        )
+    with control_mode():
+        result = server.display_message("hi from libtmux")
     assert result is None
 
 
