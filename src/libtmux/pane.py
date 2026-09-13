@@ -1474,12 +1474,16 @@ class Pane(
             Environment variables for the new pane (``-e`` flag).
         width : int, optional
             Width of the floating pane in cells (``-x`` flag).
+            Includes the border on tmux 3.8+; ``pane_width`` reports content cells.
         height : int, optional
             Height of the floating pane in cells (``-y`` flag).
+            Includes the border on tmux 3.8+; ``pane_height`` reports content cells.
         x : int, optional
             X position of the floating pane in cells (``-X`` flag).
+            Places the outer border on tmux 3.8+; ``pane_x`` reports content position.
         y : int, optional
             Y position of the floating pane in cells (``-Y`` flag).
+            Places the outer border on tmux 3.8+; ``pane_y`` reports content position.
         zoom : bool, optional
             Zoom the pane (``-Z`` flag).
         empty : bool, optional

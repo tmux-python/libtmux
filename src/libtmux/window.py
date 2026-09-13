@@ -658,12 +658,16 @@ class Window(
             Environment variables for the new pane (``-e``).
         width : int, optional
             Width in cells (``-x``).
+            Includes borders on tmux 3.8+.
         height : int, optional
             Height in cells (``-y``).
+            Includes borders on tmux 3.8+.
         x : int, optional
             X position in cells (``-X``).
+            Places the outer border on tmux 3.8+.
         y : int, optional
             Y position in cells (``-Y``).
+            Places the outer border on tmux 3.8+.
         zoom : bool, optional
             Zoom the pane (``-Z``).
         empty : bool, optional
