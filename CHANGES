@@ -116,6 +116,13 @@ block that kills the session on failure, instead of in a gap before cleanup
 was armed. The guard's checks no longer use bare `assert`, which
 `python -O` strips.
 
+#### Faster cleanup for a stopped control-mode client (#758)
+
+{class}`~libtmux._internal.control_mode.ControlMode` sends `SIGCONT` before
+waiting on a terminated client. A client stopped (e.g. `SIGSTOP`, a debugger)
+cannot process `SIGTERM` until resumed, so cleanup previously ran out its
+full 5-second wait before falling back to `SIGKILL` every time.
+
 #### Expanded tmux hook decoding (#758)
 
 Reading hooks recognizes tmux's additional pane, window, client and command

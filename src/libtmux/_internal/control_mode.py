@@ -7,7 +7,9 @@ subprocess, creating a real tmux client for commands such as
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
 import typing as t
 
@@ -135,6 +137,13 @@ class ControlMode:
         try:
             os.close(self._write_fd)
             self._proc.terminate()
+            # A client stopped (e.g. SIGSTOP, a debugger, a frozen cgroup)
+            # cannot process SIGTERM until resumed, so the wait below would
+            # otherwise time out unconditionally. SIGCONT lets a stopped
+            # process actually see the pending SIGTERM and exit promptly; a
+            # running process ignores it.
+            with contextlib.suppress(ProcessLookupError):
+                self._proc.send_signal(signal.SIGCONT)
             try:
                 self._proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
