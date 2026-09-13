@@ -22,6 +22,7 @@ from libtmux import common, exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux._internal.env import SOCKET_PATH_MAX_BYTES, resolve_socket_path
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -2214,6 +2215,11 @@ def test_detach_all_clients_no_keep_preserves_one(
 
         server.detach_all_clients()
 
+        retry_until(
+            lambda: len(server.cmd("list-clients", "-F", "#{client_name}").stdout) == 1,
+            2,
+            raises=True,
+        )
         after = server.cmd("list-clients", "-F", "#{client_name}").stdout
         assert len(after) == 1
 
