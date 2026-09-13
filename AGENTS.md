@@ -55,11 +55,12 @@ be stated twice, the file listed above is the one that governs.
 tmux >= 3.2a is the compatibility floor (see `tests.yml`'s build
 matrix). `Server.sessions`, `Server.clients`, and
 `Server.attached_sessions` return an empty `QueryList` rather than
-raising when the underlying tmux list command fails for any reason —
+raising when the underlying tmux list invocation fails for any reason —
 list-shaped accessors are lenient by default; `Server.is_alive()` and
-`Server.raise_if_dead()` are the explicit, loud-failure primitives. See
-`src/libtmux/AGENTS.md` for the full contract and this package's
-logging conventions.
+`Server.raise_if_dead()` are the explicit, loud-failure primitives. A
+parse failure (`exc.TmuxRecordParseError`) or a timeout
+(`exc.TmuxTimeout`) still propagates — see `src/libtmux/AGENTS.md` for
+the full contract and this package's logging conventions.
 
 ## References
 
