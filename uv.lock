@@ -812,12 +812,12 @@ testing = [
 [package.metadata.requires-dev]
 coverage = [
     { name = "codecov" },
-    { name = "coverage" },
+    { name = "coverage", specifier = ">=7.10.6" },
     { name = "pytest-cov" },
 ]
 dev = [
     { name = "codecov" },
-    { name = "coverage" },
+    { name = "coverage", specifier = ">=7.10.6" },
     { name = "gp-libs", specifier = ">=0.0.19" },
     { name = "gp-sphinx", specifier = "==0.1.0a37" },
     { name = "mypy" },

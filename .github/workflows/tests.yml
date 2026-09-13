@@ -53,7 +53,7 @@ jobs:
           cd ~/tmux-src/tmux-${{ matrix.tmux-version }}
           git checkout ${{ matrix.tmux-version }}
           sh autogen.sh
-          ./configure --prefix=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }} && make && make install
+          ./configure --prefix="$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}" && make && make install
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           cd ~
           tmux -V
@@ -77,13 +77,12 @@ jobs:
         run: |
           sudo apt install libevent-2.1-7
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
-          ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
+          ls "$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin"
           tmux -V
-          uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
-        env:
-          COV_CORE_SOURCE: .
-          COV_CORE_CONFIG: .coveragerc
-          COV_CORE_DATAFILE: .coverage.eager
+          uv run coverage erase
+          uv run coverage run -m pytest -n auto --verbose
+          uv run coverage combine
+          uv run coverage xml
       - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
