@@ -7,7 +7,9 @@ Popup execution requires a terminal client on tmux 3.8+.
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
 import typing as t
 
@@ -127,6 +129,10 @@ class ControlMode:
         try:
             os.close(self._write_fd)
             self._proc.terminate()
+            # A stopped process (SIGSTOP, a debugger) cannot process SIGTERM
+            # until resumed; SIGCONT wakes it so the wait below doesn't time out.
+            with contextlib.suppress(ProcessLookupError):
+                self._proc.send_signal(signal.SIGCONT)
             try:
                 self._proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
