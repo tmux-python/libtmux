@@ -367,6 +367,22 @@ def test_server_context_manager(TestServer: type[Server]) -> None:
     assert not server.is_alive()
 
 
+def test_owned_server_removes_unused_socket_directory(tmp_path: pathlib.Path) -> None:
+    """An unused scope needs no executable and removes its private directory."""
+    directory: pathlib.Path | None = None
+    try:
+        with Server.owned(tmux_bin=tmp_path / "missing-tmux") as owned:
+            assert owned.socket_path is not None
+            socket_path = pathlib.Path(owned.socket_path)
+            directory = socket_path.parent
+            assert directory.is_dir()
+            assert not socket_path.exists()
+        assert not directory.exists()
+    finally:
+        if directory is not None:
+            shutil.rmtree(directory, ignore_errors=True)
+
+
 def test_owned_server_keeps_its_private_endpoint(
     server: Server,
     session: Session,
