@@ -1957,16 +1957,13 @@ def test_server_display_message_flags(
     omits ``-t <pane-id>`` but still needs a client to receive stdout. The
     headless test environment provides one via :class:`ControlMode`.
 
-    Skipped on tmux 3.2a: ``display-message -p -c <control-mode-client>``
-    returns empty stdout on that release (output dispatch via a control-mode
-    client was unreliable until later versions).
+    tmux 3.2a rejects ``display-message -c <client>`` because its option
+    parser treats ``-c`` as a flag without an argument.
     """
     from libtmux.common import has_gte_version
 
     if not has_gte_version("3.3"):
-        pytest.skip(
-            "display-message -p via control-mode client unreliable on tmux 3.2a"
-        )
+        pytest.skip("display-message -c requires tmux 3.3+")
     if min_tmux_version and not has_gte_version(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
@@ -1981,15 +1978,14 @@ def test_server_display_message_flags(
         assert expected_in_output in output
 
 
+@pytest.mark.filterwarnings("error")
 def test_server_display_message_no_text_returns_none(
     control_mode: t.Callable[..., t.Any],
     server: Server,
 ) -> None:
     """Without ``get_text=True`` the call renders to status line and returns None."""
-    with control_mode() as ctl:
-        result = server.display_message(
-            "hi from libtmux", target_client=ctl.client_name
-        )
+    with control_mode():
+        result = server.display_message("hi from libtmux")
     assert result is None
 
 
@@ -2001,9 +1997,7 @@ def test_server_display_message_target_client(
     from libtmux.common import has_gte_version
 
     if not has_gte_version("3.3"):
-        pytest.skip(
-            "display-message -p via control-mode client unreliable on tmux 3.2a"
-        )
+        pytest.skip("display-message -c requires tmux 3.3+")
 
     with control_mode() as ctl:
         result = server.display_message(
