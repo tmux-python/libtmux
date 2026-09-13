@@ -525,8 +525,8 @@ def test_owned_session_kills_on_identity_guard_failure(
 
     def _new_session_missing_start_time(
         self: Server,
-        *args: object,
-        **kwargs: object,
+        *args: t.Any,
+        **kwargs: t.Any,
     ) -> Session:
         created = real_new_session(self, *args, **kwargs)
         created.start_time = None
