@@ -85,6 +85,39 @@ def _fetch_or_empty(
         raise
 
 
+def _session_identity_predicate(session: Session) -> tuple[str, str]:
+    """Return ``(session_id, predicate)`` identifying a freshly created session.
+
+    ``predicate`` is a tmux format expression true only for a session with
+    this exact id *and* this exact pid/start_time generation, so a later
+    check against it cannot match a same-named replacement that reused the
+    id after this one was killed.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.LibTmuxException`
+        ``session`` is missing an id, pid, or start_time -- a bare
+        ``assert`` would vanish under ``python -O`` and let a ``None``
+        reach the f-strings below as the literal text ``"None"``.
+    """
+    if session.session_id is None:
+        msg = "New session has no session_id"
+        raise exc.LibTmuxException(msg)
+    if session.pid is None:
+        msg = "New session has no pid"
+        raise exc.LibTmuxException(msg)
+    if session.start_time is None:
+        msg = "New session has no start_time"
+        raise exc.LibTmuxException(msg)
+    session_id = f"${int(session.session_id.removeprefix('$'))}"
+    pid = int(session.pid)
+    started = int(session.start_time)
+    generation = f"#{{&&:#{{==:#{{pid}},{pid}}},#{{==:#{{start_time}},{started}}}}}"
+    exists = f"#{{S:#{{?#{{==:#{{session_id}},{session_id}}},1,}}}}"
+    predicate = f"#{{&&:{generation},{exists}}}"
+    return session_id, predicate
+
+
 class Server(
     EnvironmentMixin,
     OptionsMixin,
@@ -2567,15 +2600,16 @@ class Server(
             window_command=window_command,
             environment=environment,
         )
-        assert session.session_id is not None
-        assert session.pid is not None
-        assert session.start_time is not None
-        session_id = f"${int(session.session_id.removeprefix('$'))}"
-        pid = int(session.pid)
-        started = int(session.start_time)
-        generation = f"#{{&&:#{{==:#{{pid}},{pid}}},#{{==:#{{start_time}},{started}}}}}"
-        exists = f"#{{S:#{{?#{{==:#{{session_id}},{session_id}}},1,}}}}"
-        predicate = f"#{{&&:{generation},{exists}}}"
+        try:
+            session_id, predicate = _session_identity_predicate(session)
+        except Exception:
+            # The identity guard never finished building, so there is no
+            # predicate to check it against on the way out. Kill directly
+            # by identity instead of leaking the session -- no user code
+            # has run yet, so the reuse race the guard exists for below
+            # cannot have happened.
+            session.kill()
+            raise
         try:
             yield session
         finally:

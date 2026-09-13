@@ -109,6 +109,13 @@ instead of blocking indefinitely. `Server.__exit__` still attempts
 {meth}`~libtmux.Server.kill` when a timeout leaves liveness unknown, rather
 than skipping it and leaking the daemon.
 
+#### `Server.owned_session` no longer leaks on a malformed session (#758)
+
+Building the created session's identity guard now happens inside a guarded
+block that kills the session on failure, instead of in a gap before cleanup
+was armed. The guard's checks no longer use bare `assert`, which
+`python -O` strips.
+
 #### Expanded tmux hook decoding (#758)
 
 Reading hooks recognizes tmux's additional pane, window, client and command
