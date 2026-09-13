@@ -202,6 +202,9 @@ class Server(
     """For hook management."""
     tmux_bin: str | None = None
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
+    timeout: float | None = None
+    """Seconds to wait for a command before raising
+    :exc:`~libtmux.exc.TmuxTimeout`. ``None`` waits indefinitely."""
 
     def __init__(
         self,
