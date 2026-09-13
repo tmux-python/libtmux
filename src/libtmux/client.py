@@ -8,7 +8,6 @@ libtmux.client
 from __future__ import annotations
 
 import dataclasses
-import logging
 import typing as t
 
 from libtmux import exc
@@ -19,9 +18,6 @@ if t.TYPE_CHECKING:
     from libtmux.server import Server
     from libtmux.session import Session
     from libtmux.window import Window
-
-
-logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
