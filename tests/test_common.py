@@ -866,6 +866,34 @@ def test_tmux_cmd_timeout_kills_and_reaps(
         os.kill(pid, 0)
 
 
+def test_tmux_cmd_timeout_survives_orphaned_pipe_holder(
+    hanging_tmux_with_orphan: tuple[str, pathlib.Path, pathlib.Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The post-kill drain does not block on a descendant's inherited pipes.
+
+    SIGKILL ends the timed-out process itself immediately, but an orphan
+    that inherited the same stdout/stderr pipes keeps them open. A bare
+    ``communicate()`` after ``kill()`` reads until EOF on those pipes, so
+    without its own bound it blocks on the orphan's lifetime rather than
+    completing anywhere near the caller's deadline.
+    """
+    binary, pid_file, _orphan_pid_file = hanging_tmux_with_orphan
+    monkeypatch.setattr(libtmux.common, "_KILL_REAP_TIMEOUT", 0.1)
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        libtmux.common.run_command("list-sessions", tmux_bin=binary, timeout=0.2)
+    elapsed = time.monotonic() - started
+
+    # Bounded by timeout + the (patched) reap grace, not the orphan's sleep.
+    assert elapsed < 1.0
+
+    pid = int(pid_file.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
 def test_tmux_cmd_without_timeout_still_waits(
     hanging_tmux: tuple[str, pathlib.Path],
 ) -> None:
