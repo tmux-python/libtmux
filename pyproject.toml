@@ -67,7 +67,7 @@ dev = [
   "pytest-xdist",
   # Coverage
   "codecov",
-  "coverage",
+  "coverage>=7.10.6",
   "pytest-cov",
   # Lint
   "ruff>=0.16.1",
@@ -90,7 +90,7 @@ testing = [
 ]
 coverage =[
   "codecov",
-  "coverage",
+  "coverage>=7.10.6",
   "pytest-cov",
 ]
 lint = [
@@ -150,6 +150,8 @@ files = [
 
 
 [tool.coverage.run]
+source = ["src/libtmux"]
+patch = ["subprocess"]
 branch = true
 parallel = true
 omit = [
