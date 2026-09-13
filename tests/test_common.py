@@ -6,6 +6,7 @@ import locale
 import logging
 import os
 import re
+import shlex
 import sys
 import time
 import typing as t
@@ -199,6 +200,30 @@ def test_command_result_preserves_status_and_decoding(runner_name: str) -> None:
     assert result.process.returncode == 7
     if runner_name == "run_command":
         assert isinstance(result, libtmux.common.CommandResult)
+
+
+@pytest.mark.parametrize("runner_name", ["run_command", "tmux_cmd"])
+def test_command_permission_failure_preserves_context(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+    runner_name: str,
+) -> None:
+    """An unexecutable file raises the OS error with structured command context."""
+    binary = tmp_path / "tmux denied"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o600)
+    runner = getattr(libtmux.common, runner_name)
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(PermissionError) as caught,
+    ):
+        runner("list-sessions", tmux_bin=str(binary))
+
+    assert caught.value.filename == str(binary)
+    records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+    assert len(records) == 1
+    assert records[0].tmux_cmd == shlex.join([str(binary), "list-sessions"])
 
 
 def test_tmux_cmd_delegates_to_runner(

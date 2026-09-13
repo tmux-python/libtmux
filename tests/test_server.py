@@ -6,6 +6,7 @@ import functools
 import logging
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import time
@@ -480,6 +481,42 @@ def test_owned_session_preserves_body_and_cleanup_errors(
         raise body_error
     assert caught.value.__context__ is body_error
     assert caught.value.timeout == 0.1
+    assert owned in server.sessions
+    owned.kill()
+
+
+@pytest.mark.parametrize("stderr", ["", "cleanup refused"])
+def test_owned_session_preserves_completed_cleanup_failure(
+    server: Server,
+    tmp_path: pathlib.Path,
+    stderr: str,
+) -> None:
+    """A real child refuses cleanup; the error keeps the body failure chained."""
+    executable = server.tmux_bin or shutil.which("tmux")
+    assert executable is not None
+    wrapper = tmp_path / "tmux-cleanup-refusal"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        'for arg do\nif [ "$arg" = "if-shell" ]; then\n'
+        f"printf %s {shlex.quote(stderr)} >&2\nexit 7\nfi\ndone\n"
+        f'exec {shlex.quote(executable)} "$@"\n'
+    )
+    wrapper.chmod(0o700)
+    refusing = Server(
+        socket_name=server.socket_name,
+        socket_path=server.socket_path,
+        tmux_bin=str(wrapper),
+    )
+    body_error = RuntimeError("body failed")
+
+    with (
+        pytest.raises(exc.LibTmuxException) as caught,
+        refusing.owned_session() as owned,
+    ):
+        raise body_error
+
+    assert caught.value.__context__ is body_error
+    assert (stderr or "Session cleanup exited with 7") in str(caught.value)
     assert owned in server.sessions
     owned.kill()
 
