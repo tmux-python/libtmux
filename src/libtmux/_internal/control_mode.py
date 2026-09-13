@@ -1,8 +1,8 @@
 """Control-mode client context manager for tmux testing.
 
 Provides a context manager that spawns a ``tmux -C attach-session``
-subprocess, creating a real tmux client that satisfies commands
-requiring an attached client (e.g. ``display-popup``, ``detach-client``).
+subprocess, creating a real tmux client for commands such as
+``detach-client``. Popups require a terminal client to run their commands.
 """
 
 from __future__ import annotations
