@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import locale
 import os
-import select
 import sys
 import typing as t
 
@@ -83,17 +82,10 @@ def test_control_mode_stdout_preserves_non_ascii_output(
         with control_mode() as ctl:
             os.write(
                 ctl._write_fd,
-                f"display-message -p '{FORMAT_SEPARATOR}'\n".encode(),
+                f"display-message -p '{FORMAT_SEPARATOR}'\ndetach-client\n".encode(),
             )
-
-            for _ in range(20):
-                ready, _, _ = select.select([ctl.stdout], [], [], 1)
-                assert ready, "timed out waiting for control-mode output"
-
-                line = ctl.stdout.readline()
-                if FORMAT_SEPARATOR in line:
-                    break
-            else:
-                pytest.fail("FORMAT_SEPARATOR U+241E not found in control output")
+            stdout, stderr = ctl._proc.communicate(timeout=5)
+            assert ctl._proc.returncode == 0, stderr
+            assert FORMAT_SEPARATOR in stdout
     finally:
         locale.setlocale(locale.LC_CTYPE, old_lc_ctype)
