@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import typing as t
 
 import pytest
@@ -43,7 +44,7 @@ def hanging_tmux(tmp_path: pathlib.Path) -> tuple[str, pathlib.Path]:
     binary.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = "-V" ]; then echo "tmux 3.7"; exit 0; fi\n'
-        f"echo $$ > {pid_file}\n"
+        f"echo $$ > {shlex.quote(str(pid_file))}\n"
         "exec sleep 30\n"
     )
     binary.chmod(0o755)
