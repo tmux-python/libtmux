@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import logging
+import os
 import pathlib
+import select
 import shutil
+import struct
+import subprocess
+import termios
+import threading
 import typing as t
 
 import pytest
@@ -1114,6 +1122,65 @@ DISPLAY_POPUP_CASES: list[DisplayPopupCase] = [
 ]
 
 
+@pytest.fixture
+def terminal_client(server: Server, session: Session) -> t.Iterator[str]:
+    """Attach a terminal client for popup execution."""
+    socket_path = server.cmd("display-message", "-p", "#{socket_path}").stdout[0]
+    with contextlib.ExitStack() as cleanup:
+        master, slave = os.openpty()
+        cleanup.callback(os.close, master)
+        cleanup.callback(os.close, slave)
+        stop = threading.Event()
+        client: subprocess.Popen[bytes] | None = None
+
+        def drain() -> None:
+            while not stop.is_set():
+                if select.select([master], [], [], 0.1)[0]:
+                    try:
+                        if not os.read(master, 65536):
+                            return
+                    except OSError:
+                        return
+
+        try:
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+            client = subprocess.Popen(
+                [
+                    server.tmux_bin or "tmux",
+                    "-S",
+                    socket_path,
+                    "attach-session",
+                    "-t",
+                    str(session.session_id),
+                ],
+                stdin=slave,
+                stdout=slave,
+                stderr=slave,
+                env={**os.environ, "TERM": "xterm-256color"},
+                start_new_session=True,
+            )
+            reader = threading.Thread(target=drain, daemon=True)
+            reader.start()
+            cleanup.callback(reader.join, timeout=1)
+            cleanup.callback(stop.set)
+            client_name = os.ttyname(slave)
+
+            def attached() -> bool:
+                clients = server.cmd("list-clients", "-F", "#{client_name}").stdout
+                return client_name in clients
+
+            retry_until(attached, 3, raises=True)
+            yield client_name
+        finally:
+            if client is not None:
+                client.terminate()
+                try:
+                    client.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    client.kill()
+                    client.wait(timeout=3)
+
+
 @pytest.mark.parametrize(
     list(DisplayPopupCase._fields),
     DISPLAY_POPUP_CASES,
@@ -1123,7 +1190,7 @@ def test_display_popup_flags(
     test_id: str,
     kwargs: dict[str, t.Any],
     min_tmux_version: str | None,
-    control_mode: t.Callable[..., t.Any],
+    terminal_client: str,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1142,14 +1209,13 @@ def test_display_popup_flags(
 
     call_kwargs = {"command": f"touch {marker}", "close_on_exit": True, **kwargs}
 
-    with control_mode():
-        pane.display_popup(**call_kwargs)
+    pane.display_popup(**call_kwargs)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
 
 def test_display_popup_close_on_success(
-    control_mode: t.Callable[..., t.Any],
+    terminal_client: str,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1158,8 +1224,7 @@ def test_display_popup_close_on_success(
     pane = session.active_window.active_pane
     assert pane is not None
 
-    with control_mode():
-        pane.display_popup(command=f"touch {marker}", close_on_success=True)
+    pane.display_popup(command=f"touch {marker}", close_on_success=True)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
@@ -1189,26 +1254,20 @@ def test_display_popup_close_existing(
 
 
 def test_display_popup_target_client(
-    control_mode: t.Callable[..., t.Any],
+    terminal_client: str,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Test Pane.display_popup(target_client=...) emits ``-c <client>``.
-
-    ``-c`` has been on ``display-popup`` since tmux 3.2a, so no version
-    guard is needed. The popup itself is invisible without a TTY-backed
-    client; this is a smoke test for the flag-passing path.
-    """
+    """Run the popup command on the specified terminal client."""
     pane = session.active_window.active_pane
     assert pane is not None
     marker = tmp_path / "popup_target_client.marker"
 
-    with control_mode() as ctl:
-        pane.display_popup(
-            command=f"touch {marker}",
-            close_on_exit=True,
-            target_client=ctl.client_name,
-        )
+    pane.display_popup(
+        command=f"touch {marker}",
+        close_on_exit=True,
+        target_client=terminal_client,
+    )
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
