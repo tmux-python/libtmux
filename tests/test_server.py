@@ -652,6 +652,12 @@ def test_owned_server_preserves_socket_after_cleanup_failure(
             raise cleanup_error
         return run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
 
+    # Bound in the try below only on success; an earlier failure (e.g. inside
+    # Server.owned itself) must not make the finally block dereference an
+    # unbound name and mask that failure behind an UnboundLocalError, which
+    # would also skip the kill and leak the daemon.
+    owned: Server | None = None
+    socket_path: pathlib.Path | None = None
     try:
         with (
             monkeypatch.context() as patch,
@@ -662,11 +668,14 @@ def test_owned_server_preserves_socket_after_cleanup_failure(
             assert owned.socket_path is not None
             socket_path = pathlib.Path(owned.socket_path)
             patch.setattr(common, "run_command", run)
+        assert socket_path is not None
         assert socket_path.exists()
         assert owned.is_alive()
     finally:
-        owned.kill()
-        shutil.rmtree(socket_path.parent)
+        if owned is not None:
+            owned.kill()
+        if socket_path is not None:
+            shutil.rmtree(socket_path.parent)
 
 
 @pytest.mark.parametrize(
