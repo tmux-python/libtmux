@@ -1691,9 +1691,9 @@ class Pane(
     ) -> None:
         """Display a popup overlay via ``$ tmux display-popup``.
 
-        Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux._internal.control_mode.ControlMode` in tests to provide
-        a client.
+        Requires tmux 3.2+ and an attached terminal client to display the
+        popup and run its command. A control-mode client can accept this
+        request without executing the popup command.
 
         Parameters
         ----------
@@ -1743,12 +1743,11 @@ class Pane(
 
         Examples
         --------
-        Not directly testable — popup rendering requires a TTY-backed client.
-        Control-mode provides an attached client for invocation but the popup
-        itself is not visible or verifiable.
+        This control-mode client has no popup. The close request returns
+        without changing its state:
 
         >>> with control_mode() as ctl:
-        ...     pane.display_popup(command='true', close_on_exit=True)
+        ...     pane.display_popup(close_existing=True, target_client=ctl.client_name)
         """
         if close_on_exit and close_on_success:
             msg = (
