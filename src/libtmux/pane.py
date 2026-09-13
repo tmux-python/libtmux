@@ -613,11 +613,18 @@ class Pane(
         Examples
         --------
         >>> pane = window.split(shell='sh')
+        >>> retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2)
+        True
         >>> pane.capture_pane()
         ['$']
 
         >>> pane.send_keys('echo "Hello world"', enter=True)
 
+        >>> def command_finished():
+        ...     lines = pane.capture_pane()
+        ...     return len(lines) >= 2 and lines[-2:] == ['Hello world', '$']
+        >>> retry_until(command_finished, 2)
+        True
         >>> pane.capture_pane()
         ['$ echo "Hello world"', 'Hello world', '$']
 
