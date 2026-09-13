@@ -172,6 +172,7 @@ Session <libtmux.session>
 Window <libtmux.window>
 Pane <libtmux.pane>
 Client <libtmux.client>
+Snapshot <libtmux.snapshot>
 Common <libtmux.common>
 Neo <libtmux.neo>
 Options <libtmux.options>
