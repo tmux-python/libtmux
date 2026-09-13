@@ -57,6 +57,9 @@ and server timeouts bound calls, including listings, and raise
 expires, even if a surviving descendant keeps the command's own
 stdout/stderr pipes open. {exc}`~libtmux.exc.TmuxTimeout` round-trips through
 `pickle` and `copy`, so it survives crossing a `ProcessPoolExecutor` boundary.
+{attr}`~libtmux.Server.timeout` has a class-level default of `None`, matching
+`tmux_bin` and the other configuration attributes, so an instance built
+without going through `__init__` still has a value to read.
 
 #### Explicitly owned temporary resources (#758)
 
