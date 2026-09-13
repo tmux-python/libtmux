@@ -45,7 +45,63 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Command results and optional timeouts (#758)
+
+{func}`~libtmux.common.run_command` executes tmux and returns a separate
+{class}`~libtmux.common.CommandResult`; the existing
+{class}`~libtmux.common.tmux_cmd` facade remains compatible. Optional command
+and server timeouts bound calls, including listings, and raise
+{exc}`~libtmux.exc.TmuxTimeout` after cleanup when the deadline expires.
+
+#### Explicitly owned temporary resources (#758)
+
+{meth}`~libtmux.Server.owned` creates a private server scope, and
+{meth}`~libtmux.Server.owned_session` creates a temporary session on an existing
+server. Cleanup affects the created resource and reports failures; legacy
+handle contexts retain their destructive behavior. See
+{doc}`topics/context_managers` for ownership and cleanup rules.
+
+#### Decoded captured fields (#758)
+
+Panes and windows expose captured dimensions and activity as numeric and
+boolean properties. Panes also expose {attr}`~libtmux.Pane.is_dead`, and
+sessions expose {attr}`~libtmux.Session.attached_count`. These reads are local;
+raw fields and established aliases remain available.
+
+#### Public local queries (#758)
+
+{class}`~libtmux.QueryList` is available from the package root. Required
+lookups and caller-supplied defaults retain their distinct result types while
+filtering the existing collection locally.
+
+### Fixes
+
+#### Listings preserve paths containing newlines (#758)
+
+Session, window and pane listings remain usable when a pane's directory
+contains a newline. The captured path retains its original value.
+
+#### Expanded tmux hook decoding (#758)
+
+Reading hooks recognizes tmux's additional pane, window, client and command
+events, preserving typed access to the complete hook table.
+
 ### Documentation
+
+#### Reliable automation examples (#758)
+
+The {doc}`automation examples <topics/automation_patterns>` distinguish
+command output from echoed input and verify running and completed states.
+Repeated operations use fresh markers, and retries and task queues stop
+when a preceding command times out.
+
+#### Popup and floating-pane examples (#758)
+
+{meth}`~libtmux.Pane.display_popup` documents the terminal client required to
+run popup commands. The {doc}`floating-pane examples <topics/floating_panes>`
+distinguish pane content from its borders.
 
 #### Cleaner `from_env` examples (#719)
 
