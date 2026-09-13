@@ -416,7 +416,9 @@ class Server(
             # reads at exec, which is not knowable yet -- those are measured in
             # :meth:`_socket_args`.
             check_socket_path_length(socket_path)
-            self.socket_path = socket_path
+            # str, not Path: __eq__ compares socket_path by value, and
+            # Path("/x") != "/x", so a Path here would break equality.
+            self.socket_path = str(socket_path)
         elif socket_name is not None:
             self.socket_name = socket_name
         elif socket_name_factory is not None:
