@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 import locale
 import logging
 import os
+import pickle
 import re
 import shlex
 import sys
@@ -864,6 +866,31 @@ def test_tmux_cmd_timeout_kills_and_reaps(
     pid = int(pid_file.read_text())
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
+
+
+def test_tmux_timeout_round_trips_through_pickle_and_copy() -> None:
+    """``TmuxTimeout.args`` stays shaped like its own constructor.
+
+    The previous ``__init__`` forwarded a pre-formatted message string to
+    ``Exception.__init__``, so ``self.args`` held one string while the
+    constructor required ``(cmd, timeout, *args)``. pickle and ``copy``
+    reconstruct via ``type(exc)(*exc.args)``, which raised ``TypeError:
+    missing 1 required positional argument: 'timeout'`` -- surfacing under
+    e.g. ``ProcessPoolExecutor``, which pickles exceptions to send them
+    back to the parent process.
+    """
+    original = exc.TmuxTimeout(["tmux", "list-sessions"], 0.3)
+
+    # Round-trips data this process just produced, not untrusted input.
+    for reconstructed in (
+        pickle.loads(pickle.dumps(original)),
+        copy.copy(original),
+        copy.deepcopy(original),
+    ):
+        assert isinstance(reconstructed, exc.TmuxTimeout)
+        assert reconstructed.cmd == original.cmd
+        assert reconstructed.timeout == original.timeout
+        assert str(reconstructed) == str(original)
 
 
 def test_tmux_cmd_timeout_survives_orphaned_pipe_holder(

@@ -367,7 +367,14 @@ class TmuxTimeout(Exception):
     def __init__(self, cmd: list[str], timeout: float, *args: object) -> None:
         self.cmd = cmd
         self.timeout = timeout
-        super().__init__(f"tmux did not return within {timeout}s: {' '.join(cmd)}")
+        # self.args must stay shaped like __init__'s signature: pickle/copy
+        # reconstruct via `type(e)(*e.args)`, which a lone message string
+        # here would mismatch and raise TypeError.
+        super().__init__(cmd, timeout, *args)
+
+    def __str__(self) -> str:
+        """Render the deadline and the command that missed it."""
+        return f"tmux did not return within {self.timeout}s: {' '.join(self.cmd)}"
 
 
 class VariableUnpackingError(LibTmuxException):
