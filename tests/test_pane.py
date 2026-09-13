@@ -119,12 +119,21 @@ def test_capture_pane(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
+    retry_until(lambda: pane.capture_pane() == ["$"], 1, raises=True)
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(
         r'printf "\n%s\n" "Hello World !"',
         literal=True,
         suppress_history=False,
+    )
+    retry_until(
+        lambda: (
+            pane.capture_pane()
+            == [r'$ printf "\n%s\n" "Hello World !"', "", "Hello World !", "$"]
+        ),
+        1,
+        raises=True,
     )
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
@@ -144,9 +153,15 @@ def test_capture_pane_start(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
+    retry_until(lambda: pane.capture_pane() == ["$"], 1, raises=True)
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
+    retry_until(
+        lambda: pane.capture_pane() == ['$ printf "%s"', "$"],
+        1,
+        raises=True,
+    )
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == '$ printf "%s"\n$'
     pane.send_keys("clear -x", literal=True, suppress_history=False)
@@ -189,9 +204,15 @@ def test_capture_pane_end(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
+    retry_until(lambda: pane.capture_pane() == ["$"], 1, raises=True)
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
+    retry_until(
+        lambda: pane.capture_pane() == ['$ printf "%s"', "$"],
+        1,
+        raises=True,
+    )
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == '$ printf "%s"\n$'
     pane_contents = "\n".join(pane.capture_pane(end=0))
