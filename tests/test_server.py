@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import os
@@ -555,50 +556,50 @@ def test_owned_server_preserves_socket_after_cleanup_failure(
         shutil.rmtree(socket_path.parent)
 
 
-def test_owned_server_preserves_socket_after_silent_cleanup_failure(
+@pytest.mark.parametrize(
+    ("returncode", "stderr"), [(7, ""), (7, "cleanup refused"), (0, "cleanup refused")]
+)
+def test_owned_server_preserves_socket_after_completed_cleanup_failure(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    returncode: int,
+    stderr: str,
 ) -> None:
-    """A completed failure without stderr remains visible and retryable."""
-    run_command = common.run_command
-    completed = run_command("-V", tmux_bin=server.tmux_bin)
+    """A real cleanup refusal retains a reachable endpoint for retry."""
+    executable = server.tmux_bin or shutil.which("tmux")
+    assert executable is not None
+    wrapper = tmp_path / "tmux-server-cleanup-refusal"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        'for arg do\nif [ "$arg" = "kill-server" ]; then\n'
+        f"printf %s {shlex.quote(stderr)} >&2\nexit {returncode}\nfi\ndone\n"
+        f'exec {shlex.quote(executable)} "$@"\n'
+    )
+    wrapper.chmod(0o700)
     removed: list[pathlib.Path] = []
-
-    def run(
-        *args: object,
-        tmux_bin: str | None = None,
-        timeout: float | None = None,
-    ) -> common.CommandResult:
-        if "kill-server" in args:
-            return common.CommandResult(
-                cmd=[str(arg) for arg in args],
-                stdout=[],
-                stderr=[],
-                returncode=7,
-                process=completed.process,
-            )
-        return run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
+    socket_path: pathlib.Path | None = None
 
     try:
-        with monkeypatch.context() as patch:
+        with monkeypatch.context() as patch, contextlib.ExitStack() as cleanup:
             # Keep the endpoint reachable even if the assertion exposes a regression.
             patch.setattr(shutil, "rmtree", removed.append)
-            with (
-                pytest.raises(
-                    exc.LibTmuxException, match="Server cleanup exited with 7"
-                ),
-                Server.owned(tmux_bin=server.tmux_bin) as owned,
+            owned = cleanup.enter_context(Server.owned(tmux_bin=str(wrapper)))
+            assert owned.socket_path is not None
+            socket_path = pathlib.Path(owned.socket_path)
+            owned.new_session()
+            with pytest.raises(
+                exc.LibTmuxException,
+                match=stderr or f"Server cleanup exited with {returncode}",
             ):
-                owned.new_session()
-                assert owned.socket_path is not None
-                socket_path = pathlib.Path(owned.socket_path)
-                patch.setattr(common, "run_command", run)
+                cleanup.close()
             assert not removed
             assert socket_path.exists()
             assert owned.is_alive()
     finally:
-        owned.kill()
-        shutil.rmtree(socket_path.parent)
+        if socket_path is not None:
+            Server(socket_path=str(socket_path), tmux_bin=executable).kill()
+            shutil.rmtree(socket_path.parent)
 
 
 class StartDirectoryTestFixture(t.NamedTuple):
