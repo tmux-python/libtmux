@@ -518,6 +518,52 @@ def test_owned_server_preserves_socket_after_cleanup_failure(
         shutil.rmtree(socket_path.parent)
 
 
+def test_owned_server_preserves_socket_after_silent_cleanup_failure(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completed failure without stderr remains visible and retryable."""
+    run_command = common.run_command
+    completed = run_command("-V", tmux_bin=server.tmux_bin)
+    removed: list[pathlib.Path] = []
+
+    def run(
+        *args: object,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> common.CommandResult:
+        if "kill-server" in args:
+            return common.CommandResult(
+                cmd=[str(arg) for arg in args],
+                stdout=[],
+                stderr=[],
+                returncode=7,
+                process=completed.process,
+            )
+        return run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
+
+    try:
+        with monkeypatch.context() as patch:
+            # Keep the endpoint reachable even if the assertion exposes a regression.
+            patch.setattr(shutil, "rmtree", removed.append)
+            with (
+                pytest.raises(
+                    exc.LibTmuxException, match="Server cleanup exited with 7"
+                ),
+                Server.owned(tmux_bin=server.tmux_bin) as owned,
+            ):
+                owned.new_session()
+                assert owned.socket_path is not None
+                socket_path = pathlib.Path(owned.socket_path)
+                patch.setattr(common, "run_command", run)
+            assert not removed
+            assert socket_path.exists()
+            assert owned.is_alive()
+    finally:
+        owned.kill()
+        shutil.rmtree(socket_path.parent)
+
+
 class StartDirectoryTestFixture(t.NamedTuple):
     """Test fixture for start_directory parameter testing."""
 

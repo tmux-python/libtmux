@@ -318,11 +318,17 @@ class Server(
             )
         finally:
             if socket_path.exists():
-                Server(
+                proc = Server(
                     socket_path=socket_path,
                     tmux_bin=tmux_bin,
                     timeout=timeout,
-                ).kill()
+                ).cmd("kill-server")
+                if (proc.returncode or proc.stderr) and not _is_daemon_not_up_error(
+                    " ".join(proc.stderr)
+                ):
+                    raise exc.LibTmuxException(
+                        proc.stderr or f"Server cleanup exited with {proc.returncode}"
+                    )
             shutil.rmtree(directory)
 
     def __enter__(self) -> Self:
