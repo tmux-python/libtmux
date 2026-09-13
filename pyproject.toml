@@ -52,9 +52,12 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs (via gp-sphinx)
-  "gp-sphinx==0.1.0a37",
-  "sphinx-autodoc-api-style==0.1.0a37",
-  "sphinx-autodoc-pytest-fixtures==0.1.0a37",
+  "gp-sphinx==0.1.0a38",
+  # Declared directly so the source override below can redirect it; an
+  # override does not reach a dependency arriving transitively via gp-sphinx.
+  "sphinx-gp-llms",
+  "sphinx-autodoc-api-style==0.1.0a38",
+  "sphinx-autodoc-pytest-fixtures==0.1.0a38",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -75,9 +78,10 @@ dev = [
 ]
 
 docs = [
-  "gp-sphinx==0.1.0a37",
-  "sphinx-autodoc-api-style==0.1.0a37",
-  "sphinx-autodoc-pytest-fixtures==0.1.0a37",
+  "gp-sphinx==0.1.0a38",
+  "sphinx-gp-llms",
+  "sphinx-autodoc-api-style==0.1.0a38",
+  "sphinx-autodoc-pytest-fixtures==0.1.0a38",
   "sphinx-autobuild",
 ]
 testing = [
@@ -288,3 +292,24 @@ testpaths = [
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
 ]
+
+[tool.uv.sources]
+# sphinx-gp-llms from upstream `main`, for one fix libtmux.org needs.
+#
+# The extension links a `.md` twin beside every page, including `genindex`,
+# `py-modindex` and `search`, which have no twin — dead links in the assembled
+# site. The link is rendered from a theme template rather than resolved as a
+# reference, so a `-W` build stays green and Sphinx never reports it.
+#
+# `git-pull/gp-sphinx@3b0bdc15` carries the fix and reports version 0.1.0a38,
+# the same version pinned above, so no dependency override is needed. The
+# commit is public and cloned over HTTPS: no credentials, and CI resolves it
+# anonymously.
+#
+# Delete this block once a release carries the fix; the `==0.1.0a38` pins
+# above then become a plain version bump and nothing else changes.
+#
+# Only this sub-package is redirected, not the `gp-sphinx` meta-package:
+# pinning the whole thing makes uv resolve its siblings from git too, and
+# those are already on PyPI at the version pinned above.
+sphinx-gp-llms = { git = "https://github.com/git-pull/gp-sphinx.git", rev = "3b0bdc15e30121bf346ccd046e66f5a049fd60a2", subdirectory = "packages/sphinx-gp-llms" }
