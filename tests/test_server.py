@@ -466,6 +466,24 @@ def test_owned_server_keeps_its_private_endpoint(
     assert session in server.sessions
 
 
+def test_owned_server_socket_path_equals_the_same_endpoint_by_string(
+    server: Server,
+) -> None:
+    """``Server.owned``'s endpoint compares equal to itself addressed by ``str``.
+
+    ``owned`` builds ``socket_path`` as a ``pathlib.Path``. ``__eq__``
+    compares ``socket_path`` by value, and ``Path("/x") != "/x"``, so
+    passing that ``Path`` straight through used to make the owned server
+    compare unequal to the identical endpoint addressed by string --
+    unlike every other constructor, which only ever sees a ``str``.
+    """
+    with Server.owned(tmux_bin=server.tmux_bin) as owned:
+        assert owned.socket_path is not None
+        assert isinstance(owned.socket_path, str)
+        by_string = Server(socket_path=str(owned.socket_path), tmux_bin=server.tmux_bin)
+        assert owned == by_string
+
+
 def test_owned_server_cleans_up_after_body_failure(server: Server) -> None:
     """An exception still terminates the private daemon and removes its socket."""
     body_error = RuntimeError("body failed")
