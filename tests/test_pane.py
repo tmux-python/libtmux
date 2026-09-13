@@ -1844,8 +1844,11 @@ def test_new_pane_floating(session: Session) -> None:
     if has_gte_version("3.7"):
         floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
         assert floating.pane_floating_flag == "1"
-        assert floating.pane_width == "80"
-        assert floating.pane_height == "15"
+        border = 1 if has_gte_version("3.8") else 0
+        assert floating.pane_width == str(80 - 2 * border)
+        assert floating.pane_height == str(15 - 2 * border)
+        assert floating.pane_x == str(5 + border)
+        assert floating.pane_y == str(3 + border)
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             pane.new_pane(width=40, height=10)
