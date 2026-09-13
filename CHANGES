@@ -55,7 +55,8 @@ _Notes on the upcoming release will go here._
 and server timeouts bound calls, including listings, and raise
 {exc}`~libtmux.exc.TmuxTimeout` after a bounded cleanup when the deadline
 expires, even if a surviving descendant keeps the command's own
-stdout/stderr pipes open.
+stdout/stderr pipes open. {exc}`~libtmux.exc.TmuxTimeout` round-trips through
+`pickle` and `copy`, so it survives crossing a `ProcessPoolExecutor` boundary.
 
 #### Explicitly owned temporary resources (#758)
 
