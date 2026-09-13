@@ -2709,6 +2709,81 @@ class Pane(
         return self.pane_title
 
     @property
+    def width_cells(self) -> int | None:
+        """Captured width in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`width` alias retains its raw string.
+        """
+        return int(self.pane_width) if self.pane_width is not None else None
+
+    @property
+    def height_cells(self) -> int | None:
+        """Captured height in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`height` alias retains its raw string.
+        """
+        return int(self.pane_height) if self.pane_height is not None else None
+
+    @property
+    def is_active(self) -> bool | None:
+        """Captured active flag within the window, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.pane_active)) if self.pane_active is not None else None
+
+    @property
+    def is_dead(self) -> bool | None:
+        """Captured pane-process exit flag, or ``None`` when unavailable.
+
+        Reads locally, like :attr:`is_active` -- never re-queries tmux. A
+        stale handle keeps reporting whatever it last captured; call
+        :meth:`refresh` first for a live answer. That answer also depends
+        on ``remain-on-exit``: without it, tmux destroys a pane outright
+        when its process exits, so there is no "dead" state to read, only
+        a handle whose :meth:`refresh` now raises
+        :exc:`~libtmux.exc.TmuxObjectDoesNotExist`.
+
+        Examples
+        --------
+        A stale handle answers from its last snapshot, not from tmux. The
+        pane exits just after :meth:`Window.split` reads it back, so the
+        read-back itself never races the exit:
+
+        >>> gone = window.split(shell="sh -c 'sleep 0.2; exit 0'")
+        >>> retry_until(
+        ...     lambda: len(window.panes.filter(pane_id=gone.pane_id)) == 0, 2
+        ... )
+        True
+        >>> gone.is_dead  # last snapshot said "alive"; never re-queried
+        False
+
+        Refreshing that same handle raises -- the pane wasn't merely
+        marked dead, tmux removed it (no ``remain-on-exit``):
+
+        >>> from libtmux import exc
+        >>> try:
+        ...     gone.refresh()
+        ... except exc.TmuxObjectDoesNotExist:
+        ...     print("destroyed, not merely dead")
+        destroyed, not merely dead
+
+        With ``remain-on-exit``, the pane survives and a refreshed handle
+        reports it:
+
+        >>> stays = window.split(shell="sh")
+        >>> stays.cmd("set-option", "-p", "remain-on-exit", "on")  # doctest: +HIDE
+        <libtmux.common.tmux_cmd object at ...>
+        >>> stays.send_keys("exit", enter=True)
+        >>> def _stays_dead() -> bool | None:
+        ...     stays.refresh()
+        ...     return stays.is_dead
+        >>> retry_until(_stays_dead, 2)
+        True
+        """
+        return bool(int(self.pane_dead)) if self.pane_dead is not None else None
+
+    @property
     def at_top(self) -> bool:
         """Typed, converted wrapper around :attr:`Pane.pane_at_top`.
 
