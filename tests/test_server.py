@@ -492,6 +492,39 @@ def test_owned_session_cleans_up_by_id_after_rename(
     assert session in server.sessions
 
 
+def test_owned_session_kills_on_identity_guard_failure(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session missing an identity field is killed, not leaked.
+
+    ``owned_session`` used to create the session, then run asserts and
+    ``int()`` conversions in a gap before its try/finally began, so a
+    failure there (or a bare ``assert`` skipped under ``python -O``)
+    leaked the session instead of triggering cleanup.
+    """
+    real_new_session = Server.new_session
+
+    def _new_session_missing_start_time(
+        self: Server,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> Session:
+        created = real_new_session(self, *args, **kwargs)
+        created.start_time = None
+        return created
+
+    monkeypatch.setattr(Server, "new_session", _new_session_missing_start_time)
+
+    with (
+        pytest.raises(exc.LibTmuxException, match="start_time"),
+        server.owned_session("identity_guard_failure"),
+    ):
+        pass
+
+    assert not server.has_session("identity_guard_failure")
+
+
 def test_owned_session_refuses_an_existing_name(
     server: Server,
     session: Session,
