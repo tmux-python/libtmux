@@ -99,6 +99,16 @@ covers an unreachable server, not a reply libtmux could not parse. This
 matches {attr}`~libtmux.Server.windows` and {attr}`~libtmux.Server.panes`,
 which already raised it.
 
+#### Liveness checks honor `Server.timeout` (#758)
+
+{meth}`~libtmux.Server.is_alive` re-raises {exc}`~libtmux.exc.TmuxTimeout`
+instead of reporting a wedged server as dead, and
+{meth}`~libtmux.Server.raise_if_dead` now runs through
+{meth}`~libtmux.Server.cmd`, so it honors {attr}`~libtmux.Server.timeout`
+instead of blocking indefinitely. `Server.__exit__` still attempts
+{meth}`~libtmux.Server.kill` when a timeout leaves liveness unknown, rather
+than skipping it and leaking the daemon.
+
 #### Expanded tmux hook decoding (#758)
 
 Reading hooks recognizes tmux's additional pane, window, client and command

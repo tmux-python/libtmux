@@ -288,6 +288,69 @@ def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
     server.raise_if_dead()
 
 
+def test_is_alive_propagates_timeout(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """A wedged server is not reported ``False`` -- it is unknown, not dead.
+
+    A bare ``except Exception: return False`` would swallow
+    :exc:`~libtmux.exc.TmuxTimeout` into "dead", which is wrong for a
+    server that is merely slow to answer; a caller told "dead" may start
+    a second server alongside one that is still there. Bounded by
+    ``Server.timeout`` rather than the stub's full 30s sleep.
+    """
+    binary, _pid_file = hanging_tmux
+    wedged = Server(tmux_bin=binary, timeout=0.2)
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        wedged.is_alive()
+    assert time.monotonic() - started < 5
+
+
+def test_raise_if_dead_propagates_timeout(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """``raise_if_dead`` honors ``Server.timeout`` instead of blocking.
+
+    It used to run ``subprocess.check_call`` directly, bypassing
+    ``Server.cmd`` and the server-wide timeout entirely, so this could
+    block indefinitely against a wedged server. Bounded here by
+    ``Server.timeout`` rather than the stub's full 30s sleep.
+    """
+    binary, _pid_file = hanging_tmux
+    wedged = Server(tmux_bin=binary, timeout=0.2)
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        wedged.raise_if_dead()
+    assert time.monotonic() - started < 5
+
+
+def test_context_manager_exit_kills_despite_is_alive_timeout(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``__exit__`` still attempts a kill when ``is_alive`` times out.
+
+    A wedged server is "unknown", not "dead" -- treating the timeout as
+    "dead" would skip :meth:`Server.kill` and leak the daemon. ``__exit__``
+    assumes alive and attempts the kill regardless.
+    """
+    killed: list[bool] = []
+    monkeypatch.setattr(server, "kill", lambda *a, **kw: killed.append(True))
+
+    def _boom() -> bool:
+        raise exc.TmuxTimeout(["tmux", "list-sessions"], 0.2)
+
+    monkeypatch.setattr(server, "is_alive", _boom)
+
+    with server:
+        pass
+
+    assert killed == [True]
+
+
 def test_on_init(server: Server) -> None:
     """Verify on_init callback is called during Server initialization."""
     called_with: list[Server] = []

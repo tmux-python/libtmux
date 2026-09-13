@@ -263,8 +263,9 @@ convention = "numpy"
 ]
 "src/libtmux/server.py" = [
   # `Server.is_alive` answers a yes/no question about an unreachable server.
-  # Every way of failing to reach it is a "no"; callers who need the reason
-  # use `Server.raise_if_dead`.
+  # Every way of failing to reach it is a "no", except a `TmuxTimeout`
+  # (re-raised before this catch-all: a wedged server is not a dead one).
+  # Callers who need the reason use `Server.raise_if_dead`.
   "BLE001",
 ]
 

@@ -361,7 +361,17 @@ class Server(
         exc_tb : types.TracebackType | None
             The traceback of the exception that was raised
         """
-        if self.is_alive():
+        try:
+            alive = self.is_alive()
+        except exc.TmuxTimeout:
+            # A wedged server answers neither "alive" nor "dead". Assume
+            # alive and attempt the kill rather than skip it: a live
+            # server left unkilled is a silent leak, while a kill attempt
+            # against a truly dead one is a cheap, harmless no-op. If the
+            # server really is wedged, kill() will itself time out and
+            # raise -- a loud leak the caller can act on.
+            alive = True
+        if alive:
             self.kill()
 
     def is_alive(self) -> bool:
@@ -369,9 +379,20 @@ class Server(
 
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxTimeout`
+            The command did not return within :attr:`Server.timeout`.
+            Unlike every other way of failing to reach the server, this is
+            not treated as "no" -- a wedged server is not a dead one, and
+            a caller told "dead" may go on to start a second server
+            alongside one that is merely slow to answer.
         """
         try:
             res = self.cmd("list-sessions")
+        except exc.TmuxTimeout:
+            raise
         except Exception:
             return False
         return res.returncode == 0
@@ -379,13 +400,19 @@ class Server(
     def raise_if_dead(self) -> None:
         """Raise if server not connected.
 
+        Routed through :meth:`Server.cmd`, so this honors
+        :attr:`Server.timeout` like every other command instead of
+        blocking indefinitely against a wedged server.
+
         Raises
         ------
-        :exc:`exc.TmuxCommandNotFound`
+        :exc:`~libtmux.exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``).
+        :exc:`~libtmux.exc.TmuxTimeout`
+            The command did not return within :attr:`Server.timeout`.
 
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
@@ -394,22 +421,14 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
-            raise exc.TmuxCommandNotFound
-
-        cmd_args: list[str] = ["list-sessions"]
-        if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        proc = self.cmd("list-sessions")
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                proc.returncode,
+                proc.cmd,
+                output="\n".join(proc.stdout),
+                stderr="\n".join(proc.stderr),
+            )
 
     #
     # Command
