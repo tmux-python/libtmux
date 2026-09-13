@@ -62,6 +62,16 @@ Test:
 $ uv run pytest
 ```
 
+Start coverage before pytest so plugin imports and worker processes are
+measured:
+
+```console
+$ uv run coverage erase && \
+    uv run coverage run -m pytest -n auto && \
+    uv run coverage combine && \
+    uv run coverage xml
+```
+
 Documentation is a gate, not a courtesy. Examples in docstrings,
 documentation pages, and `README.md` are executed by `pytest`; the
 doctest flags live in `pyproject.toml`, so there is no separate doctest
