@@ -180,6 +180,54 @@ def test_tmux_cmd_unicode(session: Session) -> None:
     session.cmd("new-window", "-n", "юникод", "-F", "Ελληνικά", target=3)
 
 
+@pytest.mark.parametrize("runner_name", ["run_command", "tmux_cmd"])
+def test_command_result_preserves_status_and_decoding(runner_name: str) -> None:
+    """A child process supplies malformed bytes and a completed nonzero exit."""
+    runner = getattr(libtmux.common, runner_name)
+    script = (
+        "import sys; "
+        "sys.stdout.buffer.write(b'first\\n\\nlast\\xff\\n\\n'); "
+        "sys.stderr.buffer.write(b'problem\\xfe\\n\\n'); "
+        "sys.exit(7)"
+    )
+    result = runner("-c", script, 17, tmux_bin=sys.executable)
+
+    assert result.cmd == [sys.executable, "-c", script, "17"]
+    assert result.stdout == ["first", "", "last\\xff"]
+    assert result.stderr == ["problem\\xfe"]
+    assert result.returncode == 7
+    assert result.process.returncode == 7
+    if runner_name == "run_command":
+        assert isinstance(result, libtmux.common.CommandResult)
+
+
+def test_tmux_cmd_delegates_to_runner(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The compatibility facade delegates without starting another child."""
+    result = libtmux.common.run_command("-V", tmux_bin=server.tmux_bin)
+    received: list[tuple[tuple[object, ...], str | None, float | None]] = []
+
+    def run(
+        *args: object,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> libtmux.common.CommandResult:
+        received.append((args, tmux_bin, timeout))
+        return result
+
+    monkeypatch.setattr(libtmux.common, "run_command", run)
+    facade = tmux_cmd("display-message", "-p", tmux_bin="custom", timeout=0.5)
+
+    assert received == [(("display-message", "-p"), "custom", 0.5)]
+    assert facade.cmd is result.cmd
+    assert facade.stdout is result.stdout
+    assert facade.stderr is result.stderr
+    assert facade.returncode == result.returncode
+    assert facade.process is result.process
+
+
 class SessionCheckName(t.NamedTuple):
     """Test fixture for test_session_check_name()."""
 
@@ -768,8 +816,10 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     assert "session_id" in result
 
 
+@pytest.mark.parametrize("runner_name", ["run_command", "tmux_cmd"])
 def test_tmux_cmd_timeout_kills_and_reaps(
     hanging_tmux: tuple[str, pathlib.Path],
+    runner_name: str,
 ) -> None:
     """An expired command leaves no tmux process behind.
 
@@ -778,9 +828,10 @@ def test_tmux_cmd_timeout_kills_and_reaps(
     nobody is listening to.
     """
     binary, pid_file = hanging_tmux
+    runner = getattr(libtmux.common, runner_name)
 
     with pytest.raises(exc.TmuxTimeout) as excinfo:
-        tmux_cmd("list-sessions", tmux_bin=binary, timeout=0.3)
+        runner("list-sessions", tmux_bin=binary, timeout=0.3)
 
     assert excinfo.value.timeout == 0.3
     assert "list-sessions" in str(excinfo.value)
