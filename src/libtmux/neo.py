@@ -1065,7 +1065,7 @@ def _split_records(stdout: list[str], field_count: int) -> list[str]:
     values = blob.split(FORMAT_SEPARATOR)
     # Every record ends with a separator, so the split always leaves one
     # trailing empty for the final record.
-    if values and values[-1] == "":
+    if values[-1] == "":
         values.pop()
 
     if field_count <= 0 or len(values) % field_count:

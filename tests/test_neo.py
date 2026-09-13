@@ -322,9 +322,10 @@ def test_split_records_round_trips_newlines(
         assert parsed == expected
 
 
-def test_split_records_reports_a_forged_separator() -> None:
-    """A value carrying the separator is named, not a ``zip`` message."""
-    stdout = [f"a{FORMAT_SEPARATOR}b{FORMAT_SEPARATOR}c{FORMAT_SEPARATOR}"]
+@pytest.mark.parametrize("trailer", ["", FORMAT_SEPARATOR])
+def test_split_records_reports_a_forged_separator(trailer: str) -> None:
+    """Malformed field counts fail even if the last delimiter is missing."""
+    stdout = [f"a{FORMAT_SEPARATOR}b{FORMAT_SEPARATOR}c{trailer}"]
 
     with pytest.raises(exc.LibTmuxException, match="could not be parsed"):
         _split_records(stdout, 2)
