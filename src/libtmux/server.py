@@ -42,7 +42,7 @@ from libtmux.common import (
 from libtmux.constants import OptionScope
 from libtmux.formats import Format
 from libtmux.hooks import HooksMixin
-from libtmux.neo import fetch_objs, get_output_format, parse_output
+from libtmux.neo import _split_records, fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
@@ -2869,7 +2869,10 @@ class Server(
 
             raise_if_stderr(proc, "new-session")
 
-            session_stdout = proc.stdout[0]
+            # Regroup on the separator, not stdout's lines: a value (e.g.
+            # pane_current_path) may itself contain a newline and split
+            # this record across proc.stdout otherwise. See _split_records.
+            session_stdout = _split_records(proc.stdout, len(_fields))[0]
 
         finally:
             if env:
