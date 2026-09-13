@@ -108,6 +108,11 @@ class Server(
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
+    kill_on_exit : bool, optional
+        Whether leaving a ``with`` block kills the server. Off by default.
+        See :attr:`Server.kill_on_exit`.
+
+        .. versionadded:: 0.63
 
     Examples
     --------
@@ -126,12 +131,17 @@ class Server(
     >>> server.sessions[0].active_pane
     Pane(%1 Window(@1 1:..., Session($1 ...)))
 
-    The server can be used as a context manager to ensure proper cleanup:
+    A server can be used as a context manager to scope a block, but unlike
+    :class:`~libtmux.Session`, :class:`~libtmux.Window` and
+    :class:`~libtmux.Pane`, **leaving the block does not kill it**. A server is
+    a handle on a socket, and holding one says nothing about who started the
+    daemon behind it — often it is the tmux the reader has been working in all
+    day. Ask for teardown when you want it:
 
-    >>> with Server() as server:
-    ...     session = server.new_session()
-    ...     # Do work with the session
-    ...     # Server will be killed automatically when exiting the context
+    >>> with Server(socket_name="libtmux_doctest_scoped", kill_on_exit=True) as scoped:
+    ...     _ = scoped.new_session()
+    >>> scoped.is_alive()
+    False
 
     References
     ----------
@@ -166,6 +176,13 @@ class Server(
     """For hook management."""
     tmux_bin: str | None = None
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
+    kill_on_exit: bool = False
+    """Whether leaving a ``with`` block kills the server.
+
+    Off by default. A :class:`Server` is a handle on a socket, not a
+    connection, so the same handle addresses a daemon whether or not this
+    process started it — scoping one is not grounds to destroy it.
+    """
 
     def __init__(
         self,
@@ -176,10 +193,12 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
+        kill_on_exit: bool = False,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self.kill_on_exit = kill_on_exit
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
@@ -260,10 +279,21 @@ class Server(
     def __enter__(self) -> Self:
         """Enter the context, returning self.
 
+        Costs nothing and probes nothing: whether the block may destroy the
+        daemon is decided by :attr:`Server.kill_on_exit`, which the caller set
+        before entering.
+
         Returns
         -------
         :class:`Server`
             The server instance
+
+        Examples
+        --------
+        >>> with Server() as scoped:
+        ...     _ = scoped.new_session()
+        ...     scoped.is_alive()
+        True
         """
         return self
 
@@ -273,7 +303,17 @@ class Server(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the server if it exists.
+        """Exit the context, killing the server only if asked to.
+
+        A :class:`Server` is a handle on a socket, not a connection, so the
+        same handle addresses a daemon whether or not this process started it.
+        Scoping one to a block is therefore not grounds to destroy it, and the
+        default socket is usually the tmux the reader has been working in all
+        day. Set :attr:`Server.kill_on_exit` when teardown is what you want.
+
+        This is why a server differs from :class:`~libtmux.Session`,
+        :class:`~libtmux.Window` and :class:`~libtmux.Pane`, which do tear
+        themselves down.
 
         Parameters
         ----------
@@ -283,8 +323,32 @@ class Server(
             The instance of the exception that was raised
         exc_tb : types.TracebackType | None
             The traceback of the exception that was raised
+
+        Examples
+        --------
+        A server survives the block, even one the block started:
+
+        >>> booted = Server()
+        >>> with booted:
+        ...     _ = booted.new_session()
+        >>> booted.is_alive()
+        True
+        >>> booted.kill()
+
+        ``kill_on_exit=True`` asks for teardown:
+
+        >>> disposable = Server(kill_on_exit=True)
+        >>> with disposable:
+        ...     _ = disposable.new_session()
+        >>> disposable.is_alive()
+        False
+
+        .. versionchanged:: 0.63
+
+           Previously killed any live server on the way out, including one the
+           block did not start. Pass ``kill_on_exit=True`` for that.
         """
-        if self.is_alive():
+        if self.kill_on_exit and self.is_alive():
             self.kill()
 
     def is_alive(self) -> bool:
