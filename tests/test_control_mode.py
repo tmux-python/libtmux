@@ -6,6 +6,7 @@ import locale
 import os
 import signal
 import sys
+import time
 import typing as t
 
 import pytest
@@ -35,19 +36,34 @@ def test_control_mode_cleanup(
     server: Server,
     stop_client: bool,
 ) -> None:
-    """Exiting releases the client and its streams."""
+    """Exiting releases the client and its streams.
+
+    For the stopped client, cleanup must also be *prompt*: SIGCONT wakes a
+    SIGSTOP'd process so the pending SIGTERM is seen immediately. Without
+    it, ``_stop()`` still cleans up correctly -- ``wait(timeout=5)`` expires
+    and the ``kill()`` fallback reaps the process -- but only after 5s,
+    which is the production hang this test exists to catch. Bounding
+    elapsed time well under that fallback makes a dropped SIGCONT fail the
+    test instead of only slowing it down.
+    """
+    started = time.monotonic()
     with control_mode() as ctl:
         assert len(server.list_clients()) > 0
         if stop_client:
             os.kill(ctl._proc.pid, signal.SIGSTOP)
             _, state = os.waitpid(ctl._proc.pid, os.WUNTRACED)
             assert os.WIFSTOPPED(state)
+    elapsed = time.monotonic() - started
 
     assert ctl.stdout.closed
     assert ctl._proc.stderr is not None and ctl._proc.stderr.closed
     assert ctl._proc.poll() is not None
     clients = server.list_clients()
     assert len(clients) == 0
+    assert elapsed < 2, (
+        f"cleanup took {elapsed:.2f}s; a stopped client should be woken by "
+        "SIGCONT and not fall through to the 5s wait() timeout"
+    )
 
 
 @pytest.mark.parametrize("problem", [RuntimeError, KeyboardInterrupt])
