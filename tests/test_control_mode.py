@@ -44,15 +44,18 @@ def test_control_mode_cleanup(
     and the ``kill()`` fallback reaps the process -- but only after 5s,
     which is the production hang this test exists to catch. Bounding
     elapsed time well under that fallback makes a dropped SIGCONT fail the
-    test instead of only slowing it down.
+    test instead of only slowing it down. The clock starts just before the
+    ``with`` block exits, so it times only ``__exit__``/``_stop()`` -- not
+    spawn or registration, which are unrelated to the SIGCONT path and
+    would otherwise eat into the margin under load.
     """
-    started = time.monotonic()
     with control_mode() as ctl:
         assert len(server.list_clients()) > 0
         if stop_client:
             os.kill(ctl._proc.pid, signal.SIGSTOP)
             _, state = os.waitpid(ctl._proc.pid, os.WUNTRACED)
             assert os.WIFSTOPPED(state)
+        started = time.monotonic()
     elapsed = time.monotonic() - started
 
     assert ctl.stdout.closed
