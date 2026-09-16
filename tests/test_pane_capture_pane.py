@@ -12,6 +12,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.common import has_gte_version
 from libtmux.test.retry import retry_until
 
@@ -479,10 +480,10 @@ def test_capture_pane_trim_trailing_warning(
     ("kwargs", "min_tmux_version"),
     [
         ({"quiet": True}, None),
-        ({"alternate_screen": True}, None),
+        ({"alternate_screen": True, "quiet": True}, None),
         ({"mode_screen": True}, "3.6"),
     ],
-    ids=["quiet", "alternate_screen", "mode_screen_v36"],
+    ids=["quiet", "alternate_screen_quiet", "mode_screen_v36"],
 )
 def test_capture_pane_flag_smoke(
     kwargs: dict[str, t.Any],
@@ -497,6 +498,12 @@ def test_capture_pane_flag_smoke(
     state that's awkward to drive headless; assert that the call
     returns a list without raising. Output-pattern assertions live in
     CAPTURE_PANE_CASES for the flags whose behaviour is observable.
+
+    ``alternate_screen`` is paired with ``quiet`` here: an ordinary pane
+    is never in the alternate screen, so tmux's own ``-a`` fails
+    (``no alternate screen``) unless ``-q`` suppresses it -- see
+    ``test_capture_pane_alternate_screen_without_quiet_raises`` for that
+    failure surfaced.
     """
     if min_tmux_version and not has_gte_version(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
@@ -506,6 +513,20 @@ def test_capture_pane_flag_smoke(
 
     result = pane.capture_pane(**kwargs)
     assert isinstance(result, list)
+
+
+def test_capture_pane_alternate_screen_without_quiet_raises(session: Session) -> None:
+    """capture_pane(alternate_screen=True) raises off the alternate screen.
+
+    A typed method's tmux failure must surface, carrying tmux's own
+    stderr, rather than returning an empty or partial result
+    indistinguishable from "nothing captured".
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with pytest.raises(exc.LibTmuxException, match="no alternate screen"):
+        pane.capture_pane(alternate_screen=True)
 
 
 def test_capture_pane_to_buffer(session: Session) -> None:
