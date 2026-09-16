@@ -11,6 +11,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 import typing as t
@@ -544,6 +545,199 @@ def test_owned_server_cleans_up_after_body_failure(server: Server) -> None:
         socket_path = pathlib.Path(owned.socket_path)
         raise body_error
     assert not socket_path.parent.exists()
+
+
+_OWNED_SIGNAL_CHILD_SCRIPT = """\
+import pathlib
+import signal
+import sys
+import time
+
+# Reset to the default disposition explicitly: SIG_IGN survives exec, and
+# an inherited ignore would make this child immune to the very signal the
+# test is about to send, hanging the test for an unrelated reason.
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+from libtmux.server import Server
+
+marker = pathlib.Path(sys.argv[1])
+with Server.owned() as server:
+    server.new_session(session_name="io")
+    marker.write_text(str(server.socket_path))
+    time.sleep(30)
+"""
+
+
+@pytest.mark.parametrize(
+    "sig",
+    [signal.SIGTERM, signal.SIGHUP],
+    ids=["SIGTERM", "SIGHUP"],
+)
+def test_owned_cleans_up_on_termination_signal(
+    tmp_path: pathlib.Path,
+    sig: signal.Signals,
+) -> None:
+    """SIGTERM and SIGHUP trigger Server.owned()'s cleanup.
+
+    Regression for a real defect: cleanup lived only in the context
+    manager's own ``finally``, which never ran on the default
+    disposition of SIGTERM or SIGHUP -- unlike SIGINT, which Python
+    already turns into ``KeyboardInterrupt`` before this code ever sees
+    it. Drives a *real* child process and sends it a *real* signal
+    end to end (not a direct call to the handler function), so a fix
+    that only works when invoked from within the same interpreter
+    cannot pass this by accident.
+
+    The child dies by the signal: cleanup runs from the handler
+    itself, which re-raises against the process with the signal's
+    default disposition restored, so ``proc.returncode`` is negative
+    (``subprocess``'s convention for "killed by signal N").
+    """
+    script = tmp_path / "owned_signal_child.py"
+    script.write_text(_OWNED_SIGNAL_CHILD_SCRIPT)
+    marker = tmp_path / "socket_path.txt"
+
+    proc = subprocess.Popen(
+        [sys.executable, str(script), str(marker)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.exists() and time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.exists(), (
+            f"child never reported its socket_path; "
+            f"exited={proc.poll()!r} stderr follows on failure"
+        )
+        socket_path = pathlib.Path(marker.read_text())
+
+        proc.send_signal(sig)
+        try:
+            returncode = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            pytest.fail(
+                f"child did not exit within 5s of {sig.name}; "
+                "the signal leaked the daemon it was meant to reap"
+            )
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        stdout, stderr = proc.communicate()
+
+    assert returncode == -sig, (
+        f"expected exit {-sig} (killed by {sig.name}), got {returncode}\n"
+        f"stdout:\n{stdout}\nstderr:\n{stderr}"
+    )
+    assert not Server(socket_path=socket_path).is_alive(), (
+        "the private tmux daemon is still running after the signal"
+    )
+    assert not socket_path.exists(), "the private socket file was left behind"
+    assert not socket_path.parent.exists(), (
+        "the private socket directory was left behind"
+    )
+
+
+_OWNED_SIGNAL_SWALLOWED_CHILD_SCRIPT = """\
+import pathlib
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+from libtmux.server import Server
+
+marker = pathlib.Path(sys.argv[1])
+survived = pathlib.Path(sys.argv[2])
+with Server.owned() as server:
+    server.new_session(session_name="io")
+    marker.write_text(str(server.socket_path))
+    try:
+        time.sleep(30)
+    except BaseException:
+        pass
+    survived.write_text("survived")
+    time.sleep(5)
+"""
+
+
+def test_owned_cleanup_and_death_survive_a_bare_except_in_the_block(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A broad ``except`` inside the block cannot keep the process alive.
+
+    Cleanup runs from the signal handler itself, and the process is
+    killed by the signal directly afterward, so a bare ``except:`` (or
+    ``except BaseException:``) wrapping code *inside* the
+    ``with Server.owned():`` body never gets a chance to catch
+    anything on this path -- the daemon is gone and the process is
+    dead before the block's own ``except`` could run.
+    """
+    script = tmp_path / "owned_signal_swallowed_child.py"
+    script.write_text(_OWNED_SIGNAL_SWALLOWED_CHILD_SCRIPT)
+    marker = tmp_path / "socket_path.txt"
+    survived = tmp_path / "survived.txt"
+
+    proc = subprocess.Popen(
+        [sys.executable, str(script), str(marker), str(survived)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.exists() and time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.exists(), (
+            f"child never reported its socket_path; "
+            f"exited={proc.poll()!r} stderr follows on failure"
+        )
+        socket_path = pathlib.Path(marker.read_text())
+
+        proc.send_signal(signal.SIGTERM)
+        try:
+            returncode = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            pytest.fail(
+                "child did not exit within 5s of SIGTERM; its own bare "
+                "except swallowed the exit"
+            )
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        stdout, stderr = proc.communicate()
+
+    assert returncode == -signal.SIGTERM, (
+        f"expected exit {-signal.SIGTERM} (killed by SIGTERM despite the "
+        f"block's own bare except), got {returncode}\n"
+        f"stdout:\n{stdout}\nstderr:\n{stderr}"
+    )
+    assert not survived.exists(), (
+        "the block's bare except ran past the signal and wrote its marker"
+    )
+    assert not Server(socket_path=socket_path).is_alive(), (
+        "the private tmux daemon is still running after the signal"
+    )
+    assert not socket_path.exists(), "the private socket file was left behind"
+    assert not socket_path.parent.exists(), (
+        "the private socket directory was left behind"
+    )
 
 
 def test_owned_session_cleans_up_by_id_after_rename(
