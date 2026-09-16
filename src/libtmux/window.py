@@ -877,11 +877,12 @@ class Window(
             String of the layout, 'even-horizontal', 'tiled', etc. Entering
             None (leaving this blank) is same as ``select-layout`` with no
             layout. In recent tmux versions, it picks the most recently
-            set layout. Passed to tmux after a ``--`` separator, so a value
-            starting with ``-`` (e.g. ``"-o"``, tmux's own *undo* flag) is
-            always read as the layout string, never as a flag. An explicit
-            empty string is refused -- pass ``None`` to omit the layout
-            instead.
+            set layout. A value beginning with ``-`` (e.g. ``"-o"``, tmux's
+            own *undo* flag) is refused before reaching tmux -- no valid
+            layout begins with ``-``, and passing it through would either
+            run it as a flag or, on tmux 3.3/3.3a, crash the daemon (see
+            ``Raises``). An explicit empty string is also refused -- pass
+            ``None`` to omit the layout instead.
 
             'even-horizontal'
                 Panes are spread out evenly from left to right across the
@@ -924,8 +925,12 @@ class Window(
             If tmux returns an error.
         ValueError
             If both *layout* and a flag (*spread*, *next_layout*,
-            *previous_layout*) are specified, or if *layout* is an
-            explicit empty string.
+            *previous_layout*) are specified, if *layout* is an explicit
+            empty string, or if *layout* begins with ``-``. On tmux
+            3.3/3.3a, an invalid layout *string* crashes the daemon rather
+            than refusing cleanly (fixed upstream in 3.4) -- refusing a
+            hostile value before it reaches tmux avoids that regardless of
+            version, rather than only on the versions that refuse cleanly.
 
         Notes
         -----
@@ -953,6 +958,21 @@ class Window(
             )
             raise ValueError(msg)
 
+        if layout and layout.startswith("-"):
+            # No valid layout begins with "-": a named preset is alphabetic,
+            # the classic form starts with digits (WxH,X,Y{...}), and JSON
+            # starts with "{". Refuse before this ever reaches tmux, rather
+            # than relying solely on the "--" separator below: on tmux
+            # 3.3/3.3a specifically, an invalid layout *string* (as "-o"
+            # becomes once "--" forces it to be read as one) frees an
+            # uninitialized pointer and crashes the whole daemon instead of
+            # refusing cleanly -- confirmed by hand, fixed upstream in 3.4.
+            msg = (
+                f"layout {layout!r} looks like a tmux flag, not a layout "
+                "value -- no valid layout begins with '-'"
+            )
+            raise ValueError(msg)
+
         cmd = ["select-layout"]
 
         if spread:
@@ -965,9 +985,9 @@ class Window(
             cmd.append("-p")
 
         if layout:  # tmux allows select-layout without args
-            # "--" stops tmux's own option parsing, so a layout beginning
-            # with "-" (e.g. "-o", tmux's undo flag) is read as the layout
-            # value rather than a flag.
+            # "--" stops tmux's own option parsing: defense in depth so a
+            # layout value is read as the layout, never as a flag, even if
+            # it reaches this point some other way.
             cmd.extend(["--", layout])
 
         proc = self.cmd(*cmd)
