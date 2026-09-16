@@ -919,6 +919,20 @@ class Window(
             If both *layout* and a flag (*spread*, *next_layout*,
             *previous_layout*) are specified, or if *layout* is an
             explicit empty string.
+
+        Notes
+        -----
+        Feeding a saved :attr:`~libtmux.Window.window_layout` back into
+        *layout* restores the shape exactly on every supported tmux
+        version, but *which pane lands in which cell* is only guaranteed
+        on tmux 3.8+: from that version, a plain (non-control-mode)
+        reader -- what every libtmux caller is, since :mod:`libtmux`
+        exposes no public control-mode client -- receives a JSON layout
+        carrying each pane's id, and restoring it puts each pane back
+        where it was. Before 3.8, the saved value is tmux's classic
+        layout string, which carries geometry only; restoring it can
+        rotate which pane occupies which position even though the
+        resulting arrangement is identical.
         """
         flags = (spread, next_layout, previous_layout)
         if layout and any(flags):
