@@ -12,6 +12,7 @@ import logging
 import os
 import pathlib
 import shutil
+import signal
 import subprocess
 import tempfile
 import typing as t
@@ -67,6 +68,13 @@ class _NotSet:
 
 
 _NOT_SET = _NotSet()
+
+#: Termination signals :meth:`Server.owned` traps so its cleanup still runs
+#: -- unlike SIGINT, neither raises anything by default. No SIGHUP on Windows.
+_OWNED_TERMINATION_SIGNALS: tuple[signal.Signals, ...] = (
+    signal.SIGTERM,
+    *((signal.SIGHUP,) if hasattr(signal, "SIGHUP") else ()),
+)
 
 
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
@@ -352,6 +360,32 @@ class Server(
         A cleanup failure propagates and leaves the socket directory available
         for retry; a body exception remains in the exception chain.
 
+        SIGTERM and SIGHUP are trapped for the scope's duration, on the
+        main thread, when nothing has already installed a handler or
+        ignored them: Python already turns SIGINT into
+        ``KeyboardInterrupt``, which the cleanup above catches like any
+        other exception, but SIGTERM (``timeout``, ``kill``, a cancelled
+        CI job, ``docker stop``, systemd) and SIGHUP (closing the
+        terminal) do not raise anything by default -- their default
+        disposition ends the interpreter without unwinding, which used to
+        leave the private daemon and socket directory behind. Trapping
+        them runs this method's own cleanup from the handler itself, then
+        restores the signal's default disposition and re-raises it against
+        this process, so the process still dies by the signal -- a parent
+        sees a signal exit (e.g. ``-15``), not exit code ``143``/``129`` --
+        and no ``except`` anywhere in the block, however broad, can keep it
+        running: nothing here depends on a Python exception unwinding
+        through the block's own code to reach cleanup. This also means
+        only this endpoint's cleanup runs; anything else the block would
+        have unwound through (the caller's own ``finally``/``with``
+        blocks) does not get a chance to, same as if the signal had never
+        been trapped at all. A caller that wants its own graceful shutdown
+        on these signals installs its own handler before entering the
+        scope -- ``owned()`` only installs where the target had its default
+        disposition (a caller-installed handler or an explicit ignore is
+        left alone) -- and is restored on exit if nothing inside the block
+        replaced it with something else.
+
         Examples
         --------
         >>> from libtmux.server import Server as TmuxServer
@@ -364,14 +398,26 @@ class Server(
         """
         directory = pathlib.Path(tempfile.mkdtemp(prefix="libtmux-owned-"))
         socket_path = directory / "socket"
-        try:
-            yield cls(
-                socket_path=socket_path,
-                config_file=config_file,
-                tmux_bin=tmux_bin,
-                timeout=timeout,
-            )
-        finally:
+
+        previous_handlers: dict[signal.Signals, t.Any] = {}
+
+        def _cleanup() -> None:
+            """Restore trapped signals and remove the owned endpoint.
+
+            Re-callable: each step guards itself (a handler still set to
+            ``_terminate``, a socket that still exists, a directory that
+            still exists), so calling this twice -- once from a trapped
+            signal, once more from the ``finally`` below as the exception
+            that signal raised unwinds back into this generator -- redoes
+            only whatever the first call didn't finish. A failure here
+            (e.g. ``kill-server`` itself fails) propagates and leaves
+            whatever is left for the next call to retry.
+            """
+            for sig, previous in previous_handlers.items():
+                if signal.getsignal(sig) is _terminate:
+                    # `previous` is always SIG_DFL (see the install loop
+                    # below); a trapped handler relies on this to restore it.
+                    signal.signal(sig, previous)
             if socket_path.exists():
                 proc = Server(
                     socket_path=socket_path,
@@ -384,7 +430,40 @@ class Server(
                     raise exc.LibTmuxException(
                         proc.stderr or f"Server cleanup exited with {proc.returncode}"
                     )
-            shutil.rmtree(directory)
+            if directory.exists():
+                shutil.rmtree(directory)
+
+        def _terminate(signum: int, frame: object) -> None:
+            # Cleanup runs here (not via a raised exception, so no
+            # ``except`` in the block can catch it); SIG_DFL is restored
+            # first, so this re-raise kills the process by the signal.
+            _cleanup()
+            os.kill(os.getpid(), signum)
+
+        for sig in _OWNED_TERMINATION_SIGNALS:
+            try:
+                current = signal.getsignal(sig)
+            except (ValueError, OSError):
+                continue  # not the main thread, or unsupported here
+            if current is not signal.SIG_DFL:
+                # Caller already handles or ignores it: leave it alone --
+                # overriding would change the caller's own shutdown behavior.
+                continue
+            try:
+                signal.signal(sig, _terminate)
+            except (ValueError, OSError):
+                continue
+            previous_handlers[sig] = current
+
+        try:
+            yield cls(
+                socket_path=socket_path,
+                config_file=config_file,
+                tmux_bin=tmux_bin,
+                timeout=timeout,
+            )
+        finally:
+            _cleanup()
 
     def __enter__(self) -> Self:
         """Enter the context, returning self.
