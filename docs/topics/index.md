@@ -85,6 +85,12 @@ Scope- and version-gated typed fields on every libtmux object.
 Names and paths kept as typed, and `Format` to have tmux expand a value.
 :::
 
+:::{grid-item-card} Examples
+:link: examples
+:link-type: doc
+Standalone scripts you run directly, executed by the test suite.
+:::
+
 ::::
 
 ```{toctree}
@@ -106,4 +112,5 @@ options_and_hooks
 clients
 format-tokens
 formats
+examples
 ```

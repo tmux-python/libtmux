@@ -143,6 +143,7 @@ files = [
   "src",
   "tests",
   "docs/_ext",
+  "examples",
 ]
 
 
@@ -287,4 +288,5 @@ testpaths = [
 ]
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
+  "examples: runs a documented examples/*.py script end to end against a real tmux server (every test here already requires one, so this stays in the default run)",
 ]
