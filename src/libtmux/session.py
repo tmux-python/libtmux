@@ -269,6 +269,11 @@ class Session(
         Can be accessed via
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Unlike :attr:`Server.windows`, not lenient: any tmux failure here
+        (including a dead server) propagates as
+        :exc:`~libtmux.exc.LibTmuxException` rather than collapsing to an
+        empty list. See ``AGENTS.md``'s "List-returning accessors" section.
         """
         windows: list[Window] = [
             Window(server=self.server, **obj)
@@ -289,6 +294,11 @@ class Session(
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Unlike :attr:`Server.panes`, not lenient: any tmux failure here
+        propagates as :exc:`~libtmux.exc.LibTmuxException` rather than
+        collapsing to an empty list. See ``AGENTS.md``'s "List-returning
+        accessors" section.
         """
         panes: list[Pane] = [
             Pane(server=self.server, **obj)

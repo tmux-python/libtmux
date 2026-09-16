@@ -2100,6 +2100,35 @@ def test_server_sessions_permission_error_returns_empty(
     assert list(server.sessions) == []
 
 
+def test_dead_server_reads_empty_but_a_prior_session_handle_raises(
+    server: Server,
+) -> None:
+    """A killed server's sessions/windows/panes disagree on how to fail.
+
+    ``Server.sessions``/``.windows``/``.panes`` are lenient by default
+    (see ``src/libtmux/AGENTS.md``), so a killed server reads exactly
+    like an empty live one through those. But a ``Session``/``Window``
+    handle obtained *before* the kill is not lenient at all:
+    ``session.windows`` propagates
+    :exc:`~libtmux.exc.LibTmuxException`. ``server.sessions == []``
+    alone can never tell a caller which case they are in.
+    """
+    session = server.new_session(session_name="py9_dead_server")
+    window = session.active_window
+
+    server.kill()
+
+    assert list(server.sessions) == []
+    assert list(server.windows) == []
+    assert list(server.panes) == []
+    assert server.is_alive() is False
+
+    with pytest.raises(exc.LibTmuxException):
+        list(session.windows)
+    with pytest.raises(exc.LibTmuxException):
+        list(window.panes)
+
+
 def test_if_shell_true(server: Server) -> None:
     """Test Server.if_shell() with true condition."""
     server.new_session(session_name="ifshell_test")

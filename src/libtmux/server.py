@@ -2760,6 +2760,13 @@ class Server(
         Can be accessed via
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Returns an empty :class:`~libtmux._internal.query_list.QueryList`
+        when the server has not started yet or its socket is missing.
+        Narrower than :attr:`Server.sessions`/:attr:`Server.clients`: any
+        *other* failure (a permission error, for example) propagates as
+        :exc:`~libtmux.exc.LibTmuxException` instead of collapsing to
+        empty. See ``AGENTS.md``'s "List-returning accessors" section.
         """
         windows: list[Window] = [
             Window(server=self, **obj)
@@ -2779,6 +2786,10 @@ class Server(
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Same narrower leniency as :attr:`Server.windows`: empty only for a
+        not-yet-started server or a missing socket; other failures
+        propagate. See ``AGENTS.md``'s "List-returning accessors" section.
         """
         panes: list[Pane] = [
             Pane(server=self, **obj)
