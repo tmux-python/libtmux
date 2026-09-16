@@ -353,13 +353,14 @@ def test_capture_pane_flags(
 
     # Send command with a unique marker to detect completion
     marker = f"__DONE_{test_id}__"
-    full_command = f'{command}; echo "{marker}"'
+    full_command = f'{command}; printf "\\n%s\\n" "{marker}"'
     pane.send_keys(full_command, literal=False, suppress_history=False)
 
-    # Wait for marker to appear
+    # The echoed command contains the marker before its output arrives.
     def command_complete() -> bool:
-        output = "\n".join(pane.capture_pane())
-        return marker in output
+        return any(
+            line.rstrip(" ") == marker for line in pane.capture_pane(join_wrapped=True)
+        )
 
     retry_until(command_complete, 5, raises=True)
 

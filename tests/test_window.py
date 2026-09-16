@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
-import time
 import typing as t
 
 import pytest
@@ -20,6 +19,7 @@ from libtmux.constants import (
 )
 from libtmux.pane import Pane
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -27,6 +27,26 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize("raw", [None, "0", "1"])
+def test_decoded_window_fields_are_local(raw: str | None) -> None:
+    """Window dimensions and flags decode without a running server."""
+    window = Window(
+        server=Server(tmux_bin="missing-decoded-fields-tmux"),
+        window_width="80",
+        window_height="24",
+        window_active=raw,
+    )
+    assert window.width_cells == 80
+    assert window.height_cells == 24
+    assert window.width == "80"
+    assert window.height == "24"
+    assert window.is_active is (None if raw is None else raw == "1")
+    window.window_width = None
+    window.window_height = None
+    assert window.width_cells is None
+    assert window.height_cells is None
 
 
 def test_select_window(session: Session) -> None:
@@ -557,10 +577,15 @@ def test_split_with_environment(
         environment=environment,
     )
     assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
+
+        def output_ready(expected: str = v) -> bool:
+            lines = pane.capture_pane()
+            return len(lines) >= 2 and lines[-2] == expected
+
+        retry_until(output_ready, 2, raises=True)
         assert pane.capture_pane()[-2] == v
 
 
@@ -905,6 +930,36 @@ def test_select_layout_next_previous(session: Session) -> None:
     layout_after_prev = window.window_layout
 
     assert layout_after_prev == layout_before
+
+
+def test_select_layout_round_trip_is_byte_exact(session: Session) -> None:
+    """A saved ``window_layout`` fed back into ``select_layout`` is exact.
+
+    tmux 3.8 made ``#{window_layout}`` JSON for non-control clients, while
+    ``select-layout`` still accepts the classic grammar too. libtmux treats
+    the value as an opaque token on every version -- it never parses or
+    validates it -- so a saved layout must restore byte-for-byte regardless
+    of which form the running tmux emits.
+    """
+    window = session.new_window(window_name="test_layout_round_trip")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    saved = window.window_layout
+    assert saved is not None
+
+    window.select_layout("main-vertical")
+    window.refresh()
+    assert window.window_layout != saved
+
+    window.select_layout(saved)
+    window.refresh()
+    assert window.window_layout == saved
 
 
 def test_last_pane(session: Session) -> None:

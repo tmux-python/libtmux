@@ -1,13 +1,15 @@
 """Control-mode client context manager for tmux testing.
 
 Provides a context manager that spawns a ``tmux -C attach-session``
-subprocess, creating a real tmux client that satisfies commands
-requiring an attached client (e.g. ``display-popup``, ``detach-client``).
+subprocess, creating a real tmux client for commands such as
+``detach-client``. Popups require a terminal client to run their commands.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
 import typing as t
 
@@ -26,8 +28,14 @@ class ControlMode:
     """Context manager that spawns a tmux control-mode client.
 
     Creates a real client attached to the session, visible in
-    ``Server.list_clients()``. The client communicates via the tmux
-    control protocol on stdout.
+    ``Server.list_clients()``. tmux writes its control-mode protocol to the
+    client's stdout, exposed here verbatim via :attr:`stdout` -- this class
+    decodes none of it. It exists so tests have a real attached client
+    (some assertions, and some tmux commands such as popups, require one),
+    not to give callers a parsed event stream. Internal
+    (``libtmux._internal``): no stability guarantee, use the public
+    ``control_mode`` pytest fixture instead of importing this class
+    directly.
 
     While active, ``Server.list_clients()`` will include this client.
 
@@ -116,14 +124,8 @@ class ControlMode:
 
         try:
             retry_until(client_registered, 3, raises=True)
-        except Exception:
-            os.close(self._write_fd)
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-                self._proc.wait()
+        except BaseException:
+            self._stop()
             raise
 
         return self
@@ -134,13 +136,26 @@ class ControlMode:
         exc_val: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Terminate control-mode client."""
-        # Close write end — causes the control-mode client to exit (EOF on stdin)
-        os.close(self._write_fd)
+        """Terminate the control-mode client and close its streams."""
+        self._stop()
 
-        self._proc.terminate()
+    def _stop(self) -> None:
         try:
-            self._proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self._proc.kill()
-            self._proc.wait()
+            os.close(self._write_fd)
+            self._proc.terminate()
+            # A client stopped (e.g. SIGSTOP, a debugger, a frozen cgroup)
+            # cannot process SIGTERM until resumed, so the wait below would
+            # otherwise time out unconditionally. SIGCONT lets a stopped
+            # process actually see the pending SIGTERM and exit promptly; a
+            # running process ignores it.
+            with contextlib.suppress(ProcessLookupError):
+                self._proc.send_signal(signal.SIGCONT)
+            try:
+                self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+        finally:
+            self.stdout.close()
+            if self._proc.stderr is not None:
+                self._proc.stderr.close()

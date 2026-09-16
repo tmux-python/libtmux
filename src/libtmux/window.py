@@ -148,6 +148,9 @@ class Window(
     ) -> None:
         """Exit the context, killing the window if it exists.
 
+        This also destroys a window obtained through lookup, not only one
+        created in this process. Keep borrowed handles outside a ``with`` block.
+
         Parameters
         ----------
         exc_type : type[BaseException] | None
@@ -655,12 +658,16 @@ class Window(
             Environment variables for the new pane (``-e``).
         width : int, optional
             Width in cells (``-x``).
+            Includes borders on tmux 3.8+.
         height : int, optional
             Height in cells (``-y``).
+            Includes borders on tmux 3.8+.
         x : int, optional
             X position in cells (``-X``).
+            Places the outer border on tmux 3.8+.
         y : int, optional
             Y position in cells (``-Y``).
+            Places the outer border on tmux 3.8+.
         zoom : bool, optional
             Zoom the pane (``-Z``).
         empty : bool, optional
@@ -1721,6 +1728,30 @@ class Window(
         True
         """
         return self.window_width
+
+    @property
+    def width_cells(self) -> int | None:
+        """Captured width in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`width` alias retains its raw string.
+        """
+        return int(self.window_width) if self.window_width is not None else None
+
+    @property
+    def height_cells(self) -> int | None:
+        """Captured height in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`height` alias retains its raw string.
+        """
+        return int(self.window_height) if self.window_height is not None else None
+
+    @property
+    def is_active(self) -> bool | None:
+        """Captured active flag within the session, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.window_active)) if self.window_active is not None else None
 
     #
     # Legacy: Redundant stuff we want to remove

@@ -67,11 +67,13 @@ dev = [
   "pytest-xdist",
   # Coverage
   "codecov",
-  "coverage",
+  "coverage>=7.10.6",
   "pytest-cov",
   # Lint
   "ruff>=0.16.1",
   "mypy",
+  # Benchmarking
+  "pytest-benchmark>=5.3.0",
 ]
 
 docs = [
@@ -90,13 +92,16 @@ testing = [
 ]
 coverage =[
   "codecov",
-  "coverage",
+  "coverage>=7.10.6",
   "pytest-cov",
 ]
 lint = [
   "typing-extensions; python_version < '3.11'",
   "ruff>=0.16.1",
   "mypy",
+]
+benchmark = [
+  "pytest-benchmark>=5.3.0",
 ]
 
 [project.entry-points.pytest11]
@@ -146,10 +151,14 @@ python_version = "3.10"
 files = [
   "src",
   "tests",
+  "examples",
+  "benchmarks",
 ]
 
 
 [tool.coverage.run]
+source = ["src/libtmux"]
+patch = ["subprocess"]
 branch = true
 parallel = true
 omit = [
@@ -170,7 +179,7 @@ exclude_lines = [
   "def parse_args",
   "if TYPE_CHECKING:",
   "if t.TYPE_CHECKING:",
-  "@overload( |$)",
+  '@(?:t\.)?overload( |$)',
   'class .*\bProtocol\):',
   "from __future__ import annotations",
   "import typing as t",
@@ -261,8 +270,9 @@ convention = "numpy"
 ]
 "src/libtmux/server.py" = [
   # `Server.is_alive` answers a yes/no question about an unreachable server.
-  # Every way of failing to reach it is a "no"; callers who need the reason
-  # use `Server.raise_if_dead`.
+  # Every way of failing to reach it is a "no", except a `TmuxTimeout`
+  # (re-raised before this catch-all: a wedged server is not a dead one).
+  # Callers who need the reason use `Server.raise_if_dead`.
   "BLE001",
 ]
 
@@ -287,4 +297,5 @@ testpaths = [
 ]
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
+  "examples: runs a documented examples/*.py script end to end against a real tmux server (every test here already requires one, so this stays in the default run)",
 ]

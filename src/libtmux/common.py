@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import logging
 import re
@@ -30,6 +31,13 @@ TMUX_MIN_VERSION = "3.2a"
 
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.7"
+
+#: Bound on draining stdout/stderr after :meth:`subprocess.Popen.kill`.
+#: SIGKILL ends the killed process itself immediately, but a surviving
+#: descendant that inherited its pipe file descriptors can keep them open
+#: indefinitely, which would otherwise make ``communicate()`` block past
+#: the caller's own deadline while waiting for EOF that never comes.
+_KILL_REAP_TIMEOUT = 1.0
 
 SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
@@ -242,7 +250,7 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
-def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
+def raise_if_stderr(proc: tmux_cmd | CommandResult, subcommand: str) -> None:
     """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
 
     Centralizes the ``if proc.stderr: raise exc.LibTmuxException(proc.stderr)``
@@ -280,8 +288,168 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+@dataclasses.dataclass()
+class CommandResult:
+    """Captured output of a completed command; construction performs no I/O.
+
+    A completed nonzero exit remains result data. ``process`` is the already
+    reaped subprocess retained for compatibility and process metadata.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        Executable and arguments after string conversion.
+    stdout : list[str]
+        UTF-8 output with invalid bytes escaped; trailing empty lines removed.
+    stderr : list[str]
+        UTF-8 diagnostics with invalid bytes escaped; empty lines removed.
+    returncode : int
+        Completed process exit status.
+    process : subprocess.Popen[str]
+        Completed child process.
+    """
+
+    cmd: list[str]
+    stdout: list[str]
+    stderr: list[str]
+    returncode: int
+    process: subprocess.Popen[str] = dataclasses.field(repr=False, compare=False)
+
+
+def run_command(
+    *args: object,
+    tmux_bin: str | None = None,
+    timeout: float | None = None,
+) -> CommandResult:
+    """Run a command and capture its completed result.
+
+    Parameters
+    ----------
+    *args : object
+        tmux arguments, converted to strings without shell interpretation.
+    tmux_bin : str, optional
+        Executable path. Defaults to the first ``tmux`` on ``PATH``.
+    timeout : float, optional
+        Seconds to wait. ``None`` waits indefinitely.
+
+    Returns
+    -------
+    CommandResult
+        Captured output and exit status, including completed nonzero exits.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxCommandNotFound`
+        The executable cannot be found.
+    :exc:`~libtmux.exc.TmuxTimeout`
+        The deadline elapsed. The child is killed and reaped before raising;
+        the command may already have taken effect.
+
+    Notes
+    -----
+    Preserves :class:`tmux_cmd` output conventions, including copying the
+    first stderr line to stdout for a failed ``has-session`` with no stdout.
+
+    Examples
+    --------
+    >>> result = run_command("-V")
+    >>> isinstance(result, CommandResult)
+    True
+    >>> result.returncode
+    0
+    """
+    resolved = tmux_bin or shutil.which("tmux")
+    if not resolved:
+        raise exc.TmuxCommandNotFound
+
+    cmd = [str(value) for value in (resolved, *args)]
+
+    if logger.isEnabledFor(logging.DEBUG):
+        cmd_str = shlex.join(cmd)
+        logger.debug(
+            "tmux command dispatched",
+            extra={"tmux_cmd": cmd_str},
+        )
+
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="backslashreplace",
+        )
+        stdout, stderr = process.communicate(timeout=timeout)
+        returncode = process.returncode
+    except subprocess.TimeoutExpired:
+        # Kill and reap before raising. A caller that gives up on an
+        # unbounded call leaves the child running, so repeated
+        # timeouts accumulate tmux clients that nothing is waiting on.
+        process.kill()
+        try:
+            process.communicate(timeout=_KILL_REAP_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            # A descendant inherited the stdout/stderr pipes and kept its
+            # own copy open, so reading for EOF would block indefinitely
+            # even though the killed process is already gone. Close our
+            # ends to stop waiting on it, then reap the process itself.
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+            process.wait()
+        raise exc.TmuxTimeout(cmd, t.cast("float", timeout)) from None
+    except FileNotFoundError:
+        raise exc.TmuxCommandNotFound from None
+    except Exception:
+        logger.error(  # noqa: TRY400
+            "tmux subprocess failed",
+            extra={
+                "tmux_cmd": shlex.join(cmd),
+            },
+        )
+        raise
+
+    stdout_split = stdout.split("\n")
+    # remove trailing newlines from stdout
+    while stdout_split and stdout_split[-1] == "":
+        stdout_split.pop()
+
+    stderr_split = stderr.split("\n")
+    stderr_lines = list(filter(None, stderr_split))  # filter empty values
+
+    if "has-session" in cmd and len(stderr_lines) and not stdout_split:
+        stdout_lines = [stderr_lines[0]]
+    else:
+        stdout_lines = stdout_split
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command completed",
+            extra={
+                "tmux_cmd": shlex.join(cmd),
+                "tmux_exit_code": returncode,
+                "tmux_stdout": stdout_lines[:100],
+                "tmux_stderr": stderr_lines[:100],
+                "tmux_stdout_len": len(stdout_lines),
+                "tmux_stderr_len": len(stderr_lines),
+            },
+        )
+
+    return CommandResult(
+        cmd=cmd,
+        stdout=stdout_lines,
+        stderr=stderr_lines,
+        returncode=t.cast("int", returncode),
+        process=process,
+    )
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+
+    Compatibility facade for :func:`run_command`, preserving result attributes.
 
     Examples
     --------
@@ -303,79 +471,39 @@ class tmux_cmd:
 
         $ tmux new-session -s my session
 
+    Parameters
+    ----------
+    tmux_bin : str, optional
+        Path to the tmux binary. Defaults to the first ``tmux`` on ``PATH``.
+    timeout : float, optional
+        Seconds to wait for the command. On expiry the tmux process is
+        killed and reaped, then :exc:`~libtmux.exc.TmuxTimeout` is
+        raised. ``None`` waits indefinitely.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxTimeout`
+        ``timeout`` elapsed. The command may or may not have taken
+        effect -- the process was killed mid-command.
+
     Notes
     -----
     .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
-        resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
-
-        cmd = [resolved]
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
-
-        self.cmd = cmd
-
-        if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = shlex.join(cmd)
-            logger.debug(
-                "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
-
-        try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
-                extra={
-                    "tmux_cmd": shlex.join(cmd),
-                },
-            )
-            raise
-
-        self.returncode = returncode
-
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
-
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
-
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "tmux command completed",
-                extra={
-                    "tmux_cmd": shlex.join(cmd),
-                    "tmux_exit_code": self.returncode,
-                    "tmux_stdout": self.stdout[:100],
-                    "tmux_stderr": self.stderr[:100],
-                    "tmux_stdout_len": len(self.stdout),
-                    "tmux_stderr_len": len(self.stderr),
-                },
-            )
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        result = run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
+        self.cmd = result.cmd
+        self.stdout = result.stdout
+        self.stderr = result.stderr
+        self.returncode = result.returncode
+        self.process = result.process
 
 
 class _TmuxVersionUnavailable(Exception):

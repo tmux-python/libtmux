@@ -7,11 +7,13 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 import typing as t
 import warnings
 
@@ -22,7 +24,7 @@ from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
-from libtmux.neo import fetch_objs, get_output_format, parse_output
+from libtmux.neo import _split_records, fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
@@ -38,6 +40,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
+    from collections.abc import Iterator
     from typing import TypeAlias
 
     from typing_extensions import Self
@@ -47,6 +50,23 @@ if t.TYPE_CHECKING:
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+
+class _NotSet:
+    """Sentinel for an omitted ``timeout`` argument, distinct from ``None``.
+
+    :meth:`Server.cmd`'s ``timeout`` has three meanings: omitted (fall back
+    to :attr:`Server.timeout`), ``None`` (run this one call unbounded, even
+    when the server has a timeout), or a number (override it). ``None`` as
+    the default would erase the second meaning by making it indistinguishable
+    from the first.
+    """
+
+    def __repr__(self) -> str:
+        return "<not set>"
+
+
+_NOT_SET = _NotSet()
 
 
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
@@ -80,6 +100,39 @@ def _fetch_or_empty(
         if e.args and _is_daemon_not_up_error(str(e.args[0])):
             return []
         raise
+
+
+def _session_identity_predicate(session: Session) -> tuple[str, str]:
+    """Return ``(session_id, predicate)`` identifying a freshly created session.
+
+    ``predicate`` is a tmux format expression true only for a session with
+    this exact id *and* this exact pid/start_time generation, so a later
+    check against it cannot match a same-named replacement that reused the
+    id after this one was killed.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.LibTmuxException`
+        ``session`` is missing an id, pid, or start_time -- a bare
+        ``assert`` would vanish under ``python -O`` and let a ``None``
+        reach the f-strings below as the literal text ``"None"``.
+    """
+    if session.session_id is None:
+        msg = "New session has no session_id"
+        raise exc.LibTmuxException(msg)
+    if session.pid is None:
+        msg = "New session has no pid"
+        raise exc.LibTmuxException(msg)
+    if session.start_time is None:
+        msg = "New session has no start_time"
+        raise exc.LibTmuxException(msg)
+    session_id = f"${int(session.session_id.removeprefix('$'))}"
+    pid = int(session.pid)
+    started = int(session.start_time)
+    generation = f"#{{&&:#{{==:#{{pid}},{pid}}},#{{==:#{{start_time}},{started}}}}}"
+    exists = f"#{{S:#{{?#{{==:#{{session_id}},{session_id}}},1,}}}}"
+    predicate = f"#{{&&:{generation},{exists}}}"
+    return session_id, predicate
 
 
 class Server(
@@ -166,6 +219,9 @@ class Server(
     """For hook management."""
     tmux_bin: str | None = None
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
+    timeout: float | None = None
+    """Seconds to wait for a command before raising
+    :exc:`~libtmux.exc.TmuxTimeout`. ``None`` waits indefinitely."""
 
     def __init__(
         self,
@@ -176,15 +232,21 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
+        timeout: float | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self.timeout = timeout
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
         if socket_path is not None:
-            self.socket_path = socket_path
+            # str, not the pathlib.Path the type also accepts: __eq__
+            # compares socket_path by value, and Path("/x") != "/x", so a
+            # Path here would make an otherwise-identical endpoint compare
+            # unequal to one addressed by string.
+            self.socket_path = str(socket_path)
         elif socket_name is not None:
             self.socket_name = socket_name
         elif socket_name_factory is not None:
@@ -257,6 +319,75 @@ class Server(
         """
         return cls(socket_path=socket_path_from_env(env))
 
+    @classmethod
+    @contextlib.contextmanager
+    def owned(
+        cls,
+        *,
+        config_file: str = os.devnull,
+        tmux_bin: str | pathlib.Path | None = None,
+        timeout: float | None = None,
+    ) -> Iterator[Self]:
+        """Own a private server endpoint for the duration of a block.
+
+        Creates a private socket directory on entry. tmux starts when the
+        first session is created. On exit, kills that endpoint's server and
+        removes the directory. No existing endpoint can be supplied.
+
+        Parameters
+        ----------
+        config_file : str, optional
+            Configuration for the new daemon; defaults to an empty config.
+        tmux_bin : str or Path, optional
+            Executable path; defaults to ``tmux`` on ``PATH``.
+        timeout : float, optional
+            Per-command timeout, including cleanup, in seconds.
+
+        Yields
+        ------
+        Server
+            Server addressed by the private socket.
+
+        Notes
+        -----
+        Cleanup retains its original endpoint if the yielded handle changes.
+        A cleanup failure propagates and leaves the socket directory available
+        for retry; a body exception remains in the exception chain.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server as TmuxServer
+        >>> with TmuxServer.owned() as temporary:
+        ...     created = temporary.new_session("build")
+        ...     temporary.is_alive()
+        True
+        >>> temporary.is_alive()
+        False
+        """
+        directory = pathlib.Path(tempfile.mkdtemp(prefix="libtmux-owned-"))
+        socket_path = directory / "socket"
+        try:
+            yield cls(
+                socket_path=socket_path,
+                config_file=config_file,
+                tmux_bin=tmux_bin,
+                timeout=timeout,
+            )
+        finally:
+            if socket_path.exists():
+                proc = Server(
+                    socket_path=socket_path,
+                    tmux_bin=tmux_bin,
+                    timeout=timeout,
+                ).cmd("kill-server")
+                if (proc.returncode or proc.stderr) and not _is_daemon_not_up_error(
+                    " ".join(proc.stderr)
+                ):
+                    raise exc.LibTmuxException(
+                        proc.stderr or f"Server cleanup exited with {proc.returncode}"
+                    )
+            shutil.rmtree(directory)
+
     def __enter__(self) -> Self:
         """Enter the context, returning self.
 
@@ -275,6 +406,9 @@ class Server(
     ) -> None:
         """Exit the context, killing the server if it exists.
 
+        This legacy scope also kills a daemon that existed before entry.
+        Use :meth:`owned` to create and own a private endpoint instead.
+
         Parameters
         ----------
         exc_type : type[BaseException] | None
@@ -284,7 +418,17 @@ class Server(
         exc_tb : types.TracebackType | None
             The traceback of the exception that was raised
         """
-        if self.is_alive():
+        try:
+            alive = self.is_alive()
+        except exc.TmuxTimeout:
+            # A wedged server answers neither "alive" nor "dead". Assume
+            # alive and attempt the kill rather than skip it: a live
+            # server left unkilled is a silent leak, while a kill attempt
+            # against a truly dead one is a cheap, harmless no-op. If the
+            # server really is wedged, kill() will itself time out and
+            # raise -- a loud leak the caller can act on.
+            alive = True
+        if alive:
             self.kill()
 
     def is_alive(self) -> bool:
@@ -292,9 +436,20 @@ class Server(
 
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxTimeout`
+            The command did not return within :attr:`Server.timeout`.
+            Unlike every other way of failing to reach the server, this is
+            not treated as "no" -- a wedged server is not a dead one, and
+            a caller told "dead" may go on to start a second server
+            alongside one that is merely slow to answer.
         """
         try:
             res = self.cmd("list-sessions")
+        except exc.TmuxTimeout:
+            raise
         except Exception:
             return False
         return res.returncode == 0
@@ -302,13 +457,19 @@ class Server(
     def raise_if_dead(self) -> None:
         """Raise if server not connected.
 
+        Routed through :meth:`Server.cmd`, so this honors
+        :attr:`Server.timeout` like every other command instead of
+        blocking indefinitely against a wedged server.
+
         Raises
         ------
-        :exc:`exc.TmuxCommandNotFound`
+        :exc:`~libtmux.exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``).
+        :exc:`~libtmux.exc.TmuxTimeout`
+            The command did not return within :attr:`Server.timeout`.
 
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
@@ -317,22 +478,14 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
-            raise exc.TmuxCommandNotFound
-
-        cmd_args: list[str] = ["list-sessions"]
-        if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        proc = self.cmd("list-sessions")
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                proc.returncode,
+                proc.cmd,
+                output="\n".join(proc.stdout),
+                stderr="\n".join(proc.stderr),
+            )
 
     #
     # Command
@@ -342,6 +495,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | _NotSet | None = _NOT_SET,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -379,6 +533,11 @@ class Server(
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Per-call override for :attr:`Server.timeout`. Omit to use the
+            server's timeout; pass ``None`` to run this one call without a
+            bound even when the server has one; pass a number to bound just
+            this call.
 
         Returns
         -------
@@ -408,7 +567,14 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        resolved_timeout = self.timeout if isinstance(timeout, _NotSet) else timeout
+
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self.tmux_bin,
+            timeout=resolved_timeout,
+        )
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -892,11 +1058,21 @@ class Server(
 
         tmux_args: tuple[str, ...] = ()
 
+        # tmux's own arg spec (`cmd-server-access.c`) declares "adlrw" as
+        # value-less flags and takes the user as a single trailing
+        # positional -- `server-access -a myuser -r` is two positional
+        # arguments ("myuser", "-r") once getopt sees the first bare word,
+        # and tmux rejects it as "too many arguments". Every flag must come
+        # before the positional user.
+        user: str | None = None
+
         if allow is not None:
-            tmux_args += ("-a", allow)
+            tmux_args += ("-a",)
+            user = allow
 
         if deny is not None:
-            tmux_args += ("-d", deny)
+            tmux_args += ("-d",)
+            user = deny
 
         if list_access:
             tmux_args += ("-l",)
@@ -906,6 +1082,9 @@ class Server(
 
         if write:
             tmux_args += ("-w",)
+
+        if user is not None:
+            tmux_args += (user,)
 
         proc = self.cmd("server-access", *tmux_args)
 
@@ -1353,9 +1532,8 @@ class Server(
         """Display a popup menu via ``$ tmux display-menu``.
 
         Requires a TTY-backed attached client. Control-mode clients have
-        ``tty.sy=0``, which causes ``menu_prepare()`` to return NULL.
-        This method cannot be tested with
-        :class:`~libtmux._internal.control_mode.ControlMode`.
+        ``tty.sy=0``, which causes ``menu_prepare()`` to return NULL, so this
+        project's own control-mode test client cannot exercise this call.
 
         Parameters
         ----------
@@ -1509,10 +1687,10 @@ class Server(
 
         Without ``-T``/``-J``, tmux resolves the message log against a
         target client; if no client is attached and *target_client* is
-        omitted, tmux raises ``no current client``. Provide
-        *target_client* (e.g. via :class:`~libtmux._internal.control_mode.ControlMode`)
-        when running headless, or use *terminals*/*jobs* — those modes
-        don't require a client.
+        omitted, tmux raises ``no current client``. Provide *target_client*
+        (the ``client_name`` of any attached client, e.g. one from
+        ``tmux -C attach-session``) when running headless, or use
+        *terminals*/*jobs* — those modes don't require a client.
 
         Parameters
         ----------
@@ -1607,8 +1785,9 @@ class Server(
 
         With no client attached and ``target_client`` omitted, the status-line
         path (``get_text=False``) issues a ``no current client`` warning. Use
-        ``get_text=True`` for headless reads, or pair with
-        :class:`~libtmux._internal.control_mode.ControlMode`.
+        ``get_text=True`` for headless reads, or attach a real client first
+        (e.g. ``tmux -C attach-session``) and pass its ``client_name`` as
+        ``target_client``.
 
         Notes
         -----
@@ -2377,7 +2556,12 @@ class Server(
 
             raise_if_stderr(proc, "new-session")
 
-            session_stdout = proc.stdout[0]
+            # Regroup on the separator, not on stdout's lines: a format
+            # value (e.g. pane_current_path, via start_directory) may
+            # itself contain a newline, which would otherwise split this
+            # one record across proc.stdout and hand parse_output a
+            # truncated fragment. See _split_records for the mechanism.
+            session_stdout = _split_records(proc.stdout, len(_fields))[0]
 
         finally:
             if env:
@@ -2396,6 +2580,94 @@ class Server(
 
         return session
 
+    @contextlib.contextmanager
+    def owned_session(
+        self,
+        session_name: str | None = None,
+        *,
+        start_directory: StrPath | None = None,
+        window_name: str | None = None,
+        window_command: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> Iterator[Session]:
+        """Create a detached session and kill only that session on exit.
+
+        Existing names are rejected. Cleanup follows the created session's
+        ID after a rename and leaves a replacement session or daemon alone.
+        Deleting the session inside the block makes cleanup a no-op.
+
+        Parameters
+        ----------
+        session_name : str, optional
+            Name for the new session; tmux chooses one when omitted.
+        start_directory : str or PathLike, optional
+            Working directory for the initial window.
+        window_name : str, optional
+            Name for the initial window.
+        window_command : str, optional
+            Command for the initial window.
+        environment : dict[str, str], optional
+            Environment variables for the new session.
+
+        Yields
+        ------
+        Session
+            The newly created session.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxSessionExists`
+            The requested name already exists; it is never adopted or killed.
+        :exc:`~libtmux.exc.LibTmuxException`
+            Creation or cleanup fails.
+        :exc:`~libtmux.exc.TmuxTimeout`
+            A command exceeds this server's timeout. Its effects may be unknown.
+
+        Examples
+        --------
+        >>> with server.owned_session("temporary") as created:
+        ...     created.session_name
+        'temporary'
+        >>> server.has_session("temporary")
+        False
+        """
+        cleanup_server = Server(
+            socket_name=self.socket_name,
+            socket_path=self.socket_path,
+            tmux_bin=self.tmux_bin,
+            timeout=self.timeout,
+        )
+        session = self.new_session(
+            session_name,
+            start_directory=start_directory,
+            window_name=window_name,
+            window_command=window_command,
+            environment=environment,
+        )
+        try:
+            session_id, predicate = _session_identity_predicate(session)
+        except Exception:
+            # The identity guard never finished building, so there is no
+            # predicate to check it against on the way out. Kill directly
+            # by identity instead of leaking the session -- no user code
+            # has run yet, so the reuse race the guard exists for below
+            # cannot have happened.
+            session.kill()
+            raise
+        try:
+            yield session
+        finally:
+            # Check identity and kill within tmux's synchronous command queue.
+            proc = cleanup_server.cmd(
+                "if-shell", "-F", predicate, f"kill-session -t {session_id}"
+            )
+            if (proc.returncode or proc.stderr) and not _is_daemon_not_up_error(
+                " ".join(proc.stderr)
+            ):
+                raise exc.LibTmuxException(
+                    proc.stderr or f"Session cleanup exited with {proc.returncode}"
+                )
+
     #
     # Relations
     #
@@ -2408,16 +2680,23 @@ class Server(
         :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
 
         Returns an empty :class:`~libtmux._internal.query_list.QueryList` when
-        tmux's ``list-sessions`` fails for any reason — no running daemon, a
-        missing socket, a permission error, or a subprocess failure. To
-        distinguish "no sessions" from "tmux unreachable", call
+        tmux's ``list-sessions`` invocation fails for any reason — no running
+        daemon, a missing socket, a permission error, or a subprocess
+        failure. To distinguish "no sessions" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+
+        Does *not* absorb a :exc:`~libtmux.exc.TmuxRecordParseError` (the
+        invocation succeeded but its output could not be parsed) or a
+        :exc:`~libtmux.exc.TmuxTimeout` (unknown whether it took effect) —
+        both propagate, since neither means "no sessions".
         """
         try:
             sessions: list[Session] = [
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except exc.TmuxRecordParseError:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2469,10 +2748,16 @@ class Server(
         ``client.client_session`` etc. read tmux's ``client_*`` format tokens.
 
         Returns an empty :class:`~libtmux._internal.query_list.QueryList` when
-        tmux's ``list-clients`` fails for any reason — no running daemon, a
-        missing socket, a permission error, or a subprocess failure. To
-        distinguish "no clients attached" from "tmux unreachable", call
-        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        tmux's ``list-clients`` invocation fails for any reason — no running
+        daemon, a missing socket, a permission error, or a subprocess
+        failure. To distinguish "no clients attached" from "tmux
+        unreachable", call :meth:`Server.is_alive` or
+        :meth:`Server.raise_if_dead`.
+
+        Does *not* absorb a :exc:`~libtmux.exc.TmuxRecordParseError` (the
+        invocation succeeded but its output could not be parsed) or a
+        :exc:`~libtmux.exc.TmuxTimeout` (unknown whether it took effect) —
+        both propagate, since neither means "no clients".
 
         Returns
         -------
@@ -2490,6 +2775,8 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except exc.TmuxRecordParseError:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)

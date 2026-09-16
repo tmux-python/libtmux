@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import copy
 import locale
 import logging
+import os
+import pickle
 import re
+import shlex
+import signal
 import sys
+import threading
+import time
 import typing as t
 
 import pytest
@@ -29,6 +36,8 @@ from libtmux.common import (
 )
 
 if t.TYPE_CHECKING:
+    import pathlib
+
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -174,6 +183,78 @@ def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_tmux_cmd_unicode(session: Session) -> None:
     """Verify tmux commands with unicode."""
     session.cmd("new-window", "-n", "юникод", "-F", "Ελληνικά", target=3)
+
+
+@pytest.mark.parametrize("runner_name", ["run_command", "tmux_cmd"])
+def test_command_result_preserves_status_and_decoding(runner_name: str) -> None:
+    """A child process supplies malformed bytes and a completed nonzero exit."""
+    runner = getattr(libtmux.common, runner_name)
+    script = (
+        "import sys; "
+        "sys.stdout.buffer.write(b'first\\n\\nlast\\xff\\n\\n'); "
+        "sys.stderr.buffer.write(b'problem\\xfe\\n\\n'); "
+        "sys.exit(7)"
+    )
+    result = runner("-c", script, 17, tmux_bin=sys.executable)
+
+    assert result.cmd == [sys.executable, "-c", script, "17"]
+    assert result.stdout == ["first", "", "last\\xff"]
+    assert result.stderr == ["problem\\xfe"]
+    assert result.returncode == 7
+    assert result.process.returncode == 7
+    if runner_name == "run_command":
+        assert isinstance(result, libtmux.common.CommandResult)
+
+
+@pytest.mark.parametrize("runner_name", ["run_command", "tmux_cmd"])
+def test_command_permission_failure_preserves_context(
+    tmp_path: pathlib.Path,
+    caplog: pytest.LogCaptureFixture,
+    runner_name: str,
+) -> None:
+    """An unexecutable file raises the OS error with structured command context."""
+    binary = tmp_path / "tmux denied"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o600)
+    runner = getattr(libtmux.common, runner_name)
+
+    with (
+        caplog.at_level(logging.ERROR, logger="libtmux.common"),
+        pytest.raises(PermissionError) as caught,
+    ):
+        runner("list-sessions", tmux_bin=str(binary))
+
+    assert caught.value.filename == str(binary)
+    records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+    assert len(records) == 1
+    assert records[0].tmux_cmd == shlex.join([str(binary), "list-sessions"])
+
+
+def test_tmux_cmd_delegates_to_runner(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The compatibility facade delegates without starting another child."""
+    result = libtmux.common.run_command("-V", tmux_bin=server.tmux_bin)
+    received: list[tuple[tuple[object, ...], str | None, float | None]] = []
+
+    def run(
+        *args: object,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> libtmux.common.CommandResult:
+        received.append((args, tmux_bin, timeout))
+        return result
+
+    monkeypatch.setattr(libtmux.common, "run_command", run)
+    facade = tmux_cmd("display-message", "-p", tmux_bin="custom", timeout=0.5)
+
+    assert received == [(("display-message", "-p"), "custom", 0.5)]
+    assert facade.cmd is result.cmd
+    assert facade.stdout is result.stdout
+    assert facade.stderr is result.stderr
+    assert facade.returncode == result.returncode
+    assert facade.process is result.process
 
 
 class SessionCheckName(t.NamedTuple):
@@ -762,3 +843,120 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     result = parse_output(line, "list-sessions", tmux_version)
     assert isinstance(result, dict)
     assert "session_id" in result
+
+
+@pytest.mark.parametrize("runner_name", ["run_command", "tmux_cmd"])
+def test_tmux_cmd_timeout_kills_and_reaps(
+    hanging_tmux: tuple[str, pathlib.Path],
+    runner_name: str,
+) -> None:
+    """An expired command leaves no tmux process behind.
+
+    The kill is the load-bearing half. Without it a caller that gives up
+    only stops waiting, so repeated timeouts accumulate tmux processes
+    nobody is listening to.
+    """
+    binary, pid_file = hanging_tmux
+    runner = getattr(libtmux.common, runner_name)
+
+    with pytest.raises(exc.TmuxTimeout) as excinfo:
+        runner("list-sessions", tmux_bin=binary, timeout=0.3)
+
+    assert excinfo.value.timeout == 0.3
+    assert "list-sessions" in str(excinfo.value)
+
+    pid = int(pid_file.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_tmux_timeout_round_trips_through_pickle_and_copy() -> None:
+    """``TmuxTimeout.args`` stays shaped like its own constructor.
+
+    The previous ``__init__`` forwarded a pre-formatted message string to
+    ``Exception.__init__``, so ``self.args`` held one string while the
+    constructor required ``(cmd, timeout, *args)``. pickle and ``copy``
+    reconstruct via ``type(exc)(*exc.args)``, which raised ``TypeError:
+    missing 1 required positional argument: 'timeout'`` -- surfacing under
+    e.g. ``ProcessPoolExecutor``, which pickles exceptions to send them
+    back to the parent process.
+    """
+    original = exc.TmuxTimeout(["tmux", "list-sessions"], 0.3)
+
+    # Round-trips data this process just produced, not untrusted input.
+    for reconstructed in (
+        pickle.loads(pickle.dumps(original)),
+        copy.copy(original),
+        copy.deepcopy(original),
+    ):
+        assert isinstance(reconstructed, exc.TmuxTimeout)
+        assert reconstructed.cmd == original.cmd
+        assert reconstructed.timeout == original.timeout
+        assert str(reconstructed) == str(original)
+
+
+def test_tmux_cmd_timeout_survives_orphaned_pipe_holder(
+    hanging_tmux_with_orphan: tuple[str, pathlib.Path, pathlib.Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The post-kill drain does not block on a descendant's inherited pipes.
+
+    SIGKILL ends the timed-out process itself immediately, but an orphan
+    that inherited the same stdout/stderr pipes keeps them open. A bare
+    ``communicate()`` after ``kill()`` reads until EOF on those pipes, so
+    without its own bound it blocks on the orphan's lifetime rather than
+    completing anywhere near the caller's deadline.
+    """
+    binary, pid_file, _orphan_pid_file = hanging_tmux_with_orphan
+    monkeypatch.setattr(libtmux.common, "_KILL_REAP_TIMEOUT", 0.1)
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        libtmux.common.run_command("list-sessions", tmux_bin=binary, timeout=0.2)
+    elapsed = time.monotonic() - started
+
+    # Bounded by timeout + the (patched) reap grace, not the orphan's sleep.
+    assert elapsed < 1.0
+
+    pid = int(pid_file.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_tmux_cmd_without_timeout_still_waits(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """The bound is opt-in; omitting it keeps the historical behaviour.
+
+    The previous body passed ``timeout=0.3`` and asserted
+    :exc:`~libtmux.exc.TmuxTimeout`, which exercises the *bounded* path,
+    not the ``None`` case this test's name and docstring claim -- it
+    would pass identically whether or not a bare ``timeout=None`` call
+    ever waited at all. Runs the call on a thread bounded well under the
+    stub's 30s sleep: still running after that bound means it did not
+    raise early, and killing the stub directly lets the thread return
+    without this test itself waiting anywhere near 30s.
+    """
+    binary, pid_file = hanging_tmux
+    outcome: list[tmux_cmd | BaseException] = []
+
+    def call() -> None:
+        try:
+            outcome.append(tmux_cmd("list-sessions", tmux_bin=binary))
+        except BaseException as e:  # noqa: BLE001
+            outcome.append(e)
+
+    thread = threading.Thread(target=call, daemon=True)
+    thread.start()
+    thread.join(timeout=0.3)
+    assert thread.is_alive(), "a bare `timeout=None` call must still be waiting"
+
+    # Unblock the thread by killing the stub directly, not through
+    # libtmux's own timeout/kill path -- that is what this test verifies
+    # was never invoked.
+    os.kill(int(pid_file.read_text()), signal.SIGKILL)
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+
+    assert len(outcome) == 1
+    assert not isinstance(outcome[0], exc.TmuxTimeout)

@@ -132,6 +132,9 @@ class Pane(
     ) -> None:
         """Exit the context, killing the pane if it exists.
 
+        This also destroys a pane obtained through lookup, not only one
+        created in this process. Keep borrowed handles outside a ``with`` block.
+
         Parameters
         ----------
         exc_type : type[BaseException] | None
@@ -610,11 +613,18 @@ class Pane(
         Examples
         --------
         >>> pane = window.split(shell='sh')
+        >>> retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2)
+        True
         >>> pane.capture_pane()
         ['$']
 
         >>> pane.send_keys('echo "Hello world"', enter=True)
 
+        >>> def command_finished():
+        ...     lines = pane.capture_pane()
+        ...     return len(lines) >= 2 and lines[-2:] == ['Hello world', '$']
+        >>> retry_until(command_finished, 2)
+        True
         >>> pane.capture_pane()
         ['$ echo "Hello world"', 'Hello world', '$']
 
@@ -1471,12 +1481,16 @@ class Pane(
             Environment variables for the new pane (``-e`` flag).
         width : int, optional
             Width of the floating pane in cells (``-x`` flag).
+            Includes the border on tmux 3.8+; ``pane_width`` reports content cells.
         height : int, optional
             Height of the floating pane in cells (``-y`` flag).
+            Includes the border on tmux 3.8+; ``pane_height`` reports content cells.
         x : int, optional
             X position of the floating pane in cells (``-X`` flag).
+            Places the outer border on tmux 3.8+; ``pane_x`` reports content position.
         y : int, optional
             Y position of the floating pane in cells (``-Y`` flag).
+            Places the outer border on tmux 3.8+; ``pane_y`` reports content position.
         zoom : bool, optional
             Zoom the pane (``-Z`` flag).
         empty : bool, optional
@@ -1684,9 +1698,9 @@ class Pane(
     ) -> None:
         """Display a popup overlay via ``$ tmux display-popup``.
 
-        Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux._internal.control_mode.ControlMode` in tests to provide
-        a client.
+        Requires tmux 3.2+ and an attached terminal client to display the
+        popup and run its command. A control-mode client can accept this
+        request without executing the popup command.
 
         Parameters
         ----------
@@ -1736,12 +1750,11 @@ class Pane(
 
         Examples
         --------
-        Not directly testable — popup rendering requires a TTY-backed client.
-        Control-mode provides an attached client for invocation but the popup
-        itself is not visible or verifiable.
+        This control-mode client has no popup. The close request returns
+        without changing its state:
 
         >>> with control_mode() as ctl:
-        ...     pane.display_popup(command='true', close_on_exit=True)
+        ...     pane.display_popup(close_existing=True, target_client=ctl.client_name)
         """
         if close_on_exit and close_on_success:
             msg = (
@@ -2707,6 +2720,38 @@ class Pane(
         True
         """
         return self.pane_title
+
+    @property
+    def width_cells(self) -> int | None:
+        """Captured width in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`width` alias retains its raw string.
+        """
+        return int(self.pane_width) if self.pane_width is not None else None
+
+    @property
+    def height_cells(self) -> int | None:
+        """Captured height in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`height` alias retains its raw string.
+        """
+        return int(self.pane_height) if self.pane_height is not None else None
+
+    @property
+    def is_active(self) -> bool | None:
+        """Captured active flag within the window, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.pane_active)) if self.pane_active is not None else None
+
+    @property
+    def is_dead(self) -> bool | None:
+        """Captured pane-process exit flag, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.pane_dead)) if self.pane_dead is not None else None
 
     @property
     def at_top(self) -> bool:

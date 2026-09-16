@@ -45,7 +45,143 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Command results and optional timeouts (#758)
+
+{func}`~libtmux.common.run_command` executes tmux and returns a separate
+{class}`~libtmux.common.CommandResult`; the existing
+{class}`~libtmux.common.tmux_cmd` facade remains compatible. Optional command
+and server timeouts bound calls, including listings, and raise
+{exc}`~libtmux.exc.TmuxTimeout` after a bounded cleanup when the deadline
+expires, even if a surviving descendant keeps the command's own
+stdout/stderr pipes open. {exc}`~libtmux.exc.TmuxTimeout` round-trips through
+`pickle` and `copy`, so it survives crossing a `ProcessPoolExecutor` boundary.
+{attr}`~libtmux.Server.timeout` has a class-level default of `None`, matching
+`tmux_bin` and the other configuration attributes, so an instance built
+without going through `__init__` still has a value to read.
+{meth}`~libtmux.Server.cmd`'s `timeout` distinguishes an omitted argument
+(falls back to `Server.timeout`) from an explicit `None` (runs that one call
+unbounded even when the server has a timeout) -- the two used to collapse
+onto the same behavior.
+
+#### Explicitly owned temporary resources (#758)
+
+{meth}`~libtmux.Server.owned` creates a private server scope, and
+{meth}`~libtmux.Server.owned_session` creates a temporary session on an existing
+server. Cleanup affects the created resource and reports failures; legacy
+handle contexts retain their destructive behavior. See
+{doc}`topics/context_managers` for ownership and cleanup rules. The yielded
+server's `socket_path` is a `str`, like every other constructor produces, so
+it compares equal to the same endpoint addressed by string.
+
+#### Decoded captured fields (#758)
+
+Panes and windows expose captured dimensions and activity as numeric and
+boolean properties. Panes also expose {attr}`~libtmux.Pane.is_dead`, and
+sessions expose {attr}`~libtmux.Session.attached_count`. These reads are local;
+raw fields and established aliases remain available.
+
+#### Public local queries (#758)
+
+{class}`~libtmux.QueryList` is available from the package root. Required
+lookups and caller-supplied defaults retain their distinct result types while
+filtering the existing collection locally.
+
+#### A runnable examples/ directory (#758)
+
+`examples/` holds standalone scripts you run directly --
+`python examples/quickstart.py`, with tmux on `PATH` and no existing session
+required. Each owns a private {meth}`~libtmux.Server.owned` daemon, so none
+of them touch a session you already have open. The test suite runs every
+script as its own subprocess, so an example that stops working fails CI
+instead of going stale. See {doc}`topics/examples`.
+
+### Fixes
+
+#### Listings preserve paths containing newlines (#758)
+
+Session, window and pane listings remain usable when a pane's directory
+contains a newline. The captured path retains its original value.
+{meth}`~libtmux.Server.new_session` parses its own ``-P -F`` reply the same
+way, so a newline in ``start_directory`` no longer raises `ValueError` before
+the `Session` is built.
+
+#### `Server.sessions`/`Server.clients` agree with the other listings on parse failures (#758)
+
+A malformed record now raises the new {exc}`~libtmux.exc.TmuxRecordParseError`
+instead of the generic {exc}`~libtmux.exc.LibTmuxException`, and
+{attr}`~libtmux.Server.sessions` and {attr}`~libtmux.Server.clients` let it
+propagate rather than folding it into their empty-by-default contract, which
+covers an unreachable server, not a reply libtmux could not parse. This
+matches {attr}`~libtmux.Server.windows` and {attr}`~libtmux.Server.panes`,
+which already raised it.
+
+#### Liveness checks honor `Server.timeout` (#758)
+
+{meth}`~libtmux.Server.is_alive` re-raises {exc}`~libtmux.exc.TmuxTimeout`
+instead of reporting a wedged server as dead, and
+{meth}`~libtmux.Server.raise_if_dead` now runs through
+{meth}`~libtmux.Server.cmd`, so it honors {attr}`~libtmux.Server.timeout`
+instead of blocking indefinitely. `Server.__exit__` still attempts
+{meth}`~libtmux.Server.kill` when a timeout leaves liveness unknown, rather
+than skipping it and leaking the daemon.
+
+#### `Server.owned_session` no longer leaks on a malformed session (#758)
+
+Building the created session's identity guard now happens inside a guarded
+block that kills the session on failure, instead of in a gap before cleanup
+was armed. The guard's checks no longer use bare `assert`, which
+`python -O` strips.
+
+#### Faster cleanup for a stopped control-mode client (#758)
+
+{class}`~libtmux._internal.control_mode.ControlMode` sends `SIGCONT` before
+waiting on a terminated client. A client stopped (e.g. `SIGSTOP`, a debugger)
+cannot process `SIGTERM` until resumed, so cleanup previously ran out its
+full 5-second wait before falling back to `SIGKILL` every time.
+
+#### Expanded tmux hook decoding (#758)
+
+Reading hooks recognizes tmux's additional pane, window, client and command
+events, preserving typed access to the complete hook table.
+
+#### `Server.server_access` orders flags before the user (#758)
+
+{meth}`~libtmux.Server.server_access` emitted `-a <user> -r`, which tmux's
+argument parser reads as two positional arguments once it reaches the bare
+username, rejecting the call as "too many arguments" instead of applying
+`-r`. Flags now precede the trailing positional user, matching
+`server-access`'s own `[-adlrw] [user]` usage.
+
 ### Documentation
+
+#### Reliable automation examples (#758)
+
+The {doc}`automation examples <topics/automation_patterns>` distinguish
+command output from echoed input and verify running and completed states.
+Repeated operations use fresh markers, and retries and task queues stop
+when a preceding command times out.
+
+#### Popup and floating-pane examples (#758)
+
+{meth}`~libtmux.Pane.display_popup` documents the terminal client required to
+run popup commands. The {doc}`floating-pane examples <topics/floating_panes>`
+distinguish pane content from its borders.
+
+#### `ControlMode` stays internal, with a documented alternative (#758)
+
+`libtmux._internal.control_mode.ControlMode` decodes none of tmux's
+control-mode protocol -- it exists so this project's own tests have a real
+attached client, not to give callers a parsed event stream. It stays
+internal rather than being promoted with that gap undocumented.
+{doc}`topics/public-vs-internal` now states this directly and names the
+alternatives: polling (`Session.windows`, `Window.panes`, wrapped in
+{func}`~libtmux.test.retry.retry_until`), {meth}`~libtmux.Pane.pipe` for raw
+output streaming, and {mod}`~libtmux.hooks` for server-side events. Several
+public docstrings (`Server.display_menu`, `Server.show_messages`,
+`Server.display_message`) pointed a reader at the internal class by name;
+they now describe attaching any real client instead.
 
 #### Cleaner `from_env` examples (#719)
 
@@ -58,6 +194,29 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### The `master`-tmux CI job now gates (#758)
+
+The `master` matrix entry's `Test with pytest` step no longer carries
+`continue-on-error`. It already builds tmux from git `master` and runs the
+full suite on every push and pull request; letting that step fail silently
+gave up the one lane built to catch a behavior change before its release,
+while contributing nothing that `addopts`' `--reruns=2` doesn't already
+cover for genuine flakiness. Tmux's own build failing still fails a separate,
+earlier step regardless of this change. Verified green across this branch's
+last several pushes on tmux's real git `master` before flipping.
+
+#### A benchmark suite (#758)
+
+`benchmarks/` measures command dispatch (`Server.cmd`), listing
+(`Server.sessions`/`.windows`/`.panes`), snapshot capture
+(`Pane.capture_pane`), and format decoding (`neo.parse_output`,
+`neo._split_records`), via [pytest-benchmark]. Run with `just bench`; it
+is a separate tier from the gates above, not part of them, and is not in
+`testpaths`. See {doc}`Contributing </project/contributing>` for where
+this fits alongside the gates.
+
+[pytest-benchmark]: https://pytest-benchmark.readthedocs.io/
 
 #### CI actions updated to current majors
 

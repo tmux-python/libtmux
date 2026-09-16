@@ -2,24 +2,88 @@
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import logging
+import os
 import pathlib
+import select
 import shutil
+import struct
+import subprocess
+import termios
+import threading
 import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import Pane, Server, exc
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
-    from libtmux.pane import Pane
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize("raw", [None, "0", "1"])
+def test_decoded_pane_fields_are_local(raw: str | None) -> None:
+    """Decoded fields preserve absence and zero without executing tmux."""
+    pane = Pane(
+        server=Server(tmux_bin="missing-decoded-fields-tmux"),
+        pane_width="80",
+        pane_height="24",
+        pane_active=raw,
+        pane_dead=raw,
+    )
+    assert pane.width_cells == 80
+    assert pane.height_cells == 24
+    assert pane.width == "80"
+    assert pane.height == "24"
+    assert pane.is_active is (None if raw is None else raw == "1")
+    assert pane.is_dead is (None if raw is None else raw == "1")
+    pane.pane_width = None
+    pane.pane_height = None
+    assert pane.width_cells is None
+    assert pane.height_cells is None
+
+
+def test_decoded_pane_fields_match_live_capture(session: Session) -> None:
+    """Active and inactive panes retain distinct typed captured flags."""
+    window = session.active_window
+    window.split(attach=False)
+    panes = window.panes
+    assert len(panes) == 2
+    assert sum(pane.is_active is True for pane in panes) == 1
+    assert all(pane.is_dead is False for pane in panes)
+    assert all(isinstance(pane.width_cells, int) for pane in panes)
+
+
+def test_dead_pane_pid_has_no_numeric_coercion(session: Session) -> None:
+    """A dead pane's ``#{pane_pid}`` never breaks a refresh.
+
+    tmux 3.8 changed ``#{pane_pid}`` from ``"0"`` to an empty string for a
+    pane whose process has already exited (libtmux-java crashed on exactly
+    this). libtmux stores ``pane_pid`` as ``str | None`` and never calls
+    ``int()`` on it, so both shapes must round-trip through a live
+    ``refresh()`` without raising.
+    """
+    window = session.new_window(window_name="dead_pane_pid")
+    pane = window.active_pane
+    assert pane is not None
+    pane.cmd("set-option", "-p", "remain-on-exit", "on")
+    pane.send_keys("exit", enter=True)
+
+    def _pane_is_dead() -> bool:
+        pane.refresh()
+        return pane.pane_dead == "1"
+
+    retry_until(_pane_is_dead, 3, raises=True)
+
+    assert pane.pane_pid == "" or (pane.pane_pid or "").isdigit()
 
 
 def test_send_keys(session: Session) -> None:
@@ -79,12 +143,21 @@ def test_capture_pane(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
+    retry_until(lambda: pane.capture_pane() == ["$"], 1, raises=True)
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(
         r'printf "\n%s\n" "Hello World !"',
         literal=True,
         suppress_history=False,
+    )
+    retry_until(
+        lambda: (
+            pane.capture_pane()
+            == [r'$ printf "\n%s\n" "Hello World !"', "", "Hello World !", "$"]
+        ),
+        1,
+        raises=True,
     )
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
@@ -104,9 +177,15 @@ def test_capture_pane_start(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
+    retry_until(lambda: pane.capture_pane() == ["$"], 1, raises=True)
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
+    retry_until(
+        lambda: pane.capture_pane() == ['$ printf "%s"', "$"],
+        1,
+        raises=True,
+    )
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == '$ printf "%s"\n$'
     pane.send_keys("clear -x", literal=True, suppress_history=False)
@@ -149,9 +228,15 @@ def test_capture_pane_end(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
+    retry_until(lambda: pane.capture_pane() == ["$"], 1, raises=True)
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
+    retry_until(
+        lambda: pane.capture_pane() == ['$ printf "%s"', "$"],
+        1,
+        raises=True,
+    )
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == '$ printf "%s"\n$'
     pane_contents = "\n".join(pane.capture_pane(end=0))
@@ -1082,6 +1167,65 @@ DISPLAY_POPUP_CASES: list[DisplayPopupCase] = [
 ]
 
 
+@pytest.fixture
+def terminal_client(server: Server, session: Session) -> t.Iterator[str]:
+    """Attach a terminal client for popup execution."""
+    socket_path = server.cmd("display-message", "-p", "#{socket_path}").stdout[0]
+    with contextlib.ExitStack() as cleanup:
+        master, slave = os.openpty()
+        cleanup.callback(os.close, master)
+        cleanup.callback(os.close, slave)
+        stop = threading.Event()
+        client: subprocess.Popen[bytes] | None = None
+
+        def drain() -> None:
+            while not stop.is_set():
+                if select.select([master], [], [], 0.1)[0]:
+                    try:
+                        if not os.read(master, 65536):
+                            return
+                    except OSError:
+                        return
+
+        try:
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+            client = subprocess.Popen(
+                [
+                    server.tmux_bin or "tmux",
+                    "-S",
+                    socket_path,
+                    "attach-session",
+                    "-t",
+                    str(session.session_id),
+                ],
+                stdin=slave,
+                stdout=slave,
+                stderr=slave,
+                env={**os.environ, "TERM": "xterm-256color"},
+                start_new_session=True,
+            )
+            reader = threading.Thread(target=drain, daemon=True)
+            reader.start()
+            cleanup.callback(reader.join, timeout=1)
+            cleanup.callback(stop.set)
+            client_name = os.ttyname(slave)
+
+            def attached() -> bool:
+                clients = server.cmd("list-clients", "-F", "#{client_name}").stdout
+                return client_name in clients
+
+            retry_until(attached, 3, raises=True)
+            yield client_name
+        finally:
+            if client is not None:
+                client.terminate()
+                try:
+                    client.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    client.kill()
+                    client.wait(timeout=3)
+
+
 @pytest.mark.parametrize(
     list(DisplayPopupCase._fields),
     DISPLAY_POPUP_CASES,
@@ -1091,7 +1235,7 @@ def test_display_popup_flags(
     test_id: str,
     kwargs: dict[str, t.Any],
     min_tmux_version: str | None,
-    control_mode: t.Callable[..., t.Any],
+    terminal_client: str,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1110,14 +1254,13 @@ def test_display_popup_flags(
 
     call_kwargs = {"command": f"touch {marker}", "close_on_exit": True, **kwargs}
 
-    with control_mode():
-        pane.display_popup(**call_kwargs)
+    pane.display_popup(**call_kwargs)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
 
 def test_display_popup_close_on_success(
-    control_mode: t.Callable[..., t.Any],
+    terminal_client: str,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1126,8 +1269,7 @@ def test_display_popup_close_on_success(
     pane = session.active_window.active_pane
     assert pane is not None
 
-    with control_mode():
-        pane.display_popup(command=f"touch {marker}", close_on_success=True)
+    pane.display_popup(command=f"touch {marker}", close_on_success=True)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
@@ -1157,26 +1299,20 @@ def test_display_popup_close_existing(
 
 
 def test_display_popup_target_client(
-    control_mode: t.Callable[..., t.Any],
+    terminal_client: str,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Test Pane.display_popup(target_client=...) emits ``-c <client>``.
-
-    ``-c`` has been on ``display-popup`` since tmux 3.2a, so no version
-    guard is needed. The popup itself is invisible without a TTY-backed
-    client; this is a smoke test for the flag-passing path.
-    """
+    """Run the popup command on the specified terminal client."""
     pane = session.active_window.active_pane
     assert pane is not None
     marker = tmp_path / "popup_target_client.marker"
 
-    with control_mode() as ctl:
-        pane.display_popup(
-            command=f"touch {marker}",
-            close_on_exit=True,
-            target_client=ctl.client_name,
-        )
+    pane.display_popup(
+        command=f"touch {marker}",
+        close_on_exit=True,
+        target_client=terminal_client,
+    )
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
@@ -1812,8 +1948,11 @@ def test_new_pane_floating(session: Session) -> None:
     if has_gte_version("3.7"):
         floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
         assert floating.pane_floating_flag == "1"
-        assert floating.pane_width == "80"
-        assert floating.pane_height == "15"
+        border = 1 if has_gte_version("3.8") else 0
+        assert floating.pane_width == str(80 - 2 * border)
+        assert floating.pane_height == str(15 - 2 * border)
+        assert floating.pane_x == str(5 + border)
+        assert floating.pane_y == str(3 + border)
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             pane.new_pane(width=40, height=10)
