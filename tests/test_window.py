@@ -1026,6 +1026,51 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
         window.select_layout("tiled", spread=True)
 
 
+def test_select_layout_dash_o_is_a_layout_not_the_undo_flag(session: Session) -> None:
+    """A layout value beginning with ``-`` is never read as a tmux flag.
+
+    Raw ``select-layout -o`` is tmux's *undo* flag (restores the previous
+    layout), not a layout named ``-o``. A caller passing a hostile or
+    accidental ``"-o"`` string must get a refusal from tmux, not a silent
+    undo. Regression for PY-1 -- before the ``--`` separator was added,
+    this call returned successfully and undid the just-applied layout.
+    """
+    window = session.new_window(window_name="test_layout_dash_o")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    before = window.window_layout
+
+    # tmux's own wording for this varies by version ("invalid layout",
+    # "can't set layout", "malformed layout header", ...); "layout" is the
+    # substring every release shares.
+    with pytest.raises(exc.LibTmuxException, match="layout"):
+        window.select_layout("-o")
+
+    # The undo flag would have restored the previous layout; a refusal
+    # must leave the current one untouched.
+    window.refresh()
+    assert window.window_layout == before
+
+
+def test_select_layout_empty_string_is_refused(session: Session) -> None:
+    """An explicit empty-string layout is refused, unlike omitting it.
+
+    ``select_layout(None)`` is tmux's own "no layout" invocation (reapplies
+    the current layout); ``select_layout("")`` is a distinct, almost
+    certainly accidental call -- a caller-supplied value that happened to
+    be empty -- and silently falling back to the same behavior hides that
+    mistake.
+    """
+    window = session.new_window(window_name="test_layout_empty")
+    with pytest.raises(ValueError, match="empty string"):
+        window.select_layout("")
+
+
 def test_link_unlink_window(server: Server, session: Session) -> None:
     """Test Window.link() and Window.unlink()."""
     # Create a second session
