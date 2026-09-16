@@ -172,6 +172,17 @@ it.
 
 ### Development
 
+#### The `master`-tmux CI job now gates (#758)
+
+The `master` matrix entry's `Test with pytest` step no longer carries
+`continue-on-error`. It already builds tmux from git `master` and runs the
+full suite on every push and pull request; letting that step fail silently
+gave up the one lane built to catch a behavior change before its release,
+while contributing nothing that `addopts`' `--reruns=2` doesn't already
+cover for genuine flakiness. Tmux's own build failing still fails a separate,
+earlier step regardless of this change. Verified green across this branch's
+last several pushes on tmux's real git `master` before flipping.
+
 #### CI actions updated to current majors
 
 Workflow actions moved to their current major releases: `actions/checkout` v7,
