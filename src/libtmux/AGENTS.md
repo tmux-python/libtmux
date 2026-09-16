@@ -17,23 +17,46 @@ facts specific to this package.
   reconcile it, or use the `neo` query interface, which always queries
   fresh.
 
-## List-returning accessors: empty by default on tmux errors
+## List-returning accessors: empty by default on tmux errors -- but not everywhere
 
-`Server.sessions`, `Server.clients`, and `Server.attached_sessions`
-return an empty `QueryList` when tmux's underlying list *invocation*
-fails for any reason — no running daemon, a missing socket, a
-permission error, a subprocess crash. This is a deliberate API
-contract: list-shaped accessors are lenient by default. Callers that
-need to distinguish "no rows" from "tmux unreachable" use the explicit
-`Server.is_alive()` or `Server.raise_if_dead()` primitives.
+`Server.sessions`, `Server.clients` (and `Server.attached_sessions`,
+which filters `.sessions`), and `Window.linked_sessions` return an
+empty `QueryList` when tmux's underlying list *invocation* fails **for
+any reason** — no running daemon, a missing socket, a permission
+error, a subprocess crash. This is a deliberate API contract: these
+are unconditionally lenient. `Window.linked_sessions` goes one step
+further than the other two: it swallows a malformed-record parse
+failure into `[]` too, where `Server.sessions`/`Server.clients` let
+that one propagate (see below).
 
-Two exceptions propagate instead of collapsing to empty, because
-neither means "no rows": `exc.TmuxRecordParseError` (the invocation
-succeeded but a value contained the field separator, so the reply
-itself could not be parsed — see `neo._split_records`) and
+`Server.windows` and `Server.panes` are also lenient, but narrower:
+they collapse only a not-yet-started daemon or a missing socket
+(`_is_daemon_not_up_error`) to empty, via `_fetch_or_empty`, and
+propagate everything else — including a permission error, which
+`Server.sessions`/`Server.clients` would still swallow. Do not assume
+the two groups agree on what counts as "no rows".
+
+**`Session.windows`, `Session.panes`, `Window.panes`, and
+`Window.search_panes` are not lenient at all.** Any tmux failure there
+propagates as `LibTmuxException` (or a subclass) — there is no
+empty-by-default contract below the server scope. A caller who has
+seen `Server.sessions == []` on a dead server must not infer that a
+`Session`/`Window` relation obtained beforehand will also read empty
+rather than raise; it raises. Call `Server.is_alive()` or
+`Server.raise_if_dead()` up front instead of inferring server health
+from any single collection's emptiness.
+
+For `Server.sessions`, `Server.clients`, `Server.windows`, and
+`Server.panes`, two exceptions propagate instead of collapsing to
+empty, because neither means "no rows": `exc.TmuxRecordParseError` (the
+invocation succeeded but a value contained the field separator, so the
+reply itself could not be parsed — see `neo._split_records`) and
 `exc.TmuxTimeout` (the command was killed mid-flight; whether it took
 effect is unknown). Swallowing either would tell a caller "nothing to
 list" when tmux may hold rows libtmux simply couldn't read back.
+`exc.TmuxTimeout` is not a `LibTmuxException` subclass, so every
+accessor above already lets it propagate unconditionally, including
+`Window.linked_sessions`.
 
 When adding a new list-returning accessor, follow this convention. If a
 future feature genuinely benefits from loud-failure semantics, expose

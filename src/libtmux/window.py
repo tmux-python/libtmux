@@ -388,6 +388,11 @@ class Window(
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Unlike :attr:`Server.panes`, not lenient: any tmux failure here
+        propagates as :exc:`~libtmux.exc.LibTmuxException` rather than
+        collapsing to an empty list. See ``AGENTS.md``'s "List-returning
+        accessors" section.
         """
         panes: list[Pane] = [
             Pane(server=self.server, **obj)
@@ -409,7 +414,9 @@ class Window(
         """Panes in this window, optionally filtered by tmux.
 
         Like :attr:`Window.panes` but with a ``filter`` kwarg passed to
-        ``$ tmux list-panes -t <window> -f <filter>``.
+        ``$ tmux list-panes -t <window> -f <filter>``. Not lenient, like
+        :attr:`Window.panes`: any tmux failure propagates as
+        :exc:`~libtmux.exc.LibTmuxException`.
 
         Parameters
         ----------
