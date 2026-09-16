@@ -962,6 +962,52 @@ def test_select_layout_round_trip_is_byte_exact(session: Session) -> None:
     assert window.window_layout == saved
 
 
+def test_select_layout_round_trip_preserves_pane_identity_on_json(
+    session: Session,
+) -> None:
+    """On tmux 3.8+, restoring a saved layout puts each pane back in place.
+
+    python exposes no public control-mode client, so every caller is a
+    plain reader -- ``#{window_layout}`` is JSON from tmux 3.8 on, and
+    JSON carries each pane's id. Restoring a saved JSON layout from a
+    *different* one must put every pane back at its original position,
+    not merely reproduce the same shape. Before 3.8 the saved value is
+    the classic string, which the ``Notes`` on
+    :meth:`Window.select_layout` document as shape-exact but not
+    identity-exact -- not asserted here, since whether a given
+    arrangement happens to rotate depends on tmux's own internal pane
+    order, not on anything libtmux controls.
+    """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.8"):
+        pytest.skip("JSON window_layout, and its pane-identity guarantee, need 3.8+")
+
+    window = session.new_window(window_name="test_layout_identity")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.split()
+    pane.split()
+
+    window.select_layout("main-vertical-mirrored")
+    window.refresh()
+    saved = window.window_layout
+    assert saved is not None
+    assert saved.startswith("{"), "expected a JSON layout on tmux 3.8+"
+    before = {p.pane_id: (p.left_cells, p.top_cells) for p in window.panes}
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    assert {p.pane_id: (p.left_cells, p.top_cells) for p in window.panes} != before
+
+    window.select_layout(saved)
+    window.refresh()
+    after = {p.pane_id: (p.left_cells, p.top_cells) for p in window.panes}
+    assert after == before
+
+
 def test_last_pane(session: Session) -> None:
     """Test Window.last_pane() selects the previously active pane."""
     window = session.new_window(window_name="test_last_pane")
