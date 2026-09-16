@@ -36,19 +36,27 @@ def test_decoded_pane_fields_are_local(raw: str | None) -> None:
         server=Server(tmux_bin="missing-decoded-fields-tmux"),
         pane_width="80",
         pane_height="24",
+        pane_left="5",
+        pane_top="10",
         pane_active=raw,
         pane_dead=raw,
     )
     assert pane.width_cells == 80
     assert pane.height_cells == 24
+    assert pane.left_cells == 5
+    assert pane.top_cells == 10
     assert pane.width == "80"
     assert pane.height == "24"
     assert pane.is_active is (None if raw is None else raw == "1")
     assert pane.is_dead is (None if raw is None else raw == "1")
     pane.pane_width = None
     pane.pane_height = None
+    pane.pane_left = None
+    pane.pane_top = None
     assert pane.width_cells is None
     assert pane.height_cells is None
+    assert pane.left_cells is None
+    assert pane.top_cells is None
 
 
 def test_decoded_pane_fields_match_live_capture(session: Session) -> None:
@@ -60,6 +68,15 @@ def test_decoded_pane_fields_match_live_capture(session: Session) -> None:
     assert sum(pane.is_active is True for pane in panes) == 1
     assert all(pane.is_dead is False for pane in panes)
     assert all(isinstance(pane.width_cells, int) for pane in panes)
+    assert all(isinstance(pane.left_cells, int) for pane in panes)
+    assert all(isinstance(pane.top_cells, int) for pane in panes)
+    # The split created a second pane below the first: same left edge,
+    # a top edge strictly greater than the pane above it.
+    top, bottom = sorted(panes, key=lambda p: t.cast("int", p.top_cells))
+    assert top.left_cells == bottom.left_cells
+    assert bottom.top_cells is not None
+    assert top.top_cells is not None
+    assert bottom.top_cells > top.top_cells
 
 
 def test_dead_pane_pid_has_no_numeric_coercion(session: Session) -> None:
@@ -84,6 +101,33 @@ def test_dead_pane_pid_has_no_numeric_coercion(session: Session) -> None:
     retry_until(_pane_is_dead, 3, raises=True)
 
     assert pane.pane_pid == "" or (pane.pane_pid or "").isdigit()
+
+
+def test_send_keys_and_capture_pane_raise_on_a_killed_pane(session: Session) -> None:
+    """send_keys() and capture_pane() raise on a stale, killed-pane handle.
+
+    Regression for PY-5. Before this fix, ``send_keys`` returned ``None``
+    and ``capture_pane`` returned ``[]`` for the exact same target that
+    ``refresh()`` already reports as gone (``TmuxObjectDoesNotExist``) --
+    keystrokes went nowhere with no indication, and an empty capture was
+    indistinguishable from a blank pane. Raw tmux for the same target
+    exits 1 with ``can't find pane: ...`` (D2/D3).
+    """
+    window = session.active_window
+    dead = window.split(attach=False)
+    dead.kill()
+
+    with pytest.raises(exc.LibTmuxException, match="can't find pane"):
+        dead.send_keys("echo unreachable")
+
+    with pytest.raises(exc.LibTmuxException, match="can't find pane"):
+        dead.capture_pane()
+
+    with pytest.raises(exc.LibTmuxException, match="can't find pane"):
+        dead.enter()
+
+    with pytest.raises(exc.TmuxObjectDoesNotExist):
+        dead.refresh()
 
 
 def test_send_keys(session: Session) -> None:

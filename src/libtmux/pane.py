@@ -610,6 +610,13 @@ class Pane(
         list[str] or None
             Captured pane content, or ``None`` when *to_buffer* is set.
 
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane no longer exists
+            (``can't find pane: ...``). Pass ``quiet=True`` for tmux's own
+            ``-q`` (suppress errors silently) if that is not wanted.
+
         Examples
         --------
         >>> pane = window.split(shell='sh')
@@ -697,6 +704,7 @@ class Pane(
                     stacklevel=2,
                 )
         proc = self.cmd(*cmd)
+        raise_if_stderr(proc, "capture-pane")
         if to_buffer is not None:
             return None
         return proc.stdout
@@ -780,6 +788,9 @@ class Pane(
         ValueError
             If ``cmd`` is ``None`` and no flag-only path is selected
             (``reset``, ``repeat``, or ``copy_mode_cmd``).
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane no longer exists
+            (``can't find pane: ...``).
 
         Examples
         --------
@@ -840,7 +851,8 @@ class Pane(
 
         if copy_mode_cmd is not None:
             tmux_args += ("-X",)
-            self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+            proc = self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+            raise_if_stderr(proc, "send-keys")
         elif cmd is None:
             # Flag-only path — tmux's cmd-send-keys.c:223-225 explicitly
             # supports count == 0 when -R or -N is set, returning
@@ -851,10 +863,12 @@ class Pane(
                     "reset=True, repeat=N, copy_mode_cmd=..."
                 )
                 raise ValueError(msg)
-            self.cmd("send-keys", *tmux_args)
+            proc = self.cmd("send-keys", *tmux_args)
+            raise_if_stderr(proc, "send-keys")
             return
         else:
-            self.cmd("send-keys", *tmux_args, prefix + cmd)
+            proc = self.cmd("send-keys", *tmux_args, prefix + cmd)
+            raise_if_stderr(proc, "send-keys")
 
         if enter and copy_mode_cmd is None:
             self.enter()
@@ -1670,8 +1684,14 @@ class Pane(
         """Send carriage return to pane.
 
         ``$ tmux send-keys`` send Enter to the pane.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane no longer exists.
         """
-        self.cmd("send-keys", "Enter")
+        proc = self.cmd("send-keys", "Enter")
+        raise_if_stderr(proc, "send-keys")
         return self
 
     def display_popup(
@@ -2736,6 +2756,22 @@ class Pane(
         Reads locally. The existing :attr:`height` alias retains its raw string.
         """
         return int(self.pane_height) if self.pane_height is not None else None
+
+    @property
+    def left_cells(self) -> int | None:
+        """Captured left edge, as a window column, or ``None`` when unavailable.
+
+        Reads locally. :attr:`pane_left` retains the raw string.
+        """
+        return int(self.pane_left) if self.pane_left is not None else None
+
+    @property
+    def top_cells(self) -> int | None:
+        """Captured top edge, as a window row, or ``None`` when unavailable.
+
+        Reads locally. :attr:`pane_top` retains the raw string.
+        """
+        return int(self.pane_top) if self.pane_top is not None else None
 
     @property
     def is_active(self) -> bool | None:
