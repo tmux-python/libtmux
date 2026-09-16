@@ -28,8 +28,14 @@ class ControlMode:
     """Context manager that spawns a tmux control-mode client.
 
     Creates a real client attached to the session, visible in
-    ``Server.list_clients()``. The client communicates via the tmux
-    control protocol on stdout.
+    ``Server.list_clients()``. tmux writes its control-mode protocol to the
+    client's stdout, exposed here verbatim via :attr:`stdout` -- this class
+    decodes none of it. It exists so tests have a real attached client
+    (some assertions, and some tmux commands such as popups, require one),
+    not to give callers a parsed event stream. Internal
+    (``libtmux._internal``): no stability guarantee, use the public
+    ``control_mode`` pytest fixture instead of importing this class
+    directly.
 
     While active, ``Server.list_clients()`` will include this client.
 
