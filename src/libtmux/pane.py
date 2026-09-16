@@ -2799,9 +2799,9 @@ class Pane(
         pane exits just after :meth:`Window.split` reads it back, so the
         read-back itself never races the exit:
 
-        >>> gone = window.split(shell="sh -c 'sleep 0.2; exit 0'")
+        >>> gone = window.split(shell="sh -c 'sleep 1; exit 0'")
         >>> retry_until(
-        ...     lambda: len(window.panes.filter(pane_id=gone.pane_id)) == 0, 2
+        ...     lambda: len(window.panes.filter(pane_id=gone.pane_id)) == 0, 3
         ... )
         True
         >>> gone.is_dead  # last snapshot said "alive"; never re-queried
