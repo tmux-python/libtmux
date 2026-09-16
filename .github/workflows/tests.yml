@@ -93,7 +93,6 @@ jobs:
           uv run python -V
 
       - name: Test with pytest
-        continue-on-error: ${{ matrix.tmux-version == 'master' }}
         run: |
           tmux -V
           uv run coverage erase
