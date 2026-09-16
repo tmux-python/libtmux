@@ -169,6 +169,20 @@ when a preceding command times out.
 run popup commands. The {doc}`floating-pane examples <topics/floating_panes>`
 distinguish pane content from its borders.
 
+#### `ControlMode` stays internal, with a documented alternative (#758)
+
+`libtmux._internal.control_mode.ControlMode` decodes none of tmux's
+control-mode protocol -- it exists so this project's own tests have a real
+attached client, not to give callers a parsed event stream. It stays
+internal rather than being promoted with that gap undocumented.
+{doc}`topics/public-vs-internal` now states this directly and names the
+alternatives: polling (`Session.windows`, `Window.panes`, wrapped in
+{func}`~libtmux.test.retry.retry_until`), {meth}`~libtmux.Pane.pipe` for raw
+output streaming, and {mod}`~libtmux.hooks` for server-side events. Several
+public docstrings (`Server.display_menu`, `Server.show_messages`,
+`Server.display_message`) pointed a reader at the internal class by name;
+they now describe attaching any real client instead.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and

@@ -1532,9 +1532,8 @@ class Server(
         """Display a popup menu via ``$ tmux display-menu``.
 
         Requires a TTY-backed attached client. Control-mode clients have
-        ``tty.sy=0``, which causes ``menu_prepare()`` to return NULL.
-        This method cannot be tested with
-        :class:`~libtmux._internal.control_mode.ControlMode`.
+        ``tty.sy=0``, which causes ``menu_prepare()`` to return NULL, so this
+        project's own control-mode test client cannot exercise this call.
 
         Parameters
         ----------
@@ -1688,10 +1687,10 @@ class Server(
 
         Without ``-T``/``-J``, tmux resolves the message log against a
         target client; if no client is attached and *target_client* is
-        omitted, tmux raises ``no current client``. Provide
-        *target_client* (e.g. via :class:`~libtmux._internal.control_mode.ControlMode`)
-        when running headless, or use *terminals*/*jobs* — those modes
-        don't require a client.
+        omitted, tmux raises ``no current client``. Provide *target_client*
+        (the ``client_name`` of any attached client, e.g. one from
+        ``tmux -C attach-session``) when running headless, or use
+        *terminals*/*jobs* — those modes don't require a client.
 
         Parameters
         ----------
@@ -1786,8 +1785,9 @@ class Server(
 
         With no client attached and ``target_client`` omitted, the status-line
         path (``get_text=False``) issues a ``no current client`` warning. Use
-        ``get_text=True`` for headless reads, or pair with
-        :class:`~libtmux._internal.control_mode.ControlMode`.
+        ``get_text=True`` for headless reads, or attach a real client first
+        (e.g. ``tmux -C attach-session``) and pass its ``client_name`` as
+        ``target_client``.
 
         Notes
         -----
