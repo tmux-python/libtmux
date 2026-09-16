@@ -70,6 +70,8 @@ dev = [
   # Lint
   "ruff>=0.17.3",
   "mypy",
+  # Benchmarking
+  "pytest-benchmark>=5.3.0",
 ]
 
 docs = [
@@ -93,6 +95,9 @@ coverage =[
 lint = [
   "ruff>=0.17.3",
   "mypy",
+]
+benchmark = [
+  "pytest-benchmark>=5.3.0",
 ]
 
 [project.entry-points.pytest11]
@@ -144,6 +149,7 @@ files = [
   "tests",
   "docs/_ext",
   "examples",
+  "benchmarks",
 ]
 
 
