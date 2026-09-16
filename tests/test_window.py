@@ -1077,9 +1077,18 @@ def test_select_layout_dash_o_is_a_layout_not_the_undo_flag(session: Session) ->
 
     Raw ``select-layout -o`` is tmux's *undo* flag (restores the previous
     layout), not a layout named ``-o``. A caller passing a hostile or
-    accidental ``"-o"`` string must get a refusal from tmux, not a silent
-    undo. Regression for PY-1 -- before the ``--`` separator was added,
-    this call returned successfully and undid the just-applied layout.
+    accidental ``"-o"`` string must get a refusal, not a silent undo.
+    Before this fix, the call returned successfully and undid the
+    just-applied layout.
+
+    Refused client-side (``ValueError``), before ever reaching tmux: on
+    tmux 3.3/3.3a, sending an actually-invalid layout *string* (which is
+    what "-o" becomes once forced to be read as one, rather than as the
+    undo flag) crashes the whole daemon instead of refusing cleanly --
+    confirmed by hand against that version. A client-side refusal side-
+    steps that regardless of which tmux is running; see
+    ``test_select_layout_dash_o_crashes_tmux_3_3a_if_forced_through`` for
+    the raw-tmux confirmation this guards against.
     """
     window = session.new_window(window_name="test_layout_dash_o")
     window.resize(height=40, width=80)
@@ -1091,16 +1100,41 @@ def test_select_layout_dash_o_is_a_layout_not_the_undo_flag(session: Session) ->
     window.refresh()
     before = window.window_layout
 
-    # tmux's own wording for this varies by version ("invalid layout",
-    # "can't set layout", "malformed layout header", ...); "layout" is the
-    # substring every release shares.
-    with pytest.raises(exc.LibTmuxException, match="layout"):
+    with pytest.raises(ValueError, match="looks like a tmux flag"):
         window.select_layout("-o")
 
     # The undo flag would have restored the previous layout; a refusal
-    # must leave the current one untouched.
+    # must leave the current one untouched, and the server alive.
     window.refresh()
     assert window.window_layout == before
+    assert window.server.is_alive()
+
+
+def test_select_layout_dash_o_crashes_tmux_3_3a_if_forced_through(
+    server: Server,
+) -> None:
+    """Raw tmux confirmation for the guard above's stated reason.
+
+    Not a python defect: on tmux 3.3 and 3.3a specifically, forcing "-o"
+    to be read as a layout *string* (``select-layout -- -o``) frees an
+    uninitialized pointer and kills the daemon outright ("server exited
+    unexpectedly"), rather than refusing with an error -- fixed upstream
+    in 3.4. Skipped on every other version, where raw tmux refuses
+    cleanly and the server survives (already covered by this port's
+    matrix runs). This is *why* ``Window.select_layout`` refuses a
+    leading ``-`` itself instead of relying only on tmux's own response.
+    """
+    from libtmux.common import get_version_str
+
+    version = get_version_str(tmux_bin=server.tmux_bin)
+    if version not in {"3.3", "3.3a"}:
+        pytest.skip(f"tmux {version} is not the 3.3/3.3a crash case")
+
+    server.new_session(session_name="crash_check")
+    proc = server.cmd("select-layout", "--", "-o")
+    assert proc.returncode != 0
+    assert "server exited unexpectedly" in "\n".join(proc.stderr)
+    assert not server.is_alive()
 
 
 def test_select_layout_empty_string_is_refused(session: Session) -> None:
