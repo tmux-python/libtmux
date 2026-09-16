@@ -88,6 +88,15 @@ raw fields and established aliases remain available.
 lookups and caller-supplied defaults retain their distinct result types while
 filtering the existing collection locally.
 
+#### A runnable examples/ directory (#758)
+
+`examples/` holds standalone scripts you run directly --
+`python examples/quickstart.py`, with tmux on `PATH` and no existing session
+required. Each owns a private {meth}`~libtmux.Server.owned` daemon, so none
+of them touch a session you already have open. The test suite runs every
+script as its own subprocess, so an example that stops working fails CI
+instead of going stale. See {doc}`topics/examples`.
+
 ### Fixes
 
 #### Listings preserve paths containing newlines (#758)
