@@ -28,8 +28,49 @@ from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     import pathlib
+    from collections.abc import Sequence
 
 pytest_plugins = ["pytester"]
+
+
+def _requested_benchmarks_directly(args: Sequence[str]) -> bool:
+    """Return True if a positional argument names ``benchmarks`` directly.
+
+    Guards against firing on a broader scan (e.g. ``pytest .``) that
+    merely walks through ``benchmarks/`` on its way elsewhere -- only an
+    invocation that explicitly names that bare path should raise. A path
+    to one file inside it (``benchmarks/bench_capture.py::test_x``)
+    already collected its item and needs no rescue.
+    """
+    return any(arg.rstrip("/") == "benchmarks" for arg in args)
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
+    """Replace a silent zero-item ``benchmarks/`` run with a clear error.
+
+    ``benchmarks/`` is deliberately outside ``testpaths`` and its files
+    are named ``bench_*.py``, not ``test_*.py`` (see CONTRIBUTING.md's
+    "Benchmarks" section). Pointing plain ``pytest`` at it directly
+    (``uv run pytest benchmarks/``) collects nothing and exits 0 --
+    pytest's default ``python_files`` glob never matches ``bench_*.py``
+    -- which reads as "ran fine, nothing to benchmark" rather than a
+    bad invocation.
+    """
+    if items:
+        return
+    if not _requested_benchmarks_directly(config.args):
+        return
+    msg = (
+        "benchmarks/ collected 0 items: pytest's default python_files "
+        "('test_*.py') does not match this directory's 'bench_*.py' "
+        "files. Run `just bench`, or "
+        "`uv run pytest benchmarks/ -o python_files='bench_*.py' "
+        "--benchmark-only` directly."
+    )
+    raise pytest.UsageError(msg)
 
 
 @pytest.fixture(autouse=True)

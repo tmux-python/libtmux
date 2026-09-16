@@ -72,6 +72,8 @@ dev = [
   # Lint
   "ruff>=0.16.1",
   "mypy",
+  # Benchmarking
+  "pytest-benchmark>=5.3.0",
 ]
 
 docs = [
@@ -97,6 +99,9 @@ lint = [
   "typing-extensions; python_version < '3.11'",
   "ruff>=0.16.1",
   "mypy",
+]
+benchmark = [
+  "pytest-benchmark>=5.3.0",
 ]
 
 [project.entry-points.pytest11]
@@ -147,6 +152,7 @@ files = [
   "src",
   "tests",
   "examples",
+  "benchmarks",
 ]
 
 
