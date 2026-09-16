@@ -62,6 +62,30 @@ def test_decoded_pane_fields_match_live_capture(session: Session) -> None:
     assert all(isinstance(pane.width_cells, int) for pane in panes)
 
 
+def test_dead_pane_pid_has_no_numeric_coercion(session: Session) -> None:
+    """A dead pane's ``#{pane_pid}`` never breaks a refresh.
+
+    tmux 3.8 changed ``#{pane_pid}`` from ``"0"`` to an empty string for a
+    pane whose process has already exited (libtmux-java crashed on exactly
+    this). libtmux stores ``pane_pid`` as ``str | None`` and never calls
+    ``int()`` on it, so both shapes must round-trip through a live
+    ``refresh()`` without raising.
+    """
+    window = session.new_window(window_name="dead_pane_pid")
+    pane = window.active_pane
+    assert pane is not None
+    pane.cmd("set-option", "-p", "remain-on-exit", "on")
+    pane.send_keys("exit", enter=True)
+
+    def _pane_is_dead() -> bool:
+        pane.refresh()
+        return pane.pane_dead == "1"
+
+    retry_until(_pane_is_dead, 3, raises=True)
+
+    assert pane.pane_pid == "" or (pane.pane_pid or "").isdigit()
+
+
 def test_send_keys(session: Session) -> None:
     """Verify Pane.send_keys()."""
     pane = session.active_window.active_pane
