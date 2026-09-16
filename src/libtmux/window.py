@@ -870,7 +870,11 @@ class Window(
             String of the layout, 'even-horizontal', 'tiled', etc. Entering
             None (leaving this blank) is same as ``select-layout`` with no
             layout. In recent tmux versions, it picks the most recently
-            set layout.
+            set layout. Passed to tmux after a ``--`` separator, so a value
+            starting with ``-`` (e.g. ``"-o"``, tmux's own *undo* flag) is
+            always read as the layout string, never as a flag. An explicit
+            empty string is refused -- pass ``None`` to omit the layout
+            instead.
 
             'even-horizontal'
                 Panes are spread out evenly from left to right across the
@@ -913,11 +917,19 @@ class Window(
             If tmux returns an error.
         ValueError
             If both *layout* and a flag (*spread*, *next_layout*,
-            *previous_layout*) are specified.
+            *previous_layout*) are specified, or if *layout* is an
+            explicit empty string.
         """
         flags = (spread, next_layout, previous_layout)
         if layout and any(flags):
             msg = "Cannot specify both layout and spread/next_layout/previous_layout"
+            raise ValueError(msg)
+
+        if layout is not None and layout == "":
+            msg = (
+                "layout must not be an empty string -- pass layout=None to "
+                "omit the layout (tmux then reapplies the current one)"
+            )
             raise ValueError(msg)
 
         cmd = ["select-layout"]
@@ -932,7 +944,10 @@ class Window(
             cmd.append("-p")
 
         if layout:  # tmux allows select-layout without args
-            cmd.append(layout)
+            # "--" stops tmux's own option parsing, so a layout beginning
+            # with "-" (e.g. "-o", tmux's undo flag) is read as the layout
+            # value rather than a flag.
+            cmd.extend(["--", layout])
 
         proc = self.cmd(*cmd)
 
