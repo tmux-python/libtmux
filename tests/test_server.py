@@ -1395,6 +1395,32 @@ def test_server_access_list(server: Server) -> None:
     assert isinstance(result, list)
 
 
+def test_server_access_flags_precede_positional_user(server: Server) -> None:
+    """Boolean flags reach tmux's user lookup instead of its argv parser.
+
+    ``server-access``'s own arg spec (``cmd-server-access.c``) declares
+    ``adlrw`` as value-less flags with the user as a single trailing
+    positional. Emitting ``-a myuser -r`` used to put ``myuser`` right
+    after ``-a``, so tmux's getopt-style parser stopped recognizing ``-r``
+    as a flag once it saw that bare word and rejected the call as "too many
+    arguments" before ever looking up the user.
+
+    ``server-access`` also refuses to touch the server owner's own entry
+    (``pw_uid == getuid()``), and this suite has no second real OS account
+    to allow -- so this proves the fix by reaching tmux's *next* validation
+    step (an unknown-user lookup) rather than failing on argv shape first.
+    """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip("server-access added in tmux 3.3")
+
+    server.new_session(session_name="access_argv_order_test")
+
+    with pytest.raises(exc.LibTmuxException, match="unknown user"):
+        server.server_access(allow="nonexistent-libtmux-test-user", read_only=True)
+
+
 def test_server_access_read_only_write_mutex(server: Server) -> None:
     """``read_only`` and ``write`` are mutually exclusive."""
     from libtmux.common import has_gte_version
@@ -1437,10 +1463,10 @@ def test_server_access_argv(
     monkeypatch.setattr(server, "cmd", fake_cmd)
 
     server.server_access(allow="alice", read_only=True)
-    assert captured[-1][1:] == ("-a", "alice", "-r")
+    assert captured[-1][1:] == ("-a", "-r", "alice")
 
     server.server_access(allow="bob", write=True)
-    assert captured[-1][1:] == ("-a", "bob", "-w")
+    assert captured[-1][1:] == ("-a", "-w", "bob")
 
 
 def test_start_server(server: Server) -> None:
