@@ -327,7 +327,9 @@ def run_command(
     tmux_bin : str, optional
         Executable path. Defaults to the first ``tmux`` on ``PATH``.
     timeout : float, optional
-        Seconds to wait. ``None`` waits indefinitely.
+        Seconds to wait. ``None`` waits indefinitely. A non-positive value
+        is rejected rather than accepted and silently skipping the command
+        (see ``Raises``).
 
     Returns
     -------
@@ -336,6 +338,13 @@ def run_command(
 
     Raises
     ------
+    ValueError
+        *timeout* is not ``None`` and is less than or equal to zero.
+        ``subprocess.Popen.communicate(timeout=0)`` (or a negative value)
+        does not run the command at all -- the freshly spawned process has
+        not had a chance to respond, so it always reads as expired -- which
+        silently discarded a call meant to run, e.g.
+        :meth:`~libtmux.Server.wait_for` with ``signal=True``.
     :exc:`~libtmux.exc.TmuxCommandNotFound`
         The executable cannot be found.
     :exc:`~libtmux.exc.TmuxTimeout`
@@ -355,6 +364,10 @@ def run_command(
     >>> result.returncode
     0
     """
+    if timeout is not None and timeout <= 0:
+        msg = f"timeout must be positive or None, got {timeout!r}"
+        raise ValueError(msg)
+
     resolved = tmux_bin or shutil.which("tmux")
     if not resolved:
         raise exc.TmuxCommandNotFound
@@ -477,6 +490,8 @@ class tmux_cmd:
 
     Raises
     ------
+    ValueError
+        ``timeout`` is not ``None`` and is less than or equal to zero.
     :exc:`~libtmux.exc.TmuxTimeout`
         ``timeout`` elapsed. The command may or may not have taken
         effect -- the process was killed mid-command.
