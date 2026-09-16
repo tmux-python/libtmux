@@ -1053,11 +1053,17 @@ class Server(
 
         tmux_args: tuple[str, ...] = ()
 
+        # tmux's server-access arg spec takes "adlrw" as value-less flags
+        # and the user as one trailing positional -- flags must precede it.
+        user: str | None = None
+
         if allow is not None:
-            tmux_args += ("-a", allow)
+            tmux_args += ("-a",)
+            user = allow
 
         if deny is not None:
-            tmux_args += ("-d", deny)
+            tmux_args += ("-d",)
+            user = deny
 
         if list_access:
             tmux_args += ("-l",)
@@ -1067,6 +1073,9 @@ class Server(
 
         if write:
             tmux_args += ("-w",)
+
+        if user is not None:
+            tmux_args += (user,)
 
         proc = self.cmd("server-access", *tmux_args)
 
