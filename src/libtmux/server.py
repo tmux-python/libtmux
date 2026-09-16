@@ -532,11 +532,18 @@ class Server(
             Per-call override for :attr:`Server.timeout`. Omit to use the
             server's timeout; pass ``None`` to run this one call without a
             bound even when the server has one; pass a number to bound just
-            this call.
+            this call. Zero or negative is rejected (see ``Raises``) rather
+            than accepted and silently never running the command.
 
         Returns
         -------
         :class:`common.tmux_cmd`
+
+        Raises
+        ------
+        ValueError
+            *timeout* (or the resolved :attr:`Server.timeout`) is not
+            ``None`` and is less than or equal to zero.
 
         Notes
         -----
@@ -784,7 +791,9 @@ class Server(
         *,
         lock: bool | None = None,
         unlock: bool | None = None,
+        signal: bool | None = None,
         set_flag: bool | None = None,
+        timeout: float | _NotSet | None = _NOT_SET,
     ) -> None:
         """Wait for, signal, or lock a channel via ``$ tmux wait-for``.
 
@@ -794,17 +803,73 @@ class Server(
             Channel name.
         lock : bool, optional
             Lock the channel (``-L`` flag).
+
+            .. warning::
+
+               A locker bounded by *timeout* that times out does not give
+               the lock back up: tmux hands a pending lock to the next
+               queued locker on unlock regardless of whether that locker is
+               still waiting, so a caller that gave up still receives it,
+               and every later ``wait_for(channel, lock=True)`` on that
+               channel times out in turn -- there is no way to lock it
+               again. This is a tmux limitation (``cmd-wait-for.c``'s
+               ``cmd_wait_for_unlock``), not particular to this method; it
+               only becomes reachable once a lock wait can be bounded at
+               all. Use a fresh channel name after a timed-out lock wait,
+               not the same one.
         unlock : bool, optional
             Unlock the channel (``-U`` flag).
+        signal : bool, optional
+            Set the channel flag and wake waiters (``-S`` flag) -- tmux's
+            own manual calls this "signal".
+
+            .. versionadded:: 0.63
         set_flag : bool, optional
-            Set the channel flag and wake waiters (``-S`` flag).
+            Deprecated alias for *signal*.
+
+            .. deprecated:: 0.63
+
+               Use *signal* instead.
+        timeout : float, optional
+            Per-call override for :attr:`Server.timeout`, like
+            :meth:`Server.cmd`'s. Omit to use the server's timeout; pass
+            ``None`` to wait without a bound even when the server has one;
+            pass a number to bound just this call. Zero or negative is
+            rejected (see ``Raises``): it would never run the command --
+            not even ``signal=True``'s non-blocking ``-S``.
+
+            .. versionadded:: 0.63
+
+               Without a *timeout* here or on :attr:`Server.timeout`
+               (``None`` by default), a channel that is never signalled
+               blocks the caller forever -- there was previously no way
+               to bound this call at all.
+
+        Raises
+        ------
+        ValueError
+            *timeout* is not ``None`` and is less than or equal to zero.
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error.
+        :exc:`libtmux.exc.TmuxTimeout`
+            If *timeout* (or :attr:`Server.timeout`) elapses before the
+            channel is signalled.
 
         Examples
         --------
         >>> server.new_session(session_name='wait_test')
         Session(...)
-        >>> server.wait_for('test_channel', set_flag=True)
+        >>> server.wait_for('test_channel', signal=True)
         """
+        if set_flag is not None:
+            warnings.warn(
+                "set_flag is deprecated in favor of signal",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            if signal is None:
+                signal = set_flag
+
         tmux_args: tuple[str, ...] = ()
 
         if lock:
@@ -813,12 +878,12 @@ class Server(
         if unlock:
             tmux_args += ("-U",)
 
-        if set_flag:
+        if signal:
             tmux_args += ("-S",)
 
         tmux_args += (channel,)
 
-        proc = self.cmd("wait-for", *tmux_args)
+        proc = self.cmd("wait-for", *tmux_args, timeout=timeout)
 
         raise_if_stderr(proc, "wait-for")
 

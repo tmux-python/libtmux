@@ -1593,11 +1593,87 @@ def test_clear_prompt_history(server: Server) -> None:
     server.clear_prompt_history(prompt_type="command")
 
 
-def test_wait_for_set_flag(server: Server) -> None:
-    """Test Server.wait_for() with set_flag."""
+def test_wait_for_signal(server: Server) -> None:
+    """Test Server.wait_for() with signal, tmux's own name for -S."""
     server.new_session(session_name="wait_test")
     # Just set the flag — should not block or error
-    server.wait_for("test_channel_set", set_flag=True)
+    server.wait_for("test_channel_signal", signal=True)
+
+
+def test_wait_for_set_flag_is_a_deprecated_alias_for_signal(server: Server) -> None:
+    """set_flag still works and warns; signal=, its natural spelling, now also works."""
+    server.new_session(session_name="wait_test_deprecated")
+    with pytest.deprecated_call(match="set_flag is deprecated in favor of signal"):
+        server.wait_for("test_channel_set", set_flag=True)
+
+
+def test_wait_for_unsignalled_channel_times_out(server: Server) -> None:
+    """wait_for() bounds an unsignalled channel instead of blocking forever.
+
+    The signature previously had no timeout parameter at all, and
+    Server.owned()/Server() default to Server.timeout=None (unbounded),
+    so a caller had no way to escape a channel that is never signalled.
+    Bounded here well under this suite's own per-test budget -- an
+    unbounded call left in by mistake would hang the run instead of
+    merely failing it.
+    """
+    server.new_session(session_name="wait_test_timeout")
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        server.wait_for("never-signalled-py7", timeout=1)
+    elapsed = time.monotonic() - started
+    assert elapsed < 5, f"wait_for(timeout=1) took {elapsed:.2f}s to raise"
+
+
+def test_wait_for_rejects_a_non_positive_timeout(server: Server) -> None:
+    """A zero or negative timeout is a caller error, not a silent no-op.
+
+    ``subprocess.Popen.communicate(timeout=0)`` (or a negative value)
+    never gives the freshly spawned tmux process a chance to respond,
+    so it always reads as expired -- a non-positive *timeout* is
+    rejected up front instead of silently raising ``TmuxTimeout``
+    without ``wait-for -S`` (or any other command) ever running.
+    """
+    server.new_session(session_name="wait_test_zero_timeout")
+
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        server.wait_for("py2_7_zero", signal=True, timeout=0)
+
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        server.wait_for("py2_7_negative", signal=True, timeout=-1)
+
+    # Control: a positive timeout still runs the command normally.
+    server.wait_for("py2_7_positive", signal=True, timeout=1)
+
+
+def test_wait_for_lock_timeout_wedges_the_channel(server: Server) -> None:
+    """A timed-out lock wait leaves the channel unlockable afterward.
+
+    A tmux limitation, documented on :meth:`Server.wait_for`'s *lock*
+    parameter rather than fixed: ``cmd-wait-for.c`` hands a pending
+    lock to the next queued locker on unlock regardless of whether that
+    locker gave up, and nothing removes a locker whose own wait already
+    raised ``TmuxTimeout``. A lock wait bounded by *timeout* makes this
+    reachable from the library for the first time.
+
+    A clean control on a different, untouched channel proves the
+    mechanism rather than merely that timeouts fire: lock, unlock, lock
+    again succeeds there.
+    """
+    server.new_session(session_name="wait_test_lock_wedge")
+
+    server.wait_for("py2_6_wedge", lock=True)
+    with pytest.raises(exc.TmuxTimeout):
+        server.wait_for("py2_6_wedge", lock=True, timeout=0.3)
+    server.wait_for("py2_6_wedge", unlock=True)
+    with pytest.raises(exc.TmuxTimeout):
+        server.wait_for("py2_6_wedge", lock=True, timeout=1)
+
+    # Control: a channel nothing else contended for is not wedged.
+    server.wait_for("py2_6_control", lock=True)
+    server.wait_for("py2_6_control", unlock=True)
+    server.wait_for("py2_6_control", lock=True, timeout=1)
+    server.wait_for("py2_6_control", unlock=True)
 
 
 def test_run_shell_basic(server: Server) -> None:
