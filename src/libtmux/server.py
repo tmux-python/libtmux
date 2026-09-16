@@ -1058,11 +1058,21 @@ class Server(
 
         tmux_args: tuple[str, ...] = ()
 
+        # tmux's own arg spec (`cmd-server-access.c`) declares "adlrw" as
+        # value-less flags and takes the user as a single trailing
+        # positional -- `server-access -a myuser -r` is two positional
+        # arguments ("myuser", "-r") once getopt sees the first bare word,
+        # and tmux rejects it as "too many arguments". Every flag must come
+        # before the positional user.
+        user: str | None = None
+
         if allow is not None:
-            tmux_args += ("-a", allow)
+            tmux_args += ("-a",)
+            user = allow
 
         if deny is not None:
-            tmux_args += ("-d", deny)
+            tmux_args += ("-d",)
+            user = deny
 
         if list_access:
             tmux_args += ("-l",)
@@ -1072,6 +1082,9 @@ class Server(
 
         if write:
             tmux_args += ("-w",)
+
+        if user is not None:
+            tmux_args += (user,)
 
         proc = self.cmd("server-access", *tmux_args)
 

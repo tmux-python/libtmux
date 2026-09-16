@@ -137,6 +137,14 @@ full 5-second wait before falling back to `SIGKILL` every time.
 Reading hooks recognizes tmux's additional pane, window, client and command
 events, preserving typed access to the complete hook table.
 
+#### `Server.server_access` orders flags before the user (#758)
+
+{meth}`~libtmux.Server.server_access` emitted `-a <user> -r`, which tmux's
+argument parser reads as two positional arguments once it reaches the bare
+username, rejecting the call as "too many arguments" instead of applying
+`-r`. Flags now precede the trailing positional user, matching
+`server-access`'s own `[-adlrw] [user]` usage.
+
 ### Documentation
 
 #### Reliable automation examples (#758)
