@@ -138,6 +138,24 @@ Include doctests in the watch loop:
 $ uv run ptw . --now --doctest-modules
 ```
 
+## Benchmarks
+
+`benchmarks/` holds [pytest-benchmark] microbenchmarks for command
+dispatch, listing, snapshot capture, and format decoding. It is not a
+gate — performance work is a separate tier from the gates above, not
+part of them — and it is not in `testpaths`, so a plain `uv run pytest`
+never runs it.
+
+```console
+$ just bench
+```
+
+Report a regression with the printed numbers, not a guess. A number
+that lands in a commit message or `CHANGES` is a measurement someone
+ran, not a target to defend in the next one.
+
+[pytest-benchmark]: https://pytest-benchmark.readthedocs.io/
+
 ## Debugging
 
 Stuck in a debugging loop: pause and acknowledge it rather than trying

@@ -206,6 +206,18 @@ cover for genuine flakiness. Tmux's own build failing still fails a separate,
 earlier step regardless of this change. Verified green across this branch's
 last several pushes on tmux's real git `master` before flipping.
 
+#### A benchmark suite (#758)
+
+`benchmarks/` measures command dispatch (`Server.cmd`), listing
+(`Server.sessions`/`.windows`/`.panes`), snapshot capture
+(`Pane.capture_pane`), and format decoding (`neo.parse_output`,
+`neo._split_records`), via [pytest-benchmark]. Run with `just bench`; it
+is a separate tier from the gates above, not part of them, and is not in
+`testpaths`. See {doc}`Contributing </project/contributing>` for where
+this fits alongside the gates.
+
+[pytest-benchmark]: https://pytest-benchmark.readthedocs.io/
+
 #### CI actions updated to current majors
 
 Workflow actions moved to their current major releases: `actions/checkout` v7,
