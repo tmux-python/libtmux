@@ -932,6 +932,36 @@ def test_select_layout_next_previous(session: Session) -> None:
     assert layout_after_prev == layout_before
 
 
+def test_select_layout_round_trip_is_byte_exact(session: Session) -> None:
+    """A saved ``window_layout`` fed back into ``select_layout`` is exact.
+
+    tmux 3.8 made ``#{window_layout}`` JSON for non-control clients, while
+    ``select-layout`` still accepts the classic grammar too. libtmux treats
+    the value as an opaque token on every version -- it never parses or
+    validates it -- so a saved layout must restore byte-for-byte regardless
+    of which form the running tmux emits.
+    """
+    window = session.new_window(window_name="test_layout_round_trip")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    saved = window.window_layout
+    assert saved is not None
+
+    window.select_layout("main-vertical")
+    window.refresh()
+    assert window.window_layout != saved
+
+    window.select_layout(saved)
+    window.refresh()
+    assert window.window_layout == saved
+
+
 def test_last_pane(session: Session) -> None:
     """Test Window.last_pane() selects the previously active pane."""
     window = session.new_window(window_name="test_last_pane")
