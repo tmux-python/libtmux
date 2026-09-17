@@ -131,12 +131,18 @@ def test_refresh_clears_a_field_that_became_empty(session: Session) -> None:
 def test_send_keys_and_capture_pane_raise_on_a_killed_pane(session: Session) -> None:
     """send_keys() and capture_pane() raise on a stale, killed-pane handle.
 
-    Regression for PY-5. Before this fix, ``send_keys`` returned ``None``
-    and ``capture_pane`` returned ``[]`` for the exact same target that
-    ``refresh()`` already reports as gone (``TmuxObjectDoesNotExist``) --
-    keystrokes went nowhere with no indication, and an empty capture was
-    indistinguishable from a blank pane. Raw tmux for the same target
-    exits 1 with ``can't find pane: ...`` (D2/D3).
+    A killed pane made ``send_keys`` return ``None`` and
+    ``capture_pane`` return ``[]`` for the exact same target that
+    ``refresh()`` already reports as gone
+    (``TmuxObjectDoesNotExist``) -- keystrokes went nowhere with no
+    indication, and an empty capture was indistinguishable from a
+    blank pane. Both, and ``enter``, now raise instead, carrying raw
+    tmux's own one-line ``can't find pane: ...`` stderr.
+
+    ``reset()`` is checked alongside them: it used to discard its
+    ``send-keys``/``clear-history`` command's result and return the
+    ``Pane`` unchanged instead of raising like every other typed
+    method here.
     """
     window = session.active_window
     dead = window.split(attach=False)
@@ -151,8 +157,35 @@ def test_send_keys_and_capture_pane_raise_on_a_killed_pane(session: Session) -> 
     with pytest.raises(exc.LibTmuxException, match="can't find pane"):
         dead.enter()
 
+    with pytest.raises(exc.LibTmuxException, match="can't find pane"):
+        dead.reset()
+
     with pytest.raises(exc.TmuxObjectDoesNotExist):
         dead.refresh()
+
+
+def test_split_raises_tmuxs_own_error_on_a_killed_pane(session: Session) -> None:
+    """split() raises tmux's own short error, not a dump of the pane.
+
+    split() raises tmux's own one-line ``split-window: can't find
+    pane: ...``, not
+    ``LibTmuxException(stderr, self.__dict__, self.window.panes)`` --
+    which embedded every field of the dead pane and its live siblings,
+    thousands of characters for what raw tmux reports in one line.
+    Every other typed method on a killed pane already raises that
+    shape.
+    """
+    window = session.active_window
+    dead = window.split(attach=False)
+    dead.kill()
+
+    with pytest.raises(
+        exc.LibTmuxException,
+        match=r"^split-window: can't find pane",
+    ) as exc_info:
+        dead.split()
+
+    assert "pane_active" not in str(exc_info.value)
 
 
 def test_send_keys(session: Session) -> None:
