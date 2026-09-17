@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import re
 import shlex
 import typing as t
 import warnings
@@ -877,12 +878,11 @@ class Window(
             String of the layout, 'even-horizontal', 'tiled', etc. Entering
             None (leaving this blank) is same as ``select-layout`` with no
             layout. In recent tmux versions, it picks the most recently
-            set layout. A value beginning with ``-`` (e.g. ``"-o"``, tmux's
-            own *undo* flag) is refused before reaching tmux -- no valid
-            layout begins with ``-``, and passing it through would either
-            run it as a flag or, on tmux 3.3/3.3a, crash the daemon (see
-            ``Raises``). An explicit empty string is also refused -- pass
-            ``None`` to omit the layout instead.
+            set layout. Anything else must be a preset name below or a
+            layout tmux reported through :attr:`window_layout`; any other
+            value, such as ``"-o"`` (tmux's own *undo* flag), is refused
+            before reaching tmux (see ``Raises``). An explicit empty string
+            is also refused -- pass ``None`` to omit the layout instead.
 
             'even-horizontal'
                 Panes are spread out evenly from left to right across the
@@ -899,8 +899,11 @@ class Window(
             'tiled'
                 Panes are spread out as evenly as possible over the window in
                 both rows and columns.
-            'custom'
-                Custom dimensions (see :term:`tmux(1)` manpages).
+            'main-horizontal-mirrored', 'main-vertical-mirrored'
+                The main pane at the bottom or right instead. tmux 3.5+.
+            A saved :attr:`window_layout`
+                The exact arrangement it describes: tmux's classic
+                checksum-prefixed string, or JSON on tmux 3.8+.
         spread : bool, optional
             Spread panes out evenly (``-E`` flag).
 
@@ -926,11 +929,14 @@ class Window(
         ValueError
             If both *layout* and a flag (*spread*, *next_layout*,
             *previous_layout*) are specified, if *layout* is an explicit
-            empty string, or if *layout* begins with ``-``. On tmux
-            3.3/3.3a, an invalid layout *string* crashes the daemon rather
-            than refusing cleanly (fixed upstream in 3.4) -- refusing a
-            hostile value before it reaches tmux avoids that regardless of
-            version, rather than only on the versions that refuse cleanly.
+            empty string, or if *layout* is neither a preset name nor a
+            layout string tmux reports. On tmux 3.3/3.3a a layout tmux
+            cannot parse crashes the daemon rather than refusing cleanly
+            (fixed upstream in 3.4), so the value is checked before it
+            reaches tmux on every version.
+        :exc:`libtmux.exc.VersionTooLow`
+            If *layout* is a mirrored preset below tmux 3.5, or JSON below
+            tmux 3.8, which those versions would read as unparseable.
 
         Notes
         -----
@@ -958,20 +964,8 @@ class Window(
             )
             raise ValueError(msg)
 
-        if layout and layout.startswith("-"):
-            # No valid layout begins with "-": a named preset is alphabetic,
-            # the classic form starts with digits (WxH,X,Y{...}), and JSON
-            # starts with "{". Refuse before this ever reaches tmux, rather
-            # than relying solely on the "--" separator below: on tmux
-            # 3.3/3.3a specifically, an invalid layout *string* (as "-o"
-            # becomes once "--" forces it to be read as one) frees an
-            # uninitialized pointer and crashes the whole daemon instead of
-            # refusing cleanly -- confirmed by hand, fixed upstream in 3.4.
-            msg = (
-                f"layout {layout!r} looks like a tmux flag, not a layout "
-                "value -- no valid layout begins with '-'"
-            )
-            raise ValueError(msg)
+        if layout:
+            _require_layout_value(layout, tmux_bin=self.server.tmux_bin)
 
         cmd = ["select-layout"]
 
@@ -2081,3 +2075,76 @@ class Window(
             replacement="Window.panes property",
             version="0.17.0",
         )
+
+
+_LAYOUT_PRESETS = frozenset(
+    {"even-horizontal", "even-vertical", "main-horizontal", "main-vertical", "tiled"},
+)
+_MIRRORED_LAYOUT_PRESETS = frozenset(
+    {"main-horizontal-mirrored", "main-vertical-mirrored"},
+)
+# tmux's layout_parse reads "%hx," and requires exactly five bytes consumed;
+# tmux itself always writes the checksum as four hex digits.
+_CLASSIC_LAYOUT = re.compile(r"[0-9a-fA-F]{4},")
+
+
+def _require_layout_value(layout: str, *, tmux_bin: str | None) -> None:
+    """Refuse a layout value tmux cannot parse, before tmux sees it.
+
+    tmux 3.3 and 3.3a exit on a layout ``select-layout`` cannot parse,
+    destroying every session on the socket, and ``--`` does not help: it
+    turns ``-o`` from the undo flag into exactly such a value.
+
+    tmux's own preset lookup (``layout_set_lookup``) is a prefix match, so
+    an unambiguous abbreviation like ``"tile"`` or ``"even-h"`` applies on
+    every tmux version and can never reach ``layout_parse`` (the crash path
+    above) -- it is accepted here too, once it resolves to exactly one
+    preset name among those the live tmux version actually has (mirrored
+    presets only exist on 3.5+, so an abbreviation ambiguous on a newer
+    version can be unambiguous on an older one that doesn't have them yet).
+    """
+    if layout in _LAYOUT_PRESETS or _CLASSIC_LAYOUT.match(layout):
+        return
+
+    since: str
+    what: str
+    if layout in _MIRRORED_LAYOUT_PRESETS:
+        since, what = "3.5", f"layout preset {layout!r}"
+    elif layout.startswith("{"):
+        since, what = "3.8", "a JSON layout"
+    else:
+        has_mirrored = has_gte_version("3.5", tmux_bin=tmux_bin)
+        live_presets = (
+            _LAYOUT_PRESETS | _MIRRORED_LAYOUT_PRESETS
+            if has_mirrored
+            else _LAYOUT_PRESETS
+        )
+        matches = sorted(name for name in live_presets if name.startswith(layout))
+        if len(matches) > 1:
+            msg = (
+                f"layout {layout!r} is ambiguous between {matches} -- use "
+                "a full preset name"
+            )
+            raise ValueError(msg)
+        if len(matches) == 1:
+            if matches[0] in _LAYOUT_PRESETS:
+                return
+            since, what = "3.5", f"layout preset {matches[0]!r}"
+        else:
+            below_version = []
+            if not has_mirrored:
+                below_version = sorted(
+                    name for name in _MIRRORED_LAYOUT_PRESETS if name.startswith(layout)
+                )
+            if len(below_version) == 1:
+                since, what = "3.5", f"layout preset {below_version[0]!r}"
+            else:
+                hint = " -- it looks like a tmux flag" if layout.startswith("-") else ""
+                msg = (
+                    f"layout {layout!r} is neither a preset name nor a "
+                    f"layout string tmux reported{hint}"
+                )
+                raise ValueError(msg)
+    if not has_gte_version(since, tmux_bin=tmux_bin):
+        msg = f"{what} needs tmux {since} or newer"
+        raise exc.VersionTooLow(msg)
