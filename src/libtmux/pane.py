@@ -1550,15 +1550,7 @@ class Pane(
 
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
-        if pane_cmd.stderr:
-            if "pane too small" in pane_cmd.stderr:
-                raise exc.LibTmuxException(pane_cmd.stderr)
-
-            raise exc.LibTmuxException(
-                pane_cmd.stderr,
-                self.__dict__,
-                self.window.panes,
-            )
+        raise_if_stderr(pane_cmd, "split-window")
 
         pane_output = pane_cmd.stdout[0]
 
@@ -2767,12 +2759,17 @@ class Pane(
         freshly-cleared grid between the terminal-state reset and the
         history clear.
 
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane is gone.
+
         Examples
         --------
         >>> pane.reset()
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
         """
-        self.server.cmd(
+        proc = self.server.cmd(
             "send-keys",
             "-t",
             self.pane_id,
@@ -2782,6 +2779,9 @@ class Pane(
             "-t",
             self.pane_id,
         )
+
+        raise_if_stderr(proc, "send-keys")
+
         return self
 
     #
