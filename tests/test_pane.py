@@ -85,8 +85,10 @@ def test_dead_pane_pid_has_no_numeric_coercion(session: Session) -> None:
     tmux 3.8 changed ``#{pane_pid}`` from ``"0"`` to an empty string for a
     pane whose process has already exited (libtmux-java crashed on exactly
     this). libtmux stores ``pane_pid`` as ``str | None`` and never calls
-    ``int()`` on it, so both shapes must round-trip through a live
-    ``refresh()`` without raising.
+    ``int()`` on it, so every shape must round-trip through a live
+    ``refresh()`` without raising: a numeric pid, or -- since
+    ``refresh()`` clears a field tmux now reports empty rather than
+    keeping its last value -- ``None`` on tmux 3.8+.
     """
     window = session.new_window(window_name="dead_pane_pid")
     pane = window.active_pane
@@ -100,7 +102,30 @@ def test_dead_pane_pid_has_no_numeric_coercion(session: Session) -> None:
 
     retry_until(_pane_is_dead, 3, raises=True)
 
-    assert pane.pane_pid == "" or (pane.pane_pid or "").isdigit()
+    assert pane.pane_pid is None or (pane.pane_pid or "").isdigit()
+
+
+def test_refresh_clears_a_field_that_became_empty(session: Session) -> None:
+    """refresh() clears a field tmux now reports empty.
+
+    The row parser drops empty values, so ``Obj._refresh`` must set
+    every field ``get_output_format`` resolves, clearing to ``None``
+    when it is absent from the row -- a title cleared with
+    ``select-pane -T ''`` after a real one must match a fresh query
+    for the same pane, not keep its last non-empty value.
+    """
+    pane = session.active_pane
+    assert pane is not None
+
+    pane.set_title("abc")
+    assert pane.pane_title == "abc"
+
+    pane.set_title("")
+    assert pane.pane_title is None
+
+    fresh = session.server.panes.get(pane_id=pane.pane_id)
+    assert fresh is not None
+    assert fresh.pane_title is None
 
 
 def test_send_keys_and_capture_pane_raise_on_a_killed_pane(session: Session) -> None:
