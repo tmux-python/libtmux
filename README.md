@@ -129,8 +129,9 @@ required.
 Every object has a `.cmd()` escape hatch that honors socket name and path:
 
 ```python
->>> server = Server(socket_name='libtmux_doctest')
->>> server.cmd('display-message', 'hello world')
+>>> from libtmux.server import Server
+>>> with Server(socket_name='libtmux_doctest') as server:
+...     server.cmd('display-message', 'hello world')
 <libtmux...>
 ```
 
