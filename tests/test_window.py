@@ -1110,6 +1110,105 @@ def test_select_layout_dash_o_is_a_layout_not_the_undo_flag(session: Session) ->
     assert window.server.is_alive()
 
 
+@pytest.mark.parametrize(
+    "value",
+    ["garbage", "no-such-preset", "next", "zzzz,80x24,0,0,0", "{not json"],
+)
+def test_select_layout_refuses_a_value_tmux_cannot_parse(
+    session: Session,
+    value: str,
+) -> None:
+    """Only a preset name or a layout tmux reported reaches tmux.
+
+    On tmux 3.3/3.3a any unparseable layout, not only one beginning with
+    ``-``, exits the daemon; without the refusal the server is gone there.
+    A JSON-looking value is refused only below 3.8, where it is unparseable.
+    """
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="test_layout_unparseable")
+    if value.startswith("{") and not has_gte_version(
+        "3.8",
+        tmux_bin=session.server.tmux_bin,
+    ):
+        with pytest.raises(exc.VersionTooLow, match=r"3\.8"):
+            window.select_layout(value)
+    elif value.startswith("{"):
+        with pytest.raises(exc.LibTmuxException):
+            window.select_layout(value)
+    else:
+        with pytest.raises(ValueError, match=r"neither a preset name"):
+            window.select_layout(value)
+    assert window.server.is_alive()
+
+
+@pytest.mark.parametrize("value", ["tile", "even-h"])
+def test_select_layout_accepts_a_unique_preset_prefix(
+    session: Session,
+    value: str,
+) -> None:
+    """A prefix that resolves to exactly one preset applies.
+
+    tmux's own ``layout_set_lookup`` is a prefix match: ``"tile"`` and
+    ``"even-h"`` each name exactly one preset (``tiled``,
+    ``even-horizontal``) and apply on every supported tmux version,
+    including 3.3a, where an unparseable value would crash the daemon --
+    a unique prefix never reaches that path.
+    """
+    window = session.new_window(window_name="test_layout_prefix")
+    window.select_layout(value)
+    assert window.server.is_alive()
+
+
+def test_select_layout_refuses_an_ambiguous_prefix(session: Session) -> None:
+    """A prefix matching more than one preset is refused, naming both.
+
+    ``"even-"`` prefixes both ``even-horizontal`` and ``even-vertical`` on
+    every version; raw tmux refuses it cleanly ("invalid layout: even-"),
+    and the client-side guard does too, naming the candidates in its
+    message.
+    """
+    window = session.new_window(window_name="test_layout_ambiguous")
+    with pytest.raises(ValueError, match="is ambiguous between"):
+        window.select_layout("even-")
+    assert window.server.is_alive()
+
+
+def test_select_layout_prefix_ambiguity_is_scoped_to_the_live_version(
+    session: Session,
+) -> None:
+    """A prefix's ambiguity depends on which presets the live tmux has.
+
+    ``"main-h"`` uniquely names ``main-horizontal`` below tmux 3.5, where
+    the mirrored presets don't exist yet, but is ambiguous with
+    ``main-horizontal-mirrored`` on 3.5+ -- confirmed against raw tmux on
+    3.3a (applies) and 3.7c (refused, "invalid layout: main-h") before
+    this fix existed.
+    """
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="test_layout_prefix_scoped")
+    if has_gte_version("3.5", tmux_bin=session.server.tmux_bin):
+        with pytest.raises(ValueError, match="is ambiguous between"):
+            window.select_layout("main-h")
+    else:
+        window.select_layout("main-h")
+    assert window.server.is_alive()
+
+
+def test_select_layout_mirrored_preset_needs_tmux_3_5(session: Session) -> None:
+    """A mirrored preset below 3.5 is an unknown name to tmux, and fatal on 3.3a."""
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="test_layout_mirrored")
+    if has_gte_version("3.5", tmux_bin=session.server.tmux_bin):
+        window.select_layout("main-vertical-mirrored")
+    else:
+        with pytest.raises(exc.VersionTooLow, match=r"3\.5"):
+            window.select_layout("main-vertical-mirrored")
+    assert window.server.is_alive()
+
+
 def test_select_layout_dash_o_crashes_tmux_3_3a_if_forced_through(
     server: Server,
 ) -> None:
