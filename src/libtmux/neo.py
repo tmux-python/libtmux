@@ -882,6 +882,15 @@ class Obj:
         the same precondition explicitly so the guarantee survives
         ``python -O``, where an ``assert`` would be stripped.
 
+        :func:`parse_output` drops empty values, so *obj* only carries the
+        fields tmux reported non-empty. Every field the live *list_cmd*/
+        version's template queries is set here, not only the ones present in
+        *obj*: a field absent from the row is a field tmux now reports
+        empty, and must clear to ``None`` rather than keep its previous
+        value -- otherwise a title cleared with ``select-pane -T ''`` or a
+        dead pane's now-empty ``#{pane_pid}`` would read as stale data
+        forever.
+
         Raises
         ------
         ValueError
@@ -901,8 +910,10 @@ class Obj:
         )
         assert obj is not None
         if obj is not None:
-            for k, v in obj.items():
-                setattr(self, k, v)
+            tmux_version = str(get_version(tmux_bin=self.server.tmux_bin))
+            fields, _ = get_output_format(list_cmd, tmux_version)
+            for k in fields:
+                setattr(self, k, obj.get(k))
 
 
 @functools.cache
