@@ -979,9 +979,8 @@ class Window(
             cmd.append("-p")
 
         if layout:  # tmux allows select-layout without args
-            # "--" stops tmux's own option parsing: defense in depth so a
-            # layout value is read as the layout, never as a flag, even if
-            # it reaches this point some other way.
+            # "--" stops tmux's own option parsing, so layout is always
+            # read as the value, never as a flag.
             cmd.extend(["--", layout])
 
         proc = self.cmd(*cmd)
