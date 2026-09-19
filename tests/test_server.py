@@ -740,6 +740,106 @@ def test_owned_cleanup_and_death_survive_a_bare_except_in_the_block(
     )
 
 
+_OWNED_CLEANUP_FAILURE_CHILD_SCRIPT = """\
+import pathlib
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+from libtmux.server import Server
+
+# Force the signal handler's own cleanup to fail, so the test proves
+# os.kill() still runs afterward rather than being skipped by the
+# exception cleanup raised.
+_real_cmd = Server.cmd
+
+
+def _cmd_fails_kill_server(self, cmd, *args, **kwargs):
+    if cmd == "kill-server":
+        msg = "simulated kill-server failure"
+        raise RuntimeError(msg)
+    return _real_cmd(self, cmd, *args, **kwargs)
+
+
+Server.cmd = _cmd_fails_kill_server
+
+marker = pathlib.Path(sys.argv[1])
+with Server.owned() as server:
+    server.new_session(session_name="io")
+    marker.write_text(str(server.socket_path))
+    time.sleep(30)
+"""
+
+
+def test_owned_terminates_by_signal_even_when_cleanup_fails(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The signal still kills the process when the handler's cleanup fails.
+
+    Regression for a real defect: ``_terminate`` ran ``_cleanup()`` then
+    ``os.kill()`` as two sequential statements, so a cleanup failure (here,
+    a ``kill-server`` call raising) skipped ``os.kill()`` -- the exception
+    took the exit path instead of the signal, so the child exited with a
+    plain nonzero status from an unhandled exception rather than being
+    killed by SIGTERM, letting a broad ``except`` around the block observe
+    it.
+    """
+    script = tmp_path / "owned_cleanup_failure_child.py"
+    script.write_text(_OWNED_CLEANUP_FAILURE_CHILD_SCRIPT)
+    marker = tmp_path / "socket_path.txt"
+
+    proc = subprocess.Popen(
+        [sys.executable, str(script), str(marker)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    socket_path: pathlib.Path | None = None
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.exists() and time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.exists(), (
+            f"child never reported its socket_path; "
+            f"exited={proc.poll()!r} stderr follows on failure"
+        )
+        socket_path = pathlib.Path(marker.read_text())
+
+        proc.send_signal(signal.SIGTERM)
+        try:
+            returncode = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            pytest.fail(
+                "child did not exit within 5s of SIGTERM; a failing "
+                "cleanup blocked the re-raised signal"
+            )
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        stdout, stderr = proc.communicate()
+        # The simulated kill-server failure prevented the child's own
+        # cleanup from reaping its real daemon; do it here so the suite
+        # doesn't leak a tmux process.
+        if socket_path is not None:
+            Server(socket_path=socket_path).cmd("kill-server")
+            shutil.rmtree(socket_path.parent, ignore_errors=True)
+
+    assert returncode == -signal.SIGTERM, (
+        f"expected exit {-signal.SIGTERM} (killed by SIGTERM even though "
+        f"cleanup failed), got {returncode}\n"
+        f"stdout:\n{stdout}\nstderr:\n{stderr}"
+    )
+
+
 def test_owned_session_cleans_up_by_id_after_rename(
     server: Server,
     session: Session,

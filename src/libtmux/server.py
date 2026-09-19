@@ -357,34 +357,27 @@ class Server(
         Notes
         -----
         Cleanup retains its original endpoint if the yielded handle changes.
-        A cleanup failure propagates and leaves the socket directory available
-        for retry; a body exception remains in the exception chain.
+        Outside a trapped signal, a cleanup failure propagates and leaves
+        the socket directory available for retry; a body exception remains
+        in the exception chain.
 
         SIGTERM and SIGHUP are trapped for the scope's duration, on the
-        main thread, when nothing has already installed a handler or
-        ignored them: Python already turns SIGINT into
-        ``KeyboardInterrupt``, which the cleanup above catches like any
-        other exception, but SIGTERM (``timeout``, ``kill``, a cancelled
-        CI job, ``docker stop``, systemd) and SIGHUP (closing the
-        terminal) do not raise anything by default -- their default
-        disposition ends the interpreter without unwinding, which used to
-        leave the private daemon and socket directory behind. Trapping
-        them runs this method's own cleanup from the handler itself, then
-        restores the signal's default disposition and re-raises it against
-        this process, so the process still dies by the signal -- a parent
-        sees a signal exit (e.g. ``-15``), not exit code ``143``/``129`` --
-        and no ``except`` anywhere in the block, however broad, can keep it
-        running: nothing here depends on a Python exception unwinding
-        through the block's own code to reach cleanup. This also means
-        only this endpoint's cleanup runs; anything else the block would
-        have unwound through (the caller's own ``finally``/``with``
-        blocks) does not get a chance to, same as if the signal had never
-        been trapped at all. A caller that wants its own graceful shutdown
-        on these signals installs its own handler before entering the
-        scope -- ``owned()`` only installs where the target had its default
-        disposition (a caller-installed handler or an explicit ignore is
-        left alone) -- and is restored on exit if nothing inside the block
-        replaced it with something else.
+        main thread, wherever nothing already handles or ignores them --
+        unlike SIGINT, which Python turns into ``KeyboardInterrupt`` before
+        this code ever sees it, their default disposition ends the
+        interpreter without unwinding. The handler runs this method's own
+        cleanup directly, logging instead of raising if cleanup itself
+        fails, then restores the signal's default disposition and
+        re-raises it against this process: the process still dies by the
+        signal -- a parent sees a signal exit (e.g. ``-15``), not exit code
+        ``143``/``129`` -- so no ``except`` in the block, however broad,
+        can catch anything to keep it running, and the caller's own
+        ``finally``/``with`` blocks never get a chance to run, same as if
+        the signal had never been trapped. Install your own handler before
+        entering the scope for a graceful shutdown instead -- ``owned()``
+        only installs where the target had its default disposition, and
+        restores what it installed unless the block replaced it with
+        something else.
 
         Examples
         --------
@@ -437,7 +430,12 @@ class Server(
             # Cleanup runs here (not via a raised exception, so no
             # ``except`` in the block can catch it); SIG_DFL is restored
             # first, so this re-raise kills the process by the signal.
-            _cleanup()
+            # os.kill() must still run when cleanup itself fails, or the
+            # exception -- not the signal -- becomes the exit path.
+            try:
+                _cleanup()
+            except Exception:
+                logger.exception("owned() cleanup failed on a trapped signal")
             os.kill(os.getpid(), signum)
 
         for sig in _OWNED_TERMINATION_SIGNALS:
