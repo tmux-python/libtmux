@@ -427,15 +427,15 @@ class Server(
                 shutil.rmtree(directory)
 
         def _terminate(signum: int, frame: object) -> None:
-            # Cleanup runs here (not via a raised exception, so no
-            # ``except`` in the block can catch it); SIG_DFL is restored
-            # first, so this re-raise kills the process by the signal.
-            # os.kill() must still run when cleanup itself fails, or the
-            # exception -- not the signal -- becomes the exit path.
+            # Cleanup runs here, not via a raised exception, so no
+            # ``except`` in the block can catch it.
             try:
                 _cleanup()
             except Exception:
+                # Still kill by the signal below: a raised exception here
+                # would replace the signal as the exit path instead.
                 logger.exception("owned() cleanup failed on a trapped signal")
+            # SIG_DFL is already restored, so this kills the process.
             os.kill(os.getpid(), signum)
 
         for sig in _OWNED_TERMINATION_SIGNALS:
