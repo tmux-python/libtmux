@@ -2687,6 +2687,11 @@ def test_server_access_deny_precedes_the_positional_user(
     positional, so a user emitted before a flag ends flag parsing and the call
     is refused as "too many arguments" before the lookup runs.
     """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip("server-access added in tmux 3.3")
+
     captured: list[tuple[str, ...]] = []
 
     class _StubResult:
