@@ -377,7 +377,10 @@ class Server(
         entering the scope for a graceful shutdown instead -- ``owned()``
         only installs where the target had its default disposition, and
         restores what it installed unless the block replaced it with
-        something else.
+        something else. A nested ``owned()`` scope therefore installs
+        nothing of its own -- the outer scope's handler is already there --
+        so a signal during the inner block runs only the outer cleanup and
+        leaks the inner endpoint.
 
         Examples
         --------
@@ -2726,6 +2729,12 @@ class Server(
         Existing names are rejected. Cleanup follows the created session's
         ID after a rename and leaves a replacement session or daemon alone.
         Deleting the session inside the block makes cleanup a no-op.
+
+        Unlike :meth:`Server.owned`, this scope traps no signal: SIGTERM or
+        SIGHUP during the block ends the process on its default disposition
+        before the cleanup below runs, leaking the session. Nest the block
+        inside :meth:`Server.owned` for signal-safe cleanup, or install your
+        own handler first.
 
         Parameters
         ----------
