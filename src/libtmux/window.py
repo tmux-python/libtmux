@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import re
 import shlex
 import typing as t
 import warnings
@@ -147,6 +148,9 @@ class Window(
         exc_tb: types.TracebackType | None,
     ) -> None:
         """Exit the context, killing the window if it exists.
+
+        This also destroys a window obtained through lookup, not only one
+        created in this process. Keep borrowed handles outside a ``with`` block.
 
         Parameters
         ----------
@@ -385,6 +389,11 @@ class Window(
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Unlike :attr:`Server.panes`, not lenient: any tmux failure here
+        propagates as :exc:`~libtmux.exc.LibTmuxException` rather than
+        collapsing to an empty list. See ``AGENTS.md``'s "List-returning
+        accessors" section.
         """
         panes: list[Pane] = [
             Pane(server=self.server, **obj)
@@ -406,7 +415,9 @@ class Window(
         """Panes in this window, optionally filtered by tmux.
 
         Like :attr:`Window.panes` but with a ``filter`` kwarg passed to
-        ``$ tmux list-panes -t <window> -f <filter>``.
+        ``$ tmux list-panes -t <window> -f <filter>``. Not lenient, like
+        :attr:`Window.panes`: any tmux failure propagates as
+        :exc:`~libtmux.exc.LibTmuxException`.
 
         Parameters
         ----------
@@ -655,12 +666,16 @@ class Window(
             Environment variables for the new pane (``-e``).
         width : int, optional
             Width in cells (``-x``).
+            Includes borders on tmux 3.8+.
         height : int, optional
             Height in cells (``-y``).
+            Includes borders on tmux 3.8+.
         x : int, optional
             X position in cells (``-X``).
+            Places the outer border on tmux 3.8+.
         y : int, optional
             Y position in cells (``-Y``).
+            Places the outer border on tmux 3.8+.
         zoom : bool, optional
             Zoom the pane (``-Z``).
         empty : bool, optional
@@ -863,7 +878,11 @@ class Window(
             String of the layout, 'even-horizontal', 'tiled', etc. Entering
             None (leaving this blank) is same as ``select-layout`` with no
             layout. In recent tmux versions, it picks the most recently
-            set layout.
+            set layout. Anything else must be a preset name below or a
+            layout tmux reported through :attr:`window_layout`; any other
+            value, such as ``"-o"`` (tmux's own *undo* flag), is refused
+            before reaching tmux (see ``Raises``). An explicit empty string
+            is also refused -- pass ``None`` to omit the layout instead.
 
             'even-horizontal'
                 Panes are spread out evenly from left to right across the
@@ -880,8 +899,11 @@ class Window(
             'tiled'
                 Panes are spread out as evenly as possible over the window in
                 both rows and columns.
-            'custom'
-                Custom dimensions (see :term:`tmux(1)` manpages).
+            'main-horizontal-mirrored', 'main-vertical-mirrored'
+                The main pane at the bottom or right instead. tmux 3.5+.
+            A saved :attr:`window_layout`
+                The exact arrangement it describes: tmux's classic
+                checksum-prefixed string, or JSON on tmux 3.8+.
         spread : bool, optional
             Spread panes out evenly (``-E`` flag).
 
@@ -906,12 +928,44 @@ class Window(
             If tmux returns an error.
         ValueError
             If both *layout* and a flag (*spread*, *next_layout*,
-            *previous_layout*) are specified.
+            *previous_layout*) are specified, if *layout* is an explicit
+            empty string, or if *layout* is neither a preset name nor a
+            layout string tmux reports. On tmux 3.3/3.3a a layout tmux
+            cannot parse crashes the daemon rather than refusing cleanly
+            (fixed upstream in 3.4), so the value is checked before it
+            reaches tmux on every version.
+        :exc:`libtmux.exc.VersionTooLow`
+            If *layout* is a mirrored preset below tmux 3.5, or JSON below
+            tmux 3.8, which those versions would read as unparseable.
+
+        Notes
+        -----
+        Feeding a saved :attr:`~libtmux.Window.window_layout` back into
+        *layout* restores the shape exactly on every supported tmux
+        version, but *which pane lands in which cell* is only guaranteed
+        on tmux 3.8+: from that version, a plain (non-control-mode)
+        reader -- what every libtmux caller is, since :mod:`libtmux`
+        exposes no public control-mode client -- receives a JSON layout
+        carrying each pane's id, and restoring it puts each pane back
+        where it was. Before 3.8, the saved value is tmux's classic
+        layout string, which carries geometry only; restoring it can
+        rotate which pane occupies which position even though the
+        resulting arrangement is identical.
         """
         flags = (spread, next_layout, previous_layout)
         if layout and any(flags):
             msg = "Cannot specify both layout and spread/next_layout/previous_layout"
             raise ValueError(msg)
+
+        if layout is not None and layout == "":
+            msg = (
+                "layout must not be an empty string -- pass layout=None to "
+                "omit the layout (tmux then reapplies the current one)"
+            )
+            raise ValueError(msg)
+
+        if layout:
+            _require_layout_value(layout, tmux_bin=self.server.tmux_bin)
 
         cmd = ["select-layout"]
 
@@ -925,7 +979,9 @@ class Window(
             cmd.append("-p")
 
         if layout:  # tmux allows select-layout without args
-            cmd.append(layout)
+            # "--" stops tmux's own option parsing, so layout is always
+            # read as the value, never as a flag.
+            cmd.extend(["--", layout])
 
         proc = self.cmd(*cmd)
 
@@ -1722,6 +1778,30 @@ class Window(
         """
         return self.window_width
 
+    @property
+    def width_cells(self) -> int | None:
+        """Captured width in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`width` alias retains its raw string.
+        """
+        return int(self.window_width) if self.window_width is not None else None
+
+    @property
+    def height_cells(self) -> int | None:
+        """Captured height in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`height` alias retains its raw string.
+        """
+        return int(self.window_height) if self.window_height is not None else None
+
+    @property
+    def is_active(self) -> bool | None:
+        """Captured active flag within the session, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.window_active)) if self.window_active is not None else None
+
     #
     # Legacy: Redundant stuff we want to remove
     #
@@ -1994,3 +2074,76 @@ class Window(
             replacement="Window.panes property",
             version="0.17.0",
         )
+
+
+_LAYOUT_PRESETS = frozenset(
+    {"even-horizontal", "even-vertical", "main-horizontal", "main-vertical", "tiled"},
+)
+_MIRRORED_LAYOUT_PRESETS = frozenset(
+    {"main-horizontal-mirrored", "main-vertical-mirrored"},
+)
+# tmux's layout_parse reads "%hx," and requires exactly five bytes consumed;
+# tmux itself always writes the checksum as four hex digits.
+_CLASSIC_LAYOUT = re.compile(r"[0-9a-fA-F]{4},")
+
+
+def _require_layout_value(layout: str, *, tmux_bin: str | None) -> None:
+    """Refuse a layout value tmux cannot parse, before tmux sees it.
+
+    tmux 3.3 and 3.3a exit on a layout ``select-layout`` cannot parse,
+    destroying every session on the socket, and ``--`` does not help: it
+    turns ``-o`` from the undo flag into exactly such a value.
+
+    tmux's own preset lookup (``layout_set_lookup``) is a prefix match, so
+    an unambiguous abbreviation like ``"tile"`` or ``"even-h"`` applies on
+    every tmux version and can never reach ``layout_parse`` (the crash path
+    above) -- it is accepted here too, once it resolves to exactly one
+    preset name among those the live tmux version actually has (mirrored
+    presets only exist on 3.5+, so an abbreviation ambiguous on a newer
+    version can be unambiguous on an older one that doesn't have them yet).
+    """
+    if layout in _LAYOUT_PRESETS or _CLASSIC_LAYOUT.match(layout):
+        return
+
+    since: str
+    what: str
+    if layout in _MIRRORED_LAYOUT_PRESETS:
+        since, what = "3.5", f"layout preset {layout!r}"
+    elif layout.startswith("{"):
+        since, what = "3.8", "a JSON layout"
+    else:
+        has_mirrored = has_gte_version("3.5", tmux_bin=tmux_bin)
+        live_presets = (
+            _LAYOUT_PRESETS | _MIRRORED_LAYOUT_PRESETS
+            if has_mirrored
+            else _LAYOUT_PRESETS
+        )
+        matches = sorted(name for name in live_presets if name.startswith(layout))
+        if len(matches) > 1:
+            msg = (
+                f"layout {layout!r} is ambiguous between {matches} -- use "
+                "a full preset name"
+            )
+            raise ValueError(msg)
+        if len(matches) == 1:
+            if matches[0] in _LAYOUT_PRESETS:
+                return
+            since, what = "3.5", f"layout preset {matches[0]!r}"
+        else:
+            below_version = []
+            if not has_mirrored:
+                below_version = sorted(
+                    name for name in _MIRRORED_LAYOUT_PRESETS if name.startswith(layout)
+                )
+            if len(below_version) == 1:
+                since, what = "3.5", f"layout preset {below_version[0]!r}"
+            else:
+                hint = " -- it looks like a tmux flag" if layout.startswith("-") else ""
+                msg = (
+                    f"layout {layout!r} is neither a preset name nor a "
+                    f"layout string tmux reported{hint}"
+                )
+                raise ValueError(msg)
+    if not has_gte_version(since, tmux_bin=tmux_bin):
+        msg = f"{what} needs tmux {since} or newer"
+        raise exc.VersionTooLow(msg)

@@ -190,10 +190,10 @@ cannot pass, fix the example or fix the code.
 doctest in the suite runs, so a block never needs an import or a setup
 preamble to reach these names: `server`, `session`, `window`, `pane`,
 `Server`, `Session`, `Window`, `Pane`, `Client`, `ControlMode`,
-`control_mode`, `monkeypatch`, `request`. It only does this inside an
-actual doctest item and only when `tmux` is on `PATH` — a doctest that
-uses one of these names with no `tmux` binary available fails with a
-`NameError`, not a skip.
+`control_mode`, `retry_until`, `monkeypatch`, `request`. It only does
+this inside an actual doctest item and only when `tmux` is on `PATH` —
+a doctest that uses one of these names with no `tmux` binary available
+fails with a `NameError`, not a skip.
 
 **The `Server` trap.** `conftest.py` assigns `doctest_namespace["Server"]`
 twice: first to the real `libtmux.server.Server` class, then — a few

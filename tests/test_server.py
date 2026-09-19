@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import os
 import pathlib
+import shlex
 import shutil
+import signal
 import subprocess
+import sys
+import threading
 import time
 import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import common, exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -285,6 +291,115 @@ def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
     server.raise_if_dead()
 
 
+def test_is_alive_propagates_timeout(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """A wedged server is not reported ``False`` -- it is unknown, not dead.
+
+    A bare ``except Exception: return False`` would swallow
+    :exc:`~libtmux.exc.TmuxTimeout` into "dead", which is wrong for a
+    server that is merely slow to answer; a caller told "dead" may start
+    a second server alongside one that is still there. Bounded by
+    ``Server.timeout`` rather than the stub's full 30s sleep.
+    """
+    binary, _pid_file = hanging_tmux
+    wedged = Server(tmux_bin=binary, timeout=0.2)
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        wedged.is_alive()
+    assert time.monotonic() - started < 5
+
+
+def test_raise_if_dead_propagates_timeout(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """``raise_if_dead`` honors ``Server.timeout`` instead of blocking.
+
+    It used to run ``subprocess.check_call`` directly, bypassing
+    ``Server.cmd`` and the server-wide timeout entirely, so this could
+    block indefinitely against a wedged server. Bounded here by
+    ``Server.timeout`` rather than the stub's full 30s sleep.
+    """
+    binary, _pid_file = hanging_tmux
+    wedged = Server(tmux_bin=binary, timeout=0.2)
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        wedged.raise_if_dead()
+    assert time.monotonic() - started < 5
+
+
+def test_cmd_timeout_falls_back_to_server_default(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """Omitting ``timeout`` on ``Server.cmd`` uses the server's own bound."""
+    binary, _pid_file = hanging_tmux
+    bounded = Server(tmux_bin=binary, timeout=0.2)
+
+    with pytest.raises(exc.TmuxTimeout):
+        bounded.cmd("list-sessions")
+
+
+def test_cmd_timeout_none_opts_out_of_the_server_default(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """An explicit ``timeout=None`` on ``Server.cmd`` overrides the server bound.
+
+    ``timeout=self.timeout if timeout is None else timeout`` used to
+    collapse an explicit opt-out onto the server default -- indistinguishable
+    from omitting it -- so a caller could never run one command unbounded on
+    a server that has a timeout.
+    """
+    binary, pid_file = hanging_tmux
+    bounded = Server(tmux_bin=binary, timeout=0.2)
+    outcome: list[object] = []
+
+    def call() -> None:
+        try:
+            outcome.append(bounded.cmd("list-sessions", timeout=None))
+        except BaseException as e:  # noqa: BLE001
+            outcome.append(e)
+
+    thread = threading.Thread(target=call, daemon=True)
+    thread.start()
+    thread.join(timeout=0.5)
+    assert thread.is_alive(), "explicit timeout=None must not use the server bound"
+
+    # Unblock the thread directly; libtmux's own timeout/kill path is what
+    # this test verifies was never invoked.
+    os.kill(int(pid_file.read_text()), signal.SIGKILL)
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+
+    assert len(outcome) == 1
+    assert not isinstance(outcome[0], exc.TmuxTimeout)
+
+
+def test_context_manager_exit_kills_despite_is_alive_timeout(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``__exit__`` still attempts a kill when ``is_alive`` times out.
+
+    A wedged server is "unknown", not "dead" -- treating the timeout as
+    "dead" would skip :meth:`Server.kill` and leak the daemon. ``__exit__``
+    assumes alive and attempts the kill regardless.
+    """
+    killed: list[bool] = []
+    monkeypatch.setattr(server, "kill", lambda *a, **kw: killed.append(True))
+
+    def _boom() -> bool:
+        raise exc.TmuxTimeout(["tmux", "list-sessions"], 0.2)
+
+    monkeypatch.setattr(server, "is_alive", _boom)
+
+    with server:
+        pass
+
+    assert killed == [True]
+
+
 def test_on_init(server: Server) -> None:
     """Verify on_init callback is called during Server initialization."""
     called_with: list[Server] = []
@@ -363,6 +478,610 @@ def test_server_context_manager(TestServer: type[Server]) -> None:
 
     # Server should be killed after exiting context
     assert not server.is_alive()
+
+
+def test_owned_server_removes_unused_socket_directory(tmp_path: pathlib.Path) -> None:
+    """An unused scope needs no executable and removes its private directory."""
+    directory: pathlib.Path | None = None
+    try:
+        with Server.owned(tmux_bin=tmp_path / "missing-tmux") as owned:
+            assert owned.socket_path is not None
+            socket_path = pathlib.Path(owned.socket_path)
+            directory = socket_path.parent
+            assert directory.is_dir()
+            assert not socket_path.exists()
+        assert not directory.exists()
+    finally:
+        if directory is not None:
+            shutil.rmtree(directory, ignore_errors=True)
+
+
+def test_owned_server_keeps_its_private_endpoint(
+    server: Server,
+    session: Session,
+) -> None:
+    """Cleanup targets the created endpoint even if the yielded handle changes."""
+    with Server.owned(tmux_bin=server.tmux_bin) as owned:
+        owned.new_session("temporary")
+        assert owned.socket_path is not None
+        socket_path = pathlib.Path(owned.socket_path)
+        assert socket_path.parent.stat().st_mode & 0o777 == 0o700
+        assert owned.is_alive()
+        owned.socket_path = server.socket_path
+        owned.socket_name = server.socket_name
+
+    assert not socket_path.parent.exists()
+    assert not Server(socket_path=socket_path).is_alive()
+    assert session in server.sessions
+
+
+def test_owned_server_socket_path_equals_the_same_endpoint_by_string(
+    server: Server,
+) -> None:
+    """``Server.owned``'s endpoint compares equal to itself addressed by ``str``.
+
+    ``owned`` builds ``socket_path`` as a ``pathlib.Path``. ``__eq__``
+    compares ``socket_path`` by value, and ``Path("/x") != "/x"``, so
+    passing that ``Path`` straight through used to make the owned server
+    compare unequal to the identical endpoint addressed by string --
+    unlike every other constructor, which only ever sees a ``str``.
+    """
+    with Server.owned(tmux_bin=server.tmux_bin) as owned:
+        assert owned.socket_path is not None
+        assert isinstance(owned.socket_path, str)
+        by_string = Server(socket_path=str(owned.socket_path), tmux_bin=server.tmux_bin)
+        assert owned == by_string
+
+
+def test_owned_server_cleans_up_after_body_failure(server: Server) -> None:
+    """An exception still terminates the private daemon and removes its socket."""
+    body_error = RuntimeError("body failed")
+    with (
+        pytest.raises(RuntimeError, match="body failed"),
+        Server.owned(tmux_bin=server.tmux_bin) as owned,
+    ):
+        owned.new_session("temporary")
+        assert owned.socket_path is not None
+        socket_path = pathlib.Path(owned.socket_path)
+        raise body_error
+    assert not socket_path.parent.exists()
+
+
+_OWNED_SIGNAL_CHILD_SCRIPT = """\
+import pathlib
+import signal
+import sys
+import time
+
+# Reset to the default disposition explicitly: SIG_IGN survives exec, and
+# an inherited ignore would make this child immune to the very signal the
+# test is about to send, hanging the test for an unrelated reason.
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+from libtmux.server import Server
+
+marker = pathlib.Path(sys.argv[1])
+with Server.owned() as server:
+    server.new_session(session_name="io")
+    marker.write_text(str(server.socket_path))
+    time.sleep(30)
+"""
+
+
+@pytest.mark.parametrize(
+    "sig",
+    [signal.SIGTERM, signal.SIGHUP],
+    ids=["SIGTERM", "SIGHUP"],
+)
+def test_owned_cleans_up_on_termination_signal(
+    tmp_path: pathlib.Path,
+    sig: signal.Signals,
+) -> None:
+    """SIGTERM and SIGHUP trigger Server.owned()'s cleanup.
+
+    Regression for a real defect: cleanup lived only in the context
+    manager's own ``finally``, which never ran on the default
+    disposition of SIGTERM or SIGHUP -- unlike SIGINT, which Python
+    already turns into ``KeyboardInterrupt`` before this code ever sees
+    it. Drives a *real* child process and sends it a *real* signal
+    end to end (not a direct call to the handler function), so a fix
+    that only works when invoked from within the same interpreter
+    cannot pass this by accident.
+
+    The child dies by the signal: cleanup runs from the handler
+    itself, which re-raises against the process with the signal's
+    default disposition restored, so ``proc.returncode`` is negative
+    (``subprocess``'s convention for "killed by signal N").
+    """
+    script = tmp_path / "owned_signal_child.py"
+    script.write_text(_OWNED_SIGNAL_CHILD_SCRIPT)
+    marker = tmp_path / "socket_path.txt"
+
+    proc = subprocess.Popen(
+        [sys.executable, str(script), str(marker)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.exists() and time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.exists(), (
+            f"child never reported its socket_path; "
+            f"exited={proc.poll()!r} stderr follows on failure"
+        )
+        socket_path = pathlib.Path(marker.read_text())
+
+        proc.send_signal(sig)
+        try:
+            returncode = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            pytest.fail(
+                f"child did not exit within 5s of {sig.name}; "
+                "the signal leaked the daemon it was meant to reap"
+            )
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        stdout, stderr = proc.communicate()
+
+    assert returncode == -sig, (
+        f"expected exit {-sig} (killed by {sig.name}), got {returncode}\n"
+        f"stdout:\n{stdout}\nstderr:\n{stderr}"
+    )
+    assert not Server(socket_path=socket_path).is_alive(), (
+        "the private tmux daemon is still running after the signal"
+    )
+    assert not socket_path.exists(), "the private socket file was left behind"
+    assert not socket_path.parent.exists(), (
+        "the private socket directory was left behind"
+    )
+
+
+_OWNED_SIGNAL_SWALLOWED_CHILD_SCRIPT = """\
+import pathlib
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+from libtmux.server import Server
+
+marker = pathlib.Path(sys.argv[1])
+survived = pathlib.Path(sys.argv[2])
+with Server.owned() as server:
+    server.new_session(session_name="io")
+    marker.write_text(str(server.socket_path))
+    try:
+        time.sleep(30)
+    except BaseException:
+        pass
+    survived.write_text("survived")
+    time.sleep(5)
+"""
+
+
+def test_owned_cleanup_and_death_survive_a_bare_except_in_the_block(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A broad ``except`` inside the block cannot keep the process alive.
+
+    Cleanup runs from the signal handler itself, and the process is
+    killed by the signal directly afterward, so a bare ``except:`` (or
+    ``except BaseException:``) wrapping code *inside* the
+    ``with Server.owned():`` body never gets a chance to catch
+    anything on this path -- the daemon is gone and the process is
+    dead before the block's own ``except`` could run.
+    """
+    script = tmp_path / "owned_signal_swallowed_child.py"
+    script.write_text(_OWNED_SIGNAL_SWALLOWED_CHILD_SCRIPT)
+    marker = tmp_path / "socket_path.txt"
+    survived = tmp_path / "survived.txt"
+
+    proc = subprocess.Popen(
+        [sys.executable, str(script), str(marker), str(survived)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.exists() and time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.exists(), (
+            f"child never reported its socket_path; "
+            f"exited={proc.poll()!r} stderr follows on failure"
+        )
+        socket_path = pathlib.Path(marker.read_text())
+
+        proc.send_signal(signal.SIGTERM)
+        try:
+            returncode = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            pytest.fail(
+                "child did not exit within 5s of SIGTERM; its own bare "
+                "except swallowed the exit"
+            )
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        stdout, stderr = proc.communicate()
+
+    assert returncode == -signal.SIGTERM, (
+        f"expected exit {-signal.SIGTERM} (killed by SIGTERM despite the "
+        f"block's own bare except), got {returncode}\n"
+        f"stdout:\n{stdout}\nstderr:\n{stderr}"
+    )
+    assert not survived.exists(), (
+        "the block's bare except ran past the signal and wrote its marker"
+    )
+    assert not Server(socket_path=socket_path).is_alive(), (
+        "the private tmux daemon is still running after the signal"
+    )
+    assert not socket_path.exists(), "the private socket file was left behind"
+    assert not socket_path.parent.exists(), (
+        "the private socket directory was left behind"
+    )
+
+
+_OWNED_CLEANUP_FAILURE_CHILD_SCRIPT = """\
+import pathlib
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, signal.SIG_DFL)
+
+from libtmux.server import Server
+
+# Force the signal handler's own cleanup to fail, so the test proves
+# os.kill() still runs afterward rather than being skipped by the
+# exception cleanup raised.
+_real_cmd = Server.cmd
+
+
+def _cmd_fails_kill_server(self, cmd, *args, **kwargs):
+    if cmd == "kill-server":
+        msg = "simulated kill-server failure"
+        raise RuntimeError(msg)
+    return _real_cmd(self, cmd, *args, **kwargs)
+
+
+Server.cmd = _cmd_fails_kill_server
+
+marker = pathlib.Path(sys.argv[1])
+with Server.owned() as server:
+    server.new_session(session_name="io")
+    marker.write_text(str(server.socket_path))
+    time.sleep(30)
+"""
+
+
+def test_owned_terminates_by_signal_even_when_cleanup_fails(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The signal still kills the process when the handler's cleanup fails.
+
+    Regression for a real defect: ``_terminate`` ran ``_cleanup()`` then
+    ``os.kill()`` as two sequential statements, so a cleanup failure (here,
+    a ``kill-server`` call raising) skipped ``os.kill()`` -- the exception
+    took the exit path instead of the signal, so the child exited with a
+    plain nonzero status from an unhandled exception rather than being
+    killed by SIGTERM, letting a broad ``except`` around the block observe
+    it.
+    """
+    script = tmp_path / "owned_cleanup_failure_child.py"
+    script.write_text(_OWNED_CLEANUP_FAILURE_CHILD_SCRIPT)
+    marker = tmp_path / "socket_path.txt"
+
+    proc = subprocess.Popen(
+        [sys.executable, str(script), str(marker)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    socket_path: pathlib.Path | None = None
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.exists() and time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        assert marker.exists(), (
+            f"child never reported its socket_path; "
+            f"exited={proc.poll()!r} stderr follows on failure"
+        )
+        socket_path = pathlib.Path(marker.read_text())
+
+        proc.send_signal(signal.SIGTERM)
+        try:
+            returncode = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            pytest.fail(
+                "child did not exit within 5s of SIGTERM; a failing "
+                "cleanup blocked the re-raised signal"
+            )
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        stdout, stderr = proc.communicate()
+        # The simulated kill-server failure prevented the child's own
+        # cleanup from reaping its real daemon; do it here so the suite
+        # doesn't leak a tmux process.
+        if socket_path is not None:
+            Server(socket_path=socket_path).cmd("kill-server")
+            shutil.rmtree(socket_path.parent, ignore_errors=True)
+
+    assert returncode == -signal.SIGTERM, (
+        f"expected exit {-signal.SIGTERM} (killed by SIGTERM even though "
+        f"cleanup failed), got {returncode}\n"
+        f"stdout:\n{stdout}\nstderr:\n{stderr}"
+    )
+
+
+def test_owned_session_cleans_up_by_id_after_rename(
+    server: Server,
+    session: Session,
+) -> None:
+    """The created session is removed while pre-existing sessions survive."""
+    with server.owned_session("temporary") as owned:
+        session_id = owned.session_id
+        owned.rename_session("renamed")
+    assert server.sessions.get(session_id=session_id, default=None) is None
+    assert session in server.sessions
+
+
+def test_owned_session_kills_on_identity_guard_failure(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session missing an identity field is killed, not leaked.
+
+    ``owned_session`` used to create the session, then run asserts and
+    ``int()`` conversions in a gap before its try/finally began, so a
+    failure there (or a bare ``assert`` skipped under ``python -O``)
+    leaked the session instead of triggering cleanup.
+    """
+    real_new_session = Server.new_session
+
+    def _new_session_missing_start_time(
+        self: Server,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> Session:
+        created = real_new_session(self, *args, **kwargs)
+        created.start_time = None
+        return created
+
+    monkeypatch.setattr(Server, "new_session", _new_session_missing_start_time)
+
+    with (
+        pytest.raises(exc.LibTmuxException, match="start_time"),
+        server.owned_session("identity_guard_failure"),
+    ):
+        pass
+
+    assert not server.has_session("identity_guard_failure")
+
+
+def test_owned_session_refuses_an_existing_name(
+    server: Server,
+    session: Session,
+) -> None:
+    """A failed creation never adopts or destroys the existing session."""
+    with (
+        pytest.raises(exc.TmuxSessionExists),
+        server.owned_session(session.session_name),
+    ):
+        pytest.fail("an existing session must not be yielded")
+    assert session in server.sessions
+
+
+def test_owned_session_preserves_same_name_replacement(server: Server) -> None:
+    """Deleting the owned session does not transfer ownership to its old name."""
+    with server.owned_session("temporary") as owned:
+        owned.kill()
+        replacement = server.new_session("temporary")
+    assert replacement in server.sessions
+
+
+def test_owned_session_preserves_restarted_daemon(server: Server) -> None:
+    """Reused ids on a new daemon must not receive cleanup for the old daemon."""
+    with Server.owned(tmux_bin=server.tmux_bin) as private:
+        with private.owned_session("original") as owned:
+            original_id = owned.session_id
+            private.kill()
+            replacement = private.new_session("replacement")
+            assert replacement.session_id == original_id
+        assert replacement in private.sessions
+
+
+def test_owned_session_cleans_up_after_body_failure(server: Server) -> None:
+    """Cleanup runs during exception unwinding without swallowing the body error."""
+    body_error = RuntimeError("body failed")
+    with (
+        pytest.raises(RuntimeError, match="body failed"),
+        server.owned_session("temporary") as owned,
+    ):
+        session_id = owned.session_id
+        raise body_error
+    assert server.sessions.get(session_id=session_id, default=None) is None
+
+
+def test_owned_session_preserves_body_and_cleanup_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cleanup timeout remains visible with the original body error chained."""
+    run_command = common.run_command
+    body_error = RuntimeError("body failed")
+
+    def run(
+        *args: object,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> common.CommandResult:
+        if "if-shell" in args:
+            raise exc.TmuxTimeout([str(arg) for arg in args], 0.1)
+        return run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
+
+    with (
+        monkeypatch.context() as patch,
+        pytest.raises(exc.TmuxTimeout) as caught,
+        server.owned_session() as owned,
+    ):
+        patch.setattr(common, "run_command", run)
+        raise body_error
+    assert caught.value.__context__ is body_error
+    assert caught.value.timeout == 0.1
+    assert owned in server.sessions
+    owned.kill()
+
+
+@pytest.mark.parametrize("stderr", ["", "cleanup refused"])
+def test_owned_session_preserves_completed_cleanup_failure(
+    server: Server,
+    tmp_path: pathlib.Path,
+    stderr: str,
+) -> None:
+    """A real child refuses cleanup; the error keeps the body failure chained."""
+    executable = server.tmux_bin or shutil.which("tmux")
+    assert executable is not None
+    wrapper = tmp_path / "tmux-cleanup-refusal"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        'for arg do\nif [ "$arg" = "if-shell" ]; then\n'
+        f"printf %s {shlex.quote(stderr)} >&2\nexit 7\nfi\ndone\n"
+        f'exec {shlex.quote(executable)} "$@"\n'
+    )
+    wrapper.chmod(0o700)
+    refusing = Server(
+        socket_name=server.socket_name,
+        socket_path=server.socket_path,
+        tmux_bin=str(wrapper),
+    )
+    body_error = RuntimeError("body failed")
+
+    with (
+        pytest.raises(exc.LibTmuxException) as caught,
+        refusing.owned_session() as owned,
+    ):
+        raise body_error
+
+    assert caught.value.__context__ is body_error
+    assert (stderr or "Session cleanup exited with 7") in str(caught.value)
+    assert owned in server.sessions
+    owned.kill()
+
+
+def test_owned_server_preserves_socket_after_cleanup_failure(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed cleanup retains a reachable endpoint so the caller can retry."""
+    run_command = common.run_command
+    cleanup_error = PermissionError("cleanup denied")
+
+    def run(
+        *args: object,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> common.CommandResult:
+        if "kill-server" in args:
+            raise cleanup_error
+        return run_command(*args, tmux_bin=tmux_bin, timeout=timeout)
+
+    # Bound in the try below only on success; an earlier failure (e.g. inside
+    # Server.owned itself) must not make the finally block dereference an
+    # unbound name and mask that failure behind an UnboundLocalError, which
+    # would also skip the kill and leak the daemon.
+    owned: Server | None = None
+    socket_path: pathlib.Path | None = None
+    try:
+        with (
+            monkeypatch.context() as patch,
+            pytest.raises(PermissionError),
+            Server.owned(tmux_bin=server.tmux_bin) as owned,
+        ):
+            owned.new_session()
+            assert owned.socket_path is not None
+            socket_path = pathlib.Path(owned.socket_path)
+            patch.setattr(common, "run_command", run)
+        assert socket_path is not None
+        assert socket_path.exists()
+        assert owned.is_alive()
+    finally:
+        if owned is not None:
+            owned.kill()
+        if socket_path is not None:
+            shutil.rmtree(socket_path.parent)
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stderr"), [(7, ""), (7, "cleanup refused"), (0, "cleanup refused")]
+)
+def test_owned_server_preserves_socket_after_completed_cleanup_failure(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    returncode: int,
+    stderr: str,
+) -> None:
+    """A real cleanup refusal retains a reachable endpoint for retry."""
+    executable = server.tmux_bin or shutil.which("tmux")
+    assert executable is not None
+    wrapper = tmp_path / "tmux-server-cleanup-refusal"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        'for arg do\nif [ "$arg" = "kill-server" ]; then\n'
+        f"printf %s {shlex.quote(stderr)} >&2\nexit {returncode}\nfi\ndone\n"
+        f'exec {shlex.quote(executable)} "$@"\n'
+    )
+    wrapper.chmod(0o700)
+    removed: list[pathlib.Path] = []
+    socket_path: pathlib.Path | None = None
+
+    try:
+        with monkeypatch.context() as patch, contextlib.ExitStack() as cleanup:
+            # Keep the endpoint reachable even if the assertion exposes a regression.
+            patch.setattr(shutil, "rmtree", removed.append)
+            owned = cleanup.enter_context(Server.owned(tmux_bin=str(wrapper)))
+            assert owned.socket_path is not None
+            socket_path = pathlib.Path(owned.socket_path)
+            owned.new_session()
+            with pytest.raises(
+                exc.LibTmuxException,
+                match=stderr or f"Server cleanup exited with {returncode}",
+            ):
+                cleanup.close()
+            assert not removed
+            assert socket_path.exists()
+            assert owned.is_alive()
+    finally:
+        if socket_path is not None:
+            Server(socket_path=str(socket_path), tmux_bin=executable).kill()
+            shutil.rmtree(socket_path.parent)
 
 
 class StartDirectoryTestFixture(t.NamedTuple):
@@ -473,9 +1192,53 @@ def test_new_session_start_directory_pathlib(
     assert actual_path == expected_path
 
 
+def test_new_session_start_directory_with_newline(
+    server: Server,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A newline in ``start_directory`` must not corrupt the ``-P -F`` record.
+
+    ``new_session`` parses its own record straight off ``proc.stdout[0]``, so
+    a value containing a newline -- here ``pane_current_path``, echoed back
+    because a session row also reports its active pane's fields -- used to
+    split the record across output lines. ``parse_output``'s strict ``zip``
+    then rejected the truncated fragment with ``ValueError: zip() argument 2
+    is shorter than argument 1`` before a ``Session`` was ever built.
+    """
+    weird_directory = tmp_path / "we\nird"
+    weird_directory.mkdir()
+
+    session = server.new_session(
+        session_name="test_newline_start_dir",
+        start_directory=weird_directory,
+    )
+
+    assert session.session_name == "test_newline_start_dir"
+    active_pane = session.active_window.active_pane
+    assert active_pane is not None
+    active_pane.refresh()
+    assert active_pane.pane_current_path is not None
+    actual_path = pathlib.Path(active_pane.pane_current_path).resolve()
+    assert actual_path == weird_directory.resolve()
+
+
 def test_tmux_bin_default(server: Server) -> None:
     """Default tmux_bin is None, falls back to shutil.which."""
     assert server.tmux_bin is None
+
+
+def test_timeout_has_class_level_default() -> None:
+    """``Server.timeout`` falls back like ``tmux_bin`` for a skipped ``__init__``.
+
+    Every other configuration attribute (``socket_name``, ``socket_path``,
+    ``tmux_bin``, ...) is declared at class level, so an instance built
+    without going through ``__init__`` -- ``object.__new__``, or a subclass
+    whose own ``__init__`` does not call ``super().__init__()`` -- still has
+    a value to read. ``timeout`` was assigned only inside ``__init__``, so
+    the same construction path raised ``AttributeError`` on first use.
+    """
+    bare = object.__new__(Server)
+    assert bare.timeout is None
 
 
 def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
@@ -926,6 +1689,32 @@ def test_server_access_list(server: Server) -> None:
     assert isinstance(result, list)
 
 
+def test_server_access_flags_precede_positional_user(server: Server) -> None:
+    """Boolean flags reach tmux's user lookup instead of its argv parser.
+
+    ``server-access``'s own arg spec (``cmd-server-access.c``) declares
+    ``adlrw`` as value-less flags with the user as a single trailing
+    positional. Emitting ``-a myuser -r`` used to put ``myuser`` right
+    after ``-a``, so tmux's getopt-style parser stopped recognizing ``-r``
+    as a flag once it saw that bare word and rejected the call as "too many
+    arguments" before ever looking up the user.
+
+    ``server-access`` also refuses to touch the server owner's own entry
+    (``pw_uid == getuid()``), and this suite has no second real OS account
+    to allow -- so this proves the fix by reaching tmux's *next* validation
+    step (an unknown-user lookup) rather than failing on argv shape first.
+    """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip("server-access added in tmux 3.3")
+
+    server.new_session(session_name="access_argv_order_test")
+
+    with pytest.raises(exc.LibTmuxException, match="unknown user"):
+        server.server_access(allow="nonexistent-libtmux-test-user", read_only=True)
+
+
 def test_server_access_read_only_write_mutex(server: Server) -> None:
     """``read_only`` and ``write`` are mutually exclusive."""
     from libtmux.common import has_gte_version
@@ -968,10 +1757,10 @@ def test_server_access_argv(
     monkeypatch.setattr(server, "cmd", fake_cmd)
 
     server.server_access(allow="alice", read_only=True)
-    assert captured[-1][1:] == ("-a", "alice", "-r")
+    assert captured[-1][1:] == ("-a", "-r", "alice")
 
     server.server_access(allow="bob", write=True)
-    assert captured[-1][1:] == ("-a", "bob", "-w")
+    assert captured[-1][1:] == ("-a", "-w", "bob")
 
 
 def test_start_server(server: Server) -> None:
@@ -1098,11 +1887,87 @@ def test_clear_prompt_history(server: Server) -> None:
     server.clear_prompt_history(prompt_type="command")
 
 
-def test_wait_for_set_flag(server: Server) -> None:
-    """Test Server.wait_for() with set_flag."""
+def test_wait_for_signal(server: Server) -> None:
+    """Test Server.wait_for() with signal, tmux's own name for -S."""
     server.new_session(session_name="wait_test")
     # Just set the flag — should not block or error
-    server.wait_for("test_channel_set", set_flag=True)
+    server.wait_for("test_channel_signal", signal=True)
+
+
+def test_wait_for_set_flag_is_a_deprecated_alias_for_signal(server: Server) -> None:
+    """set_flag still works and warns; signal=, its natural spelling, now also works."""
+    server.new_session(session_name="wait_test_deprecated")
+    with pytest.deprecated_call(match="set_flag is deprecated in favor of signal"):
+        server.wait_for("test_channel_set", set_flag=True)
+
+
+def test_wait_for_unsignalled_channel_times_out(server: Server) -> None:
+    """wait_for() bounds an unsignalled channel instead of blocking forever.
+
+    The signature previously had no timeout parameter at all, and
+    Server.owned()/Server() default to Server.timeout=None (unbounded),
+    so a caller had no way to escape a channel that is never signalled.
+    Bounded here well under this suite's own per-test budget -- an
+    unbounded call left in by mistake would hang the run instead of
+    merely failing it.
+    """
+    server.new_session(session_name="wait_test_timeout")
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout):
+        server.wait_for("never-signalled-py7", timeout=1)
+    elapsed = time.monotonic() - started
+    assert elapsed < 5, f"wait_for(timeout=1) took {elapsed:.2f}s to raise"
+
+
+def test_wait_for_rejects_a_non_positive_timeout(server: Server) -> None:
+    """A zero or negative timeout is a caller error, not a silent no-op.
+
+    ``subprocess.Popen.communicate(timeout=0)`` (or a negative value)
+    never gives the freshly spawned tmux process a chance to respond,
+    so it always reads as expired -- a non-positive *timeout* is
+    rejected up front instead of silently raising ``TmuxTimeout``
+    without ``wait-for -S`` (or any other command) ever running.
+    """
+    server.new_session(session_name="wait_test_zero_timeout")
+
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        server.wait_for("py2_7_zero", signal=True, timeout=0)
+
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        server.wait_for("py2_7_negative", signal=True, timeout=-1)
+
+    # Control: a positive timeout still runs the command normally.
+    server.wait_for("py2_7_positive", signal=True, timeout=1)
+
+
+def test_wait_for_lock_timeout_wedges_the_channel(server: Server) -> None:
+    """A timed-out lock wait leaves the channel unlockable afterward.
+
+    A tmux limitation, documented on :meth:`Server.wait_for`'s *lock*
+    parameter rather than fixed: ``cmd-wait-for.c`` hands a pending
+    lock to the next queued locker on unlock regardless of whether that
+    locker gave up, and nothing removes a locker whose own wait already
+    raised ``TmuxTimeout``. A lock wait bounded by *timeout* makes this
+    reachable from the library for the first time.
+
+    A clean control on a different, untouched channel proves the
+    mechanism rather than merely that timeouts fire: lock, unlock, lock
+    again succeeds there.
+    """
+    server.new_session(session_name="wait_test_lock_wedge")
+
+    server.wait_for("py2_6_wedge", lock=True)
+    with pytest.raises(exc.TmuxTimeout):
+        server.wait_for("py2_6_wedge", lock=True, timeout=0.3)
+    server.wait_for("py2_6_wedge", unlock=True)
+    with pytest.raises(exc.TmuxTimeout):
+        server.wait_for("py2_6_wedge", lock=True, timeout=1)
+
+    # Control: a channel nothing else contended for is not wedged.
+    server.wait_for("py2_6_control", lock=True)
+    server.wait_for("py2_6_control", unlock=True)
+    server.wait_for("py2_6_control", lock=True, timeout=1)
+    server.wait_for("py2_6_control", unlock=True)
 
 
 def test_run_shell_basic(server: Server) -> None:
@@ -1419,6 +2284,31 @@ def test_server_clients_returns_empty_on_tmux_error(
     assert list(server.clients) == []
 
 
+def test_server_clients_propagates_record_parse_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.clients`` re-raises a malformed-record failure.
+
+    A :exc:`~libtmux.exc.TmuxRecordParseError` means ``list-clients``
+    ran and replied, but a value contained the field separator, so the
+    reply itself could not be split into records -- distinct from the
+    generic :exc:`~libtmux.exc.LibTmuxException` cases above, which mean
+    the invocation itself failed. Swallowing it into ``QueryList([])``
+    would tell a caller "no clients" when tmux may hold clients libtmux
+    simply could not read back; ``Server.windows``/``Server.panes``
+    already raise the same failure via ``_fetch_or_empty``.
+    """
+    sentinel = exc.TmuxRecordParseError("simulated malformed record")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.TmuxRecordParseError, match="simulated malformed record"):
+        list(server.clients)
+
+
 def test_server_search_sessions_propagates_errors(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
@@ -1460,6 +2350,27 @@ def test_server_sessions_returns_empty_on_tmux_error(
     assert list(server.sessions) == []
 
 
+def test_server_sessions_propagates_record_parse_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.sessions`` re-raises a malformed-record failure.
+
+    Mirrors ``test_server_clients_propagates_record_parse_error``: a
+    :exc:`~libtmux.exc.TmuxRecordParseError` means the reply could not
+    be parsed, not that ``list-sessions`` was unreachable, so it is not
+    a case the empty-by-default contract covers.
+    """
+    sentinel = exc.TmuxRecordParseError("simulated malformed record")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.TmuxRecordParseError, match="simulated malformed record"):
+        list(server.sessions)
+
+
 def test_server_sessions_missing_socket_returns_empty(tmp_path: pathlib.Path) -> None:
     """A not-yet-created tmux socket preserves the empty-list contract."""
     missing_server = Server(socket_path=tmp_path / "missing.sock")
@@ -1481,6 +2392,35 @@ def test_server_sessions_permission_error_returns_empty(
 
     monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
     assert list(server.sessions) == []
+
+
+def test_dead_server_reads_empty_but_a_prior_session_handle_raises(
+    server: Server,
+) -> None:
+    """A killed server's sessions/windows/panes disagree on how to fail.
+
+    ``Server.sessions``/``.windows``/``.panes`` are lenient by default
+    (see ``src/libtmux/AGENTS.md``), so a killed server reads exactly
+    like an empty live one through those. But a ``Session``/``Window``
+    handle obtained *before* the kill is not lenient at all:
+    ``session.windows`` propagates
+    :exc:`~libtmux.exc.LibTmuxException`. ``server.sessions == []``
+    alone can never tell a caller which case they are in.
+    """
+    session = server.new_session(session_name="py9_dead_server")
+    window = session.active_window
+
+    server.kill()
+
+    assert list(server.sessions) == []
+    assert list(server.windows) == []
+    assert list(server.panes) == []
+    assert server.is_alive() is False
+
+    with pytest.raises(exc.LibTmuxException):
+        list(session.windows)
+    with pytest.raises(exc.LibTmuxException):
+        list(window.panes)
 
 
 def test_if_shell_true(server: Server) -> None:
@@ -1618,6 +2558,11 @@ def test_detach_all_clients_no_keep_preserves_one(
 
         server.detach_all_clients()
 
+        retry_until(
+            lambda: len(server.cmd("list-clients", "-F", "#{client_name}").stdout) == 1,
+            2,
+            raises=True,
+        )
         after = server.cmd("list-clients", "-F", "#{client_name}").stdout
         assert len(after) == 1
 
@@ -1695,16 +2640,13 @@ def test_server_display_message_flags(
     omits ``-t <pane-id>`` but still needs a client to receive stdout. The
     headless test environment provides one via :class:`ControlMode`.
 
-    Skipped on tmux 3.2a: ``display-message -p -c <control-mode-client>``
-    returns empty stdout on that release (output dispatch via a control-mode
-    client was unreliable until later versions).
+    tmux 3.2a rejects ``display-message -c <client>`` because its option
+    parser treats ``-c`` as a flag without an argument.
     """
     from libtmux.common import has_gte_version
 
     if not has_gte_version("3.3"):
-        pytest.skip(
-            "display-message -p via control-mode client unreliable on tmux 3.2a"
-        )
+        pytest.skip("display-message -c requires tmux 3.3+")
     if min_tmux_version and not has_gte_version(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
@@ -1719,15 +2661,14 @@ def test_server_display_message_flags(
         assert expected_in_output in output
 
 
+@pytest.mark.filterwarnings("error")
 def test_server_display_message_no_text_returns_none(
     control_mode: t.Callable[..., t.Any],
     server: Server,
 ) -> None:
     """Without ``get_text=True`` the call renders to status line and returns None."""
-    with control_mode() as ctl:
-        result = server.display_message(
-            "hi from libtmux", target_client=ctl.client_name
-        )
+    with control_mode():
+        result = server.display_message("hi from libtmux")
     assert result is None
 
 
@@ -1739,9 +2680,7 @@ def test_server_display_message_target_client(
     from libtmux.common import has_gte_version
 
     if not has_gte_version("3.3"):
-        pytest.skip(
-            "display-message -p via control-mode client unreliable on tmux 3.2a"
-        )
+        pytest.skip("display-message -c requires tmux 3.3+")
 
     with control_mode() as ctl:
         result = server.display_message(
@@ -1765,3 +2704,141 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_server_timeout_bounds_every_command(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """A server-level timeout is the policy for commands through it."""
+    binary, _pid_file = hanging_tmux
+    server = Server(tmux_bin=binary, timeout=0.3)
+
+    with pytest.raises(exc.TmuxTimeout):
+        server.cmd("list-sessions")
+
+
+@pytest.mark.parametrize("accessor", ["sessions", "windows", "panes", "clients"])
+def test_a_wedged_server_is_not_reported_as_empty(
+    hanging_tmux: tuple[str, pathlib.Path],
+    accessor: str,
+) -> None:
+    """A listing must raise rather than answer empty.
+
+    A tmux server that stopped answering has not said it has nothing.
+    Returning ``[]`` sends a caller on to create a session on a server
+    that already has them. Every accessor is covered because three of
+    them reimplemented the "empty means not ready" rule inline instead
+    of sharing it.
+    """
+    binary, _pid_file = hanging_tmux
+    server = Server(tmux_bin=binary, timeout=0.3)
+
+    with pytest.raises(exc.TmuxTimeout):
+        _ = getattr(server, accessor)
+
+
+class _IdentityStub:
+    """Stand-in for a freshly created session with a field tmux never reported."""
+
+    def __init__(
+        self,
+        session_id: str | None = "$0",
+        pid: str | None = "123",
+        start_time: str | None = "1700000000",
+    ) -> None:
+        self.session_id = session_id
+        self.pid = pid
+        self.start_time = start_time
+
+
+@pytest.mark.parametrize(
+    ("missing", "expected"),
+    [
+        pytest.param("session_id", "no session_id", id="session_id"),
+        pytest.param("pid", "no pid", id="pid"),
+        pytest.param("start_time", "no start_time", id="start_time"),
+    ],
+)
+def test_owned_session_identity_names_the_field_tmux_withheld(
+    missing: str,
+    expected: str,
+) -> None:
+    """A missing identity field is named, rather than reaching an f-string as None.
+
+    The guard cannot be a bare ``assert``: ``python -O`` strips those, and the
+    predicate would then match on the literal text ``"None"`` -- against every
+    session whose own field tmux also withheld.
+    """
+    from libtmux.server import _session_identity_predicate
+
+    stub = _IdentityStub(**{missing: None})
+
+    with pytest.raises(exc.LibTmuxException, match=expected):
+        _session_identity_predicate(t.cast("t.Any", stub))
+
+
+def test_server_access_deny_precedes_the_positional_user(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``deny`` emits its flag before the user, as ``allow`` does.
+
+    tmux reads ``adlrw`` as value-less flags and the user as one trailing
+    positional, so a user emitted before a flag ends flag parsing and the call
+    is refused as "too many arguments" before the lookup runs.
+    """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip("server-access added in tmux 3.3")
+
+    captured: list[tuple[str, ...]] = []
+
+    class _StubResult:
+        stderr: t.ClassVar[list[str]] = []
+        stdout: t.ClassVar[list[str]] = []
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        captured.append((cmd, *args))
+        return _StubResult()
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    server.server_access(deny="someone", read_only=True)
+
+    assert captured, "Server.cmd was not invoked"
+    _name, *argv = captured[0]
+    assert argv.index("-d") < argv.index("someone")
+    assert argv.index("-r") < argv.index("someone")
+
+
+@pytest.mark.parametrize(
+    "raiser",
+    [
+        pytest.param("getsignal", id="getsignal-refuses"),
+        pytest.param("signal", id="signal-refuses"),
+    ],
+)
+def test_owned_server_survives_a_thread_that_cannot_take_signals(
+    raiser: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scope opened off the main thread still yields, and still cleans up.
+
+    ``signal.signal`` and ``signal.getsignal`` raise ``ValueError`` outside the
+    main thread. The scope's cleanup does not depend on the handler, so
+    refusing to install one is not a reason to refuse the scope.
+    """
+
+    def refuse(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        msg = "signal only works in main thread"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(signal, raiser, refuse)
+
+    with Server.owned() as owned:
+        owned.new_session(session_name="owned_signal_fallback")
+        assert owned.is_alive()
+        socket_path = owned.socket_path
+
+    assert socket_path is not None
+    assert not pathlib.Path(socket_path).exists()

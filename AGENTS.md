@@ -55,11 +55,19 @@ be stated twice, the file listed above is the one that governs.
 tmux >= 3.2a is the compatibility floor (see `tests.yml`'s build
 matrix). `Server.sessions`, `Server.clients`, and
 `Server.attached_sessions` return an empty `QueryList` rather than
-raising when the underlying tmux list command fails for any reason —
-list-shaped accessors are lenient by default; `Server.is_alive()` and
-`Server.raise_if_dead()` are the explicit, loud-failure primitives. See
-`src/libtmux/AGENTS.md` for the full contract and this package's
-logging conventions.
+raising when the underlying tmux list invocation fails for any reason.
+This does not generalize to every list-shaped accessor: `Server.windows`
+and `Server.panes` are lenient only for a not-yet-started daemon or a
+missing socket, and `Session.windows`, `Session.panes`, `Window.panes`,
+and `Window.search_panes` are not lenient at all — any tmux failure
+there raises. `Server.is_alive()` and `Server.raise_if_dead()` are the
+explicit, loud-failure primitives; a dead server reading as an empty
+live one through the lenient accessors never implies a `Session`/
+`Window` relation obtained beforehand will also read empty rather than
+raise. A parse failure (`exc.TmuxRecordParseError`) or a timeout
+(`exc.TmuxTimeout`) still propagates through the lenient ones — see
+`src/libtmux/AGENTS.md` for the full, precise contract and this
+package's logging conventions.
 
 ## References
 
