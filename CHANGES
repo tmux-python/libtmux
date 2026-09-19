@@ -45,6 +45,105 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Command results and optional timeouts (#758)
+
+{func}`~libtmux.common.run_command` returns a
+{class}`~libtmux.common.CommandResult` alongside the existing
+{class}`~libtmux.common.tmux_cmd` facade. {meth}`~libtmux.Server.cmd`,
+listings, and liveness checks now accept an optional
+{attr}`~libtmux.Server.timeout`, raising {exc}`~libtmux.exc.TmuxTimeout` on
+expiry instead of blocking indefinitely.
+
+#### Explicitly owned temporary resources (#758)
+
+{meth}`~libtmux.Server.owned` creates a private server scope, and
+{meth}`~libtmux.Server.owned_session` creates a temporary session on an
+existing server; both report cleanup failures instead of swallowing them,
+and clean up on the way out when the process is stopped by `docker stop`,
+a cancelled CI job, `timeout`, or a closed terminal. See
+{doc}`topics/context_managers`.
+
+#### Decoded captured fields (#758)
+
+Panes and windows expose captured dimensions and activity as numeric and
+boolean properties. Panes also gain {attr}`~libtmux.Pane.is_dead`,
+{attr}`~libtmux.Pane.left_cells`, and {attr}`~libtmux.Pane.top_cells`;
+sessions gain {attr}`~libtmux.Session.attached_count`. These read a
+locally captured snapshot, not a live tmux query.
+
+#### Public local queries (#758)
+
+{class}`~libtmux.QueryList` is now importable from the package root;
+required lookups and caller-supplied defaults keep their distinct result
+types while filtering the existing collection locally.
+
+#### A runnable examples/ directory (#758)
+
+`examples/` holds standalone scripts you run directly, with tmux on `PATH`
+and no existing session required. The test suite runs each as its own
+subprocess, so a broken example fails CI instead of going stale. See
+{doc}`topics/examples`.
+
+### Fixes
+
+#### `select_layout` accepts only a layout tmux can parse (#758)
+
+{meth}`~libtmux.Window.select_layout` raises `ValueError` for anything
+that is not a preset name or a layout string tmux reported, instead of
+passing it through to tmux -- previously `select_layout("-o")` silently
+ran tmux's own *undo* flag, which crashes the server on tmux 3.3/3.3a.
+
+#### `send_keys`, `capture_pane`, and `enter` raise on a tmux failure (#758)
+
+{meth}`~libtmux.Pane.send_keys`, {meth}`~libtmux.Pane.capture_pane`,
+{meth}`~libtmux.Pane.enter`, {meth}`~libtmux.Pane.reset`, and
+{meth}`~libtmux.Pane.split` now raise {exc}`~libtmux.exc.LibTmuxException`
+on a tmux failure, instead of returning `None`, `[]`, or succeeding
+silently.
+
+#### `Server.wait_for` accepts a timeout; `signal=` replaces `set_flag=` (#758)
+
+The `set_flag` keyword on {meth}`~libtmux.Server.wait_for` is renamed
+`signal` -- tmux's own name for `wait-for -S` -- with `set_flag` still
+accepted as a deprecated alias. `wait_for` also accepts an optional
+`timeout`, raising {exc}`~libtmux.exc.TmuxTimeout` on expiry.
+
+#### Listings preserve paths containing newlines (#758)
+
+Session, window, and pane listings keep a pane's directory intact when it
+contains a newline. {meth}`~libtmux.Server.new_session` parses its own
+`-P -F` reply the same way, so a newline in `start_directory` no longer
+raises `ValueError`.
+
+#### `Server.sessions`/`Server.clients` agree with the other listings on parse failures (#758)
+
+A malformed record from {attr}`~libtmux.Server.sessions` or
+{attr}`~libtmux.Server.clients` now raises
+{exc}`~libtmux.exc.TmuxRecordParseError`, matching
+{attr}`~libtmux.Server.windows` and {attr}`~libtmux.Server.panes`, instead
+of being swallowed into an empty list.
+
+#### `refresh()` clears a field that became empty (#758)
+
+{meth}`~libtmux.Pane.refresh`, and the same method on
+{class}`~libtmux.Window`, {class}`~libtmux.Session`, and
+{class}`~libtmux.Client`, now clears a field tmux currently reports empty,
+instead of keeping its last non-empty value forever.
+
+#### Expanded tmux hook decoding (#758)
+
+Reading hooks now recognizes tmux's additional pane, window, client, and
+command events, so the full hook table decodes to typed values.
+
+#### `Server.server_access` orders flags before the user (#758)
+
+{meth}`~libtmux.Server.server_access` no longer rejects a call combining
+flags with a user; tmux's argument parser previously read the trailing
+username as a second positional argument and rejected the call as "too
+many arguments."
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -56,6 +155,29 @@ its {meth}`Server <libtmux.Server.from_env>`,
 environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
+
+#### Documented list-accessor and layout-restore guarantees (#758)
+
+{attr}`~libtmux.Server.sessions`, {attr}`~libtmux.Server.clients`, and
+`Window.linked_sessions` swallow any tmux failure into an empty list;
+{attr}`~libtmux.Server.windows` and {attr}`~libtmux.Server.panes` do so
+only for a dead or unreachable server; every other list-returning relation
+always propagates the failure. Restoring a saved
+{attr}`~libtmux.Window.window_layout` via
+{meth}`~libtmux.Window.select_layout` guarantees the shape on any tmux
+version, but *which pane lands in which cell* is only guaranteed on tmux
+3.8+.
+
+#### Corrected examples and internal-API guidance (#758)
+
+README's first `.cmd()` snippet now imports {class}`~libtmux.Server`
+directly, instead of relying on a doctest-only rebinding that raised
+`NameError` outside the test suite. The
+{doc}`automation <topics/automation_patterns>` and
+{doc}`floating-pane <topics/floating_panes>` examples now distinguish real
+output from echoed input and pane content from its borders.
+`libtmux._internal.control_mode.ControlMode` stays internal; see
+{doc}`topics/public-vs-internal` for alternatives.
 
 ### Development
 
@@ -86,6 +208,15 @@ flake8-blind-except, and flake8-bandit checks now apply; the tmux output
 parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
+
+#### A benchmark suite (#758)
+
+`benchmarks/` measures command dispatch, listing, snapshot capture, and
+format decoding via [pytest-benchmark]; run with `just bench`. Pointing
+plain `pytest` at `benchmarks/` now raises `pytest.UsageError` instead of
+silently collecting nothing.
+
+[pytest-benchmark]: https://pytest-benchmark.readthedocs.io/
 
 ## libtmux 0.62.0 (2026-07-12)
 
