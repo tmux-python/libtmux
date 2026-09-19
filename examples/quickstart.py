@@ -32,10 +32,14 @@ def main() -> None:
 
         # send_keys() returns as soon as the keys are sent, not once the
         # shell has run them -- poll capture_pane() for the marker line
-        # rather than assuming it is already there.
+        # rather than assuming it is already there. A row can carry the
+        # next prompt right after the marker with no line break between
+        # them, so match on a trailing substring, not the whole line, and
+        # exclude the echoed command itself.
         def marker_is_visible() -> bool:
             return any(
-                line.rstrip(" ") == "hello-from-libtmux" for line in pane.capture_pane()
+                line.strip().endswith("hello-from-libtmux") and "echo" not in line
+                for line in pane.capture_pane()
             )
 
         retry_until(marker_is_visible, raises=True)
