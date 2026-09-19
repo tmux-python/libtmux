@@ -2237,3 +2237,32 @@ def test_send_keys_hex_keys_sends_enter_when_asked(session: Session) -> None:
         2,
         raises=True,
     )
+
+
+def test_send_keys_copy_mode_command_surfaces_a_tmux_failure(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused copy-mode command raises, like every other typed pane method.
+
+    ``send-keys -X`` reaches tmux the same way the other spellings do, so a
+    refusal there must not read as success: a caller that asked to scroll and
+    got nothing has no other way to learn the pane was gone.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    class _Refused:
+        stderr: t.ClassVar[list[str]] = ["can't find pane: %999"]
+        stdout: t.ClassVar[list[str]] = []
+        returncode = 1
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        assert cmd == "send-keys"
+        assert "-X" in args
+        return _Refused()
+
+    monkeypatch.setattr(pane, "cmd", fake_cmd)
+
+    with pytest.raises(exc.LibTmuxException, match="can't find pane"):
+        pane.send_keys("", copy_mode_cmd="page-up")

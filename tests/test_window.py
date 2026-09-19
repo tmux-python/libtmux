@@ -1647,3 +1647,37 @@ def test_rename_window_name_starting_with_a_dash(session: Session) -> None:
 def test_window_display_message_text_starting_with_a_dash(session: Session) -> None:
     """Message text that starts with ``-`` is printed, not read as a flag."""
     assert session.active_window.display_message("-p", get_text=True) == ["-p"]
+
+
+@pytest.mark.parametrize(
+    ("has_mirrored", "raises"),
+    [
+        pytest.param(True, False, id="3.5-applies"),
+        pytest.param(False, True, id="below-3.5-refuses"),
+    ],
+)
+def test_layout_prefix_resolving_to_a_mirrored_preset_follows_the_version(
+    has_mirrored: bool,
+    raises: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prefix naming only a mirrored preset is refused below the release that has it.
+
+    tmux resolves a preset by unique prefix, so ``"main-vertical-m"`` names
+    ``main-vertical-mirrored`` and nothing else. That preset enters tmux's own
+    table in 3.5; below it the name is unknown, and an unknown layout kills the
+    server on 3.3/3.3a -- so the refusal has to happen here rather than at tmux.
+    """
+    from libtmux import window as window_module
+
+    monkeypatch.setattr(
+        window_module,
+        "has_gte_version",
+        lambda version, **_kw: not (version == "3.5" and not has_mirrored),
+    )
+
+    if raises:
+        with pytest.raises(exc.VersionTooLow, match=r"main-vertical-mirrored"):
+            window_module._require_layout_value("main-vertical-m", tmux_bin=None)
+    else:
+        window_module._require_layout_value("main-vertical-m", tmux_bin=None)
