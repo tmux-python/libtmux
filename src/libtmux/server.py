@@ -886,17 +886,19 @@ class Server(
 
             .. warning::
 
-               A locker bounded by *timeout* that times out does not give
-               the lock back up: tmux hands a pending lock to the next
-               queued locker on unlock regardless of whether that locker is
-               still waiting, so a caller that gave up still receives it,
-               and every later ``wait_for(channel, lock=True)`` on that
-               channel times out in turn -- there is no way to lock it
-               again. This is a tmux limitation (``cmd-wait-for.c``'s
-               ``cmd_wait_for_unlock``), not particular to this method; it
-               only becomes reachable once a lock wait can be bounded at
-               all. Use a fresh channel name after a timed-out lock wait,
-               not the same one.
+               A locker bounded by *timeout* that times out while queued
+               does not give the lock back up: unlocking
+               (``cmd-wait-for.c``'s ``cmd_wait_for_unlock``) only clears
+               the channel when nothing is queued behind it, and otherwise
+               hands off to the abandoned locker instead, leaving the
+               channel marked locked. Every later
+               ``wait_for(channel, lock=True)`` on that channel then queues
+               behind that phantom holder and times out in turn -- not a
+               tmux bug, just unreachable before a lock wait could be
+               bounded at all. Recovering needs one extra
+               ``wait_for(channel, unlock=True)`` call per abandoned
+               locker, a count this method has no way to know. Use a fresh
+               channel name after a timed-out lock wait instead.
         unlock : bool, optional
             Unlock the channel (``-U`` flag).
         signal : bool, optional
