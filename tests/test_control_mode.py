@@ -148,3 +148,44 @@ def test_control_mode_stdout_preserves_non_ascii_output(
             assert FORMAT_SEPARATOR in stdout
     finally:
         locale.setlocale(locale.LC_CTYPE, old_lc_ctype)
+
+
+def test_stop_kills_a_client_that_ignores_termination() -> None:
+    """A client that will not exit on its own is killed rather than waited on forever.
+
+    ``terminate`` and ``SIGCONT`` are a request; a process wedged in the kernel
+    never answers one. The wait is bounded, and what follows the bound has to
+    be a kill, or a scope closing on such a client never returns.
+    """
+    import subprocess as subprocess_module
+
+    calls: list[str] = []
+
+    class _Unresponsive:
+        stderr = None
+        returncode = None
+
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+        def send_signal(self, _signum: int) -> None:
+            calls.append("cont")
+
+        def wait(self, timeout: float | None = None) -> int:
+            calls.append(f"wait({timeout})")
+            if timeout is not None:
+                raise subprocess_module.TimeoutExpired(cmd="tmux", timeout=timeout)
+            return -9
+
+        def kill(self) -> None:
+            calls.append("kill")
+
+    mode = ControlMode.__new__(ControlMode)
+    read_fd, write_fd = os.pipe()
+    mode._write_fd = write_fd
+    mode._proc = t.cast("t.Any", _Unresponsive())
+    mode.stdout = os.fdopen(read_fd)
+
+    mode._stop()
+
+    assert calls == ["terminate", "cont", "wait(5)", "kill", "wait(None)"]

@@ -2635,3 +2635,105 @@ def test_a_wedged_server_is_not_reported_as_empty(
 
     with pytest.raises(exc.TmuxTimeout):
         _ = getattr(server, accessor)
+
+
+class _IdentityStub:
+    """Stand-in for a freshly created session with a field tmux never reported."""
+
+    def __init__(
+        self,
+        session_id: str | None = "$0",
+        pid: str | None = "123",
+        start_time: str | None = "1700000000",
+    ) -> None:
+        self.session_id = session_id
+        self.pid = pid
+        self.start_time = start_time
+
+
+@pytest.mark.parametrize(
+    ("missing", "expected"),
+    [
+        pytest.param("session_id", "no session_id", id="session_id"),
+        pytest.param("pid", "no pid", id="pid"),
+        pytest.param("start_time", "no start_time", id="start_time"),
+    ],
+)
+def test_owned_session_identity_names_the_field_tmux_withheld(
+    missing: str,
+    expected: str,
+) -> None:
+    """A missing identity field is named, rather than reaching an f-string as None.
+
+    The guard cannot be a bare ``assert``: ``python -O`` strips those, and the
+    predicate would then match on the literal text ``"None"`` -- against every
+    session whose own field tmux also withheld.
+    """
+    from libtmux.server import _session_identity_predicate
+
+    stub = _IdentityStub(**{missing: None})
+
+    with pytest.raises(exc.LibTmuxException, match=expected):
+        _session_identity_predicate(t.cast("t.Any", stub))
+
+
+def test_server_access_deny_precedes_the_positional_user(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``deny`` emits its flag before the user, as ``allow`` does.
+
+    tmux reads ``adlrw`` as value-less flags and the user as one trailing
+    positional, so a user emitted before a flag ends flag parsing and the call
+    is refused as "too many arguments" before the lookup runs.
+    """
+    captured: list[tuple[str, ...]] = []
+
+    class _StubResult:
+        stderr: t.ClassVar[list[str]] = []
+        stdout: t.ClassVar[list[str]] = []
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        captured.append((cmd, *args))
+        return _StubResult()
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    server.server_access(deny="someone", read_only=True)
+
+    assert captured, "Server.cmd was not invoked"
+    _name, *argv = captured[0]
+    assert argv.index("-d") < argv.index("someone")
+    assert argv.index("-r") < argv.index("someone")
+
+
+@pytest.mark.parametrize(
+    "raiser",
+    [
+        pytest.param("getsignal", id="getsignal-refuses"),
+        pytest.param("signal", id="signal-refuses"),
+    ],
+)
+def test_owned_server_survives_a_thread_that_cannot_take_signals(
+    raiser: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scope opened off the main thread still yields, and still cleans up.
+
+    ``signal.signal`` and ``signal.getsignal`` raise ``ValueError`` outside the
+    main thread. The scope's cleanup does not depend on the handler, so
+    refusing to install one is not a reason to refuse the scope.
+    """
+
+    def refuse(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        msg = "signal only works in main thread"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(signal, raiser, refuse)
+
+    with Server.owned() as owned:
+        owned.new_session(session_name="owned_signal_fallback")
+        assert owned.is_alive()
+        socket_path = owned.socket_path
+
+    assert socket_path is not None
+    assert not pathlib.Path(socket_path).exists()
