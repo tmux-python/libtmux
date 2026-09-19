@@ -8,7 +8,6 @@ import pathlib
 import subprocess
 import sys
 import textwrap
-import time
 import typing as t
 
 from libtmux.pytest_plugin import _reap_test_server
@@ -121,28 +120,19 @@ def test_test_server_with_config(
 
 
 def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
-    """Test TestServer properly cleans up after itself."""
+    """kill() leaves the same server object reading as dead, not just quiet."""
     server = TestServer()
     socket_name = server.socket_name
     assert socket_name is not None
 
-    # Create multiple sessions
     server.new_session(session_name="test1")
     server.new_session(session_name="test2")
     assert len(server.sessions) == 2
-
-    # Verify server is alive
     assert server.is_alive() is True
 
-    # Delete server and verify cleanup
     server.kill()
-    time.sleep(0.1)  # Give time for cleanup
 
-    # Create new server to verify old one was cleaned up
-    new_server = TestServer()
-    assert new_server.is_alive() is False  # Server not started yet
-    new_server.new_session()  # This should work if old server was cleaned up
-    assert new_server.is_alive() is True
+    assert server.is_alive() is False
 
 
 def test_test_server_multiple(TestServer: t.Callable[..., Server]) -> None:
