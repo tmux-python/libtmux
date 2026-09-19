@@ -1032,7 +1032,7 @@ class Session(
             window_args += (f"-t{self.session_id}:{window_index}",)
 
         if window_shell:
-            window_args += (escape_trailing_separator(window_shell),)
+            window_args += ("--", escape_trailing_separator(window_shell))
 
         cmd = self.cmd("new-window", *window_args, target=target)
 

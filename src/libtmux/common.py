@@ -239,7 +239,7 @@ class EnvironmentMixin:
         tmux_args += ("show-environment",)
         if self._add_option:
             tmux_args += (self._add_option,)
-        tmux_args += (name,)
+        tmux_args += ("--", name)
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]

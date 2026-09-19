@@ -1286,7 +1286,7 @@ class Window(
                 tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         proc = self.cmd("respawn-window", *tmux_args)
 

@@ -1334,7 +1334,7 @@ class Server(
         if signal:
             tmux_args += ("-S",)
 
-        tmux_args += (channel,)
+        tmux_args += ("--", channel)
 
         proc = self.cmd("wait-for", *tmux_args, timeout=timeout)
 
@@ -1380,7 +1380,7 @@ class Server(
         if key_table is not None:
             tmux_args += ("-T", key_table)
 
-        tmux_args += (key, command)
+        tmux_args += ("--", key, command)
 
         proc = self.cmd("bind-key", *tmux_args)
 
@@ -1424,7 +1424,7 @@ class Server(
             tmux_args += ("-T", key_table)
 
         if key is not None:
-            tmux_args += (key,)
+            tmux_args += ("--", key)
 
         proc = self.cmd("unbind-key", *tmux_args)
 
@@ -1501,7 +1501,7 @@ class Server(
         tmux_args: tuple[str, ...] = ()
 
         if command_name is not None:
-            tmux_args += (command_name,)
+            tmux_args += ("--", command_name)
 
         proc = self.cmd("list-commands", *tmux_args)
 
@@ -1587,7 +1587,7 @@ class Server(
             tmux_args += ("-w",)
 
         if user is not None:
-            tmux_args += (user,)
+            tmux_args += ("--", user)
 
         proc = self.cmd("server-access", *tmux_args)
 
@@ -1858,7 +1858,7 @@ class Server(
         if target_client is not None:
             tmux_args += ("-t", target_client)
 
-        tmux_args += (command,)
+        tmux_args += ("--", command)
 
         proc = self.cmd("confirm-before", *tmux_args)
 
@@ -1998,7 +1998,7 @@ class Server(
         if target_client is not None:
             tmux_args += ("-t", target_client)
 
-        tmux_args += (template,)
+        tmux_args += ("--", template)
 
         proc = self.cmd("command-prompt", *tmux_args)
 
@@ -2154,10 +2154,14 @@ class Server(
 
         # Items are (name, key, command) triples. A command is a tmux command
         # string and passes through; the name and key are labels.
-        tmux_args += tuple(
-            escape_trailing_separator(item) if index % 3 != 2 else item
-            for index, item in enumerate(items)
-        )
+        if items:
+            tmux_args += (
+                "--",
+                *(
+                    escape_trailing_separator(item) if index % 3 != 2 else item
+                    for index, item in enumerate(items)
+                ),
+            )
 
         proc = self.cmd("display-menu", *tmux_args)
 
@@ -2599,7 +2603,7 @@ class Server(
 
         destination = pathlib.Path(path).expanduser()
         # tmux expands the path as a format; keep it literal.
-        tmux_args += (_literal(str(destination)),)
+        tmux_args += ("--", _literal(str(destination)))
 
         # tmux creates the file world-readable under the usual umask. Create
         # it first so a new file is owner-only; "-" is tmux's stdout.
@@ -2649,7 +2653,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (_format_path_arg(path),)
+        tmux_args += ("--", _format_path_arg(path))
 
         proc = self.cmd("load-buffer", *tmux_args)
 
@@ -2778,7 +2782,7 @@ class Server(
         if target_pane is not None:
             tmux_args += ("-t", target_pane)
 
-        tmux_args += (_format_text(shell_command), tmux_command)
+        tmux_args += ("--", _format_text(shell_command), tmux_command)
 
         if else_command is not None:
             tmux_args += (else_command,)
@@ -2826,7 +2830,7 @@ class Server(
         if verbose:
             tmux_args += ("-v",)
 
-        tmux_args += (str(pathlib.Path(path).expanduser()),)
+        tmux_args += ("--", str(pathlib.Path(path).expanduser()))
 
         proc = self.cmd("source-file", *tmux_args)
 
@@ -3098,7 +3102,7 @@ class Server(
                     tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
             if window_command:
-                tmux_args += (escape_trailing_separator(window_command),)
+                tmux_args += ("--", escape_trailing_separator(window_command))
 
             proc = self.cmd("new-session", *tmux_args)
 
