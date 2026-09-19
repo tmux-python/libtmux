@@ -106,7 +106,7 @@ class EnvironmentMixin:
         if hidden:
             args += ["-h"]
 
-        args += [name, value]
+        args += ["--", name, value]
 
         cmd = self.cmd(*args)
 
@@ -135,7 +135,7 @@ class EnvironmentMixin:
         args = ["set-environment"]
         if self._add_option:
             args += [self._add_option]
-        args += ["-u", name]
+        args += ["-u", "--", name]
 
         cmd = self.cmd(*args)
 
@@ -164,7 +164,7 @@ class EnvironmentMixin:
         args = ["set-environment"]
         if self._add_option:
             args += [self._add_option]
-        args += ["-r", name]
+        args += ["-r", "--", name]
 
         cmd = self.cmd(*args)
 
@@ -231,7 +231,7 @@ class EnvironmentMixin:
         tmux_args += ("show-environment",)
         if self._add_option:
             tmux_args += (self._add_option,)
-        tmux_args += (name,)
+        tmux_args += ("--", name)
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]

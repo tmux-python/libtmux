@@ -1195,7 +1195,7 @@ class Window(
                 tmux_args += (f"-e{k}={v}",)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         proc = self.cmd("respawn-window", *tmux_args)
 
@@ -1399,7 +1399,7 @@ class Window(
             tmux_args += ("-F", format_string)
 
         if cmd:
-            tmux_args += (cmd,)
+            tmux_args += ("--", cmd)
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1435,7 +1435,7 @@ class Window(
         lex.escape = " "
         lex.whitespace_split = False
 
-        proc = self.cmd("rename-window", new_name)
+        proc = self.cmd("rename-window", "--", new_name)
         raise_if_stderr(proc, "rename-window")
 
         self.window_name = new_name

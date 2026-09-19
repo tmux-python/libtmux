@@ -29,6 +29,60 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.parametrize(
+    "operation",
+    ["session", "window", "split", "floating", "respawn_pane", "respawn_window"],
+)
+def test_leading_dash_creation_command(session: Session, operation: str) -> None:
+    """Creation and respawn commands retain caller text resembling tmux flags."""
+    if operation == "floating" and not has_gte_version("3.7"):
+        pytest.skip("floating panes require tmux 3.7")
+    server = session.server
+    assert not server.cmd("set-option", "-gw", "remain-on-exit", "on").stderr
+    command = "-k" if operation.startswith("respawn") else "-d"
+    window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
+    if operation == "session":
+        pane = server.new_session(window_command=command).active_window.active_pane
+    elif operation == "window":
+        pane = session.new_window(window_shell=command).active_pane
+    elif operation == "split":
+        pane = pane.split(shell=command)
+    elif operation == "floating":
+        pane = window.new_pane(shell=command)
+    elif operation == "respawn_pane":
+        pane.respawn(shell=command, kill=True)
+    else:
+        window.respawn(shell=command, kill=True)
+    assert pane is not None
+    pane.refresh()
+    assert pane.pane_start_command == command
+
+
+def test_leading_dash_send_keys(session: Session) -> None:
+    """Text resembling the reset flag appears in the pane unchanged."""
+    pane = session.new_window(window_shell="env PS1='$ ' sh").active_pane
+    assert pane is not None
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 0.5, raises=True)
+    pane.send_keys("-R", enter=False, literal=True)
+    retry_until(lambda: "-R" in "\n".join(pane.capture_pane()), 0.5, raises=True)
+    with pytest.raises(exc.LibTmuxException, match="not in a mode"):
+        pane.send_keys(copy_mode_cmd="-Z")
+
+
+@pytest.mark.parametrize("method", ["pipe", "find_window", "display_popup"])
+def test_leading_dash_pane_commands(session: Session, method: str) -> None:
+    """Pipe, search and popup arguments pass tmux's flag parser unchanged."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    if method == "display_popup":
+        with pytest.raises(exc.LibTmuxException, match="no current client"):
+            pane.display_popup("-Z")
+    else:
+        getattr(pane, method)("-Z")
+
+
 @pytest.mark.parametrize("raw", [None, "0", "1"])
 def test_decoded_pane_fields_are_local(raw: str | None) -> None:
     """Decoded fields preserve absence and zero without executing tmux."""

@@ -846,7 +846,7 @@ class Server(
                     stacklevel=2,
                 )
 
-        tmux_args += (command,)
+        tmux_args += ("--", command)
 
         if args:
             if has_gte_version("3.7", tmux_bin=self.tmux_bin):
@@ -963,7 +963,7 @@ class Server(
         if signal:
             tmux_args += ("-S",)
 
-        tmux_args += (channel,)
+        tmux_args += ("--", channel)
 
         proc = self.cmd("wait-for", *tmux_args, timeout=timeout)
 
@@ -1009,7 +1009,7 @@ class Server(
         if key_table is not None:
             tmux_args += ("-T", key_table)
 
-        tmux_args += (key, command)
+        tmux_args += ("--", key, command)
 
         proc = self.cmd("bind-key", *tmux_args)
 
@@ -1053,7 +1053,7 @@ class Server(
             tmux_args += ("-T", key_table)
 
         if key is not None:
-            tmux_args += (key,)
+            tmux_args += ("--", key)
 
         proc = self.cmd("unbind-key", *tmux_args)
 
@@ -1128,7 +1128,7 @@ class Server(
         tmux_args: tuple[str, ...] = ()
 
         if command_name is not None:
-            tmux_args += (command_name,)
+            tmux_args += ("--", command_name)
 
         proc = self.cmd("list-commands", *tmux_args)
 
@@ -1222,7 +1222,7 @@ class Server(
             tmux_args += ("-w",)
 
         if user is not None:
-            tmux_args += (user,)
+            tmux_args += ("--", user)
 
         proc = self.cmd("server-access", *tmux_args)
 
@@ -1499,7 +1499,7 @@ class Server(
         if target_client is not None:
             tmux_args += ("-t", target_client)
 
-        tmux_args += (command,)
+        tmux_args += ("--", command)
 
         proc = self.cmd("confirm-before", *tmux_args)
 
@@ -1645,7 +1645,7 @@ class Server(
         if target_client is not None:
             tmux_args += ("-t", target_client)
 
-        tmux_args += (template,)
+        tmux_args += ("--", template)
 
         proc = self.cmd("command-prompt", *tmux_args)
 
@@ -1796,7 +1796,8 @@ class Server(
         if stay_open:
             tmux_args += ("-O",)
 
-        tmux_args += items
+        if items:
+            tmux_args += ("--", *items)
 
         proc = self.cmd("display-menu", *tmux_args)
 
@@ -2033,7 +2034,7 @@ class Server(
             tmux_args += ("-F", format_string)
 
         if cmd:
-            tmux_args += (cmd,)
+            tmux_args += ("--", cmd)
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -2154,7 +2155,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (data,)
+        tmux_args += ("--", data)
 
         proc = self.cmd("set-buffer", *tmux_args)
 
@@ -2246,7 +2247,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (str(pathlib.Path(path).expanduser()),)
+        tmux_args += ("--", str(pathlib.Path(path).expanduser()))
 
         proc = self.cmd("save-buffer", *tmux_args)
 
@@ -2279,7 +2280,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (str(pathlib.Path(path).expanduser()),)
+        tmux_args += ("--", str(pathlib.Path(path).expanduser()))
 
         proc = self.cmd("load-buffer", *tmux_args)
 
@@ -2406,7 +2407,7 @@ class Server(
         if target_pane is not None:
             tmux_args += ("-t", target_pane)
 
-        tmux_args += (shell_command, tmux_command)
+        tmux_args += ("--", shell_command, tmux_command)
 
         if else_command is not None:
             tmux_args += (else_command,)
@@ -2454,7 +2455,7 @@ class Server(
         if verbose:
             tmux_args += ("-v",)
 
-        tmux_args += (str(pathlib.Path(path).expanduser()),)
+        tmux_args += ("--", str(pathlib.Path(path).expanduser()))
 
         proc = self.cmd("source-file", *tmux_args)
 
@@ -2688,7 +2689,7 @@ class Server(
                     tmux_args += (f"-e{k}={v}",)
 
             if window_command:
-                tmux_args += (window_command,)
+                tmux_args += ("--", window_command)
 
             proc = self.cmd("new-session", *tmux_args)
 
