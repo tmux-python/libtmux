@@ -25,9 +25,152 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.pane import Pane
     from libtmux.session import Session
+    from libtmux.window import Window
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize("scope", ["server", "window", "pane"])
+def test_leading_dash_message(session: Session, scope: str) -> None:
+    """Message text is printed verbatim instead of listing tmux formats."""
+    window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
+    targets: dict[str, Server | Window | Pane] = {
+        "server": session.server,
+        "window": window,
+        "pane": pane,
+    }
+    assert targets[scope].display_message("-a", get_text=True) == ["-a"]
+
+
+@pytest.mark.parametrize("conditional", [False, True])
+def test_leading_dash_shell(session: Session, conditional: bool) -> None:
+    """A shell command beginning with a dash reaches the shell."""
+    server = session.server
+    if conditional:
+        server.if_shell(
+            "-b",
+            "display-message unreachable",
+            else_command="set -s @dash_condition no",
+        )
+        assert server.show_option("@dash_condition", global_=True) == "no"
+    else:
+        expected = server.cmd("run-shell", "--", "-z")
+        assert not expected.stderr
+        assert server.run_shell("-z") == expected.stdout
+
+
+def test_leading_dash_wait_channel(session: Session) -> None:
+    """A channel named like a signal flag can be signalled and consumed."""
+    session.server.wait_for("-S", signal=True)
+    session.server.wait_for("-S", timeout=0.5)
+
+
+def test_leading_dash_buffer(session: Session) -> None:
+    """Buffer contents retain their leading dash."""
+    session.server.set_buffer("-w", buffer_name="dash")
+    assert session.server.show_buffer(buffer_name="dash") == "-w"
+
+
+def test_leading_dash_paths(
+    session: Session, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relative file names retain their leading dashes."""
+    server = session.server
+    monkeypatch.chdir(tmp_path)
+    server.set_buffer("contents", buffer_name="dash")
+    server.save_buffer("-a", buffer_name="dash")
+    assert (tmp_path / "-a").read_text() == "contents"
+    server.load_buffer("-a", buffer_name="loaded")
+    assert server.show_buffer(buffer_name="loaded") == "contents"
+    (tmp_path / "-q").write_text("set -s @dash_source yes\n")
+    server.source_file("-q")
+    assert server.show_option("@dash_source", global_=True) == "yes"
+
+
+def test_leading_dash_key_preserves_bindings(session: Session) -> None:
+    """An invalid key cannot turn unbind_key into a request to clear a table."""
+    server = session.server
+    for key in ("a", "b"):
+        server.bind_key(key, "display-message kept", key_table="dash-test")
+    with pytest.raises(exc.LibTmuxException, match="unknown key: -a"):
+        server.bind_key("-a", "display-message lost", key_table="dash-test")
+    with pytest.raises(exc.LibTmuxException, match="unknown key: -a"):
+        server.unbind_key("-a", key_table="dash-test")
+    assert len(server.list_keys(key_table="dash-test")) == 2
+
+
+def test_leading_dash_access_user(session: Session) -> None:
+    """An invalid account name is not interpreted as an access mode."""
+    if not common.has_gte_version("3.3"):
+        pytest.skip("server-access requires tmux 3.3")
+    with pytest.raises(exc.LibTmuxException, match="unknown user: -w"):
+        session.server.server_access(allow="-w")
+
+
+@pytest.mark.parametrize(
+    "method,args",
+    [
+        ("set_option", ("-q", "value")),
+        ("unset_option", ("-q",)),
+        ("show_option", ("-q",)),
+        ("set_hook", ("-q", "display-message value")),
+        ("unset_hook", ("-q",)),
+        ("show_hook", ("-q",)),
+    ],
+)
+def test_leading_dash_option_and_hook(
+    session: Session, method: str, args: tuple[str, ...]
+) -> None:
+    """Invalid names produce an option error instead of enabling a tmux flag."""
+    with pytest.raises(exc.OptionError, match="invalid option: -q"):
+        getattr(session.server, method)(*args)
+
+
+def test_leading_dash_run_hook(session: Session) -> None:
+    """Running an unset hook remains a no-op when its name begins with a dash."""
+    session.server.run_hook("-q")
+
+
+def test_leading_dash_environment(session: Session) -> None:
+    """Environment names round-trip even when they resemble unset flags."""
+    server = session.server
+    server.set_environment("-u", "kept")
+    assert server.getenv("-u") == "kept"
+    server.remove_environment("-u")
+    assert server.cmd("show-environment", "-g", "--", "-u").stdout == ["--u"]
+    server.unset_environment("-u")
+    assert server.getenv("-u") is None
+
+
+@pytest.mark.parametrize(
+    "method,args",
+    [
+        ("confirm_before", ("-Z",)),
+        ("command_prompt", ("-Z",)),
+        ("display_menu", ("-Z", "a", "display-message kept")),
+    ],
+)
+def test_leading_dash_interactive_command(
+    session: Session, method: str, args: tuple[str, ...]
+) -> None:
+    """Literal arguments reach client resolution instead of flag parsing."""
+    if method != "display_menu" and not common.has_gte_version("3.3"):
+        pytest.skip("confirmation and prompt wrappers require tmux 3.3")
+    with pytest.raises(exc.LibTmuxException, match="no current client"):
+        getattr(session.server, method)(*args)
+
+
+def test_leading_dash_rename(session: Session) -> None:
+    """Session and window names can begin with a dash."""
+    session.rename_session("-n")
+    assert session.session_name == "-n"
+    window = session.active_window
+    window.rename_window("-n")
+    assert window.window_name == "-n"
 
 
 def test_has_session(server: Server, session: Session) -> None:
@@ -1757,10 +1900,10 @@ def test_server_access_argv(
     monkeypatch.setattr(server, "cmd", fake_cmd)
 
     server.server_access(allow="alice", read_only=True)
-    assert captured[-1][1:] == ("-a", "-r", "alice")
+    assert captured[-1][1:] == ("-a", "-r", "--", "alice")
 
     server.server_access(allow="bob", write=True)
-    assert captured[-1][1:] == ("-a", "-w", "bob")
+    assert captured[-1][1:] == ("-a", "-w", "--", "bob")
 
 
 def test_start_server(server: Server) -> None:

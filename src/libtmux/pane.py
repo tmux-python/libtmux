@@ -851,7 +851,7 @@ class Pane(
 
         if copy_mode_cmd is not None:
             tmux_args += ("-X",)
-            proc = self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+            proc = self.cmd("send-keys", *tmux_args, "--", copy_mode_cmd)
             raise_if_stderr(proc, "send-keys")
         elif cmd is None:
             # Flag-only path — tmux's cmd-send-keys.c:223-225 explicitly
@@ -867,7 +867,7 @@ class Pane(
             raise_if_stderr(proc, "send-keys")
             return
         else:
-            proc = self.cmd("send-keys", *tmux_args, prefix + cmd)
+            proc = self.cmd("send-keys", *tmux_args, "--", prefix + cmd)
             raise_if_stderr(proc, "send-keys")
 
         if enter and copy_mode_cmd is None:
@@ -1025,7 +1025,7 @@ class Pane(
             tmux_args += ("-F", format_string)
 
         if cmd:
-            tmux_args += (cmd,)
+            tmux_args += ("--", cmd)
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1417,7 +1417,7 @@ class Pane(
                 )
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
@@ -1581,7 +1581,7 @@ class Pane(
             tmux_args += ("-E",)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         pane_cmd = self.cmd("new-pane", *tmux_args, target=target)
 
@@ -1880,7 +1880,7 @@ class Pane(
                 )
 
         if command is not None:
-            tmux_args += (command,)
+            tmux_args += ("--", command)
 
         proc = self.cmd("display-popup", *tmux_args)
 
@@ -1994,7 +1994,7 @@ class Pane(
             tmux_args += ("-o",)
 
         if command is not None:
-            tmux_args += (command,)
+            tmux_args += ("--", command)
 
         proc = self.cmd("pipe-pane", *tmux_args)
 
@@ -2247,7 +2247,7 @@ class Pane(
         if match_title:
             tmux_args += ("-T",)
 
-        tmux_args += (match_string,)
+        tmux_args += ("--", match_string)
 
         proc = self.cmd("find-window", *tmux_args)
 
@@ -2315,7 +2315,7 @@ class Pane(
                 tmux_args += (f"-e{k}={v}",)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         proc = self.cmd("respawn-pane", *tmux_args)
 
