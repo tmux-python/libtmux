@@ -56,6 +56,13 @@ listings, and liveness checks now accept an optional
 {attr}`~libtmux.Server.timeout`, raising {exc}`~libtmux.exc.TmuxTimeout` on
 expiry instead of blocking indefinitely.
 
+#### `Server.wait_for` accepts a timeout; `signal=` replaces `set_flag=` (#758)
+
+The `set_flag` keyword on {meth}`~libtmux.Server.wait_for` is renamed
+`signal` -- tmux's own name for `wait-for -S` -- with `set_flag` still
+accepted as a deprecated alias. `wait_for` also accepts an optional
+`timeout`, raising {exc}`~libtmux.exc.TmuxTimeout` on expiry.
+
 #### Explicitly owned temporary resources (#758)
 
 {meth}`~libtmux.Server.owned` creates a private server scope, and
@@ -102,13 +109,6 @@ ran tmux's own *undo* flag, which crashes the server on tmux 3.3/3.3a.
 {meth}`~libtmux.Pane.split` now raise {exc}`~libtmux.exc.LibTmuxException`
 on a tmux failure, instead of returning `None`, `[]`, or succeeding
 silently.
-
-#### `Server.wait_for` accepts a timeout; `signal=` replaces `set_flag=` (#758)
-
-The `set_flag` keyword on {meth}`~libtmux.Server.wait_for` is renamed
-`signal` -- tmux's own name for `wait-for -S` -- with `set_flag` still
-accepted as a deprecated alias. `wait_for` also accepts an optional
-`timeout`, raising {exc}`~libtmux.exc.TmuxTimeout` on expiry.
 
 #### Listings preserve paths containing newlines (#758)
 
