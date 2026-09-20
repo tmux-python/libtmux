@@ -49,6 +49,12 @@ Create and position floating (overlay) panes on tmux 3.7+.
 Create sessions, windows, and panes programmatically.
 :::
 
+:::{grid-item-card} Workspace Archives
+:link: resurrect
+:link-type: doc
+Capture, restore, rotate, and autosave tmux workspaces headlessly.
+:::
+
 :::{grid-item-card} Automation Patterns
 :link: automation_patterns
 :link-type: doc
@@ -94,6 +100,7 @@ filtering
 pane_interaction
 floating_panes
 workspace_setup
+resurrect
 automation_patterns
 context_managers
 options_and_hooks
