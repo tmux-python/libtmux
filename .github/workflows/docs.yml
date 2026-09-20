@@ -125,7 +125,7 @@ jobs:
         if: matrix.site == 'libtmux-org'
         with:
           repository: libtmux/docs
-          ref: 7ca49769e9e738d5e4b2e7bfea721ab055d0291b
+          ref: b1e3bb25b1b5aaad9381365f4566019586cd00ff
           path: libtmux-docs
 
       - uses: pnpm/action-setup@v6
@@ -225,7 +225,7 @@ jobs:
     # Bumping is manual. Dependabot reads a trailing version comment, but
     # only where the `github-actions` ecosystem is enabled, and this
     # repository has no dependabot.yml at all.
-    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@7ca49769e9e738d5e4b2e7bfea721ab055d0291b
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@b1e3bb25b1b5aaad9381365f4566019586cd00ff
     with:
       path-prefix: py/latest
       artifact: docs-html
