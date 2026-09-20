@@ -7,20 +7,25 @@ libtmux.common
 
 from __future__ import annotations
 
+import contextlib
 import functools
+import inspect
 import logging
 import re
 import shlex
-import shutil
-import subprocess
 import sys
 import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from .engines.base import CommandRequest, SupportsCommandLine
+from .engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
+    import subprocess
     from collections.abc import Callable
+
+    from .engines.base import CommandResult, TmuxEngine
 
 logger = logging.getLogger(__name__)
 
@@ -280,8 +285,179 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+def _guard_sync(
+    engine: object,
+    member: Callable[[CommandRequest], t.Any],
+    method: str,
+    request: CommandRequest,
+) -> t.Any:
+    """Call one synchronous engine capability, guarding the result.
+
+    The single call site every engine capability -- ``run()`` and the
+    optional ``command_line()`` -- is invoked through.
+    :class:`~libtmux.engines.base.TmuxEngine` and
+    :class:`~libtmux.engines.base.SupportsCommandLine` are
+    :func:`~typing.runtime_checkable` :class:`typing.Protocol` classes, so
+    ``isinstance()`` accepts an engine on attribute *names* alone -- never
+    signatures, never async-ness -- and an ``async def run`` (or ``async def
+    command_line``) engine passes structurally and reaches here. Routing
+    every dispatch through this one function means the guard below only has
+    to be written once: a call site added later inherits it instead of
+    needing its own copy.
+
+    Parameters
+    ----------
+    engine : object
+        The engine the capability belongs to; named in the error.
+    member : :class:`~collections.abc.Callable`
+        The already-resolved bound method to invoke.
+    method : str
+        Its name, ``"run"`` or ``"command_line"``, for the error message.
+    request : CommandRequest
+        Forwarded as the sole positional argument.
+
+    Returns
+    -------
+    typing.Any
+        Whatever *method* returned. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        *method* returned an awaitable instead of the value its protocol
+        promises.
+
+    Notes
+    -----
+    Declared-``async def`` members are rejected *before* the call, so the
+    common shape never creates a coroutine at all and nothing is left to warn
+    about. That check cannot be complete on its own -- CPython says as much in
+    :mod:`unittest.async_case`, whose case 3 is a "regular ``def`` that
+    returns an awaitable object" -- so the value is tested too.
+
+    A coroutine that did get created is closed, which is safe precisely
+    because it has never been started: :c:func:`gen_close` on a frame still in
+    ``FRAME_CREATED`` clears it without running a line of the body, and
+    ``"coroutine ... was never awaited"`` is only warned for a frame still in
+    that state at collection. Closing is best-effort -- guarded against
+    :class:`BaseException`, since :exc:`asyncio.CancelledError` is not an
+    :class:`Exception` -- so a hostile awaitable cannot replace the
+    diagnostic with an error of its own.
+
+    Only genuine coroutines are closed. A :class:`asyncio.Task` or
+    :class:`asyncio.Future` is dropped untouched: one bound to another
+    thread's event loop silently fails to receive
+    :meth:`~asyncio.Task.cancel` (that needs ``loop.call_soon_threadsafe``),
+    and cancelling one shared with another awaiter would destroy that
+    awaiter's result. An eager-started ``Task`` (3.12+) has already run its
+    body synchronously before ``run()`` returned, so nothing here could have
+    prevented that side effect either way.
+    """
+    if inspect.iscoroutinefunction(member):
+        raise exc.AsyncEngineMismatch(engine, method)
+
+    result = member(request)
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            with contextlib.suppress(BaseException):
+                result.close()
+        raise exc.AsyncEngineMismatch(engine, method)
+    return result
+
+
+def _dispatch_run(engine: TmuxEngine, request: CommandRequest) -> CommandResult:
+    """Run one command through *engine*, guarding the result.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The engine to dispatch through.
+    request : CommandRequest
+        The command.
+
+    Returns
+    -------
+    CommandResult
+        Whatever ``run()`` returned. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        ``run`` is asynchronous.
+    """
+    return t.cast(
+        "CommandResult",
+        _guard_sync(engine, engine.run, "run", request),
+    )
+
+
+def _dispatch_command_line(
+    engine: SupportsCommandLine,
+    request: CommandRequest,
+) -> tuple[str, ...]:
+    """Render *request*'s argv through *engine*, guarding the result.
+
+    Parameters
+    ----------
+    engine : SupportsCommandLine
+        The engine to ask.
+    request : CommandRequest
+        The command.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The argv. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        ``command_line`` is asynchronous.
+    """
+    return t.cast(
+        "tuple[str, ...]",
+        _guard_sync(engine, engine.command_line, "command_line", request),
+    )
+
+
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+    """Run any :term:`tmux(1)` command, returning list-shaped output.
+
+    Dispatches through a :class:`~libtmux.engines.base.TmuxEngine` --
+    :class:`~libtmux.engines.subprocess.SubprocessEngine` unless one is passed --
+    and adapts the engine's :class:`~libtmux.engines.base.CommandResult` to the
+    ``list``-of-``str`` attributes libtmux's wrappers read.
+
+    Parameters
+    ----------
+    *args : typing.Any
+        tmux argv. Connection flags may be included inline (``"-Lwork"``); an
+        engine supplies its own, so :meth:`libtmux.Server.cmd` passes only the
+        subcommand.
+    tmux_bin : str, optional
+        Path to the tmux binary. Ignored when *engine* is given -- the engine
+        owns its binary.
+    engine : :class:`~libtmux.engines.base.TmuxEngine`, optional
+        Executor to dispatch through.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        The full argv that ran, tmux binary first.
+    stdout : list[str]
+        Standard output, one line per item.
+    stderr : list[str]
+        Standard error, one line per item, blanks removed.
+    returncode : int
+        tmux exit code.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        *engine* is asynchronous -- its ``run()`` (or ``command_line()``,
+        while rendering a DEBUG log line) handed back an awaitable, which
+        this synchronous dispatch cannot await. Both calls route through
+        :func:`_guard_sync`, the one place this is checked.
 
     Examples
     --------
@@ -309,66 +485,57 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
-        resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
-
-        cmd = [resolved]
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
-
-        self.cmd = cmd
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        engine: TmuxEngine | None = None,
+    ) -> None:
+        runner: TmuxEngine = (
+            engine if engine is not None else SubprocessEngine.of(tmux_bin)
+        )
+        request = CommandRequest.from_args(*args)
 
         if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = shlex.join(cmd)
             logger.debug(
                 "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
-
-        try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
                 extra={
-                    "tmux_cmd": shlex.join(cmd),
+                    "tmux_cmd": shlex.join(
+                        _dispatch_command_line(runner, request)
+                        if isinstance(runner, SupportsCommandLine)
+                        else request.args,
+                    ),
+                    "tmux_subcommand": request.subcommand,
                 },
             )
-            raise
 
-        self.returncode = returncode
+        result = _dispatch_run(runner, request)
 
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
+        self.cmd = list(result.cmd)
+        self.returncode = result.returncode
+        self.stderr = list(result.stderr)
+        # Read defensively: ``process`` is the one field of ``CommandResult``
+        # that no protocol declares, so an engine returning its own
+        # result type -- which ``TmuxEngine`` permits -- need not carry it.
+        process: subprocess.Popen[str] | None = getattr(result, "process", None)
+        self._process = process
 
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
-
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
+        # tmux writes ``has-session``'s answer to stderr; the wrappers have
+        # always read it off stdout. Adapted here, not in an engine, so every
+        # engine stays a plain executor.
+        stdout = list(result.stdout)
+        self.stdout = (
+            [self.stderr[0]]
+            if "has-session" in self.cmd and self.stderr and not stdout
+            else stdout
+        )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": shlex.join(cmd),
+                    "tmux_cmd": shlex.join(self.cmd),
+                    "tmux_subcommand": request.subcommand,
                     "tmux_exit_code": self.returncode,
                     "tmux_stdout": self.stdout[:100],
                     "tmux_stderr": self.stderr[:100],
@@ -376,6 +543,31 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    @property
+    def process(self) -> subprocess.Popen[str]:
+        """Return the finished :class:`subprocess.Popen`.
+
+        Returns
+        -------
+        subprocess.Popen
+            The process the default engine forked.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            The engine that ran the command never forked a process. Only an
+            injected engine can do that; the default engine always forks.
+
+        Examples
+        --------
+        >>> server.cmd("display-message", "-p", "hi").process.returncode
+        0
+        """
+        if self._process is None:
+            msg = "engine did not fork a subprocess; tmux_cmd.process is unavailable"
+            raise exc.LibTmuxException(msg)
+        return self._process
 
 
 class _TmuxVersionUnavailable(Exception):
