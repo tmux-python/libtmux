@@ -7,20 +7,31 @@ libtmux.common
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import logging
 import re
 import shlex
-import shutil
-import subprocess
 import sys
 import typing as t
+import warnings
 
 from . import exc
 from ._compat import LooseVersion
+from .engines.base import (
+    AsyncTmuxEngine,
+    CommandRequest,
+    CommandResult,
+    SupportsCommandLine,
+    split_direct_argv,
+)
+from .engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
-    from collections.abc import Callable
+    import subprocess
+    from collections.abc import Callable, Sequence
+
+    from .engines.base import TmuxEngine
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +51,7 @@ PaneDict = dict[str, t.Any]
 class CmdProtocol(t.Protocol):
     """Command protocol for tmux command."""
 
-    def __call__(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def __call__(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> CommandResult:
         """Wrap tmux_cmd."""
         ...
 
@@ -56,7 +67,7 @@ class EnvironmentMixin:
 
     _add_option = None
 
-    cmd: Callable[[t.Any, t.Any], tmux_cmd]
+    cmd: Callable[[t.Any, t.Any], CommandResult]
 
     def __init__(self, add_option: str | None = None) -> None:
         self._add_option = add_option
@@ -242,7 +253,7 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
-def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
+def raise_if_stderr(proc: CommandResult, subcommand: str) -> None:
     """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
 
     Centralizes the ``if proc.stderr: raise exc.LibTmuxException(proc.stderr)``
@@ -280,8 +291,308 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+def _adapt_has_session(result: CommandResult) -> CommandResult:
+    """Report ``has-session``'s answer on stdout, where libtmux always has.
+
+    tmux writes it to stderr. Adapted outside the engines so each engine stays a
+    plain executor.
+    """
+    cmd = list(result.cmd)
+    if "has-session" in cmd and result.stderr and not result.stdout:
+        return dataclasses.replace(result, stdout=[next(iter(result.stderr))])
+    return result
+
+
+def dispatch(
+    engine: TmuxEngine,
+    *args: t.Any,
+    tmux_bin: str | None = None,
+) -> CommandResult:
+    """Run one tmux command through *engine* and adapt its result.
+
+    The single dispatch path every wrapper uses. Two things happen here rather
+    than in an engine, so that every engine stays a plain executor: the debug
+    logging that names the command line before and after it runs, and tmux's
+    ``has-session`` quirk.
+
+    tmux answers ``has-session`` on stderr, while libtmux has always reported it
+    on stdout. Adapting it here keeps that promise for whichever engine ran the
+    command.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    *args : typing.Any
+        The tmux subcommand and its arguments, stringified.
+    tmux_bin : str, optional
+        Override the tmux binary for this one command.
+
+    Returns
+    -------
+    CommandResult
+        The adapted result.
+
+    Examples
+    --------
+    >>> from libtmux.engines import SubprocessEngine
+    >>> engine = SubprocessEngine.for_server(server)
+    >>> dispatch(engine, "display-message", "-p", "hi").stdout
+    ['hi']
+
+    ``has-session`` reports on stdout, as it always has:
+
+    >>> dispatch(engine, "has-session", "-t", "nope").stdout  # doctest: +ELLIPSIS
+    ["can't find session: nope"]
+    """
+    request = CommandRequest.from_args(*args, tmux_bin=tmux_bin)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command dispatched",
+            extra={
+                "tmux_cmd": shlex.join(
+                    engine.command_line(request)
+                    if isinstance(engine, SupportsCommandLine)
+                    else request.args,
+                ),
+                "tmux_subcommand": request.subcommand,
+            },
+        )
+
+    result = engine.run(request)
+
+    result = _adapt_has_session(result)
+    cmd = list(result.cmd)
+    stderr = list(result.stderr)
+    stdout = list(result.stdout)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command completed",
+            extra={
+                "tmux_cmd": shlex.join(cmd),
+                "tmux_subcommand": request.subcommand,
+                "tmux_exit_code": result.returncode,
+                "tmux_stdout": stdout[:100],
+                "tmux_stderr": stderr[:100],
+                "tmux_stdout_len": len(stdout),
+                "tmux_stderr_len": len(stderr),
+            },
+        )
+    return result
+
+
+def dispatch_batch(
+    engine: TmuxEngine,
+    commands: Sequence[Sequence[t.Any]],
+) -> list[CommandResult]:
+    """Run several tmux commands through *engine* in one go.
+
+    Hands the whole sequence to :meth:`~libtmux.engines.base.TmuxEngine.run_batch`
+    rather than looping, which is what lets a persistent-connection engine write
+    every command before waiting for the first reply. A stateless engine loops
+    internally and behaves exactly as repeated :func:`dispatch` calls would.
+
+    Each result gets the same ``has-session`` adaptation :func:`dispatch`
+    applies, so a batched command reads the same as an individual one.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    commands : Sequence[Sequence[typing.Any]]
+        One argv per command, each stringified.
+
+    Returns
+    -------
+    list[CommandResult]
+        One result per command, in order.
+
+    Examples
+    --------
+    >>> from libtmux.engines import SubprocessEngine
+    >>> engine = SubprocessEngine.for_server(server)
+    >>> results = dispatch_batch(
+    ...     engine,
+    ...     [("display-message", "-p", "one"), ("display-message", "-p", "two")],
+    ... )
+    >>> [result.stdout for result in results]
+    [['one'], ['two']]
+    """
+    requests = [CommandRequest.from_args(*command) for command in commands]
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command batch dispatched",
+            extra={"tmux_subcommand": ",".join(r.subcommand for r in requests)},
+        )
+
+    return [_adapt_has_session(result) for result in engine.run_batch(requests)]
+
+
+async def adispatch_batch(
+    engine: AsyncTmuxEngine,
+    commands: Sequence[Sequence[t.Any]],
+) -> list[CommandResult]:
+    """Await several tmux commands through *engine* in one go.
+
+    Hands the whole sequence to :meth:`~libtmux.engines.base.TmuxEngine.run_batch`
+    rather than looping, which is what lets a persistent-connection engine write
+    every command before waiting for the first reply. A stateless engine loops
+    internally and behaves exactly as repeated :func:`dispatch` calls would.
+
+    Each result gets the same ``has-session`` adaptation :func:`dispatch`
+    applies, so a batched command reads the same as an individual one.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    commands : Sequence[Sequence[typing.Any]]
+        One argv per command, each stringified.
+
+    Returns
+    -------
+    list[CommandResult]
+        One result per command, in order.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.engines import AsyncSubprocessEngine
+    >>> engine = AsyncSubprocessEngine.for_server(server)
+    >>> async def main():
+    ...     return await adispatch_batch(
+    ...         engine,
+    ...         [("display-message", "-p", "one"), ("display-message", "-p", "two")],
+    ...     )
+    >>> [result.stdout for result in asyncio.run(main())]
+    [['one'], ['two']]
+    """
+    requests = [CommandRequest.from_args(*command) for command in commands]
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command batch dispatched",
+            extra={"tmux_subcommand": ",".join(r.subcommand for r in requests)},
+        )
+
+    results = await engine.run_batch(requests)
+    return [_adapt_has_session(result) for result in results]
+
+
+async def adispatch(
+    engine: AsyncTmuxEngine,
+    *args: t.Any,
+    tmux_bin: str | None = None,
+) -> CommandResult:
+    """Await one tmux command through *engine* and adapt its result.
+
+    The async twin of :func:`dispatch`, sharing its adaptations so a command
+    reads the same whichever kind of engine ran it. Two things happen here rather
+    than in an engine, so that every engine stays a plain executor: the debug
+    logging that names the command line before and after it runs, and tmux's
+    ``has-session`` quirk.
+
+    tmux answers ``has-session`` on stderr, while libtmux has always reported it
+    on stdout. Adapting it here keeps that promise for whichever engine ran the
+    command.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    *args : typing.Any
+        The tmux subcommand and its arguments, stringified.
+    tmux_bin : str, optional
+        Override the tmux binary for this one command.
+
+    Returns
+    -------
+    CommandResult
+        The adapted result.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.engines import AsyncSubprocessEngine
+    >>> engine = AsyncSubprocessEngine.for_server(server)
+    >>> async def main():
+    ...     return await adispatch(engine, "display-message", "-p", "hi")
+    >>> asyncio.run(main()).stdout
+    ['hi']
+    """
+    request = CommandRequest.from_args(*args, tmux_bin=tmux_bin)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command dispatched",
+            extra={
+                "tmux_cmd": shlex.join(
+                    engine.command_line(request)
+                    if isinstance(engine, SupportsCommandLine)
+                    else request.args,
+                ),
+                "tmux_subcommand": request.subcommand,
+            },
+        )
+
+    result = await engine.run(request)
+
+    cmd = list(result.cmd)
+    stderr = list(result.stderr)
+    stdout = list(result.stdout)
+    if "has-session" in cmd and stderr and not stdout:
+        stdout = [stderr[0]]
+        result = dataclasses.replace(result, stdout=stdout)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command completed",
+            extra={
+                "tmux_cmd": shlex.join(cmd),
+                "tmux_subcommand": request.subcommand,
+                "tmux_exit_code": result.returncode,
+                "tmux_stdout": stdout[:100],
+                "tmux_stderr": stderr[:100],
+                "tmux_stdout_len": len(stdout),
+                "tmux_stderr_len": len(stderr),
+            },
+        )
+    return result
+
+
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+    """Run any :term:`tmux(1)` command, returning list-shaped output.
+
+    Dispatches through a :class:`~libtmux.engines.base.TmuxEngine` --
+    :class:`~libtmux.engines.subprocess.SubprocessEngine` unless one is passed --
+    and adapts the engine's :class:`~libtmux.engines.base.CommandResult` to the
+    ``list``-of-``str`` attributes libtmux's wrappers read.
+
+    Parameters
+    ----------
+    *args : typing.Any
+        tmux argv. Connection flags may be included inline (``"-Lwork"``); an
+        engine supplies its own, so :meth:`libtmux.Server.cmd` passes only the
+        subcommand.
+    tmux_bin : str, optional
+        Path to the tmux binary. Ignored when *engine* is given -- the engine
+        owns its binary.
+    engine : :class:`~libtmux.engines.base.TmuxEngine`, optional
+        Executor to dispatch through.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        The full argv that ran, tmux binary first.
+    stdout : list[str]
+        Standard output, one line per item.
+    stderr : list[str]
+        Standard error, one line per item, blanks removed.
+    returncode : int
+        tmux exit code.
 
     Examples
     --------
@@ -309,73 +620,115 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
-        resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        engine: TmuxEngine | None = None,
+    ) -> None:
+        runner: TmuxEngine = (
+            engine if engine is not None else SubprocessEngine.of(tmux_bin)
+        )
+        result = dispatch(runner, *args)
 
-        cmd = [resolved]
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
+        self.cmd = list(result.cmd)
+        self.returncode = result.returncode
+        self.stdout = list(result.stdout)
+        self.stderr = list(result.stderr)
+        self._process = result.process
 
-        self.cmd = cmd
+    @property
+    def ok(self) -> bool:
+        """Whether tmux accepted the command.
 
-        if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = shlex.join(cmd)
-            logger.debug(
-                "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
+        The same accessor :attr:`CommandResult.ok
+        <libtmux.engines.base.CommandResult.ok>` carries, so code reads the same
+        whether it holds an engine result or a wrapper's return value.
 
-        try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
-                extra={
-                    "tmux_cmd": shlex.join(cmd),
-                },
-            )
-            raise
+        Returns
+        -------
+        bool
+            ``True`` when :attr:`returncode` is zero.
 
-        self.returncode = returncode
+        Examples
+        --------
+        >>> server.cmd("display-message", "-p", "hi").ok
+        True
+        """
+        return self.returncode == 0
 
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
+    def raise_for_status(self) -> tmux_cmd:
+        """Raise when tmux rejected the command, otherwise return self.
 
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
+        Returns
+        -------
+        tmux_cmd
+            This object, when :attr:`ok`.
 
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            tmux exited non-zero. The message carries tmux's own stderr.
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "tmux command completed",
-                extra={
-                    "tmux_cmd": shlex.join(cmd),
-                    "tmux_exit_code": self.returncode,
-                    "tmux_stdout": self.stdout[:100],
-                    "tmux_stderr": self.stderr[:100],
-                    "tmux_stdout_len": len(self.stdout),
-                    "tmux_stderr_len": len(self.stderr),
-                },
-            )
+        Examples
+        --------
+        >>> server.cmd("display-message", "-p", "hi").raise_for_status().stdout
+        ['hi']
+
+        >>> server.cmd("kill-window", "-t", "@999").raise_for_status()
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.LibTmuxException: kill-window: can't find window: @999
+        """
+        if self.ok:
+            return self
+        detail = " ".join(self.stderr) or f"exited {self.returncode}"
+        command_argv = split_direct_argv(tuple(self.cmd[1:])).command_argv
+        subcommand = command_argv[0] if command_argv else "tmux"
+        msg = f"{subcommand}: {detail}"
+        raise exc.LibTmuxException(msg)
+
+    @property
+    def process(self) -> subprocess.Popen[str]:
+        """Return the finished :class:`subprocess.Popen`.
+
+        Returns
+        -------
+        subprocess.Popen
+            The process the default engine forked.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            The engine that ran the command never forked a process.
+
+        Examples
+        --------
+        >>> import warnings
+        >>> proc = tmux_cmd(
+        ...     f"-L{server.socket_name}", "display-message", "-p", "hi"
+        ... )
+        >>> with warnings.catch_warnings(record=True) as caught:
+        ...     warnings.simplefilter("always")
+        ...     returncode = proc.process.returncode
+        >>> returncode
+        0
+        >>> caught[0].category.__name__
+        'DeprecationWarning'
+
+        .. deprecated:: 0.63
+            Read :attr:`returncode`, :attr:`stdout` and :attr:`stderr` instead.
+            Only engines that fork an OS process can supply this.
+        """
+        warnings.warn(
+            "tmux_cmd.process is deprecated; use .returncode, .stdout, .stderr",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self._process is None:
+            msg = "engine did not fork a subprocess; tmux_cmd.process is unavailable"
+            raise exc.LibTmuxException(msg)
+        return self._process
 
 
 class _TmuxVersionUnavailable(Exception):

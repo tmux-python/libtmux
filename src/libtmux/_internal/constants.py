@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import typing as t
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from libtmux._internal.dataclasses import SkipDefaultFieldsReprMixin
@@ -1094,7 +1095,7 @@ class Hooks(
     command_error: SparseArray[str] = field(default_factory=SparseArray)
 
     @classmethod
-    def from_stdout(cls, value: list[str]) -> Hooks:
+    def from_stdout(cls, value: Sequence[str]) -> Hooks:
         """Parse raw tmux hook output into a Hooks instance.
 
         The parsing pipeline:
