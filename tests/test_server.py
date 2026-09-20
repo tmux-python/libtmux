@@ -64,6 +64,56 @@ def test_socket_path_not_derived_from_socket_name() -> None:
     assert myserver.socket_path is None
 
 
+def test_repr_socket_path_honors_tmux_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A default ``Server()`` reprs the socket tmux resolves, not ``/tmp``.
+
+    Regression for #723: the repr hard-coded ``/tmp/tmux-<euid>/default``, so
+    under any ``$TMUX_TMPDIR`` it named a socket the object was not using.
+    """
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path))
+
+    myserver = Server()
+
+    socket_path = tmp_path / f"tmux-{os.geteuid()}" / "default"
+    assert repr(myserver) == f"Server(socket_path={socket_path})"
+
+
+def test_repr_socket_path_resolves_a_symlinked_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A symlinked ``$TMUX_TMPDIR`` reprs the path tmux reports, not the link.
+
+    tmux resolves the socket directory before binding, so the link's own
+    length is not what a socket has to fit in. Reporting the unresolved path
+    would name a socket tmux never creates.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(target)
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setenv("TMUX_TMPDIR", str(link))
+
+    myserver = Server()
+
+    socket_path = target.resolve() / f"tmux-{os.geteuid()}" / "default"
+    assert repr(myserver) == f"Server(socket_path={socket_path})"
+
+
+def test_repr_socket_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A named socket reprs its name, whatever ``$TMUX_TMPDIR`` says."""
+    monkeypatch.setenv("TMUX_TMPDIR", "/nonexistent-tmux-tmpdir")
+
+    myserver = Server(socket_name="libtmux_test_repr")
+
+    assert repr(myserver) == "Server(socket_name=libtmux_test_repr)"
+
+
 def test_config(server: Server) -> None:
     """``-f`` file for tmux(1) configuration."""
     myserver = Server(config_file="test")
