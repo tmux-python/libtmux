@@ -35,6 +35,11 @@ watch-test:
         just _entr-warn
     fi
 
+# Run the performance benchmarks (not part of the test suite; separate tier)
+[group: 'benchmark']
+bench *args:
+    uv run pytest benchmarks/ -o python_files='bench_*.py' --benchmark-only {{ args }}
+
 # Build documentation
 [group: 'docs']
 build-docs:

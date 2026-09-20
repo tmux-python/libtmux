@@ -62,6 +62,16 @@ Test:
 $ uv run pytest
 ```
 
+Start coverage before pytest so plugin imports and worker processes are
+measured:
+
+```console
+$ uv run coverage erase && \
+    uv run coverage run -m pytest -n auto && \
+    uv run coverage combine && \
+    uv run coverage xml
+```
+
 Documentation is a gate, not a courtesy. Examples in docstrings,
 documentation pages, and `README.md` are executed by `pytest`; the
 doctest flags live in `pyproject.toml`, so there is no separate doctest
@@ -127,6 +137,24 @@ Include doctests in the watch loop:
 ```console
 $ uv run ptw . --now --doctest-modules
 ```
+
+## Benchmarks
+
+`benchmarks/` holds [pytest-benchmark] microbenchmarks for command
+dispatch, listing, snapshot capture, and format decoding. It is not a
+gate — performance work is a separate tier from the gates above, not
+part of them — and it is not in `testpaths`, so a plain `uv run pytest`
+never runs it.
+
+```console
+$ just bench
+```
+
+Report a regression with the printed numbers, not a guess. A number
+that lands in a commit message or `CHANGES` is a measurement someone
+ran, not a target to defend in the next one.
+
+[pytest-benchmark]: https://pytest-benchmark.readthedocs.io/
 
 ## Debugging
 

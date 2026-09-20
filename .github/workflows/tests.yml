@@ -20,6 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
+          save-cache: ${{ strategy.job-index == 0 }}
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -36,24 +37,41 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Resolve tmux revision
+        id: tmux-source
+        env:
+          TMUX_REF: ${{ matrix.tmux-version }}
+        run: |
+          if [[ "$TMUX_REF" == master ]]; then
+            ref=refs/heads/master
+          else
+            ref="refs/tags/$TMUX_REF"
+          fi
+          revision=$(git ls-remote --refs https://github.com/tmux/tmux.git "$ref")
+          revision=${revision%%[[:space:]]*}
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
       - name: Setup tmux build cache for tmux ${{ matrix.tmux-version }}
         id: tmux-build-cache
         uses: actions/cache@v6
         with:
           path: ~/tmux-builds/tmux-${{ matrix.tmux-version }}
-          key: tmux-${{ matrix.tmux-version }}
+          key: tmux-${{ runner.os }}-${{ runner.arch }}-${{ matrix.tmux-version }}-${{ steps.tmux-source.outputs.revision }}
 
       - name: Build tmux ${{ matrix.tmux-version }}
         if: steps.tmux-build-cache.outputs.cache-hit != 'true'
+        env:
+          TMUX_REVISION: ${{ steps.tmux-source.outputs.revision }}
         run: |
           sudo apt install libevent-dev libncurses5-dev libtinfo-dev libutempter-dev bison
           mkdir ~/tmux-builds
           mkdir ~/tmux-src
           git clone https://github.com/tmux/tmux.git ~/tmux-src/tmux-${{ matrix.tmux-version }}
           cd ~/tmux-src/tmux-${{ matrix.tmux-version }}
-          git checkout ${{ matrix.tmux-version }}
+          git checkout "$TMUX_REVISION"
           sh autogen.sh
-          ./configure --prefix=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }} && make && make install
+          ./configure --prefix="$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}" && make && make install
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           cd ~
           tmux -V
@@ -73,17 +91,15 @@ jobs:
           uv run python -V
 
       - name: Test with pytest
-        continue-on-error: ${{ matrix.tmux-version == 'master' }}
         run: |
           sudo apt install libevent-2.1-7
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
-          ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
+          ls "$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin"
           tmux -V
-          uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
-        env:
-          COV_CORE_SOURCE: .
-          COV_CORE_CONFIG: .coveragerc
-          COV_CORE_DATAFILE: .coverage.eager
+          uv run coverage erase
+          uv run coverage run -m pytest -n auto --verbose
+          uv run coverage combine
+          uv run coverage xml
       - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
