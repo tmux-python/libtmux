@@ -45,6 +45,45 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### A tmux call can be given a deadline (#757)
+
+{class}`~libtmux.common.tmux_cmd` takes a `timeout`, and
+{class}`~libtmux.Server` takes one as the default for every command it
+issues, including the listings behind
+{attr}`Server.sessions <libtmux.Server.sessions>`,
+{attr}`Session.windows <libtmux.Session.windows>` and
+{attr}`Window.panes <libtmux.Window.panes>`. Those listings do not go
+through {meth}`Server.cmd() <libtmux.Server.cmd>`, so until now a
+consumer could not bound them at all.
+
+Without a timeout nothing changes: the default is to wait, as before.
+
+A tmux server can accept a connection and then never reply, and a call
+waiting on one never returns. Giving up on it does not stop it either,
+so the waiting calls only accumulate, and enough of them will exhaust a
+thread pool and stall work aimed at healthy sockets.
+
+On expiry the tmux process is killed and reaped before
+{exc}`~libtmux.exc.TmuxTimeout` is raised, so a call that timed out
+leaves nothing running behind it. The command may still have taken
+effect -- the process was stopped mid-command, and nothing can be said
+either way.
+
+{exc}`~libtmux.exc.TmuxTimeout` is deliberately not a
+{exc}`~libtmux.exc.LibTmuxException`. The listing accessors read one of
+those as "nothing to list", which is correct for a daemon that has not
+started and wrong for a server that has stopped answering: a caller
+told there are no sessions goes on to create one on a server that
+already has them.
+
+```python
+server = Server(timeout=5)
+server.sessions           # raises TmuxTimeout rather than reporting []
+server.cmd("kill-server", timeout=30)   # per-call override
+```
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
