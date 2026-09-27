@@ -2,7 +2,12 @@
   <h1>⚙️ libtmux</h1>
   <p><strong>Drive tmux from Python: typed, object-oriented control over servers, sessions, windows, and panes.</strong></p>
   <p>
-    <a href="https://libtmux.git-pull.com/"><img src="https://raw.githubusercontent.com/tmux-python/libtmux/master/docs/_static/img/libtmux.svg" alt="libtmux logo" height="120"></a>
+    <a href="https://libtmux.git-pull.com/">
+      <picture>
+        <source srcset="assets/logo.svg" type="image/svg+xml">
+        <img src="https://raw.githubusercontent.com/tmux-python/libtmux/master/assets/logo.png" alt="libtmux logo" width="128" height="128">
+      </picture>
+    </a>
   </p>
   <p>
     <a href="https://github.com/tmux-python/libtmux/actions/workflows/tests.yml"><img src="https://github.com/tmux-python/libtmux/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
