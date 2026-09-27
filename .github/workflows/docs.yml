@@ -51,7 +51,7 @@ permissions:
 
 jobs:
   build-libtmux-org:
-    uses: libtmux/docs/.github/workflows/port-docs.yml@6dec8f7cf780f9f3f4709b75f8a22e170c8a73f8
+    uses: libtmux/docs/.github/workflows/port-docs.yml@551550c963f9a5d73166aa25b054c9ac57553248
     with:
       port: py
       source-ref: ${{ inputs.source-ref }}
@@ -75,7 +75,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@6dec8f7cf780f9f3f4709b75f8a22e170c8a73f8
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@551550c963f9a5d73166aa25b054c9ac57553248
     with:
       path-prefix: py/${{ matrix.version }}
       artifact: docs-py-${{ matrix.version }}
@@ -97,6 +97,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment: docs
+    env:
+      UV_FROZEN: 'true'
     permissions:
       contents: read
       id-token: write
@@ -115,7 +117,7 @@ jobs:
         run: uv python install 3.14
 
       - name: Install dependencies [w/ docs]
-        run: uv sync --locked --all-extras --dev
+        run: uv sync --frozen --all-extras --dev
 
       - name: Install just
         uses: extractions/setup-just@v4
