@@ -444,6 +444,11 @@ class Session(
         -------
         :meth:`server.cmd`
 
+        Raises
+        ------
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            The server's engine is asynchronous; see :meth:`Server.cmd`.
+
         Notes
         -----
         .. versionchanged:: 0.34
