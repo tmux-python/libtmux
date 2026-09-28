@@ -45,6 +45,34 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Read only what a pane wrote since you last looked (#740)
+
+{meth}`Pane.capture_since() <libtmux.Pane.capture_since>` returns the rows a
+pane has written since a {class}`~libtmux.capture.CaptureCursor`, along with a
+fresh cursor to resume from. Watching a pane over time — tailing a build,
+following a long-running command — no longer means re-reading the whole screen
+each tick and diffing it yourself.
+
+Cursors are immutable and the call never advances the one it was given, so
+replaying a cursor always returns the same rows. They serialize through `str()`
+and {meth}`~libtmux.capture.CaptureCursor.from_str` for callers that carry them
+across a process or wire boundary.
+
+Naive screen-diffing goes wrong in ways tmux makes easy to hit, and a cursor
+accounts for each: output that scrolled past the visible region between reads,
+`clear-history` and `history-limit` trims renumbering the grid under a stored
+offset, and a respawned pane reusing its `pane_id` while running a different
+program. Where the anchored rows are genuinely gone, the result reports
+`lines_missed` and falls back to the visible screen rather than returning a
+delta that quietly omits them. Where continuing would mean reading another
+process's output, it raises {exc}`~libtmux.exc.PaneLifecycleChanged` or
+{exc}`~libtmux.exc.InvalidCaptureCursor` — both under a shared
+{exc}`~libtmux.exc.CaptureCursorError` base.
+
+See {ref}`capture-since` for a walkthrough.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
