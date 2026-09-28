@@ -12,150 +12,110 @@ facts specific to this package.
   method.
 - tmux's format-string system (`#{session_id}`, `#{window_name}`, …)
   is libtmux's query mechanism; format constants live in `formats.py`.
-- An object can go stale when tmux state changes externally (another
-  client kills a window, a session gets renamed). Call `.refresh()` to
-  reconcile it, or use the `neo` query interface, which always queries
-  fresh.
+- An object can go stale when tmux state changes externally. Call
+  `.refresh()` to reconcile it, or use the `neo` query interface,
+  which always queries fresh.
 
 ## List-returning accessors: empty by default on tmux errors
 
 `Server.sessions`, `Server.clients`, and `Server.attached_sessions`
 return an empty `QueryList` when tmux's underlying list command fails
-for any reason — no running daemon, a missing socket, a permission
-error, a subprocess crash. This is a deliberate API contract:
-list-shaped accessors are lenient by default. Callers that need to
-distinguish "no rows" from "tmux unreachable" use the explicit
-`Server.is_alive()` or `Server.raise_if_dead()` primitives.
+for any reason. Callers that need to distinguish an empty server from
+an unreachable one use `Server.is_alive()` or `Server.raise_if_dead()`.
 
-When adding a new list-returning accessor, follow this convention. If a
-future feature genuinely benefits from loud-failure semantics, expose
-it as a scoped opt-in (e.g. a `Server.raise_server_errors()` context
-manager) rather than changing the default contract of an existing
-accessor or hard-coding raise-on-tmux-error into a new one.
-Empty-on-tmux-error stays the default; raise is opt-in.
+Keep list-shaped accessors lenient by default. Add an explicit opt-in
+for loud failure rather than changing an existing accessor's contract.
 
 ## Logging
 
-These rules guide future logging changes; existing code may not yet
-conform.
+### Ownership
 
-### Logger setup
+- Use `logging.getLogger(__name__)` only in modules that emit records.
+- Keep handlers, levels, and formatters under application control.
+- `_internal/log_context.py` owns structured context:
+  `command_extra(argv)` describes a command and
+  `object_extra(subcommand, ...)` describes an object operation.
+- `tmux_cmd` is the sole producer of subprocess dispatch and
+  completion records. Do not duplicate them in query or object layers.
+- Control mode uses the same command context, then retains it for its
+  client lifecycle.
 
-- Use `logging.getLogger(__name__)` in every module.
-- Add `NullHandler` in library `__init__.py` files.
-- Never configure handlers, levels, or formatters in library code —
-  that's the application's job.
+### Command records
 
-### Structured context via `extra`
+`tmux_cmd` emits `DEBUG` before and after a subprocess. The
+`tmux_cmd` field contains a quoted, one-line rendering of the complete argv.
+Printable values use shell quoting; control characters use escaped forms.
+Completion records retain the first 100 stdout and stderr lines alongside
+`tmux_stdout_len` and `tmux_stderr_len`. Keep command-specific redaction,
+alias maps, and output classifiers out of the producer; applications select
+fields through standard-library handlers and formatters. Treat derived
+subcommand and socket fields as best effort and stop parsing unknown options.
 
-Pass structured data on every log call where useful for filtering,
-searching, or test assertions.
+Guard command-context construction with
+`logger.isEnabledFor(logging.DEBUG)`. Use lazy interpolation for any
+message arguments.
 
-**Core keys** (stable, scalar, safe at any log level):
+### Levels and failures
 
-| Key | Type | Context |
-|-----|------|---------|
-| `tmux_cmd` | `str` | tmux command line |
-| `tmux_subcommand` | `str` | tmux subcommand (e.g. `new-session`) |
-| `tmux_target` | `str` | tmux target specifier (e.g. `mysession:1.2`) |
-| `tmux_exit_code` | `int` | tmux process exit code |
-| `tmux_session` | `str` | session name |
-| `tmux_window` | `str` | window name or index |
-| `tmux_pane` | `str` | pane identifier |
-| `tmux_option_key` | `str` | tmux option name |
+| Level | Contract |
+| ----- | -------- |
+| `DEBUG` | Subprocess dispatch/completion and internal lookup details |
+| `INFO` | Successful server, session, window, and pane lifecycle events |
+| `WARNING` | A recoverable problem libtmux handled, aggregated once per item |
+| `ERROR` | A failure libtmux intentionally swallowed |
 
-**Heavy/optional keys** (DEBUG only, potentially large):
+Propagated or translated failures stay in their exceptions; do not
+catch, log, and re-raise. A non-zero tmux exit is not enough to justify
+an `ERROR` because probes use it to answer false.
+`Server.is_alive()` stays quiet.
 
-| Key | Type | Context |
-|-----|------|---------|
-| `tmux_stdout` | `list[str]` | tmux stdout lines (truncate or cap; `%(tmux_stdout)s` produces repr) |
-| `tmux_stderr` | `list[str]` | tmux stderr lines (same caveats) |
-| `tmux_stdout_len` | `int` | number of stdout lines |
-| `tmux_stderr_len` | `int` | number of stderr lines |
+Normalize executable-launch `ENOENT`, `EACCES`, and `ENOEXEC` errors to
+`TmuxCommandNotFound`, preserving the operating-system message and cause.
+Keep unrelated `OSError` values native at direct loud APIs. A failed `PATH`
+preflight uses a factual message without inventing a cause.
 
-Treat established keys as compatibility-sensitive — downstream users
-may build dashboards and alerts on them. Change deliberately.
+`Server.sessions` and `Server.clients` log once in
+`libtmux.server` when they convert `LibTmuxException` or an OS launch failure
+to an empty result. `Server.attached_sessions` inherits that behavior through
+`Server.sessions`. The boundary record includes the subcommand, socket, first
+100 stderr lines, and total stderr line count.
 
-### Key naming rules
+Deprecations and ignored arguments use `warnings.warn`, not a second
+log record. Applications can route them through
+`logging.captureWarnings(True)`.
 
-- `snake_case`, not dotted; `tmux_` prefix.
-- Prefer stable scalars; avoid ad-hoc objects.
-- Heavy keys (`tmux_stdout`, `tmux_stderr`) are DEBUG-only; consider
-  companion `tmux_stdout_len` fields or hard truncation (e.g.
-  `stdout[:100]`).
+### Structured fields
 
-### Lazy formatting
+All fields are optional because each record carries only relevant
+context.
 
-`logger.debug("msg %s", val)` not f-strings. Two rationales:
+| Field | Type | Meaning |
+| ----- | ---- | ------- |
+| `tmux_cmd` | `str` | Quoted, one-line complete command |
+| `tmux_subcommand` | `str` | tmux subcommand |
+| `tmux_socket` | `str` | Socket name or path |
+| `tmux_target` | `str` | Target specifier |
+| `tmux_session` | `str` | Session name |
+| `tmux_window` | `str` | Window name or index |
+| `tmux_pane` | `str` | Pane identifier |
+| `tmux_exit_code` | `int` | Subprocess exit status |
+| `tmux_stdout` | `list[str]` | First 100 stdout lines |
+| `tmux_stderr` | `list[str]` | First 100 stderr lines |
+| `tmux_stdout_len` | `int` | stdout line count |
+| `tmux_stderr_len` | `int` | stderr or error line count |
+| `tmux_option_key` | `str` | Option whose entries could not be parsed |
+| `tmux_option_skipped` | `int` | Entries skipped for that option |
 
-- Deferred string interpolation: skipped entirely when level is
-  filtered.
-- Aggregator message template grouping: `"Running %s"` is one signature
-  grouped ×10,000; f-strings make each line unique.
+Treat field names and types as compatibility-sensitive. Omit unknown
+values instead of storing `None`. Keep identity and count fields scalar;
+stdout and stderr snapshots are lists of lines.
 
-When computing `val` itself is expensive, guard with
-`if logger.isEnabledFor(logging.DEBUG)`.
+### Messages and tests
 
-### `stacklevel` for wrappers
-
-Increment for each wrapper layer so `%(filename)s:%(lineno)d` and OTel
-`code.filepath` point to the real caller. Verify whenever call depth
-changes.
-
-### `LoggerAdapter` for persistent context
-
-For objects with stable identity (Session, Window, Pane), use
-`LoggerAdapter` to avoid repeating the same `extra` on every call. Lead
-with the portable pattern (override `process()` to merge);
-`merge_extra=True` simplifies this on Python 3.13+.
-
-### Log levels
-
-| Level | Use for | Examples |
-|-------|---------|----------|
-| `DEBUG` | Internal mechanics, tmux I/O | tmux command + stdout, format queries |
-| `INFO` | Object lifecycle, user-visible operations | Session created, window added |
-| `WARNING` | Recoverable issues, deprecation | Deprecated method, missing optional program |
-| `ERROR` | Failures that stop an operation | tmux command failed, invalid target |
-
-### Message style
-
-- Lowercase, past tense for events: `"session created"`, `"tmux
-  command failed"`.
-- No trailing punctuation.
-- Keep messages short; put details in `extra`, not the message string.
-
-### Exception logging
-
-- Use `logger.exception()` only inside `except` blocks when you are
-  **not** re-raising.
-- Use `logger.error(..., exc_info=True)` when you need the traceback
-  outside an `except` block.
-- Avoid `logger.exception()` followed by `raise` — this duplicates the
-  traceback. Either add context via `extra` that would otherwise be
-  lost, or let the exception propagate.
-
-### Testing logs
-
-Assert on `caplog.records` attributes, not string matching on
-`caplog.text`:
-
-- Scope capture: `caplog.at_level(logging.DEBUG,
-  logger="libtmux.common")`.
-- Filter records rather than index by position: `[r for r in
-  caplog.records if hasattr(r, "tmux_cmd")]`.
-- Assert on schema: `record.tmux_exit_code == 0` not `"exit code 0" in
-  caplog.text`.
-- `caplog.record_tuples` cannot access extra fields — always use
-  `caplog.records`.
-
-### Avoid
-
-- f-strings/`.format()` in log calls.
-- Unguarded logging in hot loops (guard with `isEnabledFor()`).
-- Catch-log-reraise without adding new context.
-- `print()` for diagnostics.
-- Logging secret env var values (log key names only).
-- Non-scalar ad-hoc objects in `extra`.
-- Requiring custom `extra` fields in format strings without safe
-  defaults (missing keys raise `KeyError`).
+- Use short lowercase event messages without trailing punctuation.
+- Assert on `caplog.records` fields, not rendered `caplog.text`.
+- Scope capture to the emitting logger.
+- Pair new record behavior with a deliberate break that proves the
+  assertion fails.
+- Give formatter examples safe `defaults=`; not every record carries
+  every field.

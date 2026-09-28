@@ -1802,7 +1802,10 @@ _NEW_PANE_EMPTY_VALUE_CASES = (
 )
 
 
-def test_new_pane_floating(session: Session) -> None:
+def test_new_pane_floating(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Pane.new_pane() creates a floating pane on tmux 3.7+ (else raises)."""
     window = session.new_window(window_name="floating_pane")
     window.resize(height=50, width=200)
@@ -1810,10 +1813,25 @@ def test_new_pane_floating(session: Session) -> None:
     assert pane is not None
 
     if has_gte_version("3.7"):
-        floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
+        with caplog.at_level(logging.INFO, logger="libtmux.pane"):
+            floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
         assert floating.pane_floating_flag == "1"
         assert floating.pane_width == "80"
         assert floating.pane_height == "15"
+        records = [
+            record
+            for record in caplog.records
+            if record.name == "libtmux.pane"
+            and record.getMessage() == "floating pane created"
+        ]
+        assert len(records) == 1
+        record = t.cast(t.Any, records[0])
+        assert record.levelno == logging.INFO
+        assert record.tmux_subcommand == "new-pane"
+        assert record.tmux_socket == session.server.socket_name
+        assert record.tmux_session == session.session_name
+        assert record.tmux_window == window.window_name
+        assert record.tmux_pane == floating.pane_id
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             pane.new_pane(width=40, height=10)
