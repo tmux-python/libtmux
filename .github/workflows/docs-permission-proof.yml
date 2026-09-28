@@ -1,0 +1,75 @@
+name: docs-permission-proof
+
+on:
+  push:
+    branches: [docs-site-deploy]
+    paths: [.github/workflows/docs-permission-proof.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  outside-workflow:
+    runs-on: ubuntu-latest
+    environment: docs
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Try the publisher role from a direct job
+        id: assume
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd
+        with:
+          role-to-assume: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+          aws-region: us-east-1
+          retry-max-attempts: 1
+      - name: Require refusal
+        env:
+          OUTCOME: ${{ steps.assume.outcome }}
+        run: |
+          test "$OUTCOME" = failure
+          echo 'Direct job refused the publisher role.' >> "$GITHUB_STEP_SUMMARY"
+
+  artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create an isolated permission probe
+        run: |
+          mkdir probe
+          printf 'Permission boundary probe\n' > probe/probe.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs-permission-probe
+          path: probe
+          retention-days: 1
+
+  other-prefix:
+    needs: artifact
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@4a3e428b0da90b6a76be73e3c15b4293f54d0519
+    with:
+      path-prefix: en/cxx/iam-proof-${{ github.run_id }}
+      artifact: docs-permission-probe
+      version-kind: branch
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+      distribution: ${{ secrets.LIBTMUX_ORG_DISTRIBUTION }}
+
+  verdict:
+    if: always()
+    needs: [outside-workflow, other-prefix]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both boundaries
+        env:
+          DIRECT_RESULT: ${{ needs.outside-workflow.result }}
+          PREFIX_RESULT: ${{ needs.other-prefix.result }}
+        run: |
+          test "$DIRECT_RESULT" = success
+          test "$PREFIX_RESULT" = failure
+          echo 'Inspect the failed publisher step for S3 AccessDenied.' >> "$GITHUB_STEP_SUMMARY"
