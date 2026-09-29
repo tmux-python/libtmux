@@ -22,7 +22,8 @@
       "evidence": [
         "2026-09-29T22:24:26.0758193Z upload: dist/probe.txt to s3://***/en/py/iam-proof-36639348612/probe.txt"
       ],
-      "logSha256": "12e31a9b73fc9591369897e49626031e3715af7b3e9b0db46a6ee8f06a3edc43"
+      "logSha256": "12e31a9b73fc9591369897e49626031e3715af7b3e9b0db46a6ee8f06a3edc43",
+      "reusableWorkflow": "libtmux/docs/.github/workflows/reusable-deploy.yml@8fda4b89071621b9ed2c4722a68d61f6ecf9c1c4"
     },
     {
       "name": "approved-foreign-prefix / publish",
@@ -35,7 +36,8 @@
       "evidence": [
         "2026-09-29T22:24:27.4521784Z fatal error: An error occurred (AccessDenied) when calling the ListObjectsV2 operation: User: arn:aws:sts::095447592991:assumed-role/libtmux-org-py-publisher/GitHubActions is not authorized to perform: s3:ListBucket on resource: \"arn:aws:s3:::***\" because no identity-based policy allows the s3:ListBucket action"
       ],
-      "logSha256": "25f8134bab0baf5bb6002e74b9d7f3b6bb093fde104eefad0da0c7b19ba4a481"
+      "logSha256": "25f8134bab0baf5bb6002e74b9d7f3b6bb093fde104eefad0da0c7b19ba4a481",
+      "reusableWorkflow": "libtmux/docs/.github/workflows/reusable-deploy.yml@8fda4b89071621b9ed2c4722a68d61f6ecf9c1c4"
     },
     {
       "name": "direct-job",
@@ -48,7 +50,8 @@
       "evidence": [
         "2026-09-29T22:24:17.2735751Z ##[error]Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity"
       ],
-      "logSha256": "0a6018ef195a1cd2d42d406f35ff8fae9ccd3c6e3482f1fdcad4e96441d2e235"
+      "logSha256": "0a6018ef195a1cd2d42d406f35ff8fae9ccd3c6e3482f1fdcad4e96441d2e235",
+      "reusableWorkflow": null
     },
     {
       "name": "unapproved-commit / publish",
@@ -61,7 +64,8 @@
       "evidence": [
         "2026-09-29T22:25:01.3418033Z ##[error]Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity"
       ],
-      "logSha256": "a014c28550df582ae6d5fb92fef3f0089f3a1017394814d1a216611f40c35d38"
+      "logSha256": "a014c28550df582ae6d5fb92fef3f0089f3a1017394814d1a216611f40c35d38",
+      "reusableWorkflow": "libtmux/docs/.github/workflows/reusable-deploy.yml@c7bdbc43884e7e000948110234d006e68445d777"
     },
     {
       "name": "unapproved-tag / publish",
@@ -74,7 +78,10 @@
       "evidence": [
         "2026-09-29T22:25:30.5166570Z ##[error]Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity"
       ],
-      "logSha256": "f10f0d37b3bf2ab86ca7c0fc16b0a9188677ea3468ed6a14538ef81dcf282789"
+      "logSha256": "f10f0d37b3bf2ab86ca7c0fc16b0a9188677ea3468ed6a14538ef81dcf282789",
+      "reusableWorkflow": "libtmux/docs/.github/workflows/reusable-deploy.yml@v0.1.0-alpha.1",
+      "tagObject": "5637b2a010c9d3eb800e26460e90b2d6f9b98b43",
+      "resolvedCommit": "e30bcba4ca470e49ba798255ca4e3d36d58f95bf"
     }
   ],
   "excludedStartupFailure": {
@@ -82,6 +89,53 @@
     "head": "a3694e502be716d3b919bd53778d8bd2808fa2bc",
     "workflowSha256": "a3acf5583af84d334954a0e8bc63b9f33460307a87a9c1d90167e2da179aaca7",
     "error": "Line: 95, Col: 11: Secret distribution is required, but not provided while calling.",
-    "jobsExecuted": false
+    "jobsExecuted": false,
+    "url": "https://github.com/tmux-python/libtmux/actions/runs/36639189198"
+  },
+  "callerWorkflow": "tmux-python/libtmux/.github/workflows/docs-permission-proof.yml@73513701eb1f4bc88225efa06877082fd285c82f",
+  "restoration": {
+    "verifiedAt": "2026-09-29T22:28:01.834558+00:00",
+    "remoteRefs": {
+      "refs/heads/docs-site-deploy": "da4484ad8117aa09ec2fcb0c92f83bde4aa304e6",
+      "refs/heads/proof/docs-permission-boundaries-20260929": "78690120780cfbecb535d44ff966f59e7a3b9cc4"
+    },
+    "restoredUsingExactLease": "73513701eb1f4bc88225efa06877082fd285c82f",
+    "localClean": true,
+    "proofWorkflowAbsent": true,
+    "archiveVerifiedBeforeRestore": true
+  },
+  "rootObjectVerification": {
+    "run": "36639348612",
+    "scope": "S3 publication and permission boundaries; temporary version was not registered in the public manifest",
+    "s3": {
+      "key": "en/py/iam-proof-36639348612/probe.txt",
+      "etag": "\"ef3215660b1fb8515eede353f0b71fdf\"",
+      "last_modified": "2026-09-29T22:24:27+00:00",
+      "body_matches": true
+    },
+    "public": {
+      "url": "https://libtmux.org/en/py/iam-proof-36639348612/probe.txt",
+      "observed_at": "2026-09-29T22:27:12.447604+00:00",
+      "status": 403,
+      "public_delivery_verified": false
+    },
+    "denied_prefix_key_counts": {
+      "en/cxx/iam-proof-36639348612/": 0,
+      "en/py/iam-proof-36639348612-unapproved-commit/": 0,
+      "en/py/iam-proof-36639348612-unapproved-tag/": 0
+    },
+    "public_latency_measured": false,
+    "cleanup": {
+      "deleted_exact_key": "en/py/iam-proof-36639348612/probe.txt",
+      "remaining_own_prefix_keys": 0
+    }
+  },
+  "scope": {
+    "s3Publication": true,
+    "foreignSyncDenial": true,
+    "directPutObjectTest": false,
+    "publicDeliveryVerified": false,
+    "releaseToPublicLatencyMeasured": false,
+    "cloudfront403CauseDiagnosed": false
   }
 }

@@ -29,3 +29,13 @@ required a `distribution` secret. It is recorded but excluded from IAM proof.
 This archive preserves the proof workflow and evidence before the live
 `docs-site-deploy` branch is restored to
 `da4484ad8117aa09ec2fcb0c92f83bde4aa304e6` with an exact branch lease.
+
+## Restoration and object cleanup
+
+The live caller branch and local checkout were verified restored and clean at
+`da4484ad8117aa09ec2fcb0c92f83bde4aa304e6`. The proof workflow is absent.
+The root operator verified the uploaded object body matched this run, found
+zero objects in all three denied prefixes, deleted only the successful probe
+object, and verified its prefix was empty. An optional public GET returned
+403; its cause was not diagnosed. This proof makes no public delivery or
+release-to-site latency claim. See the receipts in `evidence.json`.
