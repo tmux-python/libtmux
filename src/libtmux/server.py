@@ -2377,6 +2377,10 @@ class Server(
 
             raise_if_stderr(proc, "new-session")
 
+            if not proc.stdout:
+                msg = "new-session produced no output"
+                raise exc.LibTmuxException(msg)
+
             session_stdout = proc.stdout[0]
 
         finally:
