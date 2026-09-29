@@ -1,0 +1,1450 @@
+{
+  "runCreatedAt": "2026-09-29T22:57:46Z",
+  "runUpdatedAt": "2026-09-29T23:06:57Z",
+  "totalRunSeconds": 551.0,
+  "jobs": [
+    {
+      "name": "build-libtmux-org / identity",
+      "id": 109658048239,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T22:57:49Z",
+      "startedAt": "2026-09-29T22:57:51Z",
+      "completedAt": "2026-09-29T22:58:04Z",
+      "queueSeconds": 2.0,
+      "elapsedSeconds": 13.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:57:52Z",
+          "completedAt": "2026-09-29T22:57:53Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Validate reusable workflow identity",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:57:53Z",
+          "completedAt": "2026-09-29T22:57:53Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:57:53Z",
+          "completedAt": "2026-09-29T22:57:55Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:57:55Z",
+          "completedAt": "2026-09-29T22:58:00Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run set -euo pipefail",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:00Z",
+          "completedAt": "2026-09-29T22:58:00Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run node scripts/port-docs-matrix.mjs",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:00Z",
+          "completedAt": "2026-09-29T22:58:01Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:01Z",
+          "completedAt": "2026-09-29T22:58:01Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:01Z",
+          "completedAt": "2026-09-29T22:58:01Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:01Z",
+          "completedAt": "2026-09-29T22:58:01Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "publish-git-pull-com",
+      "id": 109658049194,
+      "conclusion": "skipped",
+      "createdAt": "2026-09-29T22:57:49Z",
+      "startedAt": "2026-09-29T22:57:49Z",
+      "completedAt": "2026-09-29T22:57:49Z",
+      "queueSeconds": 0.0,
+      "elapsedSeconds": 0.0,
+      "steps": []
+    },
+    {
+      "name": "build-libtmux-org / build (provenance-proof-20260929-843278f5, tag, false, true, py)",
+      "id": 109658119234,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T22:58:04Z",
+      "startedAt": "2026-09-29T22:58:42Z",
+      "completedAt": "2026-09-29T23:02:10Z",
+      "queueSeconds": 38.0,
+      "elapsedSeconds": 208.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:42Z",
+          "completedAt": "2026-09-29T22:58:44Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Validate reusable workflow identity",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:44Z",
+          "completedAt": "2026-09-29T22:58:44Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:44Z",
+          "completedAt": "2026-09-29T22:58:46Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run set -euo pipefail",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:46Z",
+          "completedAt": "2026-09-29T22:58:46Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:46Z",
+          "completedAt": "2026-09-29T22:58:48Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Resolve Python's separate product sources",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:48Z",
+          "completedAt": "2026-09-29T22:58:48Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:48Z",
+          "completedAt": "2026-09-29T22:58:49Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:49Z",
+          "completedAt": "2026-09-29T22:58:50Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run pnpm/action-setup@v6",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:58:50Z",
+          "completedAt": "2026-09-29T22:59:00Z",
+          "elapsedSeconds": 10.0
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:59:00Z",
+          "completedAt": "2026-09-29T22:59:05Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run pnpm install --frozen-lockfile",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:59:05Z",
+          "completedAt": "2026-09-29T22:59:09Z",
+          "elapsedSeconds": 4.0
+        },
+        {
+          "name": "Snapshot source inputs before native generation",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:59:09Z",
+          "completedAt": "2026-09-29T22:59:09Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run astral-sh/setup-uv@v10.0.1",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:59:09Z",
+          "completedAt": "2026-09-29T22:59:10Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Install Python's native documentation dependencies",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:59:10Z",
+          "completedAt": "2026-09-29T22:59:12Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Generate the Doxygen XML",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T22:59:12Z",
+          "completedAt": "2026-09-29T22:59:12Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run swift-actions/setup-swift@v2",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T22:59:12Z",
+          "completedAt": "2026-09-29T22:59:12Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Emit the Swift symbol graph",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T22:59:12Z",
+          "completedAt": "2026-09-29T22:59:12Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Build this port's tree",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T22:59:12Z",
+          "completedAt": "2026-09-29T23:01:52Z",
+          "elapsedSeconds": 160.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:01:52Z",
+          "completedAt": "2026-09-29T23:02:06Z",
+          "elapsedSeconds": 14.0
+        },
+        {
+          "name": "Describe the uploaded artifact",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:06Z",
+          "completedAt": "2026-09-29T23:02:06Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:06Z",
+          "completedAt": "2026-09-29T23:02:07Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Post Run astral-sh/setup-uv@v10.0.1",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:07Z",
+          "completedAt": "2026-09-29T23:02:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:07Z",
+          "completedAt": "2026-09-29T23:02:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run pnpm/action-setup@v6",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:07Z",
+          "completedAt": "2026-09-29T23:02:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:07Z",
+          "completedAt": "2026-09-29T23:02:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:07Z",
+          "completedAt": "2026-09-29T23:02:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:07Z",
+          "completedAt": "2026-09-29T23:02:08Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:08Z",
+          "completedAt": "2026-09-29T23:02:08Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:08Z",
+          "completedAt": "2026-09-29T23:02:08Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "publish-libtmux-org (provenance-proof-20260929-843278f5, tag, false, true, py) / publish",
+      "id": 109659360915,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T23:02:10Z",
+      "startedAt": "2026-09-29T23:02:14Z",
+      "completedAt": "2026-09-29T23:05:04Z",
+      "queueSeconds": 4.0,
+      "elapsedSeconds": 170.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:15Z",
+          "completedAt": "2026-09-29T23:02:17Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Validate path-prefix",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:17Z",
+          "completedAt": "2026-09-29T23:02:17Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Resolve cache policy from version-kind",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:17Z",
+          "completedAt": "2026-09-29T23:02:17Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Validate reusable workflow identity",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:17Z",
+          "completedAt": "2026-09-29T23:02:17Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:17Z",
+          "completedAt": "2026-09-29T23:02:19Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:19Z",
+          "completedAt": "2026-09-29T23:02:24Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:24Z",
+          "completedAt": "2026-09-29T23:02:25Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Select the builder's exact artifact",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:25Z",
+          "completedAt": "2026-09-29T23:02:25Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:25Z",
+          "completedAt": "2026-09-29T23:02:30Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Verify artifact and build provenance",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:30Z",
+          "completedAt": "2026-09-29T23:02:34Z",
+          "elapsedSeconds": 4.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:02:34Z",
+          "completedAt": "2026-09-29T23:02:34Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:34Z",
+          "completedAt": "2026-09-29T23:02:35Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Protect immutable tag contents",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:35Z",
+          "completedAt": "2026-09-29T23:02:40Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Sync to this call's own prefix",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:02:40Z",
+          "completedAt": "2026-09-29T23:04:58Z",
+          "elapsedSeconds": 138.0
+        },
+        {
+          "name": "Upsert manifest/<port>.json",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:04:58Z",
+          "completedAt": "2026-09-29T23:05:00Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Post Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:00Z",
+          "completedAt": "2026-09-29T23:05:00Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:00Z",
+          "completedAt": "2026-09-29T23:05:00Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:00Z",
+          "completedAt": "2026-09-29T23:05:00Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:00Z",
+          "completedAt": "2026-09-29T23:05:00Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-artifacts (dirty)",
+      "id": 109660235344,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T23:05:05Z",
+      "startedAt": "2026-09-29T23:05:06Z",
+      "completedAt": "2026-09-29T23:05:35Z",
+      "queueSeconds": 1.0,
+      "elapsedSeconds": 29.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:07Z",
+          "completedAt": "2026-09-29T23:05:08Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:08Z",
+          "completedAt": "2026-09-29T23:05:09Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:09Z",
+          "completedAt": "2026-09-29T23:05:14Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:14Z",
+          "completedAt": "2026-09-29T23:05:18Z",
+          "elapsedSeconds": 4.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:18Z",
+          "completedAt": "2026-09-29T23:05:19Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Create exactly one controlled difference",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:19Z",
+          "completedAt": "2026-09-29T23:05:19Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:19Z",
+          "completedAt": "2026-09-29T23:05:33Z",
+          "elapsedSeconds": 14.0
+        },
+        {
+          "name": "Describe this reupload",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:33Z",
+          "completedAt": "2026-09-29T23:05:33Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:33Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:34Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:34Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:34Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-artifacts (inventory)",
+      "id": 109660235364,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T23:05:05Z",
+      "startedAt": "2026-09-29T23:05:08Z",
+      "completedAt": "2026-09-29T23:05:41Z",
+      "queueSeconds": 3.0,
+      "elapsedSeconds": 33.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:09Z",
+          "completedAt": "2026-09-29T23:05:10Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:10Z",
+          "completedAt": "2026-09-29T23:05:12Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:12Z",
+          "completedAt": "2026-09-29T23:05:16Z",
+          "elapsedSeconds": 4.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:16Z",
+          "completedAt": "2026-09-29T23:05:21Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:21Z",
+          "completedAt": "2026-09-29T23:05:23Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Create exactly one controlled difference",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:23Z",
+          "completedAt": "2026-09-29T23:05:23Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:23Z",
+          "completedAt": "2026-09-29T23:05:37Z",
+          "elapsedSeconds": 14.0
+        },
+        {
+          "name": "Describe this reupload",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:37Z",
+          "completedAt": "2026-09-29T23:05:37Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:37Z",
+          "completedAt": "2026-09-29T23:05:38Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:38Z",
+          "completedAt": "2026-09-29T23:05:38Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:38Z",
+          "completedAt": "2026-09-29T23:05:39Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:39Z",
+          "completedAt": "2026-09-29T23:05:39Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-artifacts (digest)",
+      "id": 109660235439,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T23:05:05Z",
+      "startedAt": "2026-09-29T23:05:07Z",
+      "completedAt": "2026-09-29T23:05:37Z",
+      "queueSeconds": 2.0,
+      "elapsedSeconds": 30.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:07Z",
+          "completedAt": "2026-09-29T23:05:09Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:09Z",
+          "completedAt": "2026-09-29T23:05:10Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:10Z",
+          "completedAt": "2026-09-29T23:05:15Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:15Z",
+          "completedAt": "2026-09-29T23:05:18Z",
+          "elapsedSeconds": 3.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:18Z",
+          "completedAt": "2026-09-29T23:05:19Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Create exactly one controlled difference",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:19Z",
+          "completedAt": "2026-09-29T23:05:19Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:19Z",
+          "completedAt": "2026-09-29T23:05:33Z",
+          "elapsedSeconds": 14.0
+        },
+        {
+          "name": "Describe this reupload",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:33Z",
+          "completedAt": "2026-09-29T23:05:33Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:33Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:34Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:34Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:34Z",
+          "completedAt": "2026-09-29T23:05:34Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-artifacts (identical)",
+      "id": 109660235507,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T23:05:05Z",
+      "startedAt": "2026-09-29T23:05:07Z",
+      "completedAt": "2026-09-29T23:05:38Z",
+      "queueSeconds": 2.0,
+      "elapsedSeconds": 31.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:08Z",
+          "completedAt": "2026-09-29T23:05:10Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:10Z",
+          "completedAt": "2026-09-29T23:05:12Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:12Z",
+          "completedAt": "2026-09-29T23:05:17Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:17Z",
+          "completedAt": "2026-09-29T23:05:21Z",
+          "elapsedSeconds": 4.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:21Z",
+          "completedAt": "2026-09-29T23:05:22Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Create exactly one controlled difference",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:22Z",
+          "completedAt": "2026-09-29T23:05:22Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:22Z",
+          "completedAt": "2026-09-29T23:05:35Z",
+          "elapsedSeconds": 13.0
+        },
+        {
+          "name": "Describe this reupload",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:35Z",
+          "completedAt": "2026-09-29T23:05:35Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:35Z",
+          "completedAt": "2026-09-29T23:05:36Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:36Z",
+          "completedAt": "2026-09-29T23:05:36Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:36Z",
+          "completedAt": "2026-09-29T23:05:37Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:37Z",
+          "completedAt": "2026-09-29T23:05:37Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-reject (dirty) / publish",
+      "id": 109660424788,
+      "conclusion": "failure",
+      "createdAt": "2026-09-29T23:05:42Z",
+      "startedAt": "2026-09-29T23:05:45Z",
+      "completedAt": "2026-09-29T23:06:00Z",
+      "queueSeconds": 3.0,
+      "elapsedSeconds": 15.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:46Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Validate path-prefix",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Resolve cache policy from version-kind",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Validate reusable workflow identity",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:49Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:49Z",
+          "completedAt": "2026-09-29T23:05:54Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:54Z",
+          "completedAt": "2026-09-29T23:05:54Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Select the builder's exact artifact",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:54Z",
+          "completedAt": "2026-09-29T23:05:54Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:54Z",
+          "completedAt": "2026-09-29T23:05:56Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Verify artifact and build provenance",
+          "conclusion": "failure",
+          "startedAt": "2026-09-29T23:05:56Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Protect immutable tag contents",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Sync to this call's own prefix",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Upsert manifest/<port>.json",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-reject (digest) / publish",
+      "id": 109660424873,
+      "conclusion": "failure",
+      "createdAt": "2026-09-29T23:05:42Z",
+      "startedAt": "2026-09-29T23:05:45Z",
+      "completedAt": "2026-09-29T23:05:56Z",
+      "queueSeconds": 3.0,
+      "elapsedSeconds": 11.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:46Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Validate path-prefix",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Resolve cache policy from version-kind",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Validate reusable workflow identity",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:48Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:48Z",
+          "completedAt": "2026-09-29T23:05:53Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:53Z",
+          "completedAt": "2026-09-29T23:05:53Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Select the builder's exact artifact",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:53Z",
+          "completedAt": "2026-09-29T23:05:53Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:53Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Verify artifact and build provenance",
+          "conclusion": "failure",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Protect immutable tag contents",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Sync to this call's own prefix",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Upsert manifest/<port>.json",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:55Z",
+          "completedAt": "2026-09-29T23:05:55Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-reject (inventory) / publish",
+      "id": 109660424874,
+      "conclusion": "failure",
+      "createdAt": "2026-09-29T23:05:42Z",
+      "startedAt": "2026-09-29T23:05:46Z",
+      "completedAt": "2026-09-29T23:06:10Z",
+      "queueSeconds": 4.0,
+      "elapsedSeconds": 24.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:48Z",
+          "completedAt": "2026-09-29T23:05:50Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Validate path-prefix",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:50Z",
+          "completedAt": "2026-09-29T23:05:50Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Resolve cache policy from version-kind",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:50Z",
+          "completedAt": "2026-09-29T23:05:50Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Validate reusable workflow identity",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:50Z",
+          "completedAt": "2026-09-29T23:05:50Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:50Z",
+          "completedAt": "2026-09-29T23:05:52Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:52Z",
+          "completedAt": "2026-09-29T23:05:57Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:57Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Select the builder's exact artifact",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:05:58Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:58Z",
+          "completedAt": "2026-09-29T23:06:03Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Verify artifact and build provenance",
+          "conclusion": "failure",
+          "startedAt": "2026-09-29T23:06:03Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 4.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Protect immutable tag contents",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Sync to this call's own prefix",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Upsert manifest/<port>.json",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:07Z",
+          "completedAt": "2026-09-29T23:06:07Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-identical / publish",
+      "id": 109660424943,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T23:05:42Z",
+      "startedAt": "2026-09-29T23:05:45Z",
+      "completedAt": "2026-09-29T23:06:49Z",
+      "queueSeconds": 3.0,
+      "elapsedSeconds": 64.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:46Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Validate path-prefix",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Resolve cache policy from version-kind",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Validate reusable workflow identity",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:47Z",
+          "completedAt": "2026-09-29T23:05:48Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:48Z",
+          "completedAt": "2026-09-29T23:05:53Z",
+          "elapsedSeconds": 5.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:53Z",
+          "completedAt": "2026-09-29T23:05:54Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Select the builder's exact artifact",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:54Z",
+          "completedAt": "2026-09-29T23:05:54Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:54Z",
+          "completedAt": "2026-09-29T23:05:56Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Verify artifact and build provenance",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:56Z",
+          "completedAt": "2026-09-29T23:05:59Z",
+          "elapsedSeconds": 3.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:05:59Z",
+          "completedAt": "2026-09-29T23:05:59Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:59Z",
+          "completedAt": "2026-09-29T23:05:59Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Protect immutable tag contents",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:05:59Z",
+          "completedAt": "2026-09-29T23:06:45Z",
+          "elapsedSeconds": 46.0
+        },
+        {
+          "name": "Sync to this call's own prefix",
+          "conclusion": "skipped",
+          "startedAt": "2026-09-29T23:06:45Z",
+          "completedAt": "2026-09-29T23:06:45Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Upsert manifest/<port>.json",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:45Z",
+          "completedAt": "2026-09-29T23:06:47Z",
+          "elapsedSeconds": 2.0
+        },
+        {
+          "name": "Post Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:47Z",
+          "completedAt": "2026-09-29T23:06:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:47Z",
+          "completedAt": "2026-09-29T23:06:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Post Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:47Z",
+          "completedAt": "2026-09-29T23:06:47Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:47Z",
+          "completedAt": "2026-09-29T23:06:47Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    },
+    {
+      "name": "proof-public",
+      "id": 109660756344,
+      "conclusion": "success",
+      "createdAt": "2026-09-29T23:06:49Z",
+      "startedAt": "2026-09-29T23:06:51Z",
+      "completedAt": "2026-09-29T23:06:56Z",
+      "queueSeconds": 2.0,
+      "elapsedSeconds": 5.0,
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:51Z",
+          "completedAt": "2026-09-29T23:06:52Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:52Z",
+          "completedAt": "2026-09-29T23:06:53Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:53Z",
+          "completedAt": "2026-09-29T23:06:53Z",
+          "elapsedSeconds": 0.0
+        },
+        {
+          "name": "Observe ordinary public delivery without AWS credentials",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:53Z",
+          "completedAt": "2026-09-29T23:06:54Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:54Z",
+          "completedAt": "2026-09-29T23:06:55Z",
+          "elapsedSeconds": 1.0
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success",
+          "startedAt": "2026-09-29T23:06:55Z",
+          "completedAt": "2026-09-29T23:06:55Z",
+          "elapsedSeconds": 0.0
+        }
+      ]
+    }
+  ]
+}

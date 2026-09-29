@@ -1,0 +1,72 @@
+{
+  "publicationAndExpectedRejections": "passed",
+  "publicJob": "success",
+  "publicDelivery": "inspect archived ordinary GET responses and verified-chain.json",
+  "jobs": [
+    {
+      "id": 109658048239,
+      "name": "build-libtmux-org / identity",
+      "conclusion": "success"
+    },
+    {
+      "id": 109658049194,
+      "name": "publish-git-pull-com",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 109658119234,
+      "name": "build-libtmux-org / build (provenance-proof-20260929-843278f5, tag, false, true, py)",
+      "conclusion": "success"
+    },
+    {
+      "id": 109659360915,
+      "name": "publish-libtmux-org (provenance-proof-20260929-843278f5, tag, false, true, py) / publish",
+      "conclusion": "success"
+    },
+    {
+      "id": 109660235344,
+      "name": "proof-artifacts (dirty)",
+      "conclusion": "success"
+    },
+    {
+      "id": 109660235364,
+      "name": "proof-artifacts (inventory)",
+      "conclusion": "success"
+    },
+    {
+      "id": 109660235439,
+      "name": "proof-artifacts (digest)",
+      "conclusion": "success"
+    },
+    {
+      "id": 109660235507,
+      "name": "proof-artifacts (identical)",
+      "conclusion": "success"
+    },
+    {
+      "id": 109660424788,
+      "name": "proof-reject (dirty) / publish",
+      "conclusion": "failure"
+    },
+    {
+      "id": 109660424873,
+      "name": "proof-reject (digest) / publish",
+      "conclusion": "failure"
+    },
+    {
+      "id": 109660424874,
+      "name": "proof-reject (inventory) / publish",
+      "conclusion": "failure"
+    },
+    {
+      "id": 109660424943,
+      "name": "proof-identical / publish",
+      "conclusion": "success"
+    },
+    {
+      "id": 109660756344,
+      "name": "proof-public",
+      "conclusion": "success"
+    }
+  ]
+}

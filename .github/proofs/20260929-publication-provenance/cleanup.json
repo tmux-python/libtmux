@@ -1,0 +1,21 @@
+{
+  "run": "https://github.com/tmux-python/libtmux/actions/runs/36642578777",
+  "prefix": "en/py/provenance-proof-20260929-843278f5/",
+  "manifest": {
+    "removedOnlyProofRow": true,
+    "etagBefore": "\"f434ccd9cd2fa7250e8273314b095c68\"",
+    "attempt": 1,
+    "put": {
+      "ETag": "\"6947f82bb15c3cb77fc592e36a19e60f\"",
+      "ChecksumCRC64NVME": "AgTE/UVwwe4=",
+      "ChecksumType": "FULL_OBJECT",
+      "ServerSideEncryption": "AES256",
+      "VersionId": "zg0zwZ55bUAXwQnxWt.5f7a24c3bqGvQ"
+    }
+  },
+  "remainingObjects": 0,
+  "proofAbsentFromManifestAndVersions": true,
+  "checkedAt": "2026-09-29T23:19:11.092994+00:00",
+  "restoredCallerSha": "06195165ce7cb2cb750c09deb9a5ac6326a5596a",
+  "retainedChange": "Paired reviewed builder/publisher pins only; proof jobs removed"
+}

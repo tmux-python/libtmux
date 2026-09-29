@@ -1,0 +1,242 @@
+{
+  "files": 7698,
+  "bytes": 474764099,
+  "byExtension": {
+    ".html": {
+      "files": 2787,
+      "bytes": 446962786
+    },
+    ".png": {
+      "files": 1543,
+      "bytes": 15116418
+    },
+    ".jpg": {
+      "files": 90,
+      "bytes": 4154980
+    },
+    ".md": {
+      "files": 2735,
+      "bytes": 2428436
+    },
+    ".json": {
+      "files": 62,
+      "bytes": 1933089
+    },
+    ".ico": {
+      "files": 47,
+      "bytes": 991222
+    },
+    ".woff2": {
+      "files": 40,
+      "bytes": 808640
+    },
+    ".txt": {
+      "files": 60,
+      "bytes": 696884
+    },
+    ".css": {
+      "files": 26,
+      "bytes": 601506
+    },
+    ".js": {
+      "files": 29,
+      "bytes": 538194
+    },
+    ".svg": {
+      "files": 95,
+      "bytes": 412794
+    },
+    ".webmanifest": {
+      "files": 90,
+      "bytes": 66842
+    },
+    ".inv": {
+      "files": 2,
+      "bytes": 26641
+    },
+    ".xml": {
+      "files": 91,
+      "bytes": 25436
+    },
+    "(no extension)": {
+      "files": 1,
+      "bytes": 231
+    }
+  },
+  "topLevelDirectories": {
+    "reference": {
+      "files": 3828,
+      "bytes": 340643381
+    },
+    "workspace": {
+      "files": 724,
+      "bytes": 46299479
+    },
+    "mcp": {
+      "files": 785,
+      "bytes": 44278269
+    },
+    "brand": {
+      "files": 1936,
+      "bytes": 21123309
+    },
+    "api": {
+      "files": 294,
+      "bytes": 15598906
+    },
+    "topics": {
+      "files": 22,
+      "bytes": 1609149
+    },
+    "(root files)": {
+      "files": 16,
+      "bytes": 1185297
+    },
+    "guides": {
+      "files": 14,
+      "bytes": 932950
+    },
+    "_astro": {
+      "files": 41,
+      "bytes": 709227
+    },
+    "concepts": {
+      "files": 10,
+      "bytes": 671565
+    },
+    "demo": {
+      "files": 11,
+      "bytes": 572200
+    },
+    "examples": {
+      "files": 8,
+      "bytes": 566642
+    },
+    "third-party-notices": {
+      "files": 1,
+      "bytes": 125255
+    },
+    "parity": {
+      "files": 1,
+      "bytes": 121842
+    },
+    "translations": {
+      "files": 1,
+      "bytes": 111989
+    },
+    "_shell": {
+      "files": 4,
+      "bytes": 98847
+    },
+    "search": {
+      "files": 1,
+      "bytes": 90803
+    },
+    "icons": {
+      "files": 1,
+      "bytes": 24989
+    }
+  },
+  "largestFiles": [
+    {
+      "path": "api/internals/api/libtmux._internal.constants/index.html",
+      "size": 1788735,
+      "sha256": "670fff5163d84b483b48e45c99c7797ab315aa2a652761a9ded5b8c606e0c34a"
+    },
+    {
+      "path": "api/api/libtmux.pane/index.html",
+      "size": 1693650,
+      "sha256": "17b63035c0586d6a677c8d6b82ca299fb01244f4448fcf9cb32552cf6dbd0318"
+    },
+    {
+      "path": "api/api/libtmux.window/index.html",
+      "size": 1588364,
+      "sha256": "7da9bc2ca01102036122d9bd1f3618db6a2c9868db6912ec2f7afa2b0fa85c94"
+    },
+    {
+      "path": "api/api/libtmux.session/index.html",
+      "size": 1447535,
+      "sha256": "136b6bf59da9f1cc64665fb3f047860cc1a752e5a0ebc7e773902616a61c4494"
+    },
+    {
+      "path": "api/api/libtmux.client/index.html",
+      "size": 989538,
+      "sha256": "c3ea85452680d3948763ceeb725b3440b024129b0e9e75f1c6aeac51cb63b4cc"
+    },
+    {
+      "path": "reference/index.html",
+      "size": 872976,
+      "sha256": "ac2c7294de2ce4c5201e57d2806a21d22c7667ea318636ab988ae7f17e0a467a"
+    },
+    {
+      "path": "api/api/libtmux.server/index.html",
+      "size": 855307,
+      "sha256": "078ee41fea7a2e7570a1377ad5150359261e409742f09c8f0c6798f78cb1e9b8"
+    },
+    {
+      "path": "brand/catalog.json",
+      "size": 602596,
+      "sha256": "0f0ea1d2364e5c56fedc89a6bc9d71b5960037d0575560a97e24da1e5635aa44"
+    },
+    {
+      "path": "api/history/index.html",
+      "size": 502159,
+      "sha256": "e65b2007d868c9f1c88d778db389acfe1af419a593b1735f53779e01d3ed779a"
+    },
+    {
+      "path": "index.html",
+      "size": 438674,
+      "sha256": "a94d93a21ed22b294a0266469ced3020942b070c5f68cea1f9020abad920cb81"
+    },
+    {
+      "path": "mcp/index.html",
+      "size": 415584,
+      "sha256": "2aff2ebaeb6807c44f63c3ef42b87857b06c1ea15e33b882fa7ace8c313ef407"
+    },
+    {
+      "path": "api/searchindex.js",
+      "size": 360725,
+      "sha256": "717b55f128b54c2248138067a37c59023366e714ee3e9178dc9e168059bc4367"
+    },
+    {
+      "path": "api/docs.json",
+      "size": 358075,
+      "sha256": "601f55c83626a70d0bab05bdd61f8158d9c738ab2832591c73ba6dfc0c96a0d7"
+    },
+    {
+      "path": "llms-full.txt",
+      "size": 308346,
+      "sha256": "b0a0b447e2ebc428cf286694cca205d28121a7461fbff417f35fa0df62e6539c"
+    },
+    {
+      "path": "mcp/tools.json",
+      "size": 303295,
+      "sha256": "aea736265d9fc7a7c08fe0ee9f4c9d1e6908ad5f18dccf4d99c42469877b2534"
+    },
+    {
+      "path": "api/genindex/index.html",
+      "size": 289994,
+      "sha256": "d3c94e0b704a265ce9ca72848aeeeb93944de6bd9277833ba16a60c94cb35764"
+    },
+    {
+      "path": "reference/libtmux-window/index.html",
+      "size": 279511,
+      "sha256": "28b825bc0bdd3be7f8119e4cd1224da99f96644d7421ee1dd9137f23e93fd1f4"
+    },
+    {
+      "path": "reference/libtmux-pane/index.html",
+      "size": 276499,
+      "sha256": "59ff1aed95917d4301796707cf8db001718726ef44693618902f0cbda3f7c49c"
+    },
+    {
+      "path": "api/api/libtmux.options/index.html",
+      "size": 276305,
+      "sha256": "e4790d530464686dfc99a3c3079d72980ea12c0be3ae117f4203c287bb387d66"
+    },
+    {
+      "path": "reference/libtmux-session/index.html",
+      "size": 272363,
+      "sha256": "bb8dd45ad6c685113b1de9cf68eb39f9e8048a3ed9a28d771cb4a5ca5a0e03bd"
+    }
+  ]
+}

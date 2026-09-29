@@ -1,0 +1,79 @@
+{
+  "run": "https://github.com/tmux-python/libtmux/actions/runs/36642578777",
+  "callerCommit": "af389b05b690c2ce9c302cf94dbf9c6823bc472e",
+  "reviewedBuilderPublisher": "843278f595d8a4495c18c9d9dbe8ab0b2bd50289",
+  "version": "provenance-proof-20260929-843278f5",
+  "overallRunConclusion": "failure (three intended negative jobs)",
+  "proofPassed": true,
+  "s3": {
+    "s3InventoryVerified": true,
+    "objects": 7699,
+    "bytes": 476169378,
+    "buildSha256": "3cea9444bcf6e64c03711f0f31b12c049f3713dba4618514fea8bf79728d0107",
+    "originalReceiptPreserved": true,
+    "unrelatedManifestRowsAndDefaultPreserved": true,
+    "receipt": {
+      "build": {
+        "url": "/en/py/provenance-proof-20260929-843278f5/build-provenance.json",
+        "sha256": "3cea9444bcf6e64c03711f0f31b12c049f3713dba4618514fea8bf79728d0107"
+      },
+      "artifact": {
+        "id": 11066534384,
+        "name": "docs-py-provenance-proof-20260929-843278f5",
+        "sha256": "07daf1af902b1b2c01288bb924f7ab0c91364eec58d4e748c9df0c1df4c68212"
+      },
+      "run": {
+        "url": "https://github.com/tmux-python/libtmux/actions/runs/36642578777",
+        "attempt": 1
+      },
+      "publisher": {
+        "repository": "libtmux/docs",
+        "sha": "843278f595d8a4495c18c9d9dbe8ab0b2bd50289"
+      },
+      "destination": {
+        "prefix": "en/py/provenance-proof-20260929-843278f5/",
+        "url": "https://libtmux.org/en/py/provenance-proof-20260929-843278f5/"
+      },
+      "operation": "published"
+    }
+  },
+  "public": {
+    "ordinaryHostedGetStatuses": {
+      "root": 200,
+      "buildRecord": 200,
+      "nativeSession": 200,
+      "manifest": 200
+    },
+    "origin": "Cloudflare with x-cache: Miss from cloudfront",
+    "originalArtifactId": 11066534384,
+    "identicalReuploadArtifactId": 11067486591,
+    "receiptPreserved": true
+  },
+  "negativeErrors": {
+    "dirty": "source inputs are dirty",
+    "inventory": "content inventory differs (changed, missing, extra, or duplicate files)",
+    "digest": "artifact archive SHA256 differs from descriptor"
+  },
+  "negativeFailureStep": "Verify artifact and build provenance",
+  "awsSkippedForAllNegatives": true,
+  "latencySeconds": {
+    "dispatchToInitialReceipt": 434,
+    "buildTree": 160,
+    "contentArtifactUpload": 14,
+    "s3InitialSync": 138,
+    "initialManifest": 2,
+    "identicalComparison": 46,
+    "identicalManifest": 2,
+    "publicVerification": 1,
+    "completeProofRun": 551
+  },
+  "scopeLimits": [
+    "This is dispatch latency, not release-event latency.",
+    "Dirty flag and descriptor digest were controlled mutations; no GitHub storage corruption was attempted.",
+    "Receipts are operational provenance, not cryptographic attestation of source execution.",
+    "Ruby/Lua custom builders and shared-root artifact contract remain unmigrated.",
+    "Python latest remains shared between port and shell ownership; the unique tag prefix is excluded by live shell publication guards.",
+    "Local Cloudflare1010 denial persists separately; hosted ordinary GETs succeeded without changing filters."
+  ],
+  "cleanupOwner": "root; not executed by monitoring agent"
+}

@@ -1,0 +1,52 @@
+{
+  "version": "provenance-proof-20260929-843278f5",
+  "receipt": {
+    "build": {
+      "url": "/en/py/provenance-proof-20260929-843278f5/build-provenance.json",
+      "sha256": "3cea9444bcf6e64c03711f0f31b12c049f3713dba4618514fea8bf79728d0107"
+    },
+    "artifact": {
+      "id": 11066534384,
+      "name": "docs-py-provenance-proof-20260929-843278f5",
+      "sha256": "07daf1af902b1b2c01288bb924f7ab0c91364eec58d4e748c9df0c1df4c68212"
+    },
+    "run": {
+      "url": "https://github.com/tmux-python/libtmux/actions/runs/36642578777",
+      "attempt": 1
+    },
+    "publisher": {
+      "repository": "libtmux/docs",
+      "sha": "843278f595d8a4495c18c9d9dbe8ab0b2bd50289"
+    },
+    "destination": {
+      "prefix": "en/py/provenance-proof-20260929-843278f5/",
+      "url": "https://libtmux.org/en/py/provenance-proof-20260929-843278f5/"
+    },
+    "operation": "published"
+  },
+  "reuploadArtifact": {
+    "id": 11067486591,
+    "name": "docs-py-provenance-proof-20260929-843278f5-proof-identical",
+    "sha256": "080e1781e4ca7e10f6311524c5928644353f4b0d7e58933cfab04c222a541b2e"
+  },
+  "sources": [
+    {
+      "product": "core",
+      "repository": "tmux-python/libtmux",
+      "sha": "9fd13c36344862c146d766f2924b3b76ba319d7c",
+      "dirty": false
+    },
+    {
+      "product": "workspace",
+      "repository": "tmux-python/tmuxp",
+      "sha": "153acdf6ff1268b14d3d03ed488f545a7123c8f1",
+      "dirty": false
+    },
+    {
+      "product": "mcp",
+      "repository": "tmux-python/libtmux-mcp",
+      "sha": "4daddc0dfca96c43bf521d818bf91564e1434760",
+      "dirty": false
+    }
+  ]
+}

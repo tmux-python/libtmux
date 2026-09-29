@@ -1,0 +1,32 @@
+{
+  "s3InventoryVerified": true,
+  "objects": 7699,
+  "bytes": 476169378,
+  "buildSha256": "3cea9444bcf6e64c03711f0f31b12c049f3713dba4618514fea8bf79728d0107",
+  "originalReceiptPreserved": true,
+  "unrelatedManifestRowsAndDefaultPreserved": true,
+  "receipt": {
+    "build": {
+      "url": "/en/py/provenance-proof-20260929-843278f5/build-provenance.json",
+      "sha256": "3cea9444bcf6e64c03711f0f31b12c049f3713dba4618514fea8bf79728d0107"
+    },
+    "artifact": {
+      "id": 11066534384,
+      "name": "docs-py-provenance-proof-20260929-843278f5",
+      "sha256": "07daf1af902b1b2c01288bb924f7ab0c91364eec58d4e748c9df0c1df4c68212"
+    },
+    "run": {
+      "url": "https://github.com/tmux-python/libtmux/actions/runs/36642578777",
+      "attempt": 1
+    },
+    "publisher": {
+      "repository": "libtmux/docs",
+      "sha": "843278f595d8a4495c18c9d9dbe8ab0b2bd50289"
+    },
+    "destination": {
+      "prefix": "en/py/provenance-proof-20260929-843278f5/",
+      "url": "https://libtmux.org/en/py/provenance-proof-20260929-843278f5/"
+    },
+    "operation": "published"
+  }
+}
