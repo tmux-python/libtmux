@@ -1,0 +1,127 @@
+name: docs-permission-proof
+
+on:
+  push:
+    branches: [docs-site-deploy]
+    paths: [.github/workflows/docs-permission-proof.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create one isolated permission probe
+        run: |
+          set -euo pipefail
+          mkdir probe
+          printf 'IAM permission probe for run %s\n' "$GITHUB_RUN_ID" > probe/probe.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: docs-permission-probe
+          path: probe
+          retention-days: 7
+          if-no-files-found: error
+
+  approved-own-prefix:
+    needs: artifact
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@8fda4b89071621b9ed2c4722a68d61f6ecf9c1c4
+    with:
+      path-prefix: en/py/iam-proof-${{ github.run_id }}
+      artifact: docs-permission-probe
+      version-kind: branch
+      port: ''
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+
+  approved-foreign-prefix:
+    needs: artifact
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@8fda4b89071621b9ed2c4722a68d61f6ecf9c1c4
+    with:
+      path-prefix: en/cxx/iam-proof-${{ github.run_id }}
+      artifact: docs-permission-probe
+      version-kind: branch
+      port: ''
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+
+  direct-job:
+    runs-on: ubuntu-latest
+    environment: docs
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Direct publisher role assumption must be denied
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+          aws-region: us-east-1
+          retry-max-attempts: 1
+
+  unapproved-commit:
+    needs: artifact
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@c7bdbc43884e7e000948110234d006e68445d777
+    with:
+      path-prefix: en/py/iam-proof-${{ github.run_id }}-unapproved-commit
+      artifact: docs-permission-probe
+      version-kind: branch
+      port: ''
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+
+  unapproved-tag:
+    needs: artifact
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@v0.1.0-alpha.1
+    with:
+      path-prefix: en/py/iam-proof-${{ github.run_id }}-unapproved-tag
+      artifact: docs-permission-probe
+      version-kind: branch
+      port: ''
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+      distribution: ${{ secrets.LIBTMUX_ORG_DISTRIBUTION }}
+
+  verdict:
+    if: always()
+    needs: [approved-own-prefix, approved-foreign-prefix, direct-job, unapproved-commit, unapproved-tag]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require one publication and four visible denials
+        env:
+          OWN_RESULT: ${{ needs.approved-own-prefix.result }}
+          FOREIGN_RESULT: ${{ needs.approved-foreign-prefix.result }}
+          DIRECT_RESULT: ${{ needs.direct-job.result }}
+          COMMIT_RESULT: ${{ needs.unapproved-commit.result }}
+          TAG_RESULT: ${{ needs.unapproved-tag.result }}
+        run: |
+          set -euo pipefail
+          test "$OWN_RESULT" = success
+          test "$FOREIGN_RESULT" = failure
+          test "$DIRECT_RESULT" = failure
+          test "$COMMIT_RESULT" = failure
+          test "$TAG_RESULT" = failure
+          echo 'Expected negative jobs remain failed. Verify their exact failed steps and IAM errors in the run logs.' >> "$GITHUB_STEP_SUMMARY"
+          echo "Only isolated en/py/iam-proof-$GITHUB_RUN_ID and en/cxx/iam-proof-$GITHUB_RUN_ID probe prefixes are involved; no manifest inputs were set." >> "$GITHUB_STEP_SUMMARY"
