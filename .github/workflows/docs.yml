@@ -51,7 +51,7 @@ permissions:
 
 jobs:
   build-libtmux-org:
-    uses: libtmux/docs/.github/workflows/port-docs.yml@8fda4b89071621b9ed2c4722a68d61f6ecf9c1c4
+    uses: libtmux/docs/.github/workflows/port-docs.yml@843278f595d8a4495c18c9d9dbe8ab0b2bd50289
     with:
       port: py
       source-ref: ${{ inputs.source-ref }}
@@ -75,7 +75,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@8fda4b89071621b9ed2c4722a68d61f6ecf9c1c4
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@843278f595d8a4495c18c9d9dbe8ab0b2bd50289
     with:
       path-prefix: py/${{ matrix.version }}
       artifact: docs-py-${{ matrix.version }}
@@ -163,3 +163,196 @@ jobs:
         env:
           CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
           CLOUDFLARE_ZONE: ${{ secrets.CLOUDFLARE_ZONE }}
+
+  # Temporary proof jobs: real build above, one new immutable proof prefix.
+  # Expected negative publisher jobs remain failed; inspect their exact steps.
+  proof-artifacts:
+    needs: [build-libtmux-org, publish-libtmux-org]
+    if: github.event_name == 'workflow_dispatch' && startsWith(inputs.version, 'provenance-proof-') && inputs.version-kind == 'tag' && inputs.publish && !inputs.is-default
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [identical, dirty, inventory, digest]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          repository: libtmux/docs
+          ref: 843278f595d8a4495c18c9d9dbe8ab0b2bd50289
+          path: publisher
+          sparse-checkout: |
+            scripts
+            site/src/lib
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '26'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: docs-py-${{ inputs.version }}
+          path: proof-tree
+          digest-mismatch: error
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: docs-py-${{ inputs.version }}-publication
+          path: original-descriptor
+          digest-mismatch: error
+      - name: Create exactly one controlled difference
+        env:
+          PROOF_CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib
+          tree = pathlib.Path('proof-tree')
+          case = os.environ['PROOF_CASE']
+          if case == 'dirty':
+              path = tree / 'build-provenance.json'
+              record = json.loads(path.read_text())
+              record['sources'][0]['dirty'] = True
+              path.write_text(json.dumps(record, indent=2) + '\n')
+          elif case == 'inventory':
+              with (tree / 'index.html').open('a') as stream:
+                  stream.write('\n<!-- controlled inventory mismatch -->\n')
+          elif case not in ('identical', 'digest'):
+              raise ValueError(case)
+          PY
+      - id: content
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: docs-py-${{ inputs.version }}-proof-${{ matrix.case }}
+          path: proof-tree
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Describe this reupload
+        env:
+          ARTIFACT_ID: ${{ steps.content.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.content.outputs.artifact-digest }}
+          ARTIFACT_NAME: docs-py-${{ inputs.version }}-proof-${{ matrix.case }}
+          PROOF_CASE: ${{ matrix.case }}
+        run: |
+          set -euo pipefail
+          SOURCE_SHA=$(jq -er .sourceSha original-descriptor/publication.json)
+          export SOURCE_SHA
+          if [[ "$PROOF_CASE" == digest ]]; then
+            ARTIFACT_DIGEST=$(printf '%064d' 0)
+            export ARTIFACT_DIGEST
+          fi
+          node publisher/scripts/publication-provenance.mjs descriptor "$RUNNER_TEMP/publication.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: docs-py-${{ inputs.version }}-proof-${{ matrix.case }}-publication
+          path: ${{ runner.temp }}/publication.json
+          if-no-files-found: error
+          retention-days: 7
+
+  proof-identical:
+    needs: proof-artifacts
+    concurrency:
+      group: docs-deploy-${{ github.repository }}-py
+      queue: max
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@843278f595d8a4495c18c9d9dbe8ab0b2bd50289
+    with:
+      path-prefix: py/${{ inputs.version }}
+      artifact: docs-py-${{ inputs.version }}-proof-identical
+      version-kind: tag
+      port: py
+      version: ${{ inputs.version }}
+      label: ${{ inputs.version }}
+      is-default: false
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+
+  proof-reject:
+    needs: proof-artifacts
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [dirty, inventory, digest]
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@843278f595d8a4495c18c9d9dbe8ab0b2bd50289
+    with:
+      path-prefix: py/${{ inputs.version }}
+      artifact: docs-py-${{ inputs.version }}-proof-${{ matrix.case }}
+      version-kind: tag
+      port: py
+      version: ${{ inputs.version }}
+      label: ${{ inputs.version }}
+      is-default: false
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+
+  proof-public:
+    needs: proof-identical
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: docs-py-${{ inputs.version }}-publication
+          path: observation/original
+          digest-mismatch: error
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: docs-py-${{ inputs.version }}-proof-identical-publication
+          path: observation/identical
+          digest-mismatch: error
+      - name: Observe ordinary public delivery without AWS credentials
+        env:
+          PROOF_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          base="https://libtmux.org/en/py/$PROOF_VERSION"
+          date -u +%FT%TZ > observation/requested-at.txt
+          curl --fail-with-body --show-error --location --connect-timeout 10 --max-time 30 --dump-header observation/page.headers "$base/" -o observation/index.html
+          curl --fail-with-body --show-error --location --connect-timeout 10 --max-time 30 --dump-header observation/build.headers "$base/build-provenance.json" -o observation/build-provenance.json
+          curl --fail-with-body --show-error --location --connect-timeout 10 --max-time 30 --dump-header observation/native.headers "$base/api/api/libtmux.session/" -o observation/native-session.html
+          curl --fail-with-body --show-error --location --connect-timeout 10 --max-time 30 --dump-header observation/manifest.headers https://libtmux.org/manifest/py.json -o observation/manifest.json
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path('observation')
+          load = lambda path: json.loads((root / path).read_text())
+          record = load('build-provenance.json')
+          original = load('original/publication.json')
+          identical = load('identical/publication.json')
+          version = os.environ['PROOF_VERSION']
+          prefix = f'en/py/{version}'
+          assert record['version'] == version and record['port'] == 'py'
+          assert record['docs'] == {'repository': 'libtmux/docs', 'sha': '843278f595d8a4495c18c9d9dbe8ab0b2bd50289', 'dirty': False}
+          assert record['sources'][0]['sha'] == original['sourceSha']
+          assert all(not source['dirty'] for source in record['sources'])
+          files = {file['path']: file for file in record['files']}
+          for published, local in [('index.html', 'index.html'), ('api/api/libtmux.session/index.html', 'native-session.html')]:
+              body = (root / local).read_bytes()
+              assert hashlib.sha256(body).hexdigest() == files[published]['sha256']
+              assert len(body) == files[published]['size']
+              assert f'href="/{prefix}/build-provenance.json"'.encode() in body
+          entries = [entry for entry in load('manifest.json')['ports']['py'] if entry['slug'] == version]
+          assert len(entries) == 1, 'Public manifest has not exposed the new version; record response and observe again within its cache TTL'
+          receipt = entries[0]['publication']
+          assert receipt['artifact'] == original['artifact']
+          assert original['artifact']['id'] != identical['artifact']['id']
+          assert receipt['operation'] == 'published'
+          assert receipt['build']['sha256'] == hashlib.sha256((root / 'build-provenance.json').read_bytes()).hexdigest()
+          assert receipt['build']['url'] == f'/{prefix}/build-provenance.json'
+          assert receipt['publisher'] == {'repository': 'libtmux/docs', 'sha': '843278f595d8a4495c18c9d9dbe8ab0b2bd50289'}
+          assert receipt['destination'] == {'prefix': prefix + '/', 'url': 'https://libtmux.org/' + prefix + '/'}
+          assert receipt['run'] == {'url': f'https://github.com/{original["run"]["repository"]}/actions/runs/{original["run"]["id"]}', 'attempt': original['run']['attempt']}
+          (root / 'verified-chain.json').write_text(json.dumps({'version': version, 'receipt': receipt, 'reuploadArtifact': identical['artifact'], 'sources': record['sources']}, indent=2) + '\n')
+          PY
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: provenance-public-observation
+          path: observation
+          if-no-files-found: error
+          retention-days: 7
