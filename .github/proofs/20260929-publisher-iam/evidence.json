@@ -1,0 +1,87 @@
+{
+  "repository": "tmux-python/libtmux",
+  "runId": 36639348612,
+  "url": "https://github.com/tmux-python/libtmux/actions/runs/36639348612",
+  "headSha": "73513701eb1f4bc88225efa06877082fd285c82f",
+  "originalHead": "da4484ad8117aa09ec2fcb0c92f83bde4aa304e6",
+  "approvedPublisher": "8fda4b89071621b9ed2c4722a68d61f6ecf9c1c4",
+  "workflowSha256": "06988a847cdaac164cfec68a48245ce912c0498d49930f2fe275f6a4ec9a4e1e",
+  "createdAt": "2026-09-29T22:24:08Z",
+  "updatedAt": "2026-09-29T22:25:38Z",
+  "overallConclusion": "failure",
+  "verdictConclusion": "success",
+  "manifestWrites": false,
+  "probePortInput": "",
+  "proofs": [
+    {
+      "name": "approved-own-prefix / publish",
+      "jobId": 109647696442,
+      "url": "https://github.com/tmux-python/libtmux/actions/runs/36639348612/job/109647696442",
+      "conclusion": "success",
+      "failedSteps": [],
+      "evidence": [
+        "2026-09-29T22:24:26.0758193Z upload: dist/probe.txt to s3://***/en/py/iam-proof-36639348612/probe.txt"
+      ],
+      "logSha256": "12e31a9b73fc9591369897e49626031e3715af7b3e9b0db46a6ee8f06a3edc43"
+    },
+    {
+      "name": "approved-foreign-prefix / publish",
+      "jobId": 109647696381,
+      "url": "https://github.com/tmux-python/libtmux/actions/runs/36639348612/job/109647696381",
+      "conclusion": "failure",
+      "failedSteps": [
+        "Sync to this call's own prefix"
+      ],
+      "evidence": [
+        "2026-09-29T22:24:27.4521784Z fatal error: An error occurred (AccessDenied) when calling the ListObjectsV2 operation: User: arn:aws:sts::095447592991:assumed-role/libtmux-org-py-publisher/GitHubActions is not authorized to perform: s3:ListBucket on resource: \"arn:aws:s3:::***\" because no identity-based policy allows the s3:ListBucket action"
+      ],
+      "logSha256": "25f8134bab0baf5bb6002e74b9d7f3b6bb093fde104eefad0da0c7b19ba4a481"
+    },
+    {
+      "name": "direct-job",
+      "jobId": 109647661712,
+      "url": "https://github.com/tmux-python/libtmux/actions/runs/36639348612/job/109647661712",
+      "conclusion": "failure",
+      "failedSteps": [
+        "Direct publisher role assumption must be denied"
+      ],
+      "evidence": [
+        "2026-09-29T22:24:17.2735751Z ##[error]Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity"
+      ],
+      "logSha256": "0a6018ef195a1cd2d42d406f35ff8fae9ccd3c6e3482f1fdcad4e96441d2e235"
+    },
+    {
+      "name": "unapproved-commit / publish",
+      "jobId": 109647696587,
+      "url": "https://github.com/tmux-python/libtmux/actions/runs/36639348612/job/109647696587",
+      "conclusion": "failure",
+      "failedSteps": [
+        "Run aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd"
+      ],
+      "evidence": [
+        "2026-09-29T22:25:01.3418033Z ##[error]Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity"
+      ],
+      "logSha256": "a014c28550df582ae6d5fb92fef3f0089f3a1017394814d1a216611f40c35d38"
+    },
+    {
+      "name": "unapproved-tag / publish",
+      "jobId": 109647696500,
+      "url": "https://github.com/tmux-python/libtmux/actions/runs/36639348612/job/109647696500",
+      "conclusion": "failure",
+      "failedSteps": [
+        "Run aws-actions/configure-aws-credentials@v6"
+      ],
+      "evidence": [
+        "2026-09-29T22:25:30.5166570Z ##[error]Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity"
+      ],
+      "logSha256": "f10f0d37b3bf2ab86ca7c0fc16b0a9188677ea3468ed6a14538ef81dcf282789"
+    }
+  ],
+  "excludedStartupFailure": {
+    "runId": 36639189198,
+    "head": "a3694e502be716d3b919bd53778d8bd2808fa2bc",
+    "workflowSha256": "a3acf5583af84d334954a0e8bc63b9f33460307a87a9c1d90167e2da179aaca7",
+    "error": "Line: 95, Col: 11: Secret distribution is required, but not provided while calling.",
+    "jobsExecuted": false
+  }
+}
