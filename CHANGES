@@ -47,6 +47,20 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### Automation patterns waits for tmux instead of guessing (#734)
+
+The examples on {ref}`automation-patterns` waited for a command to finish by
+sleeping a fixed amount and then reading the pane. A sleep long enough to be
+safe is dead time on every run, and one short enough to feel quick reports
+failure on a busy machine.
+
+They now have the command signal a channel when it finishes and block on that
+with {meth}`Server.wait_for() <libtmux.Server.wait_for>`, which returns the
+moment the command is done. Checks compare whole captured lines rather than
+searching the joined capture, because {meth}`~libtmux.Pane.capture_pane`
+returns the command tmux echoed onto the pane -- a substring search matches
+that echo and is already true before the shell has run.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
