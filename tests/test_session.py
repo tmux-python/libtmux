@@ -10,16 +10,13 @@ from contextlib import nullcontext as does_not_raise
 
 import pytest
 
-from libtmux import exc
+from libtmux import Server, exc
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import namer
 from libtmux.window import Window
-
-if t.TYPE_CHECKING:
-    from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     from typing import TypeAlias
@@ -32,9 +29,19 @@ if t.TYPE_CHECKING:
         RaisesExc: TypeAlias = RaisesContext[Exception]  # type: ignore[no-redef]
 
     from libtmux._internal.types import StrPath
-    from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize("raw", [None, "0", "2"])
+def test_decoded_session_fields_are_local(raw: str | None) -> None:
+    """Attached-client counts preserve uncaptured and zero values."""
+    session = Session(
+        server=Server(tmux_bin="missing-decoded-fields-tmux"),
+        session_attached=raw,
+    )
+    assert session.attached_count == (None if raw is None else int(raw))
+    assert session.session_attached == raw
 
 
 def test_has_session(server: Server, session: Session) -> None:

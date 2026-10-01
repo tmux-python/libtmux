@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
-import time
 import typing as t
 
 import pytest
@@ -20,6 +19,7 @@ from libtmux.constants import (
 )
 from libtmux.pane import Pane
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -27,6 +27,26 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.mark.parametrize("raw", [None, "0", "1"])
+def test_decoded_window_fields_are_local(raw: str | None) -> None:
+    """Window dimensions and flags decode without a running server."""
+    window = Window(
+        server=Server(tmux_bin="missing-decoded-fields-tmux"),
+        window_width="80",
+        window_height="24",
+        window_active=raw,
+    )
+    assert window.width_cells == 80
+    assert window.height_cells == 24
+    assert window.width == "80"
+    assert window.height == "24"
+    assert window.is_active is (None if raw is None else raw == "1")
+    window.window_width = None
+    window.window_height = None
+    assert window.width_cells is None
+    assert window.height_cells is None
 
 
 def test_select_window(session: Session) -> None:
@@ -557,10 +577,15 @@ def test_split_with_environment(
         environment=environment,
     )
     assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
+
+        def output_ready(expected: str = v) -> bool:
+            lines = pane.capture_pane()
+            return len(lines) >= 2 and lines[-2] == expected
+
+        retry_until(output_ready, 2, raises=True)
         assert pane.capture_pane()[-2] == v
 
 
@@ -907,6 +932,82 @@ def test_select_layout_next_previous(session: Session) -> None:
     assert layout_after_prev == layout_before
 
 
+def test_select_layout_round_trip_is_byte_exact(session: Session) -> None:
+    """A saved ``window_layout`` fed back into ``select_layout`` is exact.
+
+    tmux 3.8 made ``#{window_layout}`` JSON for non-control clients, while
+    ``select-layout`` still accepts the classic grammar too. libtmux treats
+    the value as an opaque token on every version -- it never parses or
+    validates it -- so a saved layout must restore byte-for-byte regardless
+    of which form the running tmux emits.
+    """
+    window = session.new_window(window_name="test_layout_round_trip")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    saved = window.window_layout
+    assert saved is not None
+
+    window.select_layout("main-vertical")
+    window.refresh()
+    assert window.window_layout != saved
+
+    window.select_layout(saved)
+    window.refresh()
+    assert window.window_layout == saved
+
+
+def test_select_layout_round_trip_preserves_pane_identity_on_json(
+    session: Session,
+) -> None:
+    """On tmux 3.8+, restoring a saved layout puts each pane back in place.
+
+    python exposes no public control-mode client, so every caller is a
+    plain reader -- ``#{window_layout}`` is JSON from tmux 3.8 on, and
+    JSON carries each pane's id. Restoring a saved JSON layout from a
+    *different* one must put every pane back at its original position,
+    not merely reproduce the same shape. Before 3.8 the saved value is
+    the classic string, which the ``Notes`` on
+    :meth:`Window.select_layout` document as shape-exact but not
+    identity-exact -- not asserted here, since whether a given
+    arrangement happens to rotate depends on tmux's own internal pane
+    order, not on anything libtmux controls.
+    """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.8"):
+        pytest.skip("JSON window_layout, and its pane-identity guarantee, need 3.8+")
+
+    window = session.new_window(window_name="test_layout_identity")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.split()
+    pane.split()
+
+    window.select_layout("main-vertical-mirrored")
+    window.refresh()
+    saved = window.window_layout
+    assert saved is not None
+    assert saved.startswith("{"), "expected a JSON layout on tmux 3.8+"
+    before = {p.pane_id: (p.left_cells, p.top_cells) for p in window.panes}
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    assert {p.pane_id: (p.left_cells, p.top_cells) for p in window.panes} != before
+
+    window.select_layout(saved)
+    window.refresh()
+    after = {p.pane_id: (p.left_cells, p.top_cells) for p in window.panes}
+    assert after == before
+
+
 def test_last_pane(session: Session) -> None:
     """Test Window.last_pane() selects the previously active pane."""
     window = session.new_window(window_name="test_last_pane")
@@ -969,6 +1070,184 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
     window = session.new_window(window_name="test_layout_mutex")
     with pytest.raises(ValueError, match="Cannot specify both"):
         window.select_layout("tiled", spread=True)
+
+
+def test_select_layout_dash_o_is_a_layout_not_the_undo_flag(session: Session) -> None:
+    """A layout value beginning with ``-`` is never read as a tmux flag.
+
+    Raw ``select-layout -o`` is tmux's *undo* flag (restores the previous
+    layout), not a layout named ``-o``. A caller passing a hostile or
+    accidental ``"-o"`` string must get a refusal, not a silent undo.
+    Before this fix, the call returned successfully and undid the
+    just-applied layout.
+
+    Refused client-side (``ValueError``), before ever reaching tmux: on
+    tmux 3.3/3.3a, sending an actually-invalid layout *string* (which is
+    what "-o" becomes once forced to be read as one, rather than as the
+    undo flag) crashes the whole daemon instead of refusing cleanly --
+    confirmed by hand against that version. A client-side refusal side-
+    steps that regardless of which tmux is running; see
+    ``test_select_layout_dash_o_crashes_tmux_3_3a_if_forced_through`` for
+    the raw-tmux confirmation this guards against.
+    """
+    window = session.new_window(window_name="test_layout_dash_o")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    before = window.window_layout
+
+    with pytest.raises(ValueError, match="looks like a tmux flag"):
+        window.select_layout("-o")
+
+    # The undo flag would have restored the previous layout; a refusal
+    # must leave the current one untouched, and the server alive.
+    window.refresh()
+    assert window.window_layout == before
+    assert window.server.is_alive()
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["garbage", "no-such-preset", "next", "zzzz,80x24,0,0,0", "{not json"],
+)
+def test_select_layout_refuses_a_value_tmux_cannot_parse(
+    session: Session,
+    value: str,
+) -> None:
+    """Only a preset name or a layout tmux reported reaches tmux.
+
+    On tmux 3.3/3.3a any unparseable layout, not only one beginning with
+    ``-``, exits the daemon; without the refusal the server is gone there.
+    A JSON-looking value is refused only below 3.8, where it is unparseable.
+    """
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="test_layout_unparseable")
+    if value.startswith("{") and not has_gte_version(
+        "3.8",
+        tmux_bin=session.server.tmux_bin,
+    ):
+        with pytest.raises(exc.VersionTooLow, match=r"3\.8"):
+            window.select_layout(value)
+    elif value.startswith("{"):
+        with pytest.raises(exc.LibTmuxException):
+            window.select_layout(value)
+    else:
+        with pytest.raises(ValueError, match=r"neither a preset name"):
+            window.select_layout(value)
+    assert window.server.is_alive()
+
+
+@pytest.mark.parametrize("value", ["tile", "even-h"])
+def test_select_layout_accepts_a_unique_preset_prefix(
+    session: Session,
+    value: str,
+) -> None:
+    """A prefix that resolves to exactly one preset applies.
+
+    tmux's own ``layout_set_lookup`` is a prefix match: ``"tile"`` and
+    ``"even-h"`` each name exactly one preset (``tiled``,
+    ``even-horizontal``) and apply on every supported tmux version,
+    including 3.3a, where an unparseable value would crash the daemon --
+    a unique prefix never reaches that path.
+    """
+    window = session.new_window(window_name="test_layout_prefix")
+    window.select_layout(value)
+    assert window.server.is_alive()
+
+
+def test_select_layout_refuses_an_ambiguous_prefix(session: Session) -> None:
+    """A prefix matching more than one preset is refused, naming both.
+
+    ``"even-"`` prefixes both ``even-horizontal`` and ``even-vertical`` on
+    every version; raw tmux refuses it cleanly ("invalid layout: even-"),
+    and the client-side guard does too, naming the candidates in its
+    message.
+    """
+    window = session.new_window(window_name="test_layout_ambiguous")
+    with pytest.raises(ValueError, match="is ambiguous between"):
+        window.select_layout("even-")
+    assert window.server.is_alive()
+
+
+def test_select_layout_prefix_ambiguity_is_scoped_to_the_live_version(
+    session: Session,
+) -> None:
+    """A prefix's ambiguity depends on which presets the live tmux has.
+
+    ``"main-h"`` uniquely names ``main-horizontal`` below tmux 3.5, where
+    the mirrored presets don't exist yet, but is ambiguous with
+    ``main-horizontal-mirrored`` on 3.5+ -- confirmed against raw tmux on
+    3.3a (applies) and 3.7c (refused, "invalid layout: main-h") before
+    this fix existed.
+    """
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="test_layout_prefix_scoped")
+    if has_gte_version("3.5", tmux_bin=session.server.tmux_bin):
+        with pytest.raises(ValueError, match="is ambiguous between"):
+            window.select_layout("main-h")
+    else:
+        window.select_layout("main-h")
+    assert window.server.is_alive()
+
+
+def test_select_layout_mirrored_preset_needs_tmux_3_5(session: Session) -> None:
+    """A mirrored preset below 3.5 is an unknown name to tmux, and fatal on 3.3a."""
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="test_layout_mirrored")
+    if has_gte_version("3.5", tmux_bin=session.server.tmux_bin):
+        window.select_layout("main-vertical-mirrored")
+    else:
+        with pytest.raises(exc.VersionTooLow, match=r"3\.5"):
+            window.select_layout("main-vertical-mirrored")
+    assert window.server.is_alive()
+
+
+def test_select_layout_dash_o_crashes_tmux_3_3a_if_forced_through(
+    server: Server,
+) -> None:
+    """Raw tmux confirmation for the guard above's stated reason.
+
+    Not a python defect: on tmux 3.3 and 3.3a specifically, forcing "-o"
+    to be read as a layout *string* (``select-layout -- -o``) frees an
+    uninitialized pointer and kills the daemon outright ("server exited
+    unexpectedly"), rather than refusing with an error -- fixed upstream
+    in 3.4. Skipped on every other version, where raw tmux refuses
+    cleanly and the server survives (already covered by this port's
+    matrix runs). This is *why* ``Window.select_layout`` refuses a
+    leading ``-`` itself instead of relying only on tmux's own response.
+    """
+    from libtmux.common import get_version_str
+
+    version = get_version_str(tmux_bin=server.tmux_bin)
+    if version not in {"3.3", "3.3a"}:
+        pytest.skip(f"tmux {version} is not the 3.3/3.3a crash case")
+
+    server.new_session(session_name="crash_check")
+    proc = server.cmd("select-layout", "--", "-o")
+    assert proc.returncode != 0
+    assert "server exited unexpectedly" in "\n".join(proc.stderr)
+    assert not server.is_alive()
+
+
+def test_select_layout_empty_string_is_refused(session: Session) -> None:
+    """An explicit empty-string layout is refused, unlike omitting it.
+
+    ``select_layout(None)`` is tmux's own "no layout" invocation (reapplies
+    the current layout); ``select_layout("")`` is a distinct, almost
+    certainly accidental call -- a caller-supplied value that happened to
+    be empty -- and silently falling back to the same behavior hides that
+    mistake.
+    """
+    window = session.new_window(window_name="test_layout_empty")
+    with pytest.raises(ValueError, match="empty string"):
+        window.select_layout("")
 
 
 def test_link_unlink_window(server: Server, session: Session) -> None:
@@ -1332,3 +1611,37 @@ def test_new_pane(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             window.new_pane(width=40, height=10)
+
+
+@pytest.mark.parametrize(
+    ("has_mirrored", "raises"),
+    [
+        pytest.param(True, False, id="3.5-applies"),
+        pytest.param(False, True, id="below-3.5-refuses"),
+    ],
+)
+def test_layout_prefix_resolving_to_a_mirrored_preset_follows_the_version(
+    has_mirrored: bool,
+    raises: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prefix naming only a mirrored preset is refused below the release that has it.
+
+    tmux resolves a preset by unique prefix, so ``"main-vertical-m"`` names
+    ``main-vertical-mirrored`` and nothing else. That preset enters tmux's own
+    table in 3.5; below it the name is unknown, and an unknown layout kills the
+    server on 3.3/3.3a -- so the refusal has to happen here rather than at tmux.
+    """
+    from libtmux import window as window_module
+
+    monkeypatch.setattr(
+        window_module,
+        "has_gte_version",
+        lambda version, **_kw: not (version == "3.5" and not has_mirrored),
+    )
+
+    if raises:
+        with pytest.raises(exc.VersionTooLow, match=r"main-vertical-mirrored"):
+            window_module._require_layout_value("main-vertical-m", tmux_bin=None)
+    else:
+        window_module._require_layout_value("main-vertical-m", tmux_bin=None)

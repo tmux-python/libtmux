@@ -116,6 +116,10 @@ Server(socket_path=/tmp/tmux-.../default)
 **Tip:** You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
 current tmux server / session / window / pane.
 
+Prefer a script over a REPL? [`examples/`][examples] holds standalone,
+runnable programs — `python examples/quickstart.py` and no existing session
+required.
+
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 [ipython]: https://ipython.org/
 [`tmuxp shell`]: https://tmuxp.git-pull.com/cli/shell/
@@ -125,8 +129,9 @@ current tmux server / session / window / pane.
 Every object has a `.cmd()` escape hatch that honors socket name and path:
 
 ```python
->>> server = Server(socket_name='libtmux_doctest')
->>> server.cmd('display-message', 'hello world')
+>>> from libtmux.server import Server
+>>> with Server(socket_name='libtmux_doctest') as server:
+...     server.cmd('display-message', 'hello world')
 <libtmux...>
 ```
 
@@ -314,7 +319,8 @@ def test_my_tmux_tool(session):
 [Workspace Setup](https://libtmux.git-pull.com/topics/workspace_setup/) ·
 [Automation Patterns](https://libtmux.git-pull.com/topics/automation_patterns/) ·
 [Context Managers](https://libtmux.git-pull.com/topics/context_managers/) ·
-[Options & Hooks](https://libtmux.git-pull.com/topics/options_and_hooks/)
+[Options & Hooks](https://libtmux.git-pull.com/topics/options_and_hooks/) ·
+[Examples](https://libtmux.git-pull.com/topics/examples/)
 
 **Reference:**
 [Docs][docs] ·
@@ -350,3 +356,4 @@ Contributions are welcome. Please open an issue or PR if you find a bug or want 
 [tao]: https://leanpub.com/the-tao-of-tmux
 [tmuxp]: https://tmuxp.git-pull.com
 [tmux]: https://github.com/tmux/tmux
+[examples]: https://github.com/tmux-python/libtmux/tree/master/examples
