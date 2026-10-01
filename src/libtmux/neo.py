@@ -11,7 +11,8 @@ from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import dispatch, get_version, raise_if_stderr
+from libtmux.engines.base import SupportsTmuxVersion
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -1036,6 +1037,36 @@ def parse_output(
     return {k: v for k, v in formatter.items() if v}
 
 
+def _resolve_tmux_version(server: Server) -> str:
+    """Return the tmux version the server's engine targets.
+
+    The format string a listing query sends is version-gated, so something has
+    to name a version before any row can be requested. Ask the *engine* first:
+    it is the only party that knows what it is talking to, and for a replaying
+    or in-memory engine there may be no tmux binary to interrogate at all.
+    Engines that cannot answer -- the
+    :class:`~libtmux.engines.base.SupportsTmuxVersion` capability is optional --
+    fall back to running ``tmux -V``, which is what every engine did before one
+    could report for itself.
+
+    Parameters
+    ----------
+    server : :class:`~libtmux.server.Server`
+        The server whose engine is asked.
+
+    Returns
+    -------
+    str
+        A tmux version string, e.g. ``"3.7"``.
+    """
+    engine = server.engine
+    if isinstance(engine, SupportsTmuxVersion):
+        version = engine.tmux_version()
+        if version is not None:
+            return version
+    return str(get_version(tmux_bin=server.tmux_bin))
+
+
 def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
@@ -1095,20 +1126,10 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    tmux_version = _resolve_tmux_version(server)
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
-    cmd_args: list[str | int] = []
-
-    if server.socket_name:
-        cmd_args.insert(0, f"-L{server.socket_name}")
-    if server.socket_path:
-        cmd_args.insert(0, f"-S{server.socket_path}")
-
-    tmux_cmds = [
-        *cmd_args,
-        list_cmd,
-    ]
+    tmux_cmds: list[str | int] = [list_cmd]
 
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
@@ -1130,10 +1151,7 @@ def fetch_objs(
             },
         )
 
-    proc = tmux_cmd(
-        *tmux_cmds,
-        tmux_bin=server.tmux_bin,
-    )
+    proc = dispatch(server.engine, *tmux_cmds)
 
     raise_if_stderr(proc, list_cmd)
 
