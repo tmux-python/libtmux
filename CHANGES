@@ -101,6 +101,25 @@ failure stays data on the result; `raise_for_status()` turns it into
 `stderr`. {meth}`Server.cmd() <libtmux.Server.cmd>` still returns a
 {class}`~libtmux.common.tmux_cmd` and is unchanged.
 
+#### `timeout` and `input` on commands (#739)
+
+{class}`~libtmux.engines.base.CommandRequest`,
+{class}`~libtmux.common.tmux_cmd`, and the `cmd()` methods of
+{class}`~libtmux.Server`, {class}`~libtmux.Session`, {class}`~libtmux.Window`
+and {class}`~libtmux.Pane` take two keyword-only arguments.
+
+`timeout` is seconds, `None` by default, meaning wait as long as tmux takes. On
+expiry the engine raises {exc}`~libtmux.exc.TmuxTimeout`, which carries `cmd` and
+`timeout` and is not a {exc}`~libtmux.exc.LibTmuxException`. The subprocess
+engine kills and reaps the tmux client; the control-mode engine abandons the
+reply and keeps its connection.
+
+`input` is `str` or `bytes` for the client's standard input, for commands that
+read `-` such as `load-buffer`. `str` is UTF-8 and raises
+{exc}`UnicodeEncodeError` when it cannot be; `bytes` are sent unchanged. Payload
+size is not limited by tmux's 16 KiB argument limit. A control-mode engine runs
+a request that carries `input` in a subprocess.
+
 #### Control-mode engine (#739)
 
 {class}`~libtmux.engines.control.sync.ControlModeEngine` runs commands over one

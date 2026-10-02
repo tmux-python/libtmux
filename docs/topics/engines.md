@@ -57,7 +57,7 @@ back.
 ```python
 >>> from libtmux.engines import CommandRequest
 >>> CommandRequest.from_args("kill-window", "-t", 2)
-CommandRequest(args=('kill-window', '-t', '2'), tmux_bin=None)
+CommandRequest(args=('kill-window', '-t', '2'), tmux_bin=None, timeout=None)
 ```
 
 A tmux-side failure is **data**, not an exception. An engine sets `returncode`
@@ -74,6 +74,42 @@ binary, a dropped connection — raises:
 >>> result.returncode, result.stderr
 (1, ('no such window',))
 ```
+
+### Bounding a command and sending stdin
+
+A request can carry two more things. `timeout` is a number of seconds; when it
+passes, the engine raises {exc}`~libtmux.exc.TmuxTimeout` instead of waiting.
+A subprocess engine kills the tmux client it started and reaps it. A
+control-mode engine abandons the reply and keeps its connection. `None`, the
+default, waits as long as tmux takes. The exception is deliberately not a
+{exc}`~libtmux.exc.LibTmuxException`, so the list accessors that read one as
+"nothing to list" cannot hide a hung server.
+
+`input` is data for the client's standard input, for commands that read `-`,
+such as `load-buffer`. It is not subject to tmux's 16 KiB limit on arguments,
+and `bytes` are sent unchanged.
+
+```python
+>>> from libtmux import exc
+>>> from libtmux.engines import CommandRequest, SubprocessEngine
+>>> engine = SubprocessEngine.for_server(server)
+>>> engine.run(
+...     CommandRequest.from_args(
+...         "load-buffer", "-b", "doc_input", "-", input=b"payload"
+...     )
+... ).ok
+True
+>>> engine.run(CommandRequest.from_args("show-buffer", "-b", "doc_input")).stdout
+('payload',)
+>>> try:
+...     engine.run(CommandRequest.from_args("run-shell", "sleep 5", timeout=0.25))
+... except exc.TmuxTimeout as error:
+...     print(error.timeout)
+0.25
+```
+
+{meth}`Server.cmd() <libtmux.Server.cmd>` and the `cmd()` methods of the other
+objects take the same `timeout=` and `input=` keywords.
 
 ## Writing an engine
 

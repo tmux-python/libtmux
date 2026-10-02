@@ -26,6 +26,53 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _kill_and_reap(process: subprocess.Popen[t.Any]) -> None:
+    """Kill a subprocess that outstayed its timeout, then reap it.
+
+    :meth:`subprocess.Popen.communicate` leaves the child running when its
+    *timeout* expires -- the caller has to kill and reap it, the same dance
+    :func:`subprocess.run` does on its own timeout path. Skipping it leaks one
+    tmux process per expiry.
+
+    The child is waited for rather than drained: after ``SIGKILL`` it exits
+    promptly, while reading its pipes to EOF could block on a grandchild that
+    inherited them -- past the bound the caller just asked to enforce. The
+    pipes are closed by hand instead, since nothing will read them.
+
+    Examples
+    --------
+    >>> import sys
+    >>> process = subprocess.Popen(
+    ...     [sys.executable, '-c', 'import time; time.sleep(300)'],
+    ...     stdout=subprocess.PIPE,
+    ...     stderr=subprocess.PIPE,
+    ... )
+    >>> process.poll() is None  # still running
+    True
+
+    >>> _kill_and_reap(process)
+    >>> process.returncode is not None  # dead, and its exit status collected
+    True
+    """
+    process.kill()
+    process.wait()
+    for stream in (process.stdin, process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
+
+
+def _decode_text(data: bytes) -> str:
+    r"""Decode tmux output as text mode does: UTF-8, universal newlines.
+
+    Examples
+    --------
+    >>> _decode_text(b"a\r\nb\rc\xff")
+    'a\nb\nc\\xff'
+    """
+    text = data.decode("utf-8", errors="backslashreplace")
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 class SubprocessEngine:
     """Execute tmux commands by forking the tmux CLI binary.
 
@@ -240,19 +287,55 @@ class SubprocessEngine:
         """
         cmd = self.command_line(request)
 
+        process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = None
         try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = process.communicate()
+            if request.input is None:
+                text_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="backslashreplace",
+                )
+                process = text_process
+                stdout, stderr = text_process.communicate(timeout=request.timeout)
+            else:
+                # Bytes cannot go through a text-mode pipe, so this branch
+                # reads binary and decodes the way text mode does.
+                payload = (
+                    request.input.encode("utf-8")
+                    if isinstance(request.input, str)
+                    else request.input
+                )
+                binary_process = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                process = binary_process
+                raw_out, raw_err = binary_process.communicate(
+                    payload,
+                    timeout=request.timeout,
+                )
+                stdout = _decode_text(raw_out)
+                stderr = _decode_text(raw_err)
             returncode = process.returncode
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
+        except subprocess.TimeoutExpired:
+            assert process is not None
+            assert request.timeout is not None
+            _kill_and_reap(process)
+            logger.error(  # noqa: TRY400
+                "tmux command timed out",
+                extra={
+                    "tmux_cmd": shlex.join(cmd),
+                    "tmux_timeout": request.timeout,
+                },
+            )
+            raise exc.TmuxTimeout(cmd=list(cmd), timeout=request.timeout) from None
         except Exception:
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",

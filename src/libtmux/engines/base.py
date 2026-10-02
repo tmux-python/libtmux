@@ -138,17 +138,30 @@ class CommandRequest:
     tmux_bin : str or None
         Override the tmux binary for this one request; ``None`` lets the engine
         decide.
+    timeout : float or None
+        Seconds to allow this command. ``None`` waits as long as tmux takes.
+        On expiry the engine raises :exc:`~libtmux.exc.TmuxTimeout`: a
+        subprocess engine kills and reaps the tmux client it spawned, a
+        control-mode engine abandons the reply and keeps its connection.
+    input : str, bytes or None
+        Data for the tmux client's standard input, which is then closed, for
+        commands that read ``-`` such as ``load-buffer``. ``str`` is encoded as
+        UTF-8 and raises :exc:`UnicodeEncodeError` when it cannot be; ``bytes``
+        are sent unchanged. Excluded from :func:`repr`, which would otherwise
+        print a payload. Tmux's 16 KiB command limit covers arguments only.
 
     Examples
     --------
     >>> CommandRequest.from_args("split-window", "-t", "%1")
-    CommandRequest(args=('split-window', '-t', '%1'), tmux_bin=None)
+    CommandRequest(args=('split-window', '-t', '%1'), tmux_bin=None, timeout=None)
     >>> CommandRequest.from_args("kill-window", "-t", 2).args
     ('kill-window', '-t', '2')
     """
 
     args: tuple[str, ...]
     tmux_bin: str | None = None
+    timeout: float | None = None
+    input: str | bytes | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         r"""Reject arguments that cannot survive tmux's C-string transports.
@@ -196,6 +209,8 @@ class CommandRequest:
         cls,
         *args: t.Any,
         tmux_bin: str | pathlib.Path | None = None,
+        timeout: float | None = None,
+        input: str | bytes | None = None,  # noqa: A002
     ) -> CommandRequest:
         """Build a request from arbitrary tokens, stringifying each.
 
@@ -206,6 +221,10 @@ class CommandRequest:
             :class:`~libtmux.common.tmux_cmd` has always accepted.
         tmux_bin : str or pathlib.Path, optional
             Per-request tmux binary override.
+        timeout : float, optional
+            Seconds to allow the command; see :class:`CommandRequest`.
+        input : str or bytes, optional
+            Standard input for the tmux client; see :class:`CommandRequest`.
 
         Returns
         -------
@@ -220,6 +239,8 @@ class CommandRequest:
         return cls(
             args=tuple(arg if isinstance(arg, str) else str(arg) for arg in args),
             tmux_bin=str(tmux_bin) if tmux_bin is not None else None,
+            timeout=timeout,
+            input=input,
         )
 
     @property
@@ -260,7 +281,8 @@ class CommandResult:
     returncode : int
         tmux exit code.
     process : subprocess.Popen or None
-        The OS process, when the engine forked one. ``None`` for engines that
+        The OS process, when the engine forked one (a byte-mode process when
+        the request carried ``input``). ``None`` for engines that
         never touch the operating system, which is why
         :attr:`libtmux.common.tmux_cmd.process` can only be a best-effort
         accessor. Excluded from equality and :func:`repr`.
@@ -282,7 +304,7 @@ class CommandResult:
     stdout: tuple[str, ...] = ()
     stderr: tuple[str, ...] = ()
     returncode: int = 0
-    process: subprocess.Popen[str] | None = field(
+    process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = field(
         default=None,
         compare=False,
         repr=False,

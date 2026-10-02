@@ -440,6 +440,19 @@ class tmux_cmd:
         owns its binary.
     engine : :class:`~libtmux.engines.base.TmuxEngine`, optional
         Executor to dispatch through.
+    timeout : float, optional
+        Seconds to allow tmux to run. *None* (the default) waits as long as
+        tmux takes, which is what a rendezvous like ``wait-for`` needs when
+        nobody is watching the clock. Give it a number when the command can
+        block on something that may never happen.
+    input : str or bytes, optional
+        Data written to the tmux client's standard input, which is then
+        closed. ``str`` is encoded as UTF-8 and raises
+        :exc:`UnicodeEncodeError` when it cannot be; ``bytes`` are sent
+        unchanged, so non-UTF-8 data works. ``None`` (the default) leaves
+        standard input inherited from the calling process. Payload size is
+        not limited by tmux's 16 KiB command size limit, which covers
+        arguments only.
 
     Attributes
     ----------
@@ -454,6 +467,11 @@ class tmux_cmd:
 
     Raises
     ------
+    :exc:`~libtmux.exc.TmuxTimeout`
+        When *timeout* elapses. A subprocess engine kills and reaps the tmux
+        client it spawned before the exception leaves; work the command
+        started -- a pane's foreground process, the tmux server -- keeps
+        running.
     :exc:`~libtmux.exc.AsyncEngineMismatch`
         *engine* is asynchronous -- its ``run()`` (or ``command_line()``,
         while rendering a DEBUG log line) handed back an awaitable, which
@@ -480,6 +498,30 @@ class tmux_cmd:
 
         $ tmux new-session -s my session
 
+    A foreground ``run-shell`` blocks until its shell command exits. Bound
+    it, and a command that never exits costs a known amount of time:
+
+    >>> try:
+    ...     tmux_cmd(
+    ...         f'-L{server.socket_name}', 'run-shell', 'sleep 5',
+    ...         timeout=0.25,
+    ...     )
+    ... except exc.TmuxTimeout as e:
+    ...     print(e.timeout, e.cmd[-2:])
+    0.25 ['run-shell', 'sleep 5']
+
+    Send data on the client's standard input with ``input``. Commands that
+    take ``-`` as a path, such as ``load-buffer``, read it from there:
+
+    >>> proc = tmux_cmd(
+    ...     f'-L{server.socket_name}', 'load-buffer', '-b', 'doc_stdin', '-',
+    ...     input='from stdin',
+    ... )
+    >>> proc.returncode
+    0
+    >>> server.show_buffer(buffer_name='doc_stdin')
+    'from stdin'
+
     Notes
     -----
     .. versionchanged:: 0.8
@@ -491,11 +533,13 @@ class tmux_cmd:
         *args: t.Any,
         tmux_bin: str | None = None,
         engine: TmuxEngine | None = None,
+        timeout: float | None = None,
+        input: str | bytes | None = None,  # noqa: A002
     ) -> None:
         runner: TmuxEngine = (
             engine if engine is not None else SubprocessEngine.of(tmux_bin)
         )
-        request = CommandRequest.from_args(*args)
+        request = CommandRequest.from_args(*args, timeout=timeout, input=input)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -518,7 +562,9 @@ class tmux_cmd:
         # Read defensively: ``process`` is the one field of ``CommandResult``
         # that no protocol declares, so an engine returning its own
         # result type -- which ``TmuxEngine`` permits -- need not carry it.
-        process: subprocess.Popen[str] | None = getattr(result, "process", None)
+        process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = getattr(
+            result, "process", None
+        )
         self._process = process
 
         # tmux writes ``has-session``'s answer to stderr; the wrappers have
@@ -546,7 +592,7 @@ class tmux_cmd:
             )
 
     @property
-    def process(self) -> subprocess.Popen[str]:
+    def process(self) -> subprocess.Popen[str] | subprocess.Popen[bytes]:
         """Return the finished :class:`subprocess.Popen`.
 
         Returns

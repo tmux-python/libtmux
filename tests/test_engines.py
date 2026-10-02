@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import gc
 import logging
+import os
+import signal
 import subprocess
+import time
 import typing as t
 
 import pytest
@@ -21,12 +24,14 @@ from libtmux.engines import (
     TmuxEngine,
 )
 from libtmux.neo import fetch_objs
+from libtmux.pane import Pane
 from libtmux.server import Server
+from libtmux.session import Session
+from libtmux.window import Window
 
 if t.TYPE_CHECKING:
+    import pathlib
     from collections.abc import Sequence
-
-    from libtmux.session import Session
 
 
 class CannedEngine:
@@ -640,3 +645,135 @@ def test_no_never_awaited_warning_escapes(
     gc.collect()
 
     assert [w for w in recwarn.list if issubclass(w.category, RuntimeWarning)] == []
+
+
+class RecordingPopen(subprocess.Popen):  # type: ignore[type-arg]
+    """A :class:`subprocess.Popen` that remembers every instance."""
+
+    instances: t.ClassVar[list[RecordingPopen]] = []
+
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        super().__init__(*args, **kwargs)
+        RecordingPopen.instances.append(self)
+
+
+def test_request_timeout_kills_and_reaps_the_client(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Expiry kills the tmux client, collects it, and raises ``TmuxTimeout``."""
+    server.new_session("slow")
+    RecordingPopen.instances.clear()
+    monkeypatch.setattr(subprocess, "Popen", RecordingPopen)
+    engine = SubprocessEngine.for_server(server)
+    request = CommandRequest.from_args("run-shell", "sleep 3", timeout=0.3)
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout) as excinfo:
+        engine.run(request)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 2.5
+    assert excinfo.value.timeout == 0.3
+    assert excinfo.value.cmd[-2:] == ["run-shell", "sleep 3"]
+    assert not isinstance(excinfo.value, exc.LibTmuxException)
+    (client,) = RecordingPopen.instances
+    assert client.returncode == -signal.SIGKILL
+    with pytest.raises(ChildProcessError):
+        os.waitpid(client.pid, os.WNOHANG)  # already reaped: no zombie left
+    assert client.stdout is not None
+    assert client.stdout.closed
+
+
+def test_a_timeout_that_is_not_reached_changes_nothing(server: Server) -> None:
+    """A generous timeout returns the normal result."""
+    server.new_session("quick")
+    engine = SubprocessEngine.for_server(server)
+
+    result = engine.run(
+        CommandRequest.from_args("display-message", "-p", "hi", timeout=30),
+    )
+
+    assert result.stdout == ("hi",)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"plain text",
+        bytes(range(256)),
+        b"\xff\xfe not utf-8 \x00 nul",
+        b"x" * 50_000,
+    ],
+    ids=["text", "all-bytes", "non-utf8", "50kb"],
+)
+def test_request_input_reaches_stdin_byte_exact(
+    server: Server,
+    tmp_path: pathlib.Path,
+    payload: bytes,
+) -> None:
+    """``load-buffer -`` reads the payload unchanged, past tmux's 16 KiB limit."""
+    server.new_session("stdin")
+    engine = SubprocessEngine.for_server(server)
+    saved = tmp_path / "buffer.bin"
+
+    engine.run(
+        CommandRequest.from_args("load-buffer", "-b", "inb", "-", input=payload),
+    ).raise_for_status()
+    engine.run(
+        CommandRequest.from_args("save-buffer", "-b", "inb", str(saved)),
+    ).raise_for_status()
+
+    assert saved.read_bytes() == payload
+
+
+def test_request_input_str_is_utf8_and_strict(server: Server) -> None:
+    """Text is encoded as UTF-8; what cannot be encoded raises, never alters."""
+    server.new_session("stdin_str")
+    engine = SubprocessEngine.for_server(server)
+
+    engine.run(
+        CommandRequest.from_args("load-buffer", "-b", "ins", "-", input="café"),
+    ).raise_for_status()
+    shown = engine.run(CommandRequest.from_args("show-buffer", "-b", "ins"))
+    with pytest.raises(UnicodeEncodeError):
+        engine.run(CommandRequest.from_args("load-buffer", "-", input="\ud800"))
+
+    assert shown.stdout == ("café",)
+
+
+def test_request_input_stays_out_of_the_repr() -> None:
+    """A payload may be large or secret; it is not printed."""
+    request = CommandRequest.from_args("load-buffer", "-", input="s3cret")
+
+    assert "s3cret" not in repr(request)
+
+
+def test_cmd_forwards_timeout_and_input_at_every_level(session: Session) -> None:
+    """``timeout`` and ``input`` reach the engine from each object's ``cmd``."""
+    engine = CannedEngine()
+    server = Server(socket_name="forwarding", engine=engine)
+    # Built around the canned server so no tmux process is involved.
+    window = type("W", (), {"window_id": "@1", "server": server})()
+    pane = type("P", (), {"pane_id": "%1", "server": server})()
+    sess = type("S", (), {"session_id": "$1", "server": server})()
+
+    server.cmd("a", timeout=1.5, input=b"x")
+    Session.cmd(sess, "b", timeout=2.5, input="y")
+    Window.cmd(window, "c", timeout=3.5, input="z")
+    Pane.cmd(pane, "d", timeout=4.5)
+
+    assert [(r.args[0], r.timeout, r.input) for r in engine.requests] == [
+        ("a", 1.5, b"x"),
+        ("b", 2.5, "y"),
+        ("c", 3.5, "z"),
+        ("d", 4.5, None),
+    ]
+
+
+def test_server_cmd_timeout_end_to_end(server: Server) -> None:
+    """``Server.cmd(timeout=)`` raises ``TmuxTimeout`` through the adapter."""
+    server.new_session("e2e")
+
+    with pytest.raises(exc.TmuxTimeout):
+        server.cmd("run-shell", "sleep 3", timeout=0.3)

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import textwrap
 import threading
+import time
 import typing as t
 
 import pytest
@@ -437,7 +438,7 @@ def test_a_session_killed_under_the_client_moves_it_to_another(
 FAKE_TMUX = textwrap.dedent(
     """\
     #!{python}
-    import os, sys
+    import os, sys, time
     mode = open(os.environ["FAKE_TMUX_MODE"]).read().strip()
     args = sys.argv[1:]
     if "list-sessions" in args:
@@ -463,7 +464,10 @@ FAKE_TMUX = textwrap.dedent(
         if mode == "backwards" and index == 3:
             send("%begin 1 5 1\\n%end 1 5 1\\n")
             continue
-        send("%begin 1 {n} 1\\nok\\n%end 1 {n} 1\\n".replace("{n}", str(number)))
+        body = line.rstrip("\\n") if mode == "delay" else "ok"
+        if mode == "delay" and index == 3:
+            time.sleep(0.6)
+        send(f"%begin 1 {number} 1\\n{body}\\n%end 1 {number} 1\\n")
     """,
 )
 
@@ -550,3 +554,94 @@ def test_with_connection_binds_a_server_without_sharing_state(
     finally:
         with contextlib.suppress(Exception):
             server.engine.close()  # type: ignore[attr-defined]
+
+
+def test_a_control_timeout_abandons_the_reply_and_keeps_the_connection(
+    fake_tmux: t.Callable[[str], ControlModeEngine],
+) -> None:
+    """A late reply is consumed and dropped; the next request gets its own."""
+    engine = fake_tmux("delay")
+    engine.run(req("display-message", "-p", "first"))
+    proc = engine._proc
+    generation = engine.generation
+
+    started = time.monotonic()
+    with pytest.raises(exc.TmuxTimeout) as excinfo:
+        engine.run(
+            CommandRequest.from_args("display-message", "-p", "slow", timeout=0.2)
+        )
+
+    assert time.monotonic() - started < 0.55  # gave up before the reply came
+    assert excinfo.value.timeout == 0.2
+    assert engine._proc is proc  # the connection is kept
+    follow = engine.run(req("display-message", "-p", "next"))
+    assert follow.stdout == ("'display-message' '-p' 'next'",)
+    assert engine.generation == generation
+
+
+def test_a_control_timeout_in_a_batch_abandons_every_owed_reply(
+    fake_tmux: t.Callable[[str], ControlModeEngine],
+) -> None:
+    """Requests queued behind the timed-out one are dropped too."""
+    engine = fake_tmux("delay")
+    engine.run(req("display-message", "-p", "first"))
+
+    with pytest.raises(exc.TmuxTimeout):
+        engine.run_batch(
+            [
+                CommandRequest.from_args("display-message", "-p", "slow", timeout=0.2),
+                req("display-message", "-p", "queued"),
+            ],
+        )
+
+    follow = engine.run(req("display-message", "-p", "after"))
+    assert follow.stdout == ("'display-message' '-p' 'after'",)
+
+
+def test_a_control_timeout_on_a_command_group_rebuilds_the_connection(
+    fake_tmux: t.Callable[[str], ControlModeEngine],
+) -> None:
+    """A group owes an unknown number of blocks, so the connection is dropped."""
+    engine = fake_tmux("delay")
+    engine.run(req("display-message", "-p", "first"))
+    proc = engine._proc
+    assert proc is not None
+    sep = CommandSeparator(";")
+
+    with pytest.raises(exc.TmuxTimeout):
+        engine.run(
+            CommandRequest.from_args(
+                "display-message",
+                "-p",
+                "a",
+                sep,
+                "display-message",
+                "-p",
+                "b",
+                timeout=0.2,
+            ),
+        )
+
+    assert engine._proc is None
+    assert not pid_alive(proc.pid)
+
+
+def test_input_and_blocking_commands_keep_their_subprocess_semantics(
+    session: Session,
+    engine: ControlModeEngine,
+) -> None:
+    """``input`` and a timeout on a waiting command run in a subprocess."""
+    engine.run(req("display-message", "-p", "warm"))
+    generation = engine.generation
+
+    loaded = engine.run(
+        CommandRequest.from_args("load-buffer", "-b", "ctl", "-", input=b"from stdin"),
+    )
+    shown = engine.run(req("show-buffer", "-b", "ctl"))
+    with pytest.raises(exc.TmuxTimeout):
+        engine.run(CommandRequest.from_args("wait-for", "never", timeout=0.3))
+
+    assert loaded.process is not None  # a subprocess carried the stdin
+    assert shown.stdout == ("from stdin",)
+    assert engine.run(req("display-message", "-p", "alive")).stdout == ("alive",)
+    assert engine.generation == generation

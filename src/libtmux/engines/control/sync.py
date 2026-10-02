@@ -51,6 +51,10 @@ _STDERR_BYTES = 16384
 _OFF_VALUES = frozenset({"off", "0"})
 
 
+class _Expired(Exception):
+    """Internal: a wait for tmux outlasted its deadline."""
+
+
 class ControlModeEngine:
     """Run tmux commands over one persistent control-mode client.
 
@@ -105,6 +109,7 @@ class ControlModeEngine:
         self._stderr = bytearray()
         self._exited = False
         self._attached = False
+        self._skip = 0
 
     @classmethod
     def for_server(cls, server: t.Any) -> Self:
@@ -205,7 +210,7 @@ class ControlModeEngine:
         results: list[CommandResult] = []
         pipeline: list[CommandRequest] = []
         for request in requests:
-            if blocks_queue(request.args):
+            if blocks_queue(request.args) or request.input is not None:
                 results += self._run_pipeline(pipeline)
                 pipeline = []
                 results.append(self._run_subprocess(request))
@@ -325,6 +330,7 @@ class ControlModeEngine:
         self._stderr.clear()
         self._exited = False
         self._attached = False
+        self._skip = 0
         self._generation += 1
         try:
             self._await_attach(time.monotonic() + _STARTUP_TIMEOUT)
@@ -341,7 +347,11 @@ class ControlModeEngine:
 
     def _await_attach(self, deadline: float) -> None:
         """Consume the attach acknowledgement, the connection's first block."""
-        block = self._next_reply(deadline)
+        try:
+            block = self._next_reply(deadline)
+        except _Expired:
+            msg = "tmux control-mode startup timed out"
+            raise exc.ControlModeError(msg) from None
         if block.is_error:
             detail = b" ".join(block.body).decode("utf-8", "replace")
             msg = f"tmux control-mode attach failed: {detail}"
@@ -362,6 +372,7 @@ class ControlModeEngine:
         self._proc = None
         self._selector = None
         self._replies.clear()
+        self._skip = 0
         if selector is not None:
             with contextlib.suppress(Exception):
                 selector.close()
@@ -404,24 +415,66 @@ class ControlModeEngine:
             self._exited = True
             self._read_stderr()
             raise self._lost() from None
-        return [self._collect(request) for request in requests]
+        results: list[CommandResult] = []
+        try:
+            for request in requests:
+                results.append(self._collect(request))  # noqa: PERF401
+        except exc.TmuxTimeout:
+            self._abandon(requests[len(results) :])
+            raise
+        return results
 
     def _collect(self, request: CommandRequest) -> CommandResult:
         """Read the reply blocks one request produces and merge them."""
         expected = command_count(request.args)
+        deadline = (
+            None if request.timeout is None else time.monotonic() + request.timeout
+        )
         blocks: list[protocol.Block] = []
         while len(blocks) < expected:
-            block = self._next_reply(None)
+            try:
+                block = self._next_reply(deadline)
+            except _Expired:
+                assert request.timeout is not None
+                logger.error(  # noqa: TRY400
+                    "tmux control command timed out",
+                    extra={
+                        "tmux_cmd": shlex.join(self.command_line(request)),
+                        "tmux_timeout": request.timeout,
+                    },
+                )
+                raise exc.TmuxTimeout(
+                    cmd=list(self.command_line(request)),
+                    timeout=request.timeout,
+                ) from None
             blocks.append(block)
             if block.is_error:
                 break  # tmux drops the rest of a failed command group
         return self._result(request, blocks)
 
+    def _abandon(self, outstanding: Sequence[CommandRequest]) -> None:
+        """Give up on replies still owed, keeping the connection aligned.
+
+        A single command owes exactly one block, so its reply can be consumed
+        and dropped when it arrives. A command group owes between one and its
+        length, depending on where an error stops it, so the count is unknown
+        and the connection is discarded instead; the next call reconnects.
+        """
+        if any(command_count(request.args) != 1 for request in outstanding):
+            self._teardown(graceful=False)
+            return
+        for _ in outstanding:
+            if self._replies:
+                self._replies.popleft()
+            else:
+                self._skip += 1
+
     def _next_reply(self, deadline: float | None) -> protocol.Block:
         while not self._replies:
             if self._exited:
                 raise self._lost()
-            self._pump(deadline)
+            if not self._pump(deadline):
+                raise _Expired
         return self._replies.popleft()
 
     def _result(
@@ -465,20 +518,18 @@ class ControlModeEngine:
             )
         return result
 
-    def _pump(self, deadline: float | None) -> None:
-        """Wait for output from tmux, then read whatever arrived."""
+    def _pump(self, deadline: float | None) -> bool:
+        """Wait for output from tmux and read it; ``False`` if time ran out."""
         selector = self._selector
         assert selector is not None
         timeout = None if deadline is None else max(0.0, deadline - time.monotonic())
         events = selector.select(timeout)
-        if not events and deadline is not None:
-            msg = "tmux control-mode startup timed out"
-            raise exc.ControlModeError(msg)
         for key, _ in events:
             if key.data == "stdout":
                 self._read_stdout()
             else:
                 self._read_stderr()
+        return bool(events) or deadline is None
 
     def _read_stdout(self) -> None:
         proc = self._proc
@@ -498,7 +549,9 @@ class ControlModeEngine:
                 # After the attach acknowledgement only replies to this
                 # client's own commands matter; a hook's command also writes
                 # a block, and no request is waiting for it.
-                if event.solicited or not self._attached:
+                if event.solicited and self._skip:
+                    self._skip -= 1  # the reply to an abandoned request
+                elif event.solicited or not self._attached:
                     self._replies.append(event)
             elif isinstance(event, protocol.Exit):
                 self._exited = True

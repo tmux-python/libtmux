@@ -7,6 +7,7 @@ libtmux.exc
 
 from __future__ import annotations
 
+import shlex
 import typing as t
 
 if t.TYPE_CHECKING:
@@ -477,6 +478,68 @@ class AmbiguousOption(OptionError):
 
 class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition."""
+
+
+class TmuxTimeout(Exception):
+    """A tmux command outlived its ``timeout``.
+
+    Raised when a ``timeout`` is given, whether on
+    :class:`~libtmux.engines.base.CommandRequest`, on
+    :class:`~libtmux.common.tmux_cmd`, or on
+    :meth:`Server.cmd() <libtmux.Server.cmd>`,
+    :meth:`Session.cmd() <libtmux.Session.cmd>`,
+    :meth:`Window.cmd() <libtmux.Window.cmd>` and
+    :meth:`Pane.cmd() <libtmux.Pane.cmd>`, and tmux does not return within it.
+    A subprocess engine kills and reaps the tmux client it spawned before this
+    is raised; a control-mode engine abandons the reply and keeps its
+    connection.
+
+    Not a :exc:`LibTmuxException`. The list accessors
+    (:attr:`Server.sessions`, :attr:`Server.clients`) treat a
+    :exc:`LibTmuxException` as "nothing to list"; a server that has stopped
+    answering is not an empty server, so a timeout passes through them.
+    It is also not a :exc:`WaitTimeout`, which means a helper gave up on a
+    condition: here the command may or may not have taken effect.
+
+    Only the client dies. Work the command started, such as a pane's
+    foreground process or the tmux server, keeps running.
+
+    Parameters
+    ----------
+    cmd : list[str]
+        Full tmux command line that timed out, argv-style.
+    timeout : float
+        Bound, in seconds, that the command exceeded.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        Full tmux command line that timed out, argv-style.
+    timeout : float
+        Bound, in seconds, that the command exceeded.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.TmuxTimeout(cmd=["tmux", "wait-for", "build-done"], timeout=1.5)
+    >>> str(err)
+    'tmux command timed out after 1.5s: tmux wait-for build-done'
+
+    >>> err.timeout
+    1.5
+
+    A timeout is not swallowed by ``except LibTmuxException``:
+
+    >>> isinstance(err, exc.LibTmuxException)
+    False
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(self, cmd: list[str], timeout: float) -> None:
+        self.cmd = cmd
+        self.timeout = timeout
+        super().__init__(f"tmux command timed out after {timeout}s: {shlex.join(cmd)}")
 
 
 class VariableUnpackingError(LibTmuxException):
