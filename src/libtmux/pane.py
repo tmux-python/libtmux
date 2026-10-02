@@ -10,12 +10,20 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import re
 import typing as t
 import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.capture import CaptureCursor, CaptureSince, _capture_since
+from libtmux.capture import (
+    CaptureCursor,
+    CaptureSince,
+    TextMatch,
+    _capture_since,
+    _wait_for_idle,
+    _wait_for_text,
+)
 from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
@@ -709,7 +717,12 @@ class Pane(
             return None
         return proc.stdout
 
-    def capture_since(self, cursor: CaptureCursor | None = None) -> CaptureSince:
+    def capture_since(
+        self,
+        cursor: CaptureCursor | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> CaptureSince:
         """Capture only the rows written since ``cursor``.
 
         Where :meth:`capture_pane` returns a snapshot, this returns a
@@ -730,6 +743,9 @@ class Pane(
         cursor : CaptureCursor, optional
             Cursor from a previous call. When omitted, captures the
             current visible screen and opens a first cursor.
+        timeout : float, optional
+            Bound, in seconds, on each tmux call the read makes. See
+            :meth:`cmd`. *None* (the default) waits as long as tmux takes.
 
         Returns
         -------
@@ -743,6 +759,8 @@ class Pane(
         libtmux.exc.PaneLifecycleChanged
             If the pane died or was respawned since ``cursor`` was taken,
             or, when no ``cursor`` is given, if the pane is already dead.
+        libtmux.exc.TmuxTimeout
+            When a tmux call outlives ``timeout``.
 
         See Also
         --------
@@ -783,7 +801,181 @@ class Pane(
 
         .. versionadded:: 0.63
         """
-        return _capture_since(self, cursor)
+        return _capture_since(self, cursor, timeout=timeout)
+
+    def wait_for_text(
+        self,
+        pattern: str | re.Pattern[str],
+        *,
+        timeout: float | None = 30.0,
+        since: CaptureCursor | None = None,
+        regex: bool = False,
+    ) -> TextMatch:
+        r"""Block until ``pattern`` appears in output written after an anchor.
+
+        Reach for this when a command you did not write, or one that runs
+        in the background, prints something you need before you go on. For
+        a command you send yourself, :meth:`wait` or a ``tmux wait-for``
+        signal says "done" without reading the screen.
+
+        Only rows written after the anchor are searched, so text that was
+        already on screen never matches. The anchor is ``since`` when you
+        pass a cursor, otherwise the pane as it is when the call starts.
+        Take a cursor *before* sending a command and pass it as ``since``
+        to leave no gap between sending and waiting.
+
+        The row the cursor sat on is skipped when it held text. That row is
+        a prompt, and what is added to it is the command you typed echoing
+        back, which would otherwise satisfy a pattern taken from the same
+        command. Rows below it are output. A pane whose prompt has not drawn
+        yet has a blank cursor row, which is not skipped, so anchor after
+        the shell is ready. A command long enough to wrap
+        echoes onto those rows too, so for text that also appears in the
+        command, build the command so the echo differs from the output
+        (``printf '%s%s' PAR TIAL``) or match with a ``regex`` anchored to
+        the row (``^done$``).
+
+        The name follows ``pexpect``: this is ``expect`` for a tmux pane,
+        with ``regex=False`` as its ``expect_exact`` and the returned
+        ``match`` as its ``child.match``. A pattern is tried against one row
+        at a time, so it cannot span lines, and a row wider than the pane
+        wraps into two.
+
+        Parameters
+        ----------
+        pattern : str or re.Pattern
+            Text to find, literal unless ``regex`` is set. A compiled
+            pattern is used as given.
+        timeout : float, optional
+            Seconds to wait; *None* waits for as long as it takes. Each tmux
+            read inside the wait is bounded too, by what is left of the
+            budget but at least one second.
+        since : CaptureCursor, optional
+            Search rows written after this cursor, taken from
+            :meth:`capture_since`.
+        regex : bool, optional
+            Treat a string ``pattern`` as a regular expression.
+
+        Returns
+        -------
+        TextMatch
+            ``(match, cursor, lines_missed)``. ``cursor`` resumes after the
+            read that found the match.
+
+        Raises
+        ------
+        libtmux.exc.WaitTimeout
+            When nothing matched within ``timeout``. Nothing is killed.
+        libtmux.exc.TmuxTimeout
+            When tmux stops answering a read for longer than the bound.
+        libtmux.exc.PaneLifecycleChanged
+            If the pane died or was respawned while waiting.
+        libtmux.exc.InvalidCaptureCursor
+            If ``since`` belongs to a different pane.
+
+        Notes
+        -----
+        While the pane is on the alternate screen, a full-screen program is
+        repainting the grid and nothing is matched; the wait resumes when
+        the program exits.
+
+        A flood past ``history-limit`` can destroy the anchor. The result
+        then has ``lines_missed=True`` and the visible screen was searched,
+        so the match may predate the wait. See :meth:`capture_since`.
+
+        See Also
+        --------
+        libtmux.pane.Pane.capture_since : Read what is new without waiting.
+        libtmux.pane.Pane.wait_for_idle : Wait for output to stop.
+
+        Examples
+        --------
+        Take a cursor, send the command, wait for its output. The command
+        is written so its echo does not contain the text it prints:
+
+        >>> start = pane.capture_since().cursor
+        >>> pane.send_keys("printf '%s%s\\n' wait_for_ text_demo", enter=True)
+        >>> hit = pane.wait_for_text('wait_for_text_demo', since=start, timeout=5)
+        >>> hit.match.string
+        'wait_for_text_demo'
+        >>> hit.lines_missed
+        False
+
+        ``regex=True`` takes a pattern, and the match carries its groups:
+
+        >>> start = hit.cursor
+        >>> pane.send_keys("printf '%s%s\\n' build_ 42_done", enter=True)
+        >>> pane.wait_for_text(
+        ...     r'^build_(\d+)_done$', regex=True, since=start, timeout=5
+        ... ).match.group(1)
+        '42'
+
+        .. versionadded:: 0.63
+        """
+        return _wait_for_text(
+            self,
+            pattern,
+            timeout=timeout,
+            since=since,
+            regex=regex,
+        )
+
+    def wait_for_idle(
+        self,
+        *,
+        quiet: float = 0.25,
+        timeout: float | None = 30.0,
+        since: CaptureCursor | None = None,
+    ) -> CaptureSince:
+        """Block until the visible screen stops changing for ``quiet`` seconds.
+
+        Reach for this when there is no text to wait for: a build that ends
+        without a marker, a program that redraws and settles. A screen that
+        keeps changing, a spinner included, is not idle.
+
+        Returns what was written since ``since`` (or since the call began),
+        so one call both waits and collects the output.
+
+        Parameters
+        ----------
+        quiet : float, optional
+            Seconds the visible screen must hold still.
+        timeout : float, optional
+            Seconds to wait for that to happen; *None* waits as long as it
+            takes.
+        since : CaptureCursor, optional
+            Report rows written after this cursor.
+
+        Returns
+        -------
+        CaptureSince
+            ``(lines, cursor, lines_missed)``, as :meth:`capture_since`.
+
+        Raises
+        ------
+        libtmux.exc.WaitTimeout
+            When the screen never held still for ``quiet`` within
+            ``timeout``.
+        libtmux.exc.TmuxTimeout
+            When tmux stops answering a read for longer than the bound.
+        libtmux.exc.PaneLifecycleChanged
+            If the pane died or was respawned while waiting.
+
+        See Also
+        --------
+        libtmux.pane.Pane.wait_for_text : Wait for specific output.
+
+        Examples
+        --------
+        >>> start = pane.capture_since().cursor
+        >>> pane.send_keys('echo wait_for_idle_demo', enter=True)
+        >>> settled = pane.wait_for_idle(quiet=0.1, since=start, timeout=5)
+        >>> any('wait_for_idle_demo' in line for line in settled.lines)
+        True
+
+        .. versionadded:: 0.63
+        """
+        return _wait_for_idle(self, quiet=quiet, timeout=timeout, since=since)
 
     def send_keys(
         self,

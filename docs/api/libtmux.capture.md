@@ -12,6 +12,10 @@ Cursors are immutable, so a call never advances the cursor it was handed, and
 serialize through `str()` / {meth}`~libtmux.capture.CaptureCursor.from_str` for
 callers that carry them across a process or wire boundary.
 
+{meth}`~libtmux.Pane.wait_for_text` and {meth}`~libtmux.Pane.wait_for_idle` wait
+on the same cursors and return a {class}`~libtmux.capture.TextMatch` or a
+{class}`~libtmux.capture.CaptureSince`.
+
 See {ref}`capture-since` for a worked walkthrough.
 
 ```{eval-rst}
