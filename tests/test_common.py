@@ -862,7 +862,7 @@ def test_tmux_cmd_passes_u_except_to_interactive_clients(
         def __init__(self, cmd: list[str], **kwargs: t.Any) -> None:
             argvs.append(cmd)
 
-        def communicate(self) -> tuple[str, str]:
+        def communicate(self, timeout: float | None = None) -> tuple[str, str]:
             return "", ""
 
     monkeypatch.setattr("libtmux.common.subprocess.Popen", FakePopen)
