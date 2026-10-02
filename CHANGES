@@ -112,6 +112,22 @@ their arguments need `shell=True`, which `ExecEngine.ssh` sets; across a
 space-joining transport 10 of 12 awkward values were damaged without it. A
 missing transport program raises {exc}`~libtmux.exc.EngineError`.
 
+#### Async subprocess engine that cleans up when cancelled (#739)
+
+{class}`~libtmux.engines.subprocess.AsyncSubprocessEngine` runs tmux commands
+from `async` code with the {class}`~libtmux.engines.base.AsyncTmuxEngine`
+protocol: `await engine.run(request)`. Each command is a tmux client started in
+its own process group. Cancelling the awaiting task, or a request's `timeout`
+elapsing, kills the client and its group and reaps it before the call returns,
+so no tmux process outlives the call. Wrapping a blocking call in
+`asyncio.to_thread` cannot promise that: cancelling it leaves the thread and its
+tmux client running.
+
+{class}`~libtmux.engines.exec.AsyncExecEngine` does the same behind a transport
+such as `docker exec` or `ssh`, and its cancellation takes the transport program
+down with the client. {class}`~libtmux.Server` still takes only a synchronous
+engine and raises {exc}`~libtmux.exc.AsyncEngineMismatch` for these.
+
 #### `timeout` and `input` on commands (#739)
 
 {class}`~libtmux.engines.base.CommandRequest`,
