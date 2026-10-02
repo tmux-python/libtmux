@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import re
 import typing as t
 import warnings
 
@@ -44,6 +45,31 @@ if t.TYPE_CHECKING:
         from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
+
+
+_LAYOUT_NAMES = frozenset(
+    {
+        "even-horizontal",
+        "even-vertical",
+        "main-horizontal",
+        "main-horizontal-mirrored",
+        "main-vertical",
+        "main-vertical-mirrored",
+        "tiled",
+    },
+)
+_CUSTOM_LAYOUT = re.compile(r"[0-9a-f]{4},\d+x\d+,")
+
+
+def _check_layout(layout: str) -> None:
+    """Reject a layout tmux would not recognize, before any pane is created.
+
+    tmux 3.3a exits the whole server on an unrecognized layout name, which
+    would destroy every session on the socket.
+    """
+    if layout not in _LAYOUT_NAMES and not _CUSTOM_LAYOUT.match(layout):
+        msg = f"unrecognized layout {layout!r}"
+        raise ValueError(msg)
 
 
 @dataclasses.dataclass()
@@ -1222,6 +1248,7 @@ class Pane(
         inactive_border_style: str | None = None,
         message: str | None = None,
         keep: bool | None = None,
+        layout: str | None = None,
     ) -> Pane:
         """Split window and return :class:`Pane`, by default beneath current pane.
 
@@ -1395,7 +1422,18 @@ class Pane(
         if shell:
             tmux_args += (shell,)
 
+        if layout is not None:
+            _check_layout(layout)
+
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
+
+        if (
+            layout is not None
+            and pane_cmd.stderr
+            and any("no space for" in line for line in pane_cmd.stderr)
+        ):
+            self.window.select_layout(layout)
+            pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
         if pane_cmd.stderr:
             if "pane too small" in pane_cmd.stderr:
@@ -1427,6 +1465,9 @@ class Pane(
             extra["tmux_target"] = str(target)
 
         logger.info("pane created", extra=extra)
+
+        if layout is not None:
+            self.window.select_layout(layout)
 
         return pane
 
@@ -1493,6 +1534,18 @@ class Pane(
         keep : bool, optional
             Keep the pane open until a key is pressed after the command exits
             (``-k`` flag), using the default ``remain-on-exit-format``.
+        layout : str, optional
+            Layout to apply to the window after the split, as in
+            :meth:`Window.select_layout`: a named layout such as
+            ``"tiled"`` or a custom layout string. Every split halves a
+            pane, so repeated splits of one window fail with tmux's "no
+            space for new pane" after a handful of panes. With *layout*,
+            a split that fails for lack of space applies the layout and
+            is tried once more, and the layout is applied again after a
+            successful split. Costs one extra ``select-layout`` call per
+            split, two when the retry runs. A *layout* tmux would not
+            recognize raises :exc:`ValueError` before any pane is created.
+
 
         Returns
         -------

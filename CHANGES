@@ -45,6 +45,22 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Splits that keep a layout and fan out to N panes
+
+{meth}`Window.split() <libtmux.Window.split>` and
+{meth}`Pane.split() <libtmux.Pane.split>` take `layout=`, which re-applies a
+layout such as `"tiled"` after the split. Every split halves a pane, so
+repeated plain splits of one window fail with tmux's "no space for new pane"
+after a handful of panes; with `layout=`, a split that hits that error applies
+the layout and is tried once more. A layout name tmux does not recognize now
+raises {exc}`ValueError` before any pane is created, because tmux 3.3a exits
+the whole server on one.
+
+{meth}`Window.split_many() <libtmux.Window.split_many>` adds N panes in one
+call and keeps the layout applied between splits.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

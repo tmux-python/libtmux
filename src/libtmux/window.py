@@ -542,6 +542,7 @@ class Window(
         inactive_border_style: str | None = None,
         message: str | None = None,
         keep: bool | None = None,
+        layout: str | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
 
@@ -590,6 +591,11 @@ class Window(
         keep : bool, optional
             Keep the pane open until a key is pressed after exit (``-k``).
             Requires tmux 3.7+. These 3.7 flags warn and are ignored below 3.7.
+        layout : str, optional
+            Layout to apply after the split, which also lets a split that
+            would fail with "no space for new pane" succeed. See
+            :meth:`Pane.split`.
+
 
         Returns
         -------
@@ -614,7 +620,70 @@ class Window(
             inactive_border_style=inactive_border_style,
             message=message,
             keep=keep,
+            layout=layout,
         )
+
+    def split_many(
+        self,
+        count: int,
+        /,
+        *,
+        layout: str = "tiled",
+        start_directory: StrPath | None = None,
+        shell: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> list[Pane]:
+        """Split the window *count* times, re-applying *layout* after each split.
+
+        Splitting a pane halves it, so one window runs out of room after a
+        handful of splits and tmux answers "no space for new pane".
+        Applying a layout once at the end does not help, since the failure
+        comes before it. This applies *layout* after every split.
+
+        Parameters
+        ----------
+        count : int
+            Number of panes to add; the window ends with that many more
+            panes than it started with. ``0`` adds none.
+        layout : str
+            Layout to keep applied, as in :meth:`select_layout`.
+        start_directory, shell, environment
+            Passed to every split; see :meth:`split`.
+
+        Returns
+        -------
+        list of :class:`Pane`
+            The new panes, in creation order.
+
+        Raises
+        ------
+        ValueError
+            If *count* is negative or *layout* is not recognized.
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux still has no space after the layout is applied, which
+            happens once the window is too small for another pane.
+
+        Examples
+        --------
+        >>> new_window = session.new_window()
+
+        >>> panes = new_window.split_many(8)
+
+        >>> len(panes), len(new_window.panes)
+        (8, 9)
+        """
+        if count < 0:
+            msg = f"count must not be negative, got {count}"
+            raise ValueError(msg)
+        return [
+            self.split(
+                start_directory=start_directory,
+                shell=shell,
+                environment=environment,
+                layout=layout,
+            )
+            for _ in range(count)
+        ]
 
     def new_pane(
         self,
