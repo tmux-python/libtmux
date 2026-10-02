@@ -187,7 +187,7 @@ def _fetch_or_empty(
     """
     try:
         return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
-    except exc.LibTmuxException as e:
+    except _LENIENT_LIST_ERRORS as e:
         if e.args and _is_daemon_not_up_error(str(e.args[0])):
             return []
         raise

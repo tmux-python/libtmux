@@ -239,3 +239,27 @@ def test_every_removed_name_is_absent_to_feature_detection(
     assert getattr(obj, name, sentinel) is sentinel
     with pytest.raises(exc.DeprecatedError):
         getattr(obj, name)
+
+
+def test_fetch_or_empty_does_not_read_a_timeout_as_a_down_server(
+    monkeypatch: pytest.MonkeyPatch,
+    server: Server,
+) -> None:
+    """A timeout whose text names a down daemon still propagates.
+
+    ``_fetch_or_empty`` turns a not-started server into an empty listing by
+    reading the error message. It must only look at the closed set of command
+    failures: a :exc:`TmuxTimeout` echoes the argv, which can contain any text.
+    """
+    from libtmux import server as server_module
+
+    def hang(*args: object, **kwargs: object) -> t.NoReturn:
+        raise exc.TmuxTimeout(
+            cmd=["tmux", "run-shell", "echo no server running"],
+            timeout=1.0,
+        )
+
+    monkeypatch.setattr(server_module, "fetch_objs", hang)
+
+    with pytest.raises(exc.TmuxTimeout):
+        server_module._fetch_or_empty(server, "list-sessions")
