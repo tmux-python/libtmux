@@ -21,7 +21,7 @@ def test_server_find_where_raises_deprecated_error(server: Server) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Server\.find_where\(\) was deprecated"
     ):
-        server.find_where({"session_name": "test"})
+        server.find_where({"session_name": "test"})  # type: ignore[attr-defined]
 
 
 def test_session_find_where_raises_deprecated_error(session: Session) -> None:
@@ -29,7 +29,7 @@ def test_session_find_where_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.find_where\(\) was deprecated"
     ):
-        session.find_where({"window_name": "test"})
+        session.find_where({"window_name": "test"})  # type: ignore[attr-defined]
 
 
 def test_window_find_where_raises_deprecated_error(session: Session) -> None:
@@ -38,26 +38,26 @@ def test_window_find_where_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.find_where\(\) was deprecated"
     ):
-        window.find_where({"pane_id": "%0"})
+        window.find_where({"pane_id": "%0"})  # type: ignore[attr-defined]
 
 
 def test_server_where_raises_deprecated_error(server: Server) -> None:
     """Test Server.where() raises exc.DeprecatedError."""
     with pytest.raises(exc.DeprecatedError, match=r"Server\.where\(\) was deprecated"):
-        server.where({"session_name": "test"})
+        server.where({"session_name": "test"})  # type: ignore[attr-defined]
 
 
 def test_session_where_raises_deprecated_error(session: Session) -> None:
     """Test Session.where() raises exc.DeprecatedError."""
     with pytest.raises(exc.DeprecatedError, match=r"Session\.where\(\) was deprecated"):
-        session.where({"window_name": "test"})
+        session.where({"window_name": "test"})  # type: ignore[attr-defined]
 
 
 def test_window_where_raises_deprecated_error(session: Session) -> None:
     """Test Window.where() raises exc.DeprecatedError."""
     window = session.active_window
     with pytest.raises(exc.DeprecatedError, match=r"Window\.where\(\) was deprecated"):
-        window.where({"pane_id": "%0"})
+        window.where({"pane_id": "%0"})  # type: ignore[attr-defined]
 
 
 def test_server_get_by_id_raises_deprecated_error(server: Server) -> None:
@@ -65,7 +65,7 @@ def test_server_get_by_id_raises_deprecated_error(server: Server) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Server\.get_by_id\(\) was deprecated"
     ):
-        server.get_by_id("$0")
+        server.get_by_id("$0")  # type: ignore[attr-defined]
 
 
 def test_session_get_by_id_raises_deprecated_error(session: Session) -> None:
@@ -73,7 +73,7 @@ def test_session_get_by_id_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.get_by_id\(\) was deprecated"
     ):
-        session.get_by_id("@0")
+        session.get_by_id("@0")  # type: ignore[attr-defined]
 
 
 def test_window_get_by_id_raises_deprecated_error(session: Session) -> None:
@@ -82,4 +82,4 @@ def test_window_get_by_id_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.get_by_id\(\) was deprecated"
     ):
-        window.get_by_id("%0")
+        window.get_by_id("%0")  # type: ignore[attr-defined]

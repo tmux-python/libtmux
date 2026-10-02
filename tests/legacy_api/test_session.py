@@ -21,7 +21,7 @@ def test_attached_window_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.attached_window was deprecated"
     ):
-        _ = session.attached_window
+        _ = session.attached_window  # type: ignore[attr-defined]
 
 
 def test_attached_pane_raises_deprecated_error(session: Session) -> None:
@@ -29,7 +29,7 @@ def test_attached_pane_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.attached_pane was deprecated"
     ):
-        _ = session.attached_pane
+        _ = session.attached_pane  # type: ignore[attr-defined]
 
 
 def test_attach_session_raises_deprecated_error(session: Session) -> None:
@@ -37,7 +37,7 @@ def test_attach_session_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.attach_session\(\) was deprecated"
     ):
-        session.attach_session()
+        session.attach_session()  # type: ignore[attr-defined]
 
 
 def test_kill_session_raises_deprecated_error(server: Server) -> None:
@@ -48,7 +48,7 @@ def test_kill_session_raises_deprecated_error(server: Server) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.kill_session\(\) was deprecated"
     ):
-        new_session.kill_session()
+        new_session.kill_session()  # type: ignore[attr-defined]
 
     # Clean up using the new API
     new_session.kill()
@@ -57,7 +57,7 @@ def test_kill_session_raises_deprecated_error(server: Server) -> None:
 def test_session_get_raises_deprecated_error(session: Session) -> None:
     """Test Session.get() raises exc.DeprecatedError."""
     with pytest.raises(exc.DeprecatedError, match=r"Session\.get\(\) was deprecated"):
-        session.get("session_name")
+        session.get("session_name")  # type: ignore[attr-defined]
 
 
 def test_session_getitem_raises_deprecated_error(session: Session) -> None:
@@ -73,13 +73,13 @@ def test_session_get_by_id_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.get_by_id\(\) was deprecated"
     ):
-        session.get_by_id("@0")
+        session.get_by_id("@0")  # type: ignore[attr-defined]
 
 
 def test_session_where_raises_deprecated_error(session: Session) -> None:
     """Test Session.where() raises exc.DeprecatedError."""
     with pytest.raises(exc.DeprecatedError, match=r"Session\.where\(\) was deprecated"):
-        session.where({"window_name": "test"})
+        session.where({"window_name": "test"})  # type: ignore[attr-defined]
 
 
 def test_session_find_where_raises_deprecated_error(session: Session) -> None:
@@ -87,7 +87,7 @@ def test_session_find_where_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.find_where\(\) was deprecated"
     ):
-        session.find_where({"window_name": "test"})
+        session.find_where({"window_name": "test"})  # type: ignore[attr-defined]
 
 
 def test_session_list_windows_raises_deprecated_error(session: Session) -> None:
@@ -95,19 +95,19 @@ def test_session_list_windows_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.list_windows\(\) was deprecated"
     ):
-        session.list_windows()
+        session.list_windows()  # type: ignore[attr-defined]
 
 
 def test_session_children_raises_deprecated_error(session: Session) -> None:
     """Test Session.children raises exc.DeprecatedError."""
     with pytest.raises(exc.DeprecatedError, match=r"Session\.children was deprecated"):
-        _ = session.children
+        _ = session.children  # type: ignore[attr-defined]
 
 
 def test_session__windows_raises_deprecated_error(session: Session) -> None:
     """Test Session._windows raises exc.DeprecatedError."""
     with pytest.raises(exc.DeprecatedError, match=r"Session\._windows was deprecated"):
-        _ = session._windows
+        _ = session._windows  # type: ignore[attr-defined]
 
 
 def test_session__list_windows_raises_deprecated_error(session: Session) -> None:
@@ -115,4 +115,4 @@ def test_session__list_windows_raises_deprecated_error(session: Session) -> None
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\._list_windows\(\) was deprecated"
     ):
-        session._list_windows()
+        session._list_windows()  # type: ignore[attr-defined]

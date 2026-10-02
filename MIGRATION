@@ -156,6 +156,28 @@ Now the `DeprecatedError` propagates, and the message names the replacement
 - **Not changed:** the exception still takes `deprecated`, `replacement`, and
   `version`, and its message is unchanged.
 
+(removed-names-leave-the-classes)=
+
+## Next release: removed names leave the classes
+
+The names in the {ref}`Complete Deprecation Reference <migration>` that raise
+{exc}`~libtmux.exc.DeprecatedError` are no longer defined on `Server`,
+`Session`, `Window` or `Pane`. `libtmux._surface` raises the same error, with the
+same message, when one is read.
+
+- **Runtime:** `session.attached_window` and `server.find_where({...})` raise
+  `DeprecatedError` as before, now at the attribute read. `hasattr()` on a
+  removed name raises `DeprecatedError` instead of returning `True`, and
+  `Session.attached_window` read from the class raises `AttributeError`.
+- **Type checking:** mypy and pyright report a removed name as an unknown
+  attribute (`attr-defined`) instead of passing it. Replace the call with the
+  table's replacement.
+- **`dir()`:** a `Session`, `Window` or `Pane` lists its own tmux format fields
+  and its parents' `*_id`, `*_name` and `*_index`. Fields from other scopes
+  (`client_*`, `mouse_*`, `pane_*` on a `Window`) are still readable.
+- **Special methods:** `Session[key]`, `Window[key]` and `Pane[key]` still raise
+  `DeprecatedError`.
+
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
 {exc}`~libtmux.exc.ObjectDoesNotExist` and

@@ -14,6 +14,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
+from libtmux._surface import SurfaceMixin
 from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
@@ -26,7 +27,6 @@ from libtmux.window import Window
 from . import exc
 from .common import (
     EnvironmentMixin,
-    WindowDict,
     _exact_window_target,
     session_check_name,
 )
@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass()
 class Session(
+    SurfaceMixin,
     Obj,
     EnvironmentMixin,
     OptionsMixin,
@@ -1065,83 +1066,6 @@ class Session(
     #
     # Legacy: Redundant stuff we want to remove
     #
-    @property
-    def attached_pane(self) -> Pane | None:
-        """Return the active :class:`Pane` object.
-
-        Notes
-        -----
-        .. deprecated:: 0.31
-
-           Deprecated in favor of :meth:`.active_pane`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.attached_pane",
-            replacement="Session.active_pane",
-            version="0.31.0",
-        )
-
-    @property
-    def attached_window(self) -> Window:
-        """Return the active :class:`Window` object.
-
-        Notes
-        -----
-        .. deprecated:: 0.31
-
-           Deprecated in favor of :meth:`.active_window`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.attached_window",
-            replacement="Session.active_window",
-            version="0.31.0",
-        )
-
-    def attach_session(self) -> Session:
-        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
-
-        Notes
-        -----
-        .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.attach()`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.attach_session()",
-            replacement="Session.attach()",
-            version="0.30.0",
-        )
-
-    def kill_session(self) -> None:
-        """Destroy session.
-
-        Notes
-        -----
-        .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.kill()`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.kill_session()",
-            replacement="Session.kill()",
-            version="0.30.0",
-        )
-
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
-        """Return key-based lookup. Deprecated by attributes.
-
-        .. deprecated:: 0.17
-
-           Deprecated by attribute lookup.e.g. ``session['session_name']`` is now
-           accessed via ``session.session_name``.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.get()",
-            replacement="direct attribute access (e.g., session.session_name)",
-            version="0.17.0",
-        )
-
     def __getitem__(self, key: str) -> t.Any:
         """Return item lookup by key. Deprecated in favor of attributes.
 
@@ -1154,105 +1078,5 @@ class Session(
         raise exc.DeprecatedError(
             deprecated="Session[key] lookup",
             replacement="direct attribute access (e.g., session.session_name)",
-            version="0.17.0",
-        )
-
-    def get_by_id(self, session_id: str) -> Window | None:
-        """Return window by id. Deprecated in favor of :meth:`.windows.get()`.
-
-        .. deprecated:: 0.16
-
-           Deprecated by :meth:`.windows.get()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.get_by_id()",
-            replacement="Session.windows.get(window_id=..., default=None)",
-            version="0.16.0",
-        )
-
-    def where(self, kwargs: dict[str, t.Any]) -> list[Window]:
-        """Filter through windows, return list of :class:`Window`.
-
-        .. deprecated:: 0.17
-
-           Deprecated by :meth:`.windows.filter()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.where()",
-            replacement="Session.windows.filter()",
-            version="0.17.0",
-        )
-
-    def find_where(self, kwargs: dict[str, t.Any]) -> Window | None:
-        """Filter through windows, return first :class:`Window`.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :meth:`.windows.get()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.find_where()",
-            replacement="Session.windows.get(default=None, **kwargs)",
-            version="0.17.0",
-        )
-
-    def _list_windows(self) -> list[WindowDict]:
-        """Return list of windows (deprecated in favor of :attr:`.windows`).
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.windows`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session._list_windows()",
-            replacement="Session.windows property",
-            version="0.17.0",
-        )
-
-    @property
-    def _windows(self) -> list[WindowDict]:
-        """Property / alias to return :meth:`Session._list_windows`.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.windows`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session._windows",
-            replacement="Session.windows property",
-            version="0.17.0",
-        )
-
-    def list_windows(self) -> list[Window]:
-        """Return a list of :class:`Window` from the ``tmux(1)`` session.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.windows`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.list_windows()",
-            replacement="Session.windows property",
-            version="0.17.0",
-        )
-
-    @property
-    def children(self) -> QueryList[Window]:
-        """Was used by TmuxRelationalObject (but that's longer used in this class).
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.windows`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Session.children",
-            replacement="Session.windows property",
             version="0.17.0",
         )

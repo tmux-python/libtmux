@@ -24,7 +24,7 @@ def test_resize_pane_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Pane\.resize_pane\(\) was deprecated"
     ):
-        pane.resize_pane(height=4)
+        pane.resize_pane(height=4)  # type: ignore[attr-defined]
 
 
 def test_select_pane_raises_deprecated_error(session: Session) -> None:
@@ -36,7 +36,7 @@ def test_select_pane_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Pane\.select_pane\(\) was deprecated"
     ):
-        pane.select_pane()
+        pane.select_pane()  # type: ignore[attr-defined]
 
 
 def test_split_window_raises_deprecated_error(session: Session) -> None:
@@ -48,7 +48,7 @@ def test_split_window_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Pane\.split_window\(\) was deprecated"
     ):
-        pane.split_window()
+        pane.split_window()  # type: ignore[attr-defined]
 
 
 def test_pane_get_raises_deprecated_error(session: Session) -> None:
@@ -58,7 +58,7 @@ def test_pane_get_raises_deprecated_error(session: Session) -> None:
     assert pane is not None
 
     with pytest.raises(exc.DeprecatedError, match=r"Pane\.get\(\) was deprecated"):
-        pane.get("pane_id")
+        pane.get("pane_id")  # type: ignore[attr-defined]
 
 
 def test_pane_getitem_raises_deprecated_error(session: Session) -> None:
