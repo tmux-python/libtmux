@@ -66,5 +66,5 @@ Most scripts need the first four rows.
 
 :::{seealso}
 - {ref}`api` for every class and method
-- {doc}`../api/libtmux.exc` for the exception hierarchy
+- {doc}`exceptions` for the exception hierarchy and what to catch
 :::
