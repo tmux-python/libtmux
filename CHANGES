@@ -101,6 +101,14 @@ failure stays data on the result; `raise_for_status()` turns it into
 `stderr`. {meth}`Server.cmd() <libtmux.Server.cmd>` still returns a
 {class}`~libtmux.common.tmux_cmd` and is unchanged.
 
+#### Control-mode exceptions (#739)
+
+{exc}`~libtmux.exc.ControlModeError` is the base for control-mode failures, and
+{exc}`~libtmux.exc.ControlProtocolError` marks output from `tmux -C` that is
+malformed or out of sequence. The parser behind them lives in
+`libtmux.engines.control.protocol`, which stays private until a control-mode
+engine ships.
+
 #### Observing what an engine runs (#739)
 
 {class}`~libtmux.engines.instrumentation.InstrumentedEngine` wraps any engine

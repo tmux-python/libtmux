@@ -139,6 +139,18 @@ class TmuxCommandError(LibTmuxException):
         super().__init__(" ".join(self.stderr) or f"tmux exited {returncode}")
 
 
+class ControlModeError(LibTmuxException):
+    """A control-mode connection failed."""
+
+
+class ControlProtocolError(ControlModeError):
+    """tmux's control-mode output is malformed or out of sequence.
+
+    A parser never resynchronises by guessing, so a driver that sees this
+    discards the connection and starts a new one.
+    """
+
+
 class AsyncEngineMismatch(LibTmuxException):
     """A synchronous dispatch path received an engine call that returned an awaitable.
 
