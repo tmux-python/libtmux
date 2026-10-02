@@ -329,31 +329,39 @@ def _release_waiter(
     waiter: subprocess.Popen[str],
     release_argv: list[str],
     grace: float = _RELEASE_GRACE,
+    *,
+    then_argv: list[str] | None = None,
 ) -> bool:
     """End a timed-out ``wait-for`` client without leaving a ghost waiter.
 
-    tmux has no timeout for ``wait-for``, and a waiter that is killed stays
-    queued on its channel: tmux only remembers a signal while nobody waits,
-    so the next signal is spent on the dead waiter. Signalling the channel
-    while the waiter is still alive makes tmux dequeue it itself, so the
-    signal is spent on exactly that waiter and the channel is clean again.
+    tmux has no timeout for ``wait-for``, and before tmux 3.8-rc2 a waiter
+    that is killed stays queued on its channel: tmux only remembers a signal
+    while nobody waits, so the next signal is spent on the dead waiter.
+    Releasing the waiter through tmux while it is still alive makes tmux
+    dequeue it itself, so the channel is clean again.
 
-    The client is killed only when the server does not answer, the one case
-    where nothing can be left behind but the server's own state.
+    The client is killed only when the server does not answer, or when no
+    release ended it, the one case where nothing can be left behind but the
+    server's own state.
 
     Parameters
     ----------
     waiter : :class:`subprocess.Popen`
         The ``wait-for`` client that outlived its timeout.
     release_argv : list[str]
-        Full command line that signals the waiter's channel.
+        Full command line that releases the waiter: a signal on its channel,
+        or on tmux 3.8 a ``wait-for -w`` naming this waiter alone.
     grace : float, optional
-        Seconds to give the signal and the waiter's exit, each.
+        Seconds to give the release and the waiter's exit, each.
+    then_argv : list[str], optional
+        A second release to try when *release_argv* ran but the waiter did
+        not exit, such as a signal after a targeted release named the wrong
+        client.
 
     Returns
     -------
     bool
-        *True* when the waiter exited after the signal, *False* when it had
+        *True* when the waiter exited after a release, *False* when it had
         to be killed.
 
     Examples
@@ -369,19 +377,42 @@ def _release_waiter(
     False
     >>> waiter.returncode
     -9
+
+    A second release runs only when the first one did not end the waiter:
+
+    >>> waiter = subprocess.Popen(
+    ...     [sys.executable, '-c', 'import time; time.sleep(300)'],
+    ...     stdout=subprocess.PIPE,
+    ...     stderr=subprocess.PIPE,
+    ...     text=True,
+    ... )
+    >>> _release_waiter(
+    ...     waiter,
+    ...     [sys.executable, '-c', 'pass'],
+    ...     grace=0.25,
+    ...     then_argv=[sys.executable, '-c', f'import os; os.kill({waiter.pid}, 15)'],
+    ... )
+    True
+    >>> waiter.returncode
+    -15
     """
-    try:
-        subprocess.run(
-            release_argv,
-            capture_output=True,
-            timeout=grace,
-            check=False,
-        )
-        waiter.communicate(timeout=grace)
-    except (subprocess.TimeoutExpired, OSError):
-        _kill_and_reap(waiter)
-        return False
-    return True
+    for argv in (release_argv, then_argv):
+        if argv is None:
+            continue
+        try:
+            subprocess.run(argv, capture_output=True, timeout=grace, check=False)
+        except (subprocess.TimeoutExpired, OSError):
+            # The server did not answer; there is nothing to release through.
+            break
+        try:
+            waiter.communicate(timeout=grace)
+        except subprocess.TimeoutExpired:
+            continue
+        except OSError:
+            break
+        return True
+    _kill_and_reap(waiter)
+    return False
 
 
 class tmux_cmd:

@@ -70,11 +70,13 @@ and ends one of three ways: a signal returns `None`, the clock raises
 as if the channel had been signalled, so a wake alone could not tell them apart;
 `wait_for()` now asks the server again after any wake.
 
-An expired wait is released by signalling its channel before the client is reaped.
-Killing the client alone leaves a ghost waiter on tmux 3.2a through 3.8-rc that
-swallows the next signal on the channel. The signal wakes every waiter on the
-channel, so a channel should have one waiter. `timeout` combined with `lock`,
-`unlock` or `set_flag` raises `ValueError`.
+An expired wait is released through tmux before the client is reaped. Killing
+the client alone leaves a ghost waiter on tmux 3.2a through the first 3.8
+release candidate that swallows the next signal on the channel. Before tmux 3.8
+the release is a signal, which wakes every waiter on the channel, so a channel
+should have one waiter. From tmux 3.8 the expired waiter is released by name with
+`wait-for -w`, and other waiters on the channel keep waiting. `timeout` combined
+with `lock`, `unlock` or `set_flag` raises `ValueError`.
 
 #### tmux 3.8 hooks in `Hooks`
 
