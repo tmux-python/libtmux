@@ -140,6 +140,16 @@ to 30 ms). Hook setup and removal, the two `send-keys`, the read-back and the sh
 status and done calls each travel as one `;`-chained invocation, and a wake no longer asks
 the server whether it is alive, because the status read that follows says so.
 
+A caller can abandon a call without orphaning tmux processes. Pass a
+{class}`~libtmux.run.PaneRunCancel` as `cancel` and call `cancel()` from another thread:
+the call wakes at once, releases its waiter and the pane's lock, and raises
+{exc}`~libtmux.exc.PaneRunCancelled`, leaving the command running in the pane. Cancelling
+the `asyncio` task around `asyncio.to_thread` still leaves the thread blocked until the
+command ends or `timeout` expires, which {ref}`run-a-command` now states. A
+`KeyboardInterrupt` or `SystemExit` in a waiting call, and the interpreter exiting under
+a blocked thread, now kill the tmux `wait-for` client; before, it stayed until the command
+ended. This applies to {meth}`Server.wait_for() <libtmux.Server.wait_for>` too.
+
 #### tmux 3.8 hooks in `Hooks`
 
 {class}`~libtmux._internal.constants.Hooks` parses the hooks tmux 3.8 adds:

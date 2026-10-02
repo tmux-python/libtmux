@@ -125,6 +125,43 @@ A tmux-side lock (`wait-for -L`) would reach across processes, but tmux keeps it
 the channel and never releases it when its holder dies, so a crashed caller would
 block every later call on the pane.
 
+## Abandoning a call
+
+`Pane.run()` blocks its thread, and a blocked thread cannot be stopped from
+outside. What happens to a call depends on how it is abandoned:
+
+| How the call ends early                      | The thread  | The tmux waiter                    | The command in the pane |
+| -------------------------------------------- | ----------- | ---------------------------------- | ----------------------- |
+| `timeout` expires                            | returns     | released                           | keeps running           |
+| `KeyboardInterrupt` or `SystemExit` in it    | unwinds     | released before the exception leaves | keeps running         |
+| Interpreter exits with the call still blocked | daemon, frozen | released by an `atexit` hook    | keeps running           |
+| `PaneRunCancel.cancel()`                     | returns at once | released                       | keeps running           |
+| The `asyncio` task around `asyncio.to_thread` is cancelled | keeps going until the command ends or `timeout` | stays until then | keeps running |
+
+The last row is the one to avoid. Cancelling the task abandons the result, not the
+thread: the thread keeps its waiter and the pane's lock, so later calls on that pane
+queue behind it. Pass a {class}`~libtmux.run.PaneRunCancel` and cancel it instead:
+
+```python
+cancel = PaneRunCancel()
+task = asyncio.create_task(
+    asyncio.to_thread(pane.run, "make", timeout=600, cancel=cancel)
+)
+...
+cancel.cancel()  # the thread wakes, frees its waiter and lock, and raises PaneRunCancelled
+```
+
+Every route leaves the command running in the pane, as a timeout does; send `C-c`
+to stop it. A command that finishes after its caller left still sets a
+`@libtmux_run_<token>` option on the pane, which goes away with the pane. A call
+cancelled before its shell ran the line raises
+{exc}`~libtmux.exc.PaneRunCancelled` with `started` set to False and no output:
+the typed line stays in the pane.
+
+A native asyncio `run` will own its waiter and propagate `asyncio.CancelledError`
+with the same guarantees (waiter released, lock released, command left running),
+so code written against `cancel=` keeps its meaning.
+
 ## Shell history
 
 The typed line starts with a space, which bash and zsh skip when

@@ -29,11 +29,13 @@ from libtmux.session import Session
 from libtmux.window import Window
 
 from .common import (
+    _EXITING,
     EnvironmentMixin,
     PaneDict,
     SessionDict,
     WindowDict,
     _release_waiter,
+    _tracked_waiter,
     session_check_name,
 )
 from .options import OptionsMixin
@@ -779,8 +781,13 @@ class Server(
         if not resolved:
             raise exc.TmuxCommandNotFound
 
+        if _EXITING.is_set():
+            msg = "the interpreter is exiting; not starting a tmux wait-for client"
+            raise exc.LibTmuxException(msg, subcommand="wait-for")
+
         flags = self._server_flags()
         wait_argv = [resolved, *flags, "wait-for", channel]
+        release_argv = [resolved, *flags, "wait-for", "-S", channel]
         waiter = subprocess.Popen(
             wait_argv,
             stdout=subprocess.PIPE,
@@ -789,27 +796,31 @@ class Server(
             encoding="utf-8",
             errors="backslashreplace",
         )
-        try:
-            _, stderr = waiter.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            if waiter.poll() is None:
-                _release_waiter(
-                    waiter,
-                    [resolved, *flags, "wait-for", "-S", channel],
-                )
-                # A server that died mid-wait released the waiter on its own.
-                if not self.is_alive():
-                    raise exc.TmuxServerGone(channel) from None
-                logger.error(  # noqa: TRY400
-                    "tmux wait-for timed out",
-                    extra={"tmux_cmd": shlex.join(wait_argv)},
-                )
-                raise exc.TmuxTimeout(
-                    cmd=wait_argv,
-                    timeout=t.cast("float", timeout),
-                ) from None
-            # The signal landed as the clock ran out; fall through as signalled.
-            _, stderr = waiter.communicate()
+        with _tracked_waiter(waiter, release_argv):
+            try:
+                _, stderr = waiter.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                if waiter.poll() is None:
+                    _release_waiter(waiter, release_argv)
+                    # A server that died mid-wait released the waiter on its own.
+                    if not self.is_alive():
+                        raise exc.TmuxServerGone(channel) from None
+                    logger.error(  # noqa: TRY400
+                        "tmux wait-for timed out",
+                        extra={"tmux_cmd": shlex.join(wait_argv)},
+                    )
+                    raise exc.TmuxTimeout(
+                        cmd=wait_argv,
+                        timeout=t.cast("float", timeout),
+                    ) from None
+                # The signal landed as the clock ran out; fall through as signalled.
+                _, stderr = waiter.communicate()
+            except BaseException:
+                # KeyboardInterrupt, SystemExit, or an async exception raised in
+                # this thread: the client must not outlive the call.
+                if waiter.poll() is None:
+                    _release_waiter(waiter, release_argv)
+                raise
 
         if waiter.returncode != 0 or stderr:
             if not self.is_alive():

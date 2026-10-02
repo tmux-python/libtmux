@@ -488,6 +488,54 @@ class PaneRunTimeout(TmuxTimeout):
         Exception.__init__(self, msg)
 
 
+class PaneRunCancelled(LibTmuxException):
+    """:meth:`Pane.run() <libtmux.Pane.run>` was cancelled by its caller.
+
+    Raised when the :class:`~libtmux.run.PaneRunCancel` passed as ``cancel``
+    is cancelled, from any thread, before or while the call waits. The call
+    has released its tmux waiter, removed its hooks and let go of the pane's
+    lock by the time this is raised.
+
+    The command is not interrupted. If it had been typed, it keeps running in
+    the pane; send ``C-c`` to stop it. Nothing was typed when ``started`` is
+    False.
+
+    Parameters
+    ----------
+    command : str
+        The command that was sent, or would have been.
+    stdout : list of str
+        Lines the command had printed when the call was cancelled.
+    started : bool
+        False when the call was cancelled before it typed anything or before
+        the pane's shell acknowledged the line.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.PaneRunCancelled("sleep 30", ["partial"])
+    >>> str(err)
+    'pane command cancelled: sleep 30'
+
+    >>> err.stdout, err.started
+    (['partial'], True)
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(
+        self,
+        command: str,
+        stdout: list[str],
+        *,
+        started: bool = True,
+    ) -> None:
+        self.command = command
+        self.stdout = stdout
+        self.started = started
+        super().__init__(f"pane command cancelled: {command}")
+
+
 class TmuxServerGone(LibTmuxException):
     """The tmux server was not running when a wait ended.
 

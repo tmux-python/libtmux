@@ -29,6 +29,7 @@ command is interrupted (the status is 130).
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import dataclasses
 import logging
@@ -90,6 +91,80 @@ class PaneRunResult:
     returncode: int
     stdout: list[str]
     truncated: bool = False
+
+
+class PaneRunCancel:
+    """Cancel :meth:`Pane.run() <libtmux.Pane.run>` from another thread.
+
+    A thread blocked in ``run`` cannot be interrupted from outside: cancelling
+    the :mod:`asyncio` task around :func:`asyncio.to_thread` abandons the
+    result but leaves the thread, its tmux waiter and the pane's lock in place
+    until the command ends or ``timeout`` expires. Pass one of these as
+    ``cancel`` and call :meth:`cancel` instead; the call wakes at once,
+    releases its waiter, and raises :exc:`~libtmux.exc.PaneRunCancelled`.
+
+    The command is not interrupted. It is the same contract as ``timeout``:
+    the caller stops waiting, and the command keeps running in the pane.
+
+    One instance may be passed to several calls and cancels all of them. It
+    cannot be reused: once cancelled, every later call that receives it
+    raises immediately without typing anything.
+
+    Examples
+    --------
+    >>> import threading
+    >>> from libtmux import exc
+    >>> from libtmux.run import PaneRunCancel
+    >>> cancel = PaneRunCancel()
+    >>> cancel.cancelled
+    False
+    >>> threading.Timer(0.5, cancel.cancel).start()
+    >>> try:
+    ...     pane.run('echo before; sleep 30', timeout=60, cancel=cancel)
+    ... except exc.PaneRunCancelled as e:
+    ...     print(e.stdout)
+    ['before']
+    >>> cancel.cancelled
+    True
+    >>> pane.send_keys('C-c', enter=False)
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._cancelled = False
+        self._callbacks: list[t.Callable[[], None]] = []
+
+    @property
+    def cancelled(self) -> bool:
+        """Whether :meth:`cancel` has been called."""
+        return self._cancelled
+
+    def cancel(self) -> None:
+        """Cancel every call that holds or waits with this instance.
+
+        Safe from any thread and idempotent.
+        """
+        with self._guard:
+            self._cancelled = True
+            callbacks = list(self._callbacks)
+        for callback in callbacks:
+            callback()
+
+    @contextlib.contextmanager
+    def _watching(self, callback: t.Callable[[], None]) -> t.Iterator[None]:
+        """Run *callback* when this is cancelled, or now if it already was."""
+        with self._guard:
+            self._callbacks.append(callback)
+            already = self._cancelled
+        try:
+            if already:
+                callback()
+            yield
+        finally:
+            with self._guard:
+                self._callbacks.remove(callback)
 
 
 def _tmux_prefix(server: Server) -> list[str]:
@@ -189,12 +264,64 @@ def _lock_key(server: Server, pane_id: str) -> tuple[str | None, str | None, str
     return (server.socket_name, None if path is None else str(path), pane_id)
 
 
+class _Waiter:
+    """One call queued for a pane's lock."""
+
+    __slots__ = ("event", "granted")
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.granted = False
+
+
+class _PaneLock:
+    """A first-come lock whose waiters a timeout or a cancel can leave."""
+
+    def __init__(self) -> None:
+        self._mutex = threading.Lock()
+        self._held = False
+        self._queue: collections.deque[_Waiter] = collections.deque()
+
+    def acquire(self, timeout: float, cancel: PaneRunCancel | None) -> bool:
+        """Take the lock; False when *timeout* ran out or *cancel* fired first."""
+        with self._mutex:
+            if not self._held:
+                self._held = True
+                return True
+            waiter = _Waiter()
+            self._queue.append(waiter)
+        watch = (
+            cancel._watching(waiter.event.set)
+            if cancel is not None
+            else contextlib.nullcontext()
+        )
+        with watch:
+            waiter.event.wait(timeout)
+        with self._mutex:
+            if waiter.granted:
+                return True
+            with contextlib.suppress(ValueError):
+                self._queue.remove(waiter)
+            return False
+
+    def release(self) -> None:
+        """Hand the lock to the next waiter, or free it."""
+        with self._mutex:
+            if self._queue:
+                waiter = self._queue.popleft()
+                waiter.granted = True
+                waiter.event.set()
+            else:
+                self._held = False
+
+
 @contextlib.contextmanager
 def _drive_lock(
     server: Server,
     pane_id: str,
     command: str,
     timeout: float,
+    cancel: PaneRunCancel | None = None,
 ) -> t.Iterator[None]:
     """Hold the pane's drive lock, so one call at a time types into it.
 
@@ -211,15 +338,19 @@ def _drive_lock(
     pane_id : str
         The pane's id.
     command : str
-        The command waiting for the lock, reported if the wait expires.
+        The command waiting for the lock, reported if the wait ends early.
     timeout : float
         Seconds the call may spend waiting for the lock.
+    cancel : PaneRunCancel, optional
+        Leaves the queue when cancelled.
 
     Raises
     ------
     :exc:`~libtmux.exc.PaneRunTimeout`
         With ``started=False`` when the lock stayed held for *timeout*. Nothing
         was typed into the pane.
+    :exc:`~libtmux.exc.PaneRunCancelled`
+        With ``started=False`` when *cancel* fired before the lock was taken.
 
     Examples
     --------
@@ -230,13 +361,17 @@ def _drive_lock(
     """
     key = _lock_key(server, pane_id)
     with _DRIVE_LOCKS_GUARD:
-        entry = _DRIVE_LOCKS.setdefault(key, [threading.Lock(), 0])
+        entry = _DRIVE_LOCKS.setdefault(key, [_PaneLock(), 0])
         entry[1] += 1
-    lock: threading.Lock = entry[0]
+    lock: _PaneLock = entry[0]
     try:
-        if not lock.acquire(timeout=timeout):
+        if not lock.acquire(timeout, cancel):
+            if cancel is not None and cancel.cancelled:
+                raise exc.PaneRunCancelled(command, [], started=False)
             raise exc.PaneRunTimeout(command, timeout, [], cmd=[], started=False)
         try:
+            if cancel is not None and cancel.cancelled:
+                raise exc.PaneRunCancelled(command, [], started=False)
             yield
         finally:
             lock.release()
@@ -317,6 +452,7 @@ def _run(
     command: str,
     *,
     timeout: float,
+    cancel: PaneRunCancel | None = None,
 ) -> PaneRunResult:
     """Implement :meth:`libtmux.Pane.run`."""
     if timeout <= 0:
@@ -325,8 +461,15 @@ def _run(
     pane_id = pane.pane_id
     assert pane_id is not None
     deadline = time.monotonic() + timeout
-    with _drive_lock(pane.server, pane_id, command, timeout):
-        return _run_locked(pane, pane_id, command, timeout=timeout, deadline=deadline)
+    with _drive_lock(pane.server, pane_id, command, timeout, cancel):
+        return _run_locked(
+            pane,
+            pane_id,
+            command,
+            timeout=timeout,
+            deadline=deadline,
+            cancel=cancel,
+        )
 
 
 def _run_locked(
@@ -336,6 +479,7 @@ def _run_locked(
     *,
     timeout: float,
     deadline: float,
+    cancel: PaneRunCancel | None,
 ) -> PaneRunResult:
     """Run *command* in *pane* while holding its drive lock."""
     server = pane.server
@@ -367,29 +511,51 @@ def _run_locked(
 
         failure: exc.TmuxTimeout | None = None
         did_start = True
-        try:
-            server._wait_for_signal(started, _START_TIMEOUT, verify=False)
-        except exc.TmuxTimeout as err:
-            failure, did_start = err, False
-        else:
-            try:
-                server._wait_for_signal(
-                    done, max(deadline - time.monotonic(), 0.001), verify=False
-                )
-            except exc.TmuxTimeout as err:
-                failure = err
+        pending = [started, done]
 
-        sep = f"LTRUN_S_{token}"
-        proc = server.cmd(
-            *_chain(
-                [
-                    ("show-options", "-t", pane_id, "-pqv", option),
-                    ("display-message", "-p", sep),
-                    ("capture-pane", "-t", pane_id, "-p", "-S", "-", "-J"),
-                    ("set-option", "-t", pane_id, "-pu", option),
-                ]
-            )
+        def wake() -> None:
+            """Signal what the call still waits on, so a cancel ends the wait."""
+            server.cmd(*_chain(("wait-for", "-S", c) for c in list(pending)))
+
+        watch = (
+            cancel._watching(wake) if cancel is not None else contextlib.nullcontext()
         )
+        try:
+            with watch:
+                try:
+                    server._wait_for_signal(started, _START_TIMEOUT, verify=False)
+                except exc.TmuxTimeout as err:
+                    failure, did_start = err, False
+                else:
+                    pending.remove(started)
+                    # A cancel wakes this wait too, so it proves no start.
+                    did_start = not (cancel is not None and cancel.cancelled)
+                    try:
+                        server._wait_for_signal(
+                            done,
+                            max(deadline - time.monotonic(), 0.001),
+                            verify=False,
+                        )
+                    except exc.TmuxTimeout as err:
+                        failure = err
+
+            sep = f"LTRUN_S_{token}"
+            proc = server.cmd(
+                *_chain(
+                    [
+                        ("show-options", "-t", pane_id, "-pqv", option),
+                        ("display-message", "-p", sep),
+                        ("capture-pane", "-t", pane_id, "-p", "-S", "-", "-J"),
+                        ("set-option", "-t", pane_id, "-pu", option),
+                    ]
+                )
+            )
+        except BaseException:
+            # An interrupt or exit in this thread: the waiter is already
+            # released; take the status option with us.
+            with contextlib.suppress(Exception):
+                server.cmd("set-option", "-t", pane_id, "-pu", option)
+            raise
         split = proc.stdout.index(sep) if sep in proc.stdout else 0
         status = proc.stdout[:split]
         lines = proc.stdout[split + 1 :] if sep in proc.stdout else []
@@ -397,6 +563,12 @@ def _run_locked(
         _remove_gone_hooks(server, index)
 
     output, ended, truncated = _extract(lines, token)
+    if not did_start and truncated:
+        # No begin marker was printed, so every row is the pane's own text,
+        # the echoed line included, not output of the command.
+        output = []
+    if cancel is not None and cancel.cancelled:
+        raise exc.PaneRunCancelled(command, output, started=did_start)
     if not status or not ended:
         if not _pane_alive(pane):
             raise _lost(pane)
