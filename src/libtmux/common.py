@@ -614,6 +614,9 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     if version == "master":
         return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 
+    # A release candidate ("3.8-rc3") counts as its release; stripping only
+    # the letters and dash would leave the candidate number behind ("3.83").
+    version = re.sub(r"-rc\d*$", "", version)
     version = re.sub(r"[a-z-]", "", version)
 
     return LooseVersion(version)
