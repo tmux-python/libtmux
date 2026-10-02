@@ -3017,3 +3017,40 @@ def test_owned_cleans_up_when_the_owner_is_killed(sig: signal.Signals) -> None:
         if owner.poll() is None:
             owner.kill()
             owner.wait()
+
+
+def test_owned_wait_for_clients_never_see_tmux_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``wait_for`` on an owned server spawns its clients without ``$TMUX``.
+
+    ``wait_for(timeout=)`` spawns its own waiter and release clients rather
+    than going through ``tmux_cmd``, so the owned server's environment scrub
+    has to be passed to them explicitly.
+    """
+    monkeypatch.setenv("TMUX", "/tmp/not-a-socket,1,0")
+    monkeypatch.setenv("TMUX_PANE", "%99")
+    seen: list[dict[str, str] | None] = []
+    real_popen = subprocess.Popen
+    real_run = subprocess.run
+
+    def spy_popen(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[t.Any]:
+        seen.append(kwargs.get("env"))
+        return real_popen(*args, **kwargs)
+
+    def spy_run(*args: t.Any, **kwargs: t.Any) -> subprocess.CompletedProcess[t.Any]:
+        seen.append(kwargs.get("env"))
+        return real_run(*args, **kwargs)
+
+    with Server.owned() as owned:
+        owned.new_session(session_name="wf")
+        monkeypatch.setattr(subprocess, "Popen", spy_popen)
+        monkeypatch.setattr(subprocess, "run", spy_run)
+        with pytest.raises(exc.TmuxTimeout):
+            owned.wait_for("dw_scrub_channel", timeout=0.3)
+
+    assert seen
+    for env in seen:
+        assert env is not None, "a tmux client inherited the ambient environment"
+        assert "TMUX" not in env
+        assert "TMUX_PANE" not in env

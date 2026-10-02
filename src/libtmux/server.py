@@ -1331,6 +1331,7 @@ class Server(
             text=True,
             encoding="utf-8",
             errors="backslashreplace",
+            env=self._tmux_env(),
         )
         try:
             _, stderr = waiter.communicate(timeout=timeout)
@@ -1339,6 +1340,7 @@ class Server(
                 _release_waiter(
                     waiter,
                     [resolved, *flags, "wait-for", "-S", channel],
+                    env=self._tmux_env(),
                 )
                 # A server that died mid-wait released the waiter on its own.
                 if not self.is_alive():

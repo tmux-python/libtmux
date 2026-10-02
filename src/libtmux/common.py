@@ -377,6 +377,7 @@ def _release_waiter(
     waiter: subprocess.Popen[str],
     release_argv: list[str],
     grace: float = _RELEASE_GRACE,
+    env: t.Mapping[str, str] | None = None,
 ) -> bool:
     """End a timed-out ``wait-for`` client without leaving a ghost waiter.
 
@@ -397,6 +398,8 @@ def _release_waiter(
         Full command line that signals the waiter's channel.
     grace : float, optional
         Seconds to give the signal and the waiter's exit, each.
+    env : mapping, optional
+        Environment for the release command; ``None`` inherits this process's.
 
     Returns
     -------
@@ -424,6 +427,7 @@ def _release_waiter(
             capture_output=True,
             timeout=grace,
             check=False,
+            env=env,
         )
         waiter.communicate(timeout=grace)
     except (subprocess.TimeoutExpired, OSError):
