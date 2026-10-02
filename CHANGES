@@ -47,6 +47,36 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
+#### Read only what a pane wrote since you last looked (#740)
+
+{meth}`Pane.capture_since() <libtmux.Pane.capture_since>` returns the rows a
+pane has written since a {class}`~libtmux.capture.CaptureCursor`, along with a
+fresh cursor to resume from. Watching a pane over time — tailing a build,
+following a long-running command — no longer means re-reading the whole screen
+each tick and diffing it yourself.
+
+Cursors are immutable and the call never advances the one it was given, so
+replaying a cursor always returns the same rows. They serialize through `str()`
+and {meth}`~libtmux.capture.CaptureCursor.from_str` for callers that carry them
+across a process or wire boundary.
+
+Naive screen-diffing goes wrong in ways tmux makes easy to hit, and a cursor
+accounts for each: output that scrolled past the visible region between reads,
+`clear-history` and `history-limit` trims renumbering the grid under a stored
+offset, a width change reflowing wrapped rows, and a respawned pane reusing its
+`pane_id` while running a different program. Where the anchored rows are
+genuinely gone, the result reports `lines_missed` and falls back to the visible
+screen rather than returning a delta that quietly omits them. A flood that
+scrolls the anchor out of a full scrollback is one of those cases: on tmux 3.8
+and later the anchor is proven from tmux's own `history_collected` and
+`history_generation` counters, and on older builds it is re-found only by a
+unique, non-blank match of the rows above it. Where continuing would mean reading another
+process's output, it raises {exc}`~libtmux.exc.PaneLifecycleChanged` or
+{exc}`~libtmux.exc.InvalidCaptureCursor` — both under a shared
+{exc}`~libtmux.exc.CaptureCursorError` base.
+
+See {ref}`capture-since` for a walkthrough.
+
 #### Retrying screen assertions
 
 {func}`~libtmux.test.screen.assert_screen` waits for a pane's screen to match,
