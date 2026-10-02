@@ -437,6 +437,15 @@ VERSION_PARSING_FIXTURES: list[VersionParsingFixture] = [
         exc_msg_regex=None,
     ),
     VersionParsingFixture(
+        test_id="release_candidate_version",
+        mock_stdout=["tmux 3.8-rc3"],
+        mock_stderr=None,
+        mock_platform=None,
+        expected_version="3.8",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionParsingFixture(
         test_id="openbsd_version",
         mock_stdout=None,
         mock_stderr=["tmux: unknown option -- V"],
