@@ -361,6 +361,18 @@ lenient list accessors catch only command failures, so they do not read a hung
 server as an empty one. Only the client dies; work the command started keeps
 running.
 
+#### Bounded key sends and pastes
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` and
+{meth}`Pane.paste_text() <libtmux.Pane.paste_text>` take a keyword-only
+`timeout` in seconds. It bounds the whole call, including the Enter that follows
+the keys and the load, paste and cleanup of a paste, so a hung tmux raises
+{exc}`~libtmux.exc.TmuxTimeout` instead of blocking the caller. The default,
+`None`, waits as before. {meth}`Pane.enter() <libtmux.Pane.enter>`,
+{meth}`Pane.paste_buffer() <libtmux.Pane.paste_buffer>` and
+{meth}`Server.delete_buffer() <libtmux.Server.delete_buffer>` take the same
+`timeout`.
+
 #### Bounded, distinguishable `Server.wait_for()`
 
 {meth}`Server.wait_for() <libtmux.Server.wait_for>` takes a `timeout` in seconds

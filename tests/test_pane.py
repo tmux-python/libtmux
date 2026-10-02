@@ -2683,3 +2683,82 @@ def test_pane_wait_event_client_runs_in_the_owned_environment(
     for env in seen:
         assert env is not None
         assert "TMUX" not in env
+
+
+@contextlib.contextmanager
+def _frozen_server(server: Server) -> t.Iterator[None]:
+    """Stop the tmux server process so every client call hangs, then resume it."""
+    import signal
+
+    pid = int(server.cmd("display-message", "-p", "#{pid}").stdout[0])
+    os.kill(pid, signal.SIGSTOP)
+    try:
+        yield
+    finally:
+        os.kill(pid, signal.SIGCONT)
+
+
+def test_send_keys_timeout_raises_on_a_hung_server(session: Session) -> None:
+    """A tmux that never answers raises ``TmuxTimeout`` within the bound."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with _frozen_server(session.server):
+        start = time.monotonic()
+        with pytest.raises(exc.TmuxTimeout):
+            pane.send_keys("echo hung", timeout=0.5)
+        assert time.monotonic() - start < 10
+
+
+def test_paste_text_timeout_raises_on_a_hung_server(session: Session) -> None:
+    """``paste_text`` is bounded as a whole and still raises ``TmuxTimeout``."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with _frozen_server(session.server):
+        start = time.monotonic()
+        with pytest.raises(exc.TmuxTimeout):
+            pane.paste_text("hung paste", timeout=0.5)
+        assert time.monotonic() - start < 10
+
+
+def test_send_keys_timeout_is_one_budget_for_the_whole_call(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Enter after the keys gets what the keys left, not a fresh bound."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    seen: list[float | None] = []
+    real_cmd = type(pane).cmd
+
+    def spy(self: Pane, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        seen.append(kwargs.get("timeout"))
+        time.sleep(0.2)
+        return real_cmd(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(pane), "cmd", spy)
+    pane.send_keys("echo budget", timeout=5)
+    assert len(seen) == 2
+    first, second = seen
+    assert first is not None
+    assert second is not None
+    assert second < first
+    assert second <= 5 - 0.2
+
+
+def test_send_keys_without_timeout_passes_none(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default leaves every tmux call unbounded, as before."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    seen: list[float | None] = []
+    real_cmd = type(pane).cmd
+
+    def spy(self: Pane, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        seen.append(kwargs.get("timeout"))
+        return real_cmd(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(pane), "cmd", spy)
+    pane.send_keys("echo free")
+    assert seen == [None, None]

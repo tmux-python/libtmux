@@ -2784,7 +2784,12 @@ class Server(
 
         return "\n".join(proc.stdout)
 
-    def delete_buffer(self, *, buffer_name: str | None = None) -> None:
+    def delete_buffer(
+        self,
+        *,
+        buffer_name: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
         """Delete a paste buffer via ``$ tmux delete-buffer``.
 
         Parameters
@@ -2792,6 +2797,10 @@ class Server(
         buffer_name : str, optional
             Name of the buffer to delete (``-b`` flag). Defaults to the most
             recent.
+        timeout : float, optional
+            Seconds to allow tmux; see :meth:`cmd`.
+
+            .. versionadded:: 0.63
 
         Examples
         --------
@@ -2803,7 +2812,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        proc = self.cmd("delete-buffer", *tmux_args)
+        proc = self.cmd("delete-buffer", *tmux_args, timeout=timeout)
 
         raise_if_stderr(proc, "delete-buffer")
 

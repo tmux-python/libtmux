@@ -7,6 +7,7 @@ libtmux.pane
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import logging
 import pathlib
@@ -168,6 +169,34 @@ def _check_layout(layout: str) -> None:
     if layout not in _LAYOUT_NAMES and not _CUSTOM_LAYOUT.match(layout):
         msg = f"unrecognized layout {layout!r}"
         raise ValueError(msg)
+
+
+#: Seconds the error path of :meth:`Pane.paste_text` may spend deleting its
+#: buffer, independent of the caller's bound.
+_CLEANUP_TIMEOUT = 2.0
+
+
+def _budget(timeout: float | None) -> t.Callable[[], float | None]:
+    """Return a callable giving the seconds left of a total ``timeout``.
+
+    One logical call such as :meth:`Pane.send_keys` makes several tmux calls;
+    each gets what is left of the caller's bound, so the bound covers the whole
+    call. Never zero, because a zero bound would read as "no time" to an
+    engine; a spent budget leaves a token slice and the next call times out.
+
+    Examples
+    --------
+    >>> _budget(None)() is None
+    True
+    >>> 0 < _budget(5)() <= 5
+    True
+    >>> _budget(0)() > 0
+    True
+    """
+    if timeout is None:
+        return lambda: None
+    deadline = time.monotonic() + timeout
+    return lambda: max(deadline - time.monotonic(), 0.001)
 
 
 @dataclasses.dataclass()
@@ -1123,6 +1152,7 @@ class Pane(
         hex_keys: bool | None = None,
         target_client: str | None = None,
         key_name: bool | None = None,
+        timeout: float | None = None,
     ) -> None:
         r"""``$ tmux send-keys`` to the pane.
 
@@ -1186,6 +1216,13 @@ class Pane(
             Handle keys as key names (``-K`` flag). Requires tmux 3.4+.
 
             .. versionadded:: 0.56
+        timeout : float, optional
+            Seconds the whole call may take, across the ``send-keys`` and the
+            Enter that follows it. A tmux client still running when the time
+            is up is killed and reaped. *None* (the default) waits as long as
+            tmux takes. See :meth:`cmd`.
+
+            .. versionadded:: 0.63
 
         Raises
         ------
@@ -1198,6 +1235,9 @@ class Pane(
             message size (``command too long`` or ``failed to send command``);
             nothing is sent and no Enter follows. Send large text with
             :meth:`paste_text`.
+        :exc:`~libtmux.exc.TmuxTimeout`
+            When tmux does not answer within ``timeout``. Keys sent before the
+            bound was hit stay sent; the Enter may not have been.
 
         Examples
         --------
@@ -1218,7 +1258,12 @@ class Pane(
         Flag-only invocation — reset terminal state without sending any keys:
 
         >>> pane.send_keys(reset=True)
+
+        ``timeout`` bounds the call; tmux answers well inside it here:
+
+        >>> pane.send_keys('echo bounded', timeout=5)
         """
+        left = _budget(timeout)
         prefix = " " if suppress_history else ""
 
         tmux_args: tuple[str, ...] = ()
@@ -1258,7 +1303,7 @@ class Pane(
 
         if copy_mode_cmd is not None:
             tmux_args += ("-X",)
-            self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+            self.cmd("send-keys", *tmux_args, copy_mode_cmd, timeout=left())
         elif cmd is None:
             # Flag-only path — tmux's cmd-send-keys.c:223-225 explicitly
             # supports count == 0 when -R or -N is set, returning
@@ -1269,7 +1314,7 @@ class Pane(
                     "reset=True, repeat=N, copy_mode_cmd=..."
                 )
                 raise ValueError(msg)
-            self.cmd("send-keys", *tmux_args)
+            self.cmd("send-keys", *tmux_args, timeout=left())
             return
         else:
             keys: tuple[str, ...]
@@ -1279,11 +1324,11 @@ class Pane(
                     keys = ("20", *keys)
             else:
                 keys = (_escape_trailing_semicolon(prefix + cmd),)
-            proc = self.cmd("send-keys", *tmux_args, "--", *keys)
+            proc = self.cmd("send-keys", *tmux_args, "--", *keys, timeout=left())
             raise_if_stderr(proc, "send-keys")
 
         if enter and copy_mode_cmd is None:
-            self.enter()
+            self.enter(timeout=left())
 
     def run(
         self,
@@ -2482,12 +2527,19 @@ class Pane(
         value = self.show_option(option, ignore_errors=True)
         return None if value is None else str(value)
 
-    def enter(self) -> Pane:
+    def enter(self, *, timeout: float | None = None) -> Pane:
         """Send carriage return to pane.
 
         ``$ tmux send-keys`` send Enter to the pane.
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Seconds to allow tmux; see :meth:`cmd`.
+
+            .. versionadded:: 0.63
         """
-        self.cmd("send-keys", "Enter")
+        self.cmd("send-keys", "Enter", timeout=timeout)
         return self
 
     def display_popup(
@@ -2700,6 +2752,7 @@ class Pane(
         bracket: bool | None = None,
         separator: str | None = None,
         no_vis: bool | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Paste a buffer into the pane via ``$ tmux paste-buffer``.
 
@@ -2722,6 +2775,10 @@ class Pane(
             content by default; set this to restore the raw behaviour.
             Requires tmux 3.7+. If used with tmux < 3.7, a warning is issued
             and the flag is ignored.
+        timeout : float, optional
+            Seconds to allow tmux; see :meth:`cmd`.
+
+            .. versionadded:: 0.63
 
         Examples
         --------
@@ -2754,11 +2811,17 @@ class Pane(
                     stacklevel=2,
                 )
 
-        proc = self.cmd("paste-buffer", *tmux_args)
+        proc = self.cmd("paste-buffer", *tmux_args, timeout=timeout)
 
         raise_if_stderr(proc, "paste-buffer")
 
-    def paste_text(self, text: str, *, bracket: bool = True) -> None:
+    def paste_text(
+        self,
+        text: str,
+        *,
+        bracket: bool = True,
+        timeout: float | None = None,
+    ) -> None:
         r"""Paste text of any size into the pane via a throwaway paste buffer.
 
         Unlike :meth:`send_keys`, ``text`` is not subject to tmux's command
@@ -2779,11 +2842,20 @@ class Pane(
             Wrap the paste in bracketed-paste markers (``-p`` flag), default
             True. tmux adds them only when the program in the pane asked for
             bracketed paste.
+        timeout : float, optional
+            Seconds the whole call may take, across loading, pasting and, on
+            failure, deleting the buffer. *None* (the default) waits as long as
+            tmux takes. See :meth:`cmd`.
+
+            .. versionadded:: 0.63
 
         Raises
         ------
         :exc:`libtmux.exc.LibTmuxException`
             If tmux refuses to load or paste the buffer.
+        :exc:`libtmux.exc.TmuxTimeout`
+            When tmux does not answer within ``timeout``. The throwaway buffer
+            is deleted, best effort, before this propagates.
 
         Examples
         --------
@@ -2796,8 +2868,11 @@ class Pane(
         if not text:
             return
 
+        left = _budget(timeout)
         buffer_name = f"libtmux_paste_{uuid.uuid4().hex}"
-        proc = self.server.cmd("load-buffer", "-b", buffer_name, "-", input=text)
+        proc = self.server.cmd(
+            "load-buffer", "-b", buffer_name, "-", input=text, timeout=left()
+        )
         raise_if_stderr(proc, "load-buffer")
 
         try:
@@ -2807,9 +2882,15 @@ class Pane(
                 linefeed_separator=True,
                 bracket=bracket,
                 no_vis=has_gte_version("3.7", tmux_bin=self.server.tmux_bin) or None,
+                timeout=left(),
             )
         except exc.LibTmuxException:
-            self.server.delete_buffer(buffer_name=buffer_name)
+            # The cleanup is bounded on its own: the caller's budget may be
+            # spent, and a stuck server must not hang the error path.
+            with contextlib.suppress(exc.LibTmuxException):
+                self.server.delete_buffer(
+                    buffer_name=buffer_name, timeout=_CLEANUP_TIMEOUT
+                )
             raise
 
     def pipe(
