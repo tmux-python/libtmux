@@ -118,6 +118,12 @@ One tmux-side behavior change is worth knowing: on 3.7c, creating a floating
 pane with {meth}`~libtmux.Pane.new_pane` in a zoomed window unzooms the
 window, where tmux 3.7 through 3.7b left it zoomed.
 
+#### tmux 3.8-rc3 joins the tested versions
+
+CI builds the `3.8-rc3` tag, the 3.8 release candidate, next to the tmux 3.7
+point releases, and fails a cell whose `tmux -V` does not report the version
+the matrix names. Release candidates build from a tag like any release.
+
 ## libtmux 0.62.0 (2026-07-12)
 
 libtmux 0.62.0 teaches libtmux objects to locate themselves and to resolve
