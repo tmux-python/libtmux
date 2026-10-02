@@ -296,6 +296,26 @@ The failures are {exc}`~libtmux.exc.EngineError` (the transport failed),
 malformed or out of sequence. The parser behind them lives in
 `libtmux.engines.control.protocol` and is not public API.
 
+#### Run several commands as one tmux command list
+
+{func}`~libtmux.engines.batch.run_group` joins requests with
+{class}`~libtmux.engines.base.CommandSeparator` and runs them as one tmux
+command list: one process for {class}`~libtmux.engines.subprocess.SubprocessEngine`
+and {class}`~libtmux.engines.exec.ExecEngine`, one line for
+{class}`~libtmux.engines.control.sync.ControlModeEngine`. It returns one
+{class}`~libtmux.engines.base.CommandResult` per request, with each command's own
+output on its own result. tmux drops the rest of a list after an error, so the
+group stops at the first failure and every later request gets a result with
+`returncode == -1` and `stderr == NOT_RUN`. A `;` in a request's data stays
+data. Twenty `set-option` calls took 49 ms as separate subprocess calls and
+4 ms as a group on tmux 3.2a; the benchmark is `scripts/bench/batch_latency.py`.
+
+Requests that carry `input`, name their own `tmux_bin`, wait (`run-shell`
+without `-b`, `wait-for`) or own a terminal (`attach-session`) raise
+{exc}`ValueError`. A list longer than tmux's 16 KiB command limit is split into
+the fewest lists that fit. To run every command whatever the others do, use
+`engine.run_batch()`, which a control-mode engine pipelines in one round trip.
+
 #### Observing what an engine runs (#739)
 
 {class}`~libtmux.engines.instrumentation.InstrumentedEngine` wraps any engine

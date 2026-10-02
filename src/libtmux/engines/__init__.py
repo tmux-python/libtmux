@@ -49,6 +49,7 @@ from libtmux.engines.base import (
     command_count,
     is_command_separator,
 )
+from libtmux.engines.batch import NOT_RUN, run_group
 from libtmux.engines.connection import ServerConnection
 from libtmux.engines.control.sync import ControlModeEngine
 from libtmux.engines.exec import ExecEngine
@@ -61,6 +62,7 @@ from libtmux.engines.instrumentation import (
 from libtmux.engines.subprocess import SubprocessEngine
 
 __all__ = (
+    "NOT_RUN",
     "CommandRequest",
     "CommandResult",
     "CommandSeparator",
@@ -78,4 +80,5 @@ __all__ = (
     "command_count",
     "instrument",
     "is_command_separator",
+    "run_group",
 )
