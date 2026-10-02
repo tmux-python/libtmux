@@ -49,18 +49,21 @@ You set the pane's **size** with `width` and `height` (tmux's `-x` / `-y`), and
 its **position** with `x` and `y` — cells measured from the top-left of the
 window (tmux's `-X` / `-Y`). tmux reports the placement back through the
 {attr}`pane_x <libtmux.Pane.pane_x>` /
-{attr}`pane_y <libtmux.Pane.pane_y>` fields:
+{attr}`pane_y <libtmux.Pane.pane_y>` fields. From tmux 3.8 the requested size
+and position include the pane's border, so tmux reports the usable area one
+cell further in on each side (width and height two cells smaller):
 
 ```python
 >>> from libtmux.common import has_gte_version
 
+>>> border = 1 if has_gte_version("3.8") else 0
 >>> if has_gte_version("3.7"):
 ...     placed = window.new_pane(width=20, height=5, x=2, y=1, shell="sleep 30")
 ...     position = (placed.pane_x, placed.pane_y)
 ... else:
-...     position = ("2", "1")
->>> position
-('2', '1')
+...     position = (str(2 + border), str(1 + border))
+>>> position == (str(2 + border), str(1 + border))
+True
 ```
 
 ## Styling
