@@ -11,13 +11,15 @@ import pty
 import shutil
 import struct
 import subprocess
+import sys
 import termios
 import threading
+import time
 import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import exc, pane as pane_module
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.pane import PaneExit
@@ -2070,3 +2072,169 @@ def test_pane_wait_reports_a_server_that_exited(TestServer: type[Server]) -> Non
             pane.wait(timeout=30)
     finally:
         thread.join()
+
+
+needs_tmux_3_8 = pytest.mark.skipif(
+    not has_gte_version("3.8"),
+    reason="wait-for -E (wait on a tmux event) needs tmux 3.8",
+)
+
+
+def _event_waiters(pane: Pane) -> list[str]:
+    """Return the clients waiting for a ``pane-died`` event."""
+    return pane.server.cmd("wait-for", "-E", "-l", "pane-died").stdout
+
+
+def _act_once_event_waiter_has_registered(
+    pane: Pane, action: t.Callable[[], object]
+) -> threading.Thread:
+    """Run *action* from a thread once ``Pane.wait`` blocks on the tmux event.
+
+    An event is not remembered, so only an action taken after the waiter is
+    listed proves the wake came from the event and not from a state read.
+    """
+
+    def run() -> None:
+        retry_until(lambda: bool(_event_waiters(pane)), seconds=10)
+        action()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return thread
+
+
+@needs_tmux_3_8
+def test_pane_wait_wakes_on_the_pane_died_event(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A death after the waiter registers wakes it, not the backstop read."""
+    monkeypatch.setattr(pane_module, "_WAIT_EVENT_BACKSTOP", 60.0)
+    pane = session.active_window.split(attach=False, shell="read go; exit 3")
+    thread = _act_once_event_waiter_has_registered(pane, lambda: pane.send_keys("go"))
+
+    start = time.monotonic()
+    try:
+        assert pane.wait(timeout=8) == PaneExit(status=3, signal=None)
+    finally:
+        thread.join()
+    assert time.monotonic() - start < 6
+
+
+@needs_tmux_3_8
+def test_pane_wait_notices_a_killed_pane_at_the_backstop(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tmux sends no event for a killed pane; the backstop read finds it."""
+    monkeypatch.setattr(pane_module, "_WAIT_EVENT_BACKSTOP", 0.2)
+    pane = session.active_window.split(attach=False, shell="sleep 30")
+    thread = _act_once_event_waiter_has_registered(pane, pane.kill)
+
+    start = time.monotonic()
+    try:
+        with pytest.raises(exc.PaneNotFound):
+            pane.wait(timeout=30)
+    finally:
+        thread.join()
+    assert time.monotonic() - start < 5
+
+
+@needs_tmux_3_8
+def test_pane_wait_leaves_no_event_waiter_behind(session: Session) -> None:
+    """The event client is gone after a timeout and after a result."""
+    pane = session.active_window.split(attach=False, shell="read go; exit 0")
+
+    with pytest.raises(exc.WaitTimeout):
+        pane.wait(timeout=0.3)
+    assert _event_waiters(pane) == []
+
+    thread = _act_once_event_waiter_has_registered(pane, lambda: pane.send_keys("go"))
+    try:
+        pane.wait(timeout=30)
+    finally:
+        thread.join()
+    assert _event_waiters(pane) == []
+
+
+@needs_tmux_3_8
+def test_pane_wait_polls_when_the_event_waiter_cannot_start(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``wait-for -E`` client that exits at once leaves the poll in charge."""
+    real_popen = subprocess.Popen
+
+    def refuse_event_waiter(argv: list[str], *args: t.Any, **kwargs: t.Any) -> t.Any:
+        if "-E" in argv:
+            argv = [sys.executable, "-c", "raise SystemExit(1)"]
+        return real_popen(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", refuse_event_waiter)
+    pane = session.active_window.split(attach=False, shell="read go; exit 6")
+    thread = _act_once_wait_has_armed(pane, lambda: pane.send_keys("go"))
+
+    try:
+        assert pane.wait(timeout=30) == PaneExit(status=6, signal=None)
+    finally:
+        thread.join()
+
+
+@needs_tmux_3_8
+def test_pane_wait_confirms_the_event_waiter_before_it_reads_state(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A death right after the first state read is not lost.
+
+    tmux forgets an event nobody waits for, so the waiter must be listed by the
+    server before the state is read; starting the client is not enough. The
+    event client here takes 0.4 s to reach tmux. The pane dies, and tmux has
+    delivered ``pane-died`` to everyone listening, as soon as the first state
+    read returns. A recorder client of the test's own reports the delivery.
+    """
+    monkeypatch.setattr(pane_module, "_WAIT_EVENT_BACKSTOP", 60.0)
+    server = session.server
+    real_popen = subprocess.Popen
+
+    def slow_event_waiter(argv: list[str], *args: t.Any, **kwargs: t.Any) -> t.Any:
+        if "-E" in argv and "-F" in argv:
+            argv = ["sh", "-c", 'sleep 0.4; exec "$@"', "sh", *argv]
+        return real_popen(argv, *args, **kwargs)
+
+    pane = session.active_window.split(attach=False, shell="read go; exit 5")
+    real_read = pane_module.Pane._read_exit
+    reads = 0
+
+    def read_then_end_pane(self: Pane) -> PaneExit | None:
+        nonlocal reads
+        reads += 1
+        result = real_read(self)
+        if reads == 2:  # the first read inside the event wait
+            assert result is None
+            argv = [
+                server.tmux_bin or "tmux",
+                *server._server_flags(),
+                "wait-for",
+                "-E",
+                "pane-died",
+            ]
+            recorder = real_popen(argv, stdin=subprocess.DEVNULL)
+            try:
+                assert retry_until(
+                    lambda: f"client-{recorder.pid}" in _event_waiters(pane),
+                    seconds=10,
+                )
+                self.send_keys("go")
+                assert recorder.wait(timeout=10) == 0
+            finally:
+                recorder.kill()
+                recorder.wait()
+        return result
+
+    monkeypatch.setattr(subprocess, "Popen", slow_event_waiter)
+    monkeypatch.setattr(pane_module.Pane, "_read_exit", read_then_end_pane)
+
+    start = time.monotonic()
+    assert pane.wait(timeout=8) == PaneExit(status=5, signal=None)
+    assert time.monotonic() - start < 5, "the death was found by the deadline read"

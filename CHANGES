@@ -89,6 +89,12 @@ tmux discards a pane's status when it closes the pane, so `wait` sets the pane's
 option. tmux 3.2a does not report the terminating signal; a process ended by a
 signal returns `PaneExit(status=None, signal=None)` there.
 
+On tmux 3.8, `wait` blocks on the `pane-died` event with `wait-for -E` instead of
+polling. It wakes as the process exits and reads the pane's state every half
+second rather than every tenth: an 8 second wait starts about 23 tmux client
+processes instead of about 82. tmux sends no event for a killed pane, so a pane
+closed under the wait is reported within half a second.
+
 #### tmux 3.8 hooks in `Hooks`
 
 {class}`~libtmux._internal.constants.Hooks` parses the hooks tmux 3.8 adds:
