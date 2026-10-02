@@ -32,6 +32,11 @@ Retry logic for async/tmux operations.
 :link-type: doc
 Deterministic shell for screen assertions.
 :::
+:::{grid-item-card} Screen
+:link: screen
+:link-type: doc
+Retrying screen assertions with a line diff.
+:::
 :::{grid-item-card} Temporary
 :link: temporary
 :link-type: doc
@@ -49,5 +54,6 @@ environment
 random
 retry
 shell
+screen
 temporary
 ```

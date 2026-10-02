@@ -202,6 +202,44 @@ sessions you create yourself, pass the command to `window_command`:
 ... )
 ```
 
+(screen_assertions)=
+
+## Asserting on the screen
+
+A terminal app draws asynchronously, so a test that captures a pane once
+races the app. {func}`~libtmux.test.screen.assert_screen` captures the pane
+again until the screen matches or the timeout passes, then raises with a line
+diff of what the screen held. It needs no fixture and works outside pytest.
+
+```python
+>>> from libtmux.test.screen import assert_screen
+>>> pane = session.new_window(
+...     window_shell="printf 'hello\\nworld\\n'; cat",
+... ).active_pane
+>>> assert_screen(pane, "hello\nworld")
+>>> assert_screen(pane, "wor", row=1, contains=True)
+```
+
+`row` compares one captured line, counted from 0; `contains` matches a
+substring instead of the whole text. `timeout` defaults to
+`RETRY_TIMEOUT_SECONDS` and `interval` to `RETRY_INTERVAL_SECONDS`; `timeout=0`
+captures once. Each retry is a `capture-pane` round trip, so a long timeout
+costs time only when the screen never matches.
+
+For the `assert screen == text` style, {func}`~libtmux.test.screen.eventually`
+returns an object whose `==`, `!=`, and `in` retry the same way. Under pytest a
+failed comparison prints the same diff:
+
+```python
+>>> from libtmux.test.screen import eventually
+>>> pane = session.new_window(
+...     window_shell="printf 'hello\\nworld\\n'; cat",
+... ).active_pane
+>>> assert eventually(pane, row=0) == "hello"
+>>> assert "world" in eventually(pane)
+>>> assert eventually(pane, row=1) != "hello"
+```
+
 [pytest]: https://docs.pytest.org/en/stable/
 [pytest-tmux]: https://pytest-tmux.readthedocs.io/
 [tmuxp]: https://tmuxp.git-pull.com/
