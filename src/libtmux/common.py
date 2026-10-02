@@ -553,7 +553,7 @@ def _escape_trailing_semicolon(text: str) -> str:
 
 
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command, returning list-shaped output.
+    r"""Run any :term:`tmux(1)` command, returning list-shaped output.
 
     Dispatches through a :class:`~libtmux.engines.base.TmuxEngine` --
     :class:`~libtmux.engines.subprocess.SubprocessEngine` unless one is passed --
@@ -584,6 +584,11 @@ class tmux_cmd:
         standard input inherited from the calling process. Payload size is
         not limited by tmux's 16 KiB command size limit, which covers
         arguments only.
+    text : bool, optional
+        ``True`` (the default) keeps the decoded ``list`` attributes only.
+        ``False`` also fills :attr:`stdout_bytes` and :attr:`stderr_bytes`
+        with the output exactly as tmux wrote it, mirroring
+        ``subprocess.run(text=False)``. The decoded lists stay available.
 
     Attributes
     ----------
@@ -599,9 +604,16 @@ class tmux_cmd:
         Standard error, one line per item, blanks removed.
     returncode : int
         tmux exit code.
+    stdout_bytes : bytes or None
+        Undecoded standard output when ``text=False``, else ``None``. Invalid
+        UTF-8, ``\r`` and the final newline are kept.
+    stderr_bytes : bytes or None
+        Undecoded standard error when ``text=False``, else ``None``.
 
     Raises
     ------
+    :exc:`~libtmux.exc.EngineError`
+        ``text=False`` was asked of an engine that returned no raw bytes.
     :exc:`~libtmux.exc.TmuxTimeout`
         When *timeout* elapses. A subprocess engine kills and reaps the tmux
         client it spawned before the exception leaves; work the command
@@ -656,6 +668,21 @@ class tmux_cmd:
     >>> masked.args[-1], masked.cmd[-1]
     ('-eTOKEN=***', '-eTOKEN=hunter2')
 
+    ``text=False`` returns what tmux wrote, undecoded. Decoding turns
+    invalid UTF-8 into escapes and drops the final newline, so a buffer that
+    is not text needs the bytes:
+
+    >>> tmux_cmd(
+    ...     f'-L{server.socket_name}', 'load-buffer', '-b', 'doc_raw', '-',
+    ...     input=b'a\r\nb\xff\n',
+    ... ).returncode
+    0
+    >>> raw = tmux_cmd(
+    ...     f'-L{server.socket_name}', 'show-buffer', '-b', 'doc_raw', text=False,
+    ... )
+    >>> raw.stdout_bytes
+    b'a\r\nb\xff\n'
+
     Equivalent to:
 
     .. code-block:: console
@@ -707,11 +734,14 @@ class tmux_cmd:
         engine: TmuxEngine | None = None,
         timeout: float | None = None,
         input: str | bytes | None = None,  # noqa: A002
+        text: bool = True,
     ) -> None:
         runner: TmuxEngine = (
             engine if engine is not None else SubprocessEngine.of(tmux_bin)
         )
-        request = CommandRequest.from_args(*args, timeout=timeout, input=input)
+        request = CommandRequest.from_args(
+            *args, timeout=timeout, input=input, text=text
+        )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -739,6 +769,17 @@ class tmux_cmd:
             result, "process", None
         )
         self._process = process
+
+        stdout_bytes: bytes | None = getattr(result, "stdout_bytes", None)
+        stderr_bytes: bytes | None = getattr(result, "stderr_bytes", None)
+        if not text and (stdout_bytes is None or stderr_bytes is None):
+            msg = (
+                f"{type(runner).__name__} returned no raw bytes; text=False "
+                "needs an engine that captures them"
+            )
+            raise exc.EngineError(msg)
+        self.stdout_bytes = stdout_bytes
+        self.stderr_bytes = stderr_bytes
 
         # tmux writes ``has-session``'s answer to stderr; the wrappers have
         # always read it off stdout. Adapted here, not in an engine, so every

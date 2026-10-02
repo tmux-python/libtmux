@@ -210,7 +210,11 @@ class ControlModeEngine:
         results: list[CommandResult] = []
         pipeline: list[CommandRequest] = []
         for request in requests:
-            if blocks_queue(request.args) or request.input is not None:
+            if (
+                blocks_queue(request.args)
+                or request.input is not None
+                or not request.text
+            ):
                 results += self._run_pipeline(pipeline)
                 pipeline = []
                 results.append(self._run_subprocess(request))

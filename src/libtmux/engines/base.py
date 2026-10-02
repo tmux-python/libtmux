@@ -151,6 +151,13 @@ class CommandRequest:
         UTF-8 and raises :exc:`UnicodeEncodeError` when it cannot be; ``bytes``
         are sent unchanged. Excluded from :func:`repr`, which would otherwise
         print a payload. Tmux's 16 KiB command limit covers arguments only.
+    text : bool
+        ``True`` (the default) returns decoded lines only. ``False`` also
+        returns the undecoded standard output and standard error on
+        :attr:`CommandResult.stdout_bytes` and
+        :attr:`CommandResult.stderr_bytes`, byte for byte: invalid UTF-8,
+        carriage returns and the final newline survive. An engine that cannot
+        capture raw bytes must not ignore the flag.
 
     Examples
     --------
@@ -164,6 +171,7 @@ class CommandRequest:
     tmux_bin: str | None = None
     timeout: float | None = None
     input: str | bytes | None = field(default=None, repr=False)
+    text: bool = field(default=True, repr=False)
 
     def __post_init__(self) -> None:
         r"""Reject arguments that cannot survive tmux's C-string transports.
@@ -213,6 +221,7 @@ class CommandRequest:
         tmux_bin: str | pathlib.Path | None = None,
         timeout: float | None = None,
         input: str | bytes | None = None,  # noqa: A002
+        text: bool = True,
     ) -> CommandRequest:
         """Build a request from arbitrary tokens, stringifying each.
 
@@ -227,6 +236,8 @@ class CommandRequest:
             Seconds to allow the command; see :class:`CommandRequest`.
         input : str or bytes, optional
             Standard input for the tmux client; see :class:`CommandRequest`.
+        text : bool
+            ``False`` asks for raw output bytes; see :class:`CommandRequest`.
 
         Returns
         -------
@@ -243,6 +254,7 @@ class CommandRequest:
             tmux_bin=str(tmux_bin) if tmux_bin is not None else None,
             timeout=timeout,
             input=input,
+            text=text,
         )
 
     @property
@@ -285,6 +297,11 @@ class CommandResult:
         Captured standard-error lines, blanks removed.
     returncode : int
         tmux exit code.
+    stdout_bytes : bytes or None
+        Undecoded standard output, exactly as tmux wrote it. Only set when the
+        request asked for it with ``text=False``; ``None`` otherwise.
+    stderr_bytes : bytes or None
+        Undecoded standard error, set under the same condition.
     process : subprocess.Popen or None
         The OS process, when the engine forked one (a byte-mode process when
         the request carried ``input``). ``None`` for engines that
@@ -309,6 +326,8 @@ class CommandResult:
     stdout: tuple[str, ...] = ()
     stderr: tuple[str, ...] = ()
     returncode: int = 0
+    stdout_bytes: bytes | None = field(default=None, repr=False)
+    stderr_bytes: bytes | None = field(default=None, repr=False)
     process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = field(
         default=None,
         compare=False,

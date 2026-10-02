@@ -1215,3 +1215,68 @@ def test_cmd_args_is_the_redacted_argv_and_cmd_stays_exact(server: Server) -> No
         assert server.cmd("display-message", "-p", "x").args == ["tmux", "x"]
     finally:
         common.set_argv_redactor(None)
+
+
+RAW_PAYLOAD = b"caf\xc3\xa9 \xff\xfe\r\nline2\r\n\n"
+
+
+def _show_raw(server: Server, *, text: bool) -> tmux_cmd:
+    server.cmd("load-buffer", "-b", "raw_bytes", "-", input=RAW_PAYLOAD)
+    return server.cmd("show-buffer", "-b", "raw_bytes", text=text)
+
+
+def test_cmd_text_false_returns_undecoded_bytes(server: Server) -> None:
+    """Invalid UTF-8, CRLF and the final newlines come back byte for byte."""
+    server.new_session(session_name="raw_bytes")
+    proc = _show_raw(server, text=False)
+    assert proc.stdout_bytes == RAW_PAYLOAD
+    assert proc.stderr_bytes == b""
+    assert proc.stdout  # decoded lines are still filled in
+
+
+def test_cmd_text_true_carries_no_bytes(server: Server) -> None:
+    """The default leaves the bytes accessors unset (nothing buffered twice)."""
+    server.new_session(session_name="raw_text")
+    proc = _show_raw(server, text=True)
+    assert proc.stdout_bytes is None
+    assert proc.stderr_bytes is None
+
+
+def test_cmd_text_false_keeps_stderr_bytes(server: Server) -> None:
+    """A tmux-side failure still reports its raw stderr."""
+    server.new_session(session_name="raw_err")
+    proc = server.cmd("show-buffer", "-b", "no_such_buffer", text=False)
+    assert proc.returncode != 0
+    assert proc.stderr_bytes
+    assert proc.stderr_bytes.decode().strip() in proc.stderr[0]
+
+
+def test_cmd_text_false_over_control_mode(server: Server) -> None:
+    """A control-mode engine hands the request to a subprocess for raw bytes."""
+    from libtmux.engines import ControlModeEngine
+    from libtmux.server import Server
+
+    server.new_session(session_name="raw_control")
+    with ControlModeEngine.for_server(server) as engine:
+        bound = Server(socket_name=server.socket_name, engine=engine)
+        bound.cmd("load-buffer", "-b", "raw_bytes", "-", input=RAW_PAYLOAD)
+        proc = bound.cmd("show-buffer", "-b", "raw_bytes", text=False)
+    assert proc.stdout_bytes == RAW_PAYLOAD
+
+
+def test_cmd_text_false_on_engine_without_bytes_raises() -> None:
+    """An engine that cannot capture bytes fails loudly, not with ``None``."""
+    from libtmux.engines import CommandRequest, CommandResult
+
+    class TextOnly:
+        def run(self, request: CommandRequest) -> CommandResult:
+            return CommandResult(cmd=("tmux", *request.args), stdout=("x",))
+
+        def run_batch(
+            self, requests: t.Sequence[CommandRequest]
+        ) -> list[CommandResult]:
+            return [self.run(r) for r in requests]
+
+    assert tmux_cmd("list-sessions", engine=TextOnly()).stdout_bytes is None
+    with pytest.raises(exc.EngineError, match="text=False"):
+        tmux_cmd("list-sessions", engine=TextOnly(), text=False)

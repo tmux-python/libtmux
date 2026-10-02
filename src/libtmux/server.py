@@ -1037,6 +1037,7 @@ class Server(
         target: str | int | None = None,
         timeout: float | None = None,
         input: str | bytes | None = None,  # noqa: A002
+        text: bool = True,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -1089,6 +1090,13 @@ class Server(
         >>> server.show_buffer(buffer_name='cmd_stdin')
         'hello bytes'
 
+        Read output undecoded with ``text=False``; the decoded lines stay:
+
+        >>> server.cmd(
+        ... 'show-buffer', '-b', 'cmd_stdin', text=False
+        ... ).stdout_bytes
+        b'hello bytes'
+
         Parameters
         ----------
         target : str, optional
@@ -1101,6 +1109,9 @@ class Server(
         input : str or bytes, optional
             Data for the tmux client's standard input, for commands that read
             ``-``. See :class:`~libtmux.common.tmux_cmd`.
+        text : bool, optional
+            ``False`` also captures raw output on ``stdout_bytes`` and
+            ``stderr_bytes``. See :class:`~libtmux.common.tmux_cmd`.
 
         Returns
         -------
@@ -1140,6 +1151,7 @@ class Server(
             engine=self.engine,
             timeout=timeout,
             input=input,
+            text=text,
         )
 
     @property

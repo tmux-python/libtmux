@@ -471,6 +471,7 @@ class Window(
         target: str | int | None = None,
         timeout: float | None = None,
         input: str | bytes | None = None,  # noqa: A002
+        text: bool = True,
     ) -> tmux_cmd:
         """Execute tmux subcommand within window context.
 
@@ -502,6 +503,9 @@ class Window(
         input : str or bytes, optional
             Data for the tmux client's standard input, for commands that read
             ``-``. See :class:`~libtmux.common.tmux_cmd`.
+        text : bool, optional
+            ``False`` also captures raw output on ``stdout_bytes`` and
+            ``stderr_bytes``. See :class:`~libtmux.common.tmux_cmd`.
 
         Returns
         -------
@@ -530,6 +534,7 @@ class Window(
             target=target,
             timeout=timeout,
             input=input,
+            text=text,
         )
 
     """

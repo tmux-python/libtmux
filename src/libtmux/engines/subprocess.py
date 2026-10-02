@@ -108,7 +108,9 @@ def run_argv(
     """
     process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = None
     try:
-        if request.input is None:
+        raw_out: bytes | None = None
+        raw_err: bytes | None = None
+        if request.input is None and request.text:
             text_process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -122,15 +124,16 @@ def run_argv(
             stdout, stderr = text_process.communicate(timeout=request.timeout)
         else:
             # Bytes cannot go through a text-mode pipe, so this branch
-            # reads binary and decodes the way text mode does.
+            # reads binary (stdin payload, or raw output asked for with
+            # ``text=False``) and decodes the way text mode does.
             payload = (
                 request.input.encode("utf-8")
                 if isinstance(request.input, str)
                 else request.input
-            )
+            )  # None when only raw output was asked for
             binary_process = subprocess.Popen(
                 cmd,
-                stdin=subprocess.PIPE,
+                stdin=None if payload is None else subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env,
@@ -173,6 +176,8 @@ def run_argv(
         stdout=tuple(stdout_lines),
         stderr=tuple(line for line in stderr.split("\n") if line),
         returncode=returncode,
+        stdout_bytes=raw_out if not request.text else None,
+        stderr_bytes=raw_err if not request.text else None,
         process=process,
     )
     if logger.isEnabledFor(logging.DEBUG):

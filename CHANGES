@@ -47,6 +47,18 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
+#### Raw output bytes from `cmd()`
+
+{meth}`Server.cmd() <libtmux.Server.cmd>` (and the session, window and pane
+`cmd()`) take `text=False`, named after {func}`subprocess.run`. The result then
+carries `stdout_bytes` and `stderr_bytes`: what tmux wrote, with invalid UTF-8,
+carriage returns and the final newline intact. The decoded `stdout` and
+`stderr` lists stay filled in, and the default (`text=True`) leaves the bytes
+`None`, so nothing is buffered twice. Control-mode engines run such a call
+through a subprocess, as they do for `input=`; an engine that returns no bytes
+raises {exc}`~libtmux.exc.EngineError` rather than a silent `None`. Reading a
+tmux buffer with `show-buffer` is the case that needs it.
+
 #### Redacted argv on command results
 
 {attr}`CommandResult.args <libtmux.engines.base.CommandResult.args>` and
