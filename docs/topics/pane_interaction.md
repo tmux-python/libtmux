@@ -12,6 +12,8 @@ Most of that work is two methods — {meth}`~libtmux.Pane.send_keys` to type and
 you, you can stop after the first two sections; everything below is for the
 rarer cases — waiting on output, querying a pane's state, resizing, and cleanup.
 
+Not sure which call fits? See {ref}`which-call`.
+
 To follow along live, open two terminals.
 
 In the first, start tmux:

@@ -5,6 +5,12 @@ Explore libtmux's core functionalities and underlying principles at a high level
 ::::{grid} 1 1 2 2
 :gutter: 2 2 3 3
 
+:::{grid-item-card} Which Call Do I Want?
+:link: which_call
+:link-type: doc
+Task to API to return value, exceptions, and tmux mechanism, in one table.
+:::
+
 :::{grid-item-card} Architecture
 :link: architecture
 :link-type: doc
@@ -121,6 +127,7 @@ Scope- and version-gated typed fields on every libtmux object.
 ```{toctree}
 :hidden:
 
+which_call
 architecture
 configuration
 design-decisions
