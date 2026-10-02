@@ -138,6 +138,57 @@ def test_send_keys_trailing_semicolon_is_text(
     assert received == text + "\n"
 
 
+class SendKeysHexFixture(t.NamedTuple):
+    """A hex payload and the bytes it must deliver."""
+
+    test_id: str
+    hex_text: str
+    expected: str
+
+
+SEND_KEYS_HEX_FIXTURES: list[SendKeysHexFixture] = [
+    SendKeysHexFixture("one_byte", "41", "A"),
+    SendKeysHexFixture("packed_pairs", "48656c6c6f", "Hello"),
+    SendKeysHexFixture("escape_sequence", "1b5b32", "\x1b[2"),
+    SendKeysHexFixture("space_separated", "1b 5b 32", "\x1b[2"),
+    SendKeysHexFixture("prefixed", "0x1b 0x5b", "\x1b["),
+    SendKeysHexFixture("mixed_case_prefix", "0X48 69", "Hi"),
+]
+
+
+@pytest.mark.parametrize(
+    list(SendKeysHexFixture._fields),
+    SEND_KEYS_HEX_FIXTURES,
+    ids=[test.test_id for test in SEND_KEYS_HEX_FIXTURES],
+)
+def test_send_keys_hex_keys_multibyte(
+    session: Session,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    hex_text: str,
+    expected: str,
+) -> None:
+    """Pane.send_keys(hex_keys=True) sends every byte of a multi-byte payload."""
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(hex_text, hex_keys=True),
+    )
+    assert received == expected + "\n"
+
+
+@pytest.mark.parametrize("hex_text", ["1b5", "zz", "0x", "1b5g"])
+def test_send_keys_hex_keys_rejects_malformed(
+    session: Session,
+    hex_text: str,
+) -> None:
+    """Pane.send_keys(hex_keys=True) raises on a payload tmux would drop."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="hex"):
+        pane.send_keys(hex_text, hex_keys=True)
+
+
 def test_set_height(session: Session) -> None:
     """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")

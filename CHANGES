@@ -81,6 +81,13 @@ unaffected.
 parsing before the data and escapes a final `;`. `-x` previously raised
 `unknown flag`, and `echo A;` stored `echo A`.
 
+#### `Pane.send_keys(hex_keys=True)` sends multi-byte payloads
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` splits a hex `cmd` into one
+argument per byte, as `send-keys -H` requires, and accepts `1b5b32`,
+`1b 5b 32`, and `0x1b 0x5b`. Only a single byte was delivered before; longer
+payloads vanished without an error. Malformed hex raises {exc}`ValueError`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

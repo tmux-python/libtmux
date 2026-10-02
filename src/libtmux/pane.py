@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import re
 import typing as t
 import warnings
 
@@ -50,6 +51,34 @@ if t.TYPE_CHECKING:
         from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
+
+
+_HEX_TOKEN_RE = re.compile(r"(?:0[xX])?([0-9a-fA-F]{1,2}|(?:[0-9a-fA-F]{2})+)")
+
+
+def _hex_key_args(text: str) -> tuple[str, ...]:
+    """Split hex text into the one-byte arguments ``send-keys -H`` takes.
+
+    Examples
+    --------
+    >>> _hex_key_args("1b5b32")
+    ('1b', '5b', '32')
+    >>> _hex_key_args("0x1b 0x5b")
+    ('1b', '5b')
+    >>> _hex_key_args("1b5")
+    Traceback (most recent call last):
+    ...
+    ValueError: invalid hex bytes: '1b5'
+    """
+    args: list[str] = []
+    for token in text.split() or [text]:
+        match = _HEX_TOKEN_RE.fullmatch(token)
+        if match is None:
+            msg = f"invalid hex bytes: {token!r}"
+            raise ValueError(msg)
+        digits = match.group(1)
+        args += [digits[i : i + 2] for i in range(0, len(digits), 2)]
+    return tuple(args)
 
 
 @dataclasses.dataclass()
@@ -763,7 +792,10 @@ class Pane(
 
             .. versionadded:: 0.56
         hex_keys : bool, optional
-            Send keys as hex values (``-H`` flag).
+            Send keys as hex values (``-H`` flag). ``cmd`` is one or more
+            bytes in hex, packed (``1b5b32``), space-separated (``1b 5b 32``),
+            or ``0x``-prefixed. tmux takes one byte per argument; libtmux
+            splits ``cmd`` into one argument per byte.
 
             .. versionadded:: 0.56
         target_client : str, optional
@@ -779,7 +811,8 @@ class Pane(
         ------
         ValueError
             If ``cmd`` is ``None`` and no flag-only path is selected
-            (``reset``, ``repeat``, or ``copy_mode_cmd``).
+            (``reset``, ``repeat``, or ``copy_mode_cmd``), or ``hex_keys`` is
+            set and ``cmd`` is not valid hex.
 
         Examples
         --------
@@ -854,9 +887,14 @@ class Pane(
             self.cmd("send-keys", *tmux_args)
             return
         else:
-            self.cmd(
-                "send-keys", *tmux_args, "--", _escape_trailing_semicolon(prefix + cmd)
-            )
+            keys: tuple[str, ...]
+            if hex_keys:
+                keys = _hex_key_args(cmd)
+                if prefix:
+                    keys = ("20", *keys)
+            else:
+                keys = (_escape_trailing_semicolon(prefix + cmd),)
+            self.cmd("send-keys", *tmux_args, "--", *keys)
 
         if enter and copy_mode_cmd is None:
             self.enter()
