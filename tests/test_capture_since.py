@@ -45,6 +45,25 @@ def run_and_wait(pane: Pane, payload: str) -> None:
     )
 
 
+def quiesce(pane: Pane) -> None:
+    """Block until two consecutive captures of ``pane`` are identical.
+
+    A prompt can finish drawing after the command that precedes it printed
+    its sentinel, rewriting rows near the cursor; a cursor taken mid-draw
+    anchors against rows that are about to change.
+    """
+    previous: list[str] = []
+
+    def unchanged() -> bool:
+        nonlocal previous
+        current = pane.capture_pane()
+        same = current == previous
+        previous = current
+        return same
+
+    retry_until(unchanged, 5, raises=True)
+
+
 def test_first_call_returns_visible_screen_and_cursor(session: Session) -> None:
     """An initial call captures visible content and opens a cursor."""
     pane = session.new_window(window_name="capture_since_first").active_pane
@@ -206,6 +225,106 @@ def test_marks_lines_missed_after_history_limit_trim(session: Session) -> None:
     assert any("TRIM" in line for line in second.lines)
 
 
+def _pane_with_history_limit(session: Session, name: str, limit: int) -> Pane:
+    """Create a pane that has picked up ``history-limit`` ``limit``."""
+    session.cmd("set-option", "-g", "history-limit", str(limit))
+    pane = session.new_window(window_name=name).active_pane
+    assert pane is not None
+
+    def limit_locked() -> bool:
+        raw = pane.display_message("#{history_limit}", get_text=True)
+        return bool(raw) and int(raw[0]) == limit
+
+    retry_until(limit_locked, 5, raises=True)
+    return pane
+
+
+def test_reports_loss_when_the_anchor_scrolls_out_of_a_full_history(
+    session: Session,
+) -> None:
+    """A flood past a full history reports loss, never an empty delta.
+
+    A cursor taken on a bare prompt with a full scrollback used to be
+    re-found by content at the bottom of the screen after the original rows
+    scrolled away, so the read returned no rows with ``lines_missed`` unset.
+    """
+    pane = _pane_with_history_limit(session, "capture_since_flood", 100)
+    run_and_wait(pane, "seq 1 150")
+    first = pane.capture_since()
+
+    run_and_wait(pane, "seq 1000 3000")
+    second = pane.capture_since(first.cursor)
+
+    assert second.lines_missed is True
+
+
+def test_a_full_history_keeps_an_exact_delta_for_a_small_append(
+    session: Session,
+) -> None:
+    """A batch trim that leaves the anchor's rows behind is not a loss.
+
+    tmux trims history in batches, so appending past ``history-limit`` shrinks
+    ``history_size`` and moves the anchor row off the end of the old grid.
+    """
+    pane = _pane_with_history_limit(session, "capture_since_trim_ok", 100)
+    run_and_wait(pane, "seq 1 150")
+    quiesce(pane)
+    first = pane.capture_since()
+
+    run_and_wait(pane, "seq 500 559")
+    second = pane.capture_since(first.cursor)
+
+    assert second.lines_missed is False
+    assert [line for line in second.lines if line.isdigit()] == [
+        str(number) for number in range(500, 560)
+    ]
+
+
+def test_replayed_output_is_not_mistaken_for_the_original_rows(
+    session: Session,
+) -> None:
+    """Identical rows written after the originals were trimmed are new output.
+
+    Needs tmux's trim counters (3.8+): without them a verbatim repeat of the
+    fingerprinted rows is indistinguishable from the rows themselves.
+    """
+    pane = _pane_with_history_limit(session, "capture_since_replay", 100)
+    counters = pane.display_message("#{history_collected}", get_text=True)
+    if not counters or not counters[0]:
+        pytest.skip("tmux has no history_collected counter (needs 3.8+)")
+    block = "PS1=; seq 1 60 | sed s/^/R/; printf '%s\\n' REPLAY_END"
+    run_and_wait(pane, block)
+    quiesce(pane)
+    first = pane.capture_since()
+
+    run_and_wait(pane, "seq 7000 9000")
+    run_and_wait(pane, block)
+    second = pane.capture_since(first.cursor)
+
+    assert second.lines_missed is True
+
+
+def test_reports_loss_after_a_width_change_reflows_the_grid(
+    session: Session,
+) -> None:
+    """A different width renumbers wrapped rows under the stored offset."""
+    pane = session.new_window(window_name="capture_since_reflow").active_pane
+    assert pane is not None
+    run_and_wait(pane, "echo " + "x" * 120)
+    first = pane.capture_since()
+    width = int(pane.display_message("#{pane_width}", get_text=True)[0])
+
+    pane.window.resize(width=width - 20)
+    retry_until(
+        lambda: int(pane.display_message("#{pane_width}", get_text=True)[0]) != width,
+        5,
+        raises=True,
+    )
+    second = pane.capture_since(first.cursor)
+
+    assert second.lines_missed is True
+
+
 def test_rejects_malformed_cursor() -> None:
     """Malformed cursor strings fail loudly instead of guessing."""
     with pytest.raises(exc.InvalidCaptureCursor, match="unsupported cursor format"):
@@ -309,7 +428,7 @@ def test_cursor_round_trips_through_a_string(session: Session) -> None:
     encoded = str(first.cursor)
     decoded = CaptureCursor.from_str(encoded)
 
-    assert encoded.startswith("capture-since-v1:")
+    assert encoded.startswith("capture-since-v2:")
     assert decoded == first.cursor
 
 

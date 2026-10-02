@@ -329,6 +329,15 @@ True
 True
 ```
 
+A flood that scrolls the anchor out of a full scrollback is the same case. On
+tmux 3.8 and later, `capture_since` proves the anchor from tmux's
+`history_collected` and `history_generation` counters, so it cannot be fooled.
+Older builds have no counter, so the cursor keeps a fingerprint of the rows
+above its anchor and accepts only a unique, non-blank match; a repeated or blank
+fingerprint reports `lines_missed`. One gap remains on those builds: output that
+repeats the fingerprinted rows verbatim after the originals were trimmed away
+reads as the originals.
+
 Treat `lines_missed=True` as "some output was lost" — the returned rows are
 still real, they are just not the complete delta.
 
