@@ -277,6 +277,27 @@ and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
 share one connection. A `colors=` value other than `256` or `88` raises
 {exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
 
+#### Wait for text without matching your own command
+
+{meth}`Pane.wait_for_text() <libtmux.Pane.wait_for_text>` blocks until a
+pattern appears in rows written after an anchor: the pane as it is when the
+call starts, or a {class}`~libtmux.capture.CaptureCursor` passed as `since`.
+Text already on screen never matches, and neither does the echo of the command
+you typed, which lands on the row the cursor sat on. The result carries the
+`re.Match` of the row, a cursor to resume from, and `lines_missed`.
+`regex=True` reads the pattern as a regular expression, and a pattern is tried
+against one row at a time.
+
+It raises {exc}`~libtmux.exc.WaitTimeout` when the text never arrives,
+{exc}`~libtmux.exc.TmuxTimeout` if tmux stops answering a read, and waits
+through a full-screen program instead of matching its repaint.
+{meth}`Pane.wait_for_idle() <libtmux.Pane.wait_for_idle>` waits until the
+visible screen stops changing for `quiet` seconds and returns the rows written
+meanwhile. {meth}`Pane.capture_since() <libtmux.Pane.capture_since>` takes
+`timeout` too.
+
+See {ref}`recipe-read-incrementally` and {ref}`recipe-wait-for-text`.
+
 ### Documentation
 
 #### Engines guide and API reference (#739)

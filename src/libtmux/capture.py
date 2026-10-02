@@ -40,6 +40,8 @@ import dataclasses
 import hashlib
 import json
 import logging
+import re
+import time
 import typing as t
 
 from libtmux import exc
@@ -66,6 +68,18 @@ _FINGERPRINT_ROWS = 8
 #: untorn snapshot and reporting :attr:`CaptureSince.lines_missed`.
 _STABLE_READ_ATTEMPTS = 3
 
+#: Delay before the first re-read of a wait, in seconds. Grows by
+#: :data:`_POLL_GROWTH` up to :data:`_POLL_MAX`, so output that is already
+#: there is found at once and a long wait costs a read every tenth of a
+#: second.
+_POLL_MIN = 0.01
+_POLL_MAX = 0.1
+_POLL_GROWTH = 1.5
+
+#: Floor, in seconds, on the bound for one tmux call inside a wait, so a wait
+#: whose own budget is nearly spent does not turn a slow read into a timeout.
+_READ_TIMEOUT_FLOOR = 1.0
+
 
 class CaptureSince(t.NamedTuple):
     """Rows written since a cursor, plus the cursor that follows them.
@@ -86,6 +100,32 @@ class CaptureSince(t.NamedTuple):
     """
 
     lines: list[str]
+    cursor: CaptureCursor
+    lines_missed: bool
+
+
+class TextMatch(t.NamedTuple):
+    """The row a wait matched, and where to resume reading from.
+
+    Returned by :meth:`libtmux.pane.Pane.wait_for_text`. ``match`` is the
+    :class:`re.Match` of the first matching row, as ``child.match`` is for
+    ``pexpect``'s ``expect``.
+
+    Attributes
+    ----------
+    match : re.Match[str]
+        Match against one row of pane text. ``match.string`` is that row.
+    cursor : CaptureCursor
+        Anchored after the read that found the match. Pass it as ``since``
+        to the next wait, or to :meth:`~libtmux.pane.Pane.capture_since`,
+        to continue after everything this read saw.
+    lines_missed : bool
+        ``True`` when the anchor could not be proven, so the rows searched
+        were the visible screen rather than a complete delta. The match is
+        real, but it may predate the wait. See :class:`CaptureSince`.
+    """
+
+    match: re.Match[str]
     cursor: CaptureCursor
     lines_missed: bool
 
@@ -1018,6 +1058,137 @@ longer valid
         raise exc.PaneLifecycleChanged(msg)
 
 
+def _anchor_row_reported(rows: list[str], cursor: CaptureCursor) -> bool:
+    """Whether :func:`_drop_previously_seen_rows` kept ``rows[0]``.
+
+    ``rows[0]`` is the cursor's anchor row, kept only when its content
+    changed since the cursor was taken.
+
+    Examples
+    --------
+    >>> cursor = CaptureCursor('%1', '1', 0, 24, 0, _line_hash('$ '), ())
+    >>> _anchor_row_reported(['$ '], cursor)
+    False
+    >>> _anchor_row_reported(['$ echo hi'], cursor)
+    True
+    >>> _anchor_row_reported([], cursor)
+    False
+    """
+    return bool(rows) and (
+        cursor.anchor_hash is None or _line_hash(rows[0]) != cursor.anchor_hash
+    )
+
+
+def _compile_wait_pattern(
+    pattern: str | re.Pattern[str],
+    *,
+    regex: bool,
+) -> re.Pattern[str]:
+    """Compile what :meth:`~libtmux.pane.Pane.wait_for_text` searches for.
+
+    A string is literal text unless ``regex`` is set, as ``pexpect`` offers
+    ``expect_exact`` beside ``expect``. A compiled pattern is used as given.
+
+    Examples
+    --------
+    >>> _compile_wait_pattern('a.c', regex=False).search('abc') is None
+    True
+    >>> _compile_wait_pattern('a.c', regex=True).search('abc') is None
+    False
+    >>> compiled = re.compile('x')
+    >>> _compile_wait_pattern(compiled, regex=False) is compiled
+    True
+    """
+    if isinstance(pattern, re.Pattern):
+        return pattern
+    return re.compile(pattern if regex else re.escape(pattern))
+
+
+def _searchable_rows(
+    lines: list[str],
+    *,
+    anchor_reported: bool,
+    lines_missed: bool,
+    cursor: CaptureCursor,
+) -> list[str]:
+    """Choose the rows of a delta that a text wait may match.
+
+    The anchor row is where the cursor sat. When it held text, it is a
+    prompt line, and the text added to it is the command being typed
+    echoing back; matching that would let a wait match the command that was
+    meant to produce the text. Rows after it are output. When the anchor row
+    was blank, text that lands on it is output and stays searchable.
+
+    A missed read has no anchor to skip, so the visible screen is searched
+    whole.
+
+    Examples
+    --------
+    >>> prompt = CaptureCursor('%1', '1', 0, 24, 0, _line_hash('$ '), ())
+    >>> blank = CaptureCursor('%1', '1', 0, 24, 0, _line_hash(''), ())
+    >>> rows = ['$ echo go', 'go']
+
+    The echo of a typed command is skipped:
+
+    >>> _searchable_rows(
+    ...     rows, anchor_reported=True, lines_missed=False, cursor=prompt
+    ... )
+    ['go']
+
+    Output on a blank anchor row is kept:
+
+    >>> _searchable_rows(
+    ...     ['go'], anchor_reported=True, lines_missed=False, cursor=blank
+    ... )
+    ['go']
+
+    A missed read searches everything it has:
+
+    >>> _searchable_rows(
+    ...     rows, anchor_reported=True, lines_missed=True, cursor=prompt
+    ... )
+    ['$ echo go', 'go']
+    """
+    if lines_missed or not anchor_reported:
+        return lines
+    if cursor.anchor_hash is None or cursor.anchor_hash == _line_hash(""):
+        return lines
+    return lines[1:]
+
+
+def _first_row_match(
+    compiled: re.Pattern[str],
+    rows: list[str],
+) -> re.Match[str] | None:
+    r"""Return the match in the first row that has one.
+
+    Examples
+    --------
+    >>> _first_row_match(re.compile(r'\d+'), ['abc', 'ab12', '34']).group()
+    '12'
+    >>> _first_row_match(re.compile('z'), ['abc']) is None
+    True
+    """
+    for row in rows:
+        found = compiled.search(row)
+        if found is not None:
+            return found
+    return None
+
+
+def _poll_delay(previous: float) -> float:
+    """Grow a poll delay toward :data:`_POLL_MAX`.
+
+    Examples
+    --------
+    >>> _poll_delay(_POLL_MIN) > _POLL_MIN
+    True
+    >>> _poll_delay(_POLL_MAX) == _POLL_MAX
+    True
+    """
+    return min(previous * _POLL_GROWTH, _POLL_MAX)
+
+
 # --------------------------------------------------------------------------
 # TMUX I/O BOUNDARY
 #
@@ -1043,16 +1214,23 @@ class _PaneRead(t.NamedTuple):
     lines_missed : bool
         Whether ``lines`` is a fallback visible capture rather than a
         complete delta.
+    anchor_reported : bool
+        Whether ``lines[0]`` is the cursor's own anchor row, reported
+        because its content changed. ``False`` for a fallback capture and
+        when the anchor row was unchanged.
     """
 
     state: _PaneState
     cursor_rows: list[str] | None
     lines: list[str]
     lines_missed: bool
+    anchor_reported: bool = False
 
 
-def _read_pane_state(pane: Pane) -> _PaneState:
+def _read_pane_state(pane: Pane, *, timeout: float | None = None) -> _PaneState:
     """Snapshot ``pane``'s grid and lifecycle in one round-trip.
+
+    ``timeout`` bounds the tmux call; see :meth:`libtmux.Pane.cmd`.
 
     Examples
     --------
@@ -1062,11 +1240,26 @@ def _read_pane_state(pane: Pane) -> _PaneState:
     >>> state.pane_dead
     False
     """
-    stdout = pane.display_message(PANE_STATE_FORMAT, get_text=True)
+    stdout = _display(pane, PANE_STATE_FORMAT, timeout=timeout)
     return _parse_pane_state(stdout[0] if stdout else "0|0|0||0")
 
 
-def _read_history_limit(pane: Pane) -> int:
+def _display(pane: Pane, fmt: str, *, timeout: float | None = None) -> list[str]:
+    """Expand one tmux format against ``pane``, bounded by ``timeout``.
+
+    :meth:`~libtmux.pane.Pane.display_message` takes no timeout, and a wait
+    that polls through it cannot honour its own deadline when tmux stops
+    answering.
+
+    Examples
+    --------
+    >>> _display(pane, '#{pane_id}') == [pane.pane_id]
+    True
+    """
+    return list(pane.cmd("display-message", "-p", fmt, timeout=timeout).stdout)
+
+
+def _read_history_limit(pane: Pane, *, timeout: float | None = None) -> int:
     """Read ``pane``'s ``history-limit`` once.
 
     Fixed at pane creation -- a retroactive ``set-option history-limit``
@@ -1080,7 +1273,7 @@ def _read_history_limit(pane: Pane) -> int:
     >>> _read_history_limit(pane) > 0
     True
     """
-    stdout = pane.display_message(HISTORY_LIMIT_FORMAT, get_text=True)
+    stdout = _display(pane, HISTORY_LIMIT_FORMAT, timeout=timeout)
     return int(stdout[0] if stdout else "0")
 
 
@@ -1089,6 +1282,7 @@ def _capture_rows(
     *,
     start: t.Literal["-"] | int | None = None,
     end: t.Literal["-"] | int | None = None,
+    timeout: float | None = None,
 ) -> list[str]:
     """Capture pane rows, refusing to mistake a failed read for silence.
 
@@ -1108,12 +1302,17 @@ def _capture_rows(
         args.extend(["-S", str(start)])
     if end is not None:
         args.extend(["-E", str(end)])
-    proc = pane.cmd(*args)
+    proc = pane.cmd(*args, timeout=timeout)
     raise_if_stderr(proc, "capture-pane")
     return list(proc.stdout)
 
 
-def _capture_cursor_rows(pane: Pane, state: _PaneState) -> list[str] | None:
+def _capture_cursor_rows(
+    pane: Pane,
+    state: _PaneState,
+    *,
+    timeout: float | None = None,
+) -> list[str] | None:
     """Capture the rows a new cursor fingerprints.
 
     Reads from :func:`_above_row_count` rows above the cursor row through the
@@ -1132,13 +1331,18 @@ def _capture_cursor_rows(pane: Pane, state: _PaneState) -> list[str] | None:
     """
     if state.cursor_y >= state.pane_height:
         return None
-    return _capture_rows(pane, start=state.cursor_y - _above_row_count(state))
+    return _capture_rows(
+        pane,
+        start=state.cursor_y - _above_row_count(state),
+        timeout=timeout,
+    )
 
 
 def _read_stable_visible(
     pane: Pane,
     *,
     baseline_pid: str | None = None,
+    timeout: float | None = None,
 ) -> _PaneRead:
     """Capture the visible pane, re-sampling until the grid holds still.
 
@@ -1162,6 +1366,8 @@ def _read_stable_visible(
     baseline_pid : str, optional
         PID a cursor expects. When omitted this is a first read, so any
         live PID is accepted and only pane death is an error.
+    timeout : float, optional
+        Bound, in seconds, on each tmux call; see :meth:`libtmux.Pane.cmd`.
 
     Returns
     -------
@@ -1175,11 +1381,11 @@ def _read_stable_visible(
     >>> isinstance(read.lines, list)
     True
     """
-    before = _read_pane_state(pane)
+    before = _read_pane_state(pane, timeout=timeout)
     lines: list[str] = []
     cursor_rows: list[str] | None = []
     for _attempt in range(_STABLE_READ_ATTEMPTS):
-        before = _read_pane_state(pane)
+        before = _read_pane_state(pane, timeout=timeout)
         if baseline_pid is None:
             _raise_if_dead_without_baseline(pane, before)
             expected_pid = before.pane_pid
@@ -1187,9 +1393,9 @@ def _read_stable_visible(
             expected_pid = baseline_pid
             _raise_if_lifecycle_changed(pane.pane_id, before, expected_pid)
 
-        lines = _capture_rows(pane)
-        cursor_rows = _capture_cursor_rows(pane, before)
-        after = _read_pane_state(pane)
+        lines = _capture_rows(pane, timeout=timeout)
+        cursor_rows = _capture_cursor_rows(pane, before, timeout=timeout)
+        after = _read_pane_state(pane, timeout=timeout)
         _raise_if_lifecycle_changed(pane.pane_id, after, expected_pid)
         if before == after:
             return _PaneRead(
@@ -1224,7 +1430,12 @@ def _raise_if_dead_without_baseline(pane: Pane, state: _PaneState) -> None:
         raise exc.PaneLifecycleChanged(msg)
 
 
-def _read_delta(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
+def _read_delta(
+    pane: Pane,
+    cursor: CaptureCursor,
+    *,
+    timeout: float | None = None,
+) -> _PaneRead:
     """Capture rows written since ``cursor``, or fall back on anchor loss.
 
     Parameters
@@ -1244,13 +1455,13 @@ def _read_delta(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
     >>> read.lines_missed
     False
     """
-    history_limit = _read_history_limit(pane)
+    history_limit = _read_history_limit(pane, timeout=timeout)
     for _attempt in range(_STABLE_READ_ATTEMPTS):
-        before = _read_pane_state(pane)
+        before = _read_pane_state(pane, timeout=timeout)
         _raise_if_lifecycle_changed(pane.pane_id, before, cursor.pane_pid)
         trim_risk = _history_limit_trim_risk(cursor, before, history_limit)
         if _cursor_anchor_lost(cursor, before, content_search=trim_risk):
-            return _missed_read(pane, cursor)
+            return _missed_read(pane, cursor, timeout=timeout)
 
         # With trim counters the anchor's row is its old row less the rows
         # tmux trimmed since; without them nothing is assumed trimmed here,
@@ -1259,16 +1470,16 @@ def _read_delta(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
         start = cursor.anchor_abs - _anchor_shift(cursor, before)
         start -= before.history_size
         if trim_risk:
-            rows = _capture_rows(pane, start="-", end=None)
+            rows = _capture_rows(pane, start="-", end=None, timeout=timeout)
         else:
             # ``_cursor_anchor_lost`` returning False above already proved
             # ``anchor_abs`` sits at or below the grid bottom, so ``start``
             # is always below ``pane_height``. It may still be negative,
             # which is how ``capture-pane -S`` addresses retained history.
-            rows = _capture_rows(pane, start=start, end=None)
-        cursor_rows = _capture_cursor_rows(pane, before)
+            rows = _capture_rows(pane, start=start, end=None, timeout=timeout)
+        cursor_rows = _capture_cursor_rows(pane, before, timeout=timeout)
 
-        after = _read_pane_state(pane)
+        after = _read_pane_state(pane, timeout=timeout)
         _raise_if_lifecycle_changed(pane.pane_id, after, cursor.pane_pid)
         if before != after:
             continue
@@ -1276,19 +1487,25 @@ def _read_delta(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
         if trim_risk:
             match_index = _find_unique_cursor_match(rows, cursor)
             if match_index is None:
-                return _missed_read(pane, cursor)
+                return _missed_read(pane, cursor, timeout=timeout)
             rows = rows[match_index:]
         return _PaneRead(
             state=after,
             cursor_rows=cursor_rows,
             lines=_drop_previously_seen_rows(rows, cursor),
             lines_missed=False,
+            anchor_reported=_anchor_row_reported(rows, cursor),
         )
 
-    return _missed_read(pane, cursor)
+    return _missed_read(pane, cursor, timeout=timeout)
 
 
-def _missed_read(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
+def _missed_read(
+    pane: Pane,
+    cursor: CaptureCursor,
+    *,
+    timeout: float | None = None,
+) -> _PaneRead:
     """Fall back to the visible screen and mark the delta incomplete.
 
     Examples
@@ -1296,11 +1513,42 @@ def _missed_read(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
     >>> _missed_read(pane, pane.capture_since().cursor).lines_missed
     True
     """
-    missed = _read_stable_visible(pane, baseline_pid=cursor.pane_pid)
+    missed = _read_stable_visible(pane, baseline_pid=cursor.pane_pid, timeout=timeout)
     return missed._replace(lines_missed=True)
 
 
-def _capture_since(pane: Pane, cursor: CaptureCursor | None = None) -> CaptureSince:
+def _read_since(
+    pane: Pane,
+    cursor: CaptureCursor | None,
+    *,
+    timeout: float | None = None,
+) -> _PaneRead:
+    """Read ``pane`` from ``cursor``, or open a first read without one.
+
+    Raises
+    ------
+    libtmux.exc.InvalidCaptureCursor
+        If ``cursor`` belongs to a different pane.
+    """
+    if pane.pane_id is None:
+        raise exc.PaneNotFound
+    if cursor is not None and cursor.pane_id != pane.pane_id:
+        msg = (
+            f"invalid capture_since cursor: cursor pane {cursor.pane_id} "
+            f"does not match requested pane {pane.pane_id}"
+        )
+        raise exc.InvalidCaptureCursor(msg)
+    if cursor is None:
+        return _read_stable_visible(pane, timeout=timeout)
+    return _read_delta(pane, cursor, timeout=timeout)
+
+
+def _capture_since(
+    pane: Pane,
+    cursor: CaptureCursor | None = None,
+    *,
+    timeout: float | None = None,
+) -> CaptureSince:
     """Capture rows written to ``pane`` since ``cursor``.
 
     Implements :meth:`libtmux.pane.Pane.capture_since`; call that instead.
@@ -1312,6 +1560,8 @@ def _capture_since(pane: Pane, cursor: CaptureCursor | None = None) -> CaptureSi
     cursor : CaptureCursor, optional
         Anchor from a previous call. When omitted the current visible
         screen is captured and a first cursor is opened.
+    timeout : float, optional
+        Bound, in seconds, on each tmux call; see :meth:`libtmux.Pane.cmd`.
 
     Returns
     -------
@@ -1331,18 +1581,166 @@ def _capture_since(pane: Pane, cursor: CaptureCursor | None = None) -> CaptureSi
     >>> _capture_since(pane, first.cursor).lines
     []
     """
+    read = _read_since(pane, cursor, timeout=timeout)
     if pane.pane_id is None:
         raise exc.PaneNotFound
-    if cursor is not None and cursor.pane_id != pane.pane_id:
-        msg = (
-            f"invalid capture_since cursor: cursor pane {cursor.pane_id} "
-            f"does not match requested pane {pane.pane_id}"
-        )
-        raise exc.InvalidCaptureCursor(msg)
-
-    read = _read_stable_visible(pane) if cursor is None else _read_delta(pane, cursor)
     return CaptureSince(
         lines=read.lines,
         cursor=_build_cursor(pane.pane_id, read.state, read.cursor_rows),
         lines_missed=read.lines_missed,
     )
+
+
+def _remaining(deadline: float | None) -> float | None:
+    """Seconds left before ``deadline``, never below the read floor.
+
+    Examples
+    --------
+    >>> _remaining(None) is None
+    True
+    >>> _remaining(time.monotonic() - 5) == _READ_TIMEOUT_FLOOR
+    True
+    """
+    if deadline is None:
+        return None
+    return max(deadline - time.monotonic(), _READ_TIMEOUT_FLOOR)
+
+
+def _timed_out(
+    pane: Pane,
+    what: str,
+    timeout: float | None,
+    *,
+    alternate_screen: bool = False,
+) -> exc.WaitTimeout:
+    """Build the error for a wait whose condition never held.
+
+    Examples
+    --------
+    >>> str(_timed_out(pane, 'text', 1.5))
+    'timed out after 1.5s waiting for text in pane ...'
+    """
+    msg = f"timed out after {timeout}s waiting for {what} in pane {pane.pane_id}"
+    if alternate_screen:
+        msg += (
+            "; the pane was on the alternate screen, which a full-screen "
+            "program repaints, so its rows were not searched"
+        )
+    return exc.WaitTimeout(msg)
+
+
+def _wait_for_text(
+    pane: Pane,
+    pattern: str | re.Pattern[str],
+    *,
+    timeout: float | None = 30.0,
+    since: CaptureCursor | None = None,
+    regex: bool = False,
+) -> TextMatch:
+    r"""Block until ``pattern`` appears in rows written since an anchor.
+
+    Implements :meth:`libtmux.pane.Pane.wait_for_text`; call that instead.
+
+    Re-reads the delta from the *same* anchor on every tick rather than
+    advancing it. Advancing would move the anchor onto a half-written row,
+    and the row-skipping rule in :func:`_searchable_rows` would then hide the
+    rest of that row. The cost is that a very long wait under heavy output
+    can outrun ``history-limit``, which a read reports as ``lines_missed``.
+
+    Examples
+    --------
+    >>> anchor = _capture_since(pane).cursor
+    >>> pane.send_keys("printf '%s%s\\n' internal_ marker")
+    >>> _wait_for_text(
+    ...     pane, 'internal_marker', since=anchor, timeout=5
+    ... ).match.string
+    'internal_marker'
+    """
+    compiled = _compile_wait_pattern(pattern, regex=regex)
+    deadline = None if timeout is None else time.monotonic() + timeout
+    anchor = (
+        since
+        if since is not None
+        else _capture_since(pane, timeout=_remaining(deadline)).cursor
+    )
+    delay = _POLL_MIN
+    saw_alternate_screen = False
+    while True:
+        read = _read_since(pane, anchor, timeout=_remaining(deadline))
+        if read.state.alternate_on:
+            # A full-screen program owns the grid and repaints it, so rows
+            # "after the anchor" are its paint, not output. Skip, and never
+            # latch: quitting the program resumes an honest wait.
+            saw_alternate_screen = True
+        else:
+            found = _first_row_match(
+                compiled,
+                _searchable_rows(
+                    read.lines,
+                    anchor_reported=read.anchor_reported,
+                    lines_missed=read.lines_missed,
+                    cursor=anchor,
+                ),
+            )
+            if found is not None:
+                return TextMatch(
+                    match=found,
+                    cursor=_build_cursor(anchor.pane_id, read.state, read.cursor_rows),
+                    lines_missed=read.lines_missed,
+                )
+        if deadline is not None and time.monotonic() >= deadline:
+            raise _timed_out(
+                pane,
+                f"text {compiled.pattern!r}",
+                timeout,
+                alternate_screen=saw_alternate_screen,
+            )
+        time.sleep(
+            delay
+            if deadline is None
+            else max(min(delay, deadline - time.monotonic()), 0)
+        )
+        delay = _poll_delay(delay)
+
+
+def _wait_for_idle(
+    pane: Pane,
+    *,
+    quiet: float = 0.25,
+    timeout: float | None = 30.0,
+    since: CaptureCursor | None = None,
+) -> CaptureSince:
+    """Block until the visible screen has not changed for ``quiet`` seconds.
+
+    Implements :meth:`libtmux.pane.Pane.wait_for_idle`; call that instead.
+
+    Examples
+    --------
+    >>> _wait_for_idle(pane, quiet=0.05, timeout=5).lines_missed
+    False
+    """
+    deadline = None if timeout is None else time.monotonic() + timeout
+    start = (
+        since
+        if since is not None
+        else _capture_since(pane, timeout=_remaining(deadline)).cursor
+    )
+    previous: tuple[tuple[str, ...], int] | None = None
+    changed_at = time.monotonic()
+    interval = min(max(quiet / 5, _POLL_MIN), _POLL_MAX)
+    while True:
+        visible = _read_stable_visible(
+            pane,
+            baseline_pid=start.pane_pid,
+            timeout=_remaining(deadline),
+        )
+        snapshot = (tuple(visible.lines), visible.state.cursor_y)
+        now = time.monotonic()
+        if snapshot != previous or visible.lines_missed:
+            previous = snapshot
+            changed_at = now
+        elif now - changed_at >= quiet:
+            return _capture_since(pane, start, timeout=_remaining(deadline))
+        if deadline is not None and now >= deadline:
+            raise _timed_out(pane, f"{quiet}s of quiet", timeout)
+        time.sleep(interval)
