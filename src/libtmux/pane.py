@@ -311,6 +311,7 @@ class Pane(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        input: str | bytes | None = None,  # noqa: A002
     ) -> tmux_cmd:
         """Execute tmux subcommand within pane context.
 
@@ -332,6 +333,9 @@ class Pane(
         ----------
         target : str, optional
             Optional custom target override. By default, the target is the pane ID.
+        input : str or bytes, optional
+            Data for the tmux client's standard input, as in
+            :class:`~libtmux.common.tmux_cmd`.
 
         Returns
         -------
@@ -340,7 +344,7 @@ class Pane(
         if target is None:
             target = self.pane_id
 
-        return self.server.cmd(cmd, *args, target=target)
+        return self.server.cmd(cmd, *args, target=target, input=input)
 
     """
     Commands (tmux-like)

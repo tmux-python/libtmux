@@ -45,6 +45,21 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Send data to a tmux command's standard input
+
+{class}`~libtmux.common.tmux_cmd` and the `cmd()` methods of
+{meth}`Server <libtmux.Server.cmd>`, {meth}`Session <libtmux.Session.cmd>`,
+{meth}`Window <libtmux.Window.cmd>` and {meth}`Pane <libtmux.Pane.cmd>` take
+`input=`, a `str` or `bytes` written to the tmux client's standard input.
+Commands that accept `-` as a path read it there, for example
+`server.cmd("load-buffer", "-b", name, "-", input=data)`.
+
+`str` is encoded as UTF-8; `bytes` go through unchanged, so binary data works.
+Standard input is not part of tmux's 16 KiB command size limit, so a payload of
+any size loads. Without `input`, the call runs as before.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

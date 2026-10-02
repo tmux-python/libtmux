@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import locale
 import logging
+import pathlib
 import re
+import stat
+import subprocess
 import sys
 import typing as t
 
@@ -762,3 +765,129 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     result = parse_output(line, "list-sessions", tmux_version)
     assert isinstance(result, dict)
     assert "session_id" in result
+
+
+class StdinCase(t.NamedTuple):
+    """Fixture for test_tmux_cmd_input_round_trip()."""
+
+    test_id: str
+    payload: str | bytes
+
+
+STDIN_CASES: list[StdinCase] = [
+    StdinCase("text", "hello"),
+    StdinCase("leading_dash_and_semicolon", "-x;\n"),
+    StdinCase("unicode", "юникод Ελληνικά"),
+    StdinCase("non_utf8_bytes", b"\xff\xfe\x00\x80 binary\n"),
+    StdinCase("esc_and_cr", b"\x1b[31mred\x1b[0m\r\n"),
+    StdinCase("over_16_kib_text", "-line;\n" * 10_000),
+    StdinCase("over_16_kib_bytes", bytes(range(256)) * 600),
+]
+
+
+@pytest.mark.parametrize(
+    list(StdinCase._fields),
+    STDIN_CASES,
+    ids=[case.test_id for case in STDIN_CASES],
+)
+def test_tmux_cmd_input_round_trip(
+    session: Session,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    payload: str | bytes,
+) -> None:
+    """``input`` reaches the tmux client's stdin byte for byte."""
+    server = session.server
+    expected = payload.encode() if isinstance(payload, str) else payload
+    out = tmp_path / "buffer.bin"
+
+    proc = server.cmd("load-buffer", "-b", "stdin_rt", "-", input=payload)
+    assert not proc.stderr
+    server.cmd("save-buffer", "-b", "stdin_rt", str(out))
+
+    assert out.read_bytes() == expected
+
+
+def test_tmux_cmd_input_free_standing(session: Session) -> None:
+    """``tmux_cmd`` takes ``input`` directly, not only through ``Server.cmd``."""
+    server = session.server
+    proc = tmux_cmd(
+        f"-L{server.socket_name}",
+        "load-buffer",
+        "-b",
+        "stdin_direct",
+        "-",
+        input="direct",
+        tmux_bin=server.tmux_bin,
+    )
+    assert proc.returncode == 0
+    assert server.show_buffer(buffer_name="stdin_direct") == "direct"
+
+
+def test_tmux_cmd_input_rejects_unencodable_text(server: Server) -> None:
+    """Text that UTF-8 cannot encode raises instead of being altered."""
+    with pytest.raises(UnicodeEncodeError):
+        server.cmd("load-buffer", "-", input="lone surrogate \ud800")
+
+
+def test_tmux_cmd_input_tmux_refusal_is_reported(server: Server) -> None:
+    """A tmux that exits without reading stdin reports its error, not a pipe error."""
+    proc = server.cmd("no-such-command", input=b"x" * 1_000_000)
+    assert proc.returncode != 0
+    assert proc.stderr
+
+
+def test_tmux_cmd_without_input_leaves_stdin_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without ``input`` the Popen call keeps its original arguments.
+
+    ``subprocess.Popen`` is replaced to read its keyword arguments: stdin must
+    stay inherited (``attach-session`` needs the terminal) and decoding must stay
+    text mode.
+    """
+    seen: dict[str, t.Any] = {}
+    real_popen = subprocess.Popen
+
+    def spy(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[t.Any]:
+        seen.update(kwargs)
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", spy)
+    tmux_cmd("-V")
+
+    assert "stdin" not in seen
+    assert seen["text"] is True
+    assert seen["encoding"] == "utf-8"
+    assert seen["errors"] == "backslashreplace"
+
+
+@pytest.fixture
+def echo_stdin_bin(tmp_path: pathlib.Path) -> str:
+    """Return a fake ``tmux`` that prints its stdin, to observe forwarding."""
+    script = tmp_path / "fake-tmux"
+    script.write_text("#!/bin/sh\ncat\n")
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    return str(script)
+
+
+@pytest.mark.parametrize("level", ["server", "session", "window", "pane"])
+def test_cmd_forwards_input_at_every_level(
+    session: Session,
+    echo_stdin_bin: str,
+    monkeypatch: pytest.MonkeyPatch,
+    level: str,
+) -> None:
+    """``Server``, ``Session``, ``Window`` and ``Pane`` ``cmd`` pass ``input``."""
+    obj = {
+        "server": session.server,
+        "session": session,
+        "window": session.active_window,
+        "pane": session.active_pane,
+    }[level]
+    assert obj is not None
+    monkeypatch.setattr(session.server, "tmux_bin", echo_stdin_bin)
+
+    proc = obj.cmd("ignored", input="via stdin")
+
+    assert proc.stdout == ["via stdin"]

@@ -342,6 +342,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        input: str | bytes | None = None,  # noqa: A002
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -375,10 +376,22 @@ class Server(
         ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
+        Load a buffer from standard input, then read it back:
+
+        >>> server.cmd(
+        ... 'load-buffer', '-b', 'cmd_stdin', '-', input=b'hello bytes'
+        ... ).returncode
+        0
+        >>> server.show_buffer(buffer_name='cmd_stdin')
+        'hello bytes'
+
         Parameters
         ----------
         target : str, optional
             Optional custom target.
+        input : str or bytes, optional
+            Data for the tmux client's standard input, as in
+            :class:`~libtmux.common.tmux_cmd`.
 
         Returns
         -------
@@ -408,7 +421,7 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin, input=input)
 
     @property
     def attached_sessions(self) -> list[Session]:
