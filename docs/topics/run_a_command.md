@@ -107,6 +107,22 @@ within five seconds, the call raises {exc}`~libtmux.exc.PaneRunTimeout` with
 `started` set to False instead of waiting out `timeout`. The typed line stays in
 that pane.
 
+## Threads and processes
+
+One pane has one input stream and one screen, so `Pane.run()` holds a lock per
+pane: calls from several threads on the same pane run one after another, each
+returning its own output. The lock is keyed by the server's socket and the pane
+id, so {class}`~libtmux.Server` objects that share a socket share it, and calls on
+different panes run in parallel. The time a call spends waiting for the lock counts
+against its `timeout`; a call that never gets the lock raises
+{exc}`~libtmux.exc.PaneRunTimeout` with `started` set to False, and nothing is typed.
+
+The lock lives in one Python process. Two processes, or `Pane.run()` and your own
+`send_keys`, can still type into the same pane at once; give each pane one driver.
+A tmux-side lock (`wait-for -L`) would reach across processes, but tmux keeps it on
+the channel and never releases it when its holder dies, so a crashed caller would
+block every later call on the pane.
+
 ## Shell history
 
 The typed line starts with a space, which bash and zsh skip when

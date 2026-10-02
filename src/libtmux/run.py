@@ -29,10 +29,12 @@ command is interrupted (the status is 130).
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import logging
 import shlex
 import shutil
+import threading
 import time
 import typing as t
 import uuid
@@ -53,6 +55,11 @@ _START_TIMEOUT = 5.0
 #: Hooks that fire when a pane's process ends: ``pane-exited`` when tmux closes
 #: the pane, ``pane-died`` when ``remain-on-exit`` keeps it as a dead pane.
 _GONE_HOOKS = ("pane-exited", "pane-died")
+
+#: Per-pane locks, keyed by server socket and pane id, with a count of the calls
+#: that hold or wait on each so an entry leaves the table with its last call.
+_DRIVE_LOCKS: dict[tuple[str | None, str | None, str], list[t.Any]] = {}
+_DRIVE_LOCKS_GUARD = threading.Lock()
 
 _BEGIN = "LTRUN_B_"
 _END = "LTRUN_E_"
@@ -175,6 +182,77 @@ def _extract(lines: list[str], token: str) -> tuple[list[str], bool, bool]:
     return (body, False, start is None)
 
 
+def _lock_key(server: Server, pane_id: str) -> tuple[str | None, str | None, str]:
+    """Return the drive-lock key: the server's socket, then the pane id."""
+    path = server.socket_path
+    return (server.socket_name, None if path is None else str(path), pane_id)
+
+
+@contextlib.contextmanager
+def _drive_lock(
+    server: Server,
+    pane_id: str,
+    command: str,
+    timeout: float,
+) -> t.Iterator[None]:
+    """Hold the pane's drive lock, so one call at a time types into it.
+
+    A pane has one input stream and one screen. Two calls typing into it at
+    once interleave their lines and read each other's markers, and neither
+    notices. The lock is process-local and keyed by the server's socket and the
+    pane id, so two :class:`~libtmux.Server` objects for one socket share it
+    and calls on different panes do not wait on each other.
+
+    Parameters
+    ----------
+    server : :class:`~libtmux.Server`
+        The server that owns the pane.
+    pane_id : str
+        The pane's id.
+    command : str
+        The command waiting for the lock, reported if the wait expires.
+    timeout : float
+        Seconds the call may spend waiting for the lock.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.PaneRunTimeout`
+        With ``started=False`` when the lock stayed held for *timeout*. Nothing
+        was typed into the pane.
+
+    Examples
+    --------
+    >>> with _drive_lock(server, "%1", "true", 1.0):
+    ...     pass
+    >>> _drive_lock_count(server, "%1")
+    0
+    """
+    key = _lock_key(server, pane_id)
+    with _DRIVE_LOCKS_GUARD:
+        entry = _DRIVE_LOCKS.setdefault(key, [threading.Lock(), 0])
+        entry[1] += 1
+    lock: threading.Lock = entry[0]
+    try:
+        if not lock.acquire(timeout=timeout):
+            raise exc.PaneRunTimeout(command, timeout, [], cmd=[], started=False)
+        try:
+            yield
+        finally:
+            lock.release()
+    finally:
+        with _DRIVE_LOCKS_GUARD:
+            entry[1] -= 1
+            if entry[1] == 0:
+                del _DRIVE_LOCKS[key]
+
+
+def _drive_lock_count(server: Server, pane_id: str) -> int:
+    """Return how many calls hold or wait on the pane's drive lock."""
+    key = _lock_key(server, pane_id)
+    with _DRIVE_LOCKS_GUARD:
+        return t.cast("int", _DRIVE_LOCKS.get(key, [None, 0])[1])
+
+
 def _lost(pane: Pane) -> exc.LibTmuxException:
     """Return the error for a pane that cannot be read back."""
     if not pane.server.is_alive():
@@ -225,12 +303,25 @@ def _run(
         raise ValueError(msg)
     pane_id = pane.pane_id
     assert pane_id is not None
+    deadline = time.monotonic() + timeout
+    with _drive_lock(pane.server, pane_id, command, timeout):
+        return _run_locked(pane, pane_id, command, timeout=timeout, deadline=deadline)
+
+
+def _run_locked(
+    pane: Pane,
+    pane_id: str,
+    command: str,
+    *,
+    timeout: float,
+    deadline: float,
+) -> PaneRunResult:
+    """Run *command* in *pane* while holding its drive lock."""
     server = pane.server
     token = uuid.uuid4().hex[:16]
     started = f"libtmux-run-{token}-started"
     done = f"libtmux-run-{token}"
     option = f"@libtmux_run_{token}"
-    deadline = time.monotonic() + timeout
 
     index = 7000 + int(token[:5], 16) % 90000
     _install_gone_hooks(server, pane_id, done, index)

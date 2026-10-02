@@ -413,3 +413,88 @@ def test_run_fails_fast_when_the_shell_cannot_reach_the_server(
     assert time.monotonic() - started < 10
     assert excinfo.value.started is False
     assert "cannot reach this tmux server" in str(excinfo.value)
+
+
+def test_run_concurrent_calls_on_one_pane_do_not_mix(pane: Pane) -> None:
+    """Threads calling run() on one pane each get their own output."""
+    results: dict[int, run_module.PaneRunResult] = {}
+    errors: list[Exception] = []
+
+    def worker(i: int) -> None:
+        try:
+            results[i] = pane.run(f"echo out-{i}; sh -c 'exit {i}'", timeout=30)
+        except (exc.LibTmuxException, exc.TmuxTimeout) as err:
+            errors.append(err)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors
+    assert {i: (r.returncode, r.stdout, r.truncated) for i, r in results.items()} == {
+        i: (i, [f"out-{i}"], False) for i in range(6)
+    }
+
+
+def test_run_waiting_for_the_pane_times_out_without_typing(pane: Pane) -> None:
+    """A call that cannot get the pane's lock in time types nothing."""
+    holder = threading.Thread(target=lambda: pane.run("sleep 1", timeout=30))
+    holder.start()
+    try:
+        # The holder owns the lock once its count shows.
+        pane_id = pane.pane_id
+        assert pane_id is not None
+        for _ in range(500):
+            if run_module._drive_lock_count(pane.server, pane_id):
+                break
+            time.sleep(0.01)
+        with pytest.raises(exc.PaneRunTimeout) as excinfo:
+            pane.run("echo never-typed", timeout=0.2)
+    finally:
+        holder.join()
+    assert excinfo.value.started is False
+    assert excinfo.value.stdout == []
+    assert all("never-typed" not in line for line in pane.capture_pane(start="-"))
+    assert pane.run("echo after", timeout=10).stdout == ["after"]
+
+
+def test_run_on_different_panes_does_not_serialize(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Each command waits for a file the other writes: only parallel calls finish."""
+    first = _shell_pane(session, "sh")
+    second = _shell_pane(session, "sh")
+    a, b = tmp_path / "a", tmp_path / "b"
+    wait = "until [ -e {} ]; do sleep 0.02; done"
+    errors: list[Exception] = []
+
+    def worker(pane: Pane, mine: pathlib.Path, theirs: pathlib.Path) -> None:
+        try:
+            pane.run(f"touch {mine}; " + wait.format(theirs), timeout=10)
+        except (exc.LibTmuxException, exc.TmuxTimeout) as err:
+            errors.append(err)
+
+    threads = [
+        threading.Thread(target=worker, args=(first, a, b)),
+        threading.Thread(target=worker, args=(second, b, a)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert not errors
+
+
+def test_run_drive_lock_leaves_no_entry_behind(pane: Pane) -> None:
+    """The lock table is empty after every path out, error or not."""
+    pane_id = pane.pane_id
+    assert pane_id is not None
+    pane.run("true", timeout=10)
+    assert not [k for k in run_module._DRIVE_LOCKS if k[2] == pane_id]
+    with pytest.raises(exc.PaneRunTimeout):
+        pane.run("sleep 30", timeout=0.3)
+    assert not [k for k in run_module._DRIVE_LOCKS if k[2] == pane_id]
+    pane.send_keys("C-c", enter=False)

@@ -130,6 +130,10 @@ output and nothing else. A shell that leaves its tty in cooked mode echoes a lin
 before the first prompt, and the prompt then shared a row with the begin marker; the
 marker now starts its own row.
 
+Calls on one pane from several threads run one after another, each with its own
+output; before, they typed into the pane at once and read each other's markers. The lock
+is per pane and per process, and the time spent waiting counts against `timeout`.
+
 #### tmux 3.8 hooks in `Hooks`
 
 {class}`~libtmux._internal.constants.Hooks` parses the hooks tmux 3.8 adds:

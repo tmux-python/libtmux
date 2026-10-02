@@ -965,6 +965,12 @@ class Pane(
         hooks (global, at an array index of their own, filtered to this pane)
         and removes them on every path out.
 
+        Calls on one pane are serialized by a process-local lock, so threads
+        may share a pane; the time spent waiting counts against *timeout*, and
+        a call that never gets the lock raises :exc:`~libtmux.exc.PaneRunTimeout`
+        with ``started`` False and types nothing. The lock does not cover other
+        processes, or :meth:`send_keys` called while a run is in flight.
+
         Output is what the terminal drew, so cursor-addressed output arrives
         as rendered and trailing blanks are dropped.
 
