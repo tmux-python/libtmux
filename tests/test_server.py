@@ -1765,3 +1765,22 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_new_session_survives_newline_in_start_directory(
+    server: Server,
+    tmp_path: pathlib.Path,
+) -> None:
+    """``new_session`` parses its record when a value contains a newline.
+
+    ``new-session -P -F`` prints the session's pane directory, so a newline
+    in it splits the one record across stdout lines. ``new_session`` read
+    only ``stdout[0]``, so it raised after tmux had created the session.
+    """
+    odd = tmp_path / "a\nb"
+    odd.mkdir()
+
+    session = server.new_session(session_name="newline", start_directory=odd)
+
+    assert session.session_name == "newline"
+    assert [s.session_name for s in server.sessions] == ["newline"]

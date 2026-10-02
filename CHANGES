@@ -72,6 +72,14 @@ newlines in any position. A value that carries the separator itself no
 longer corrupts the parse silently — it is reported as output that
 could not be parsed.
 
+#### `Server.new_session()` survives a newline in a format value
+
+`Server.new_session()` raised `ValueError: zip() argument 2 is shorter than
+argument 1` after tmux had created the session when its pane directory
+(`start_directory`) or window name contained a newline. It read only the
+first output line of `new-session -P -F`. It now regroups that output on
+the field separator, as the listings do.
+
 #### A numbered release candidate no longer reads as a later version
 
 {func}`~libtmux.common.get_version` returns `3.8` for `tmux 3.8-rc3`. It
