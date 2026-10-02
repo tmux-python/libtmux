@@ -24,6 +24,11 @@ well.
 This table provides a quick reference for all deprecated APIs. See version-specific
 sections below for detailed migration examples and code samples.
 
+Every row whose **Raises** column holds a version raises
+{exc}`~libtmux.exc.DeprecatedError` naming the replacement. It does not subclass
+{exc}`~libtmux.exc.LibTmuxException`; see
+{ref}`deprecatederror-hierarchy`.
+
 ### Method Renamings
 
 | Class | Deprecated | Replacement | Since | Raises |
@@ -80,6 +85,9 @@ sections below for detailed migration examples and code samples.
 | Window | `find_where({...})` | `panes.get(default=None, **kwargs)` | 0.17.0 (2022-12-26) | 0.51.0 |
 | Window | `get_by_id(id)` | `panes.get(pane_id=..., default=None)` | 0.16.0 (2022-12-10) | 0.51.0 |
 | All | `children` property | `sessions`/`windows`/`panes` | 0.17.0 (2022-12-26) | 0.51.0 |
+| Server | `_sessions` | `sessions` property | 0.17.0 (2022-12-26) | 0.51.0 |
+| Session | `_windows` | `windows` property | 0.17.0 (2022-12-26) | 0.51.0 |
+| Window | `_panes` | `panes` property | 0.17.0 (2022-12-26) | 0.51.0 |
 
 ### Attribute Access Changes
 
@@ -88,6 +96,9 @@ sections below for detailed migration examples and code samples.
 | Dict key access | `obj['key']` | `obj.key` | 0.17.0 (2022-12-26) | 0.51.0 |
 | Dict get | `obj.get('key')` | `obj.key` | 0.17.0 (2022-12-26) | 0.51.0 |
 | Dict get w/ default | `obj.get('key', None)` | `getattr(obj, 'key', None)` | 0.17.0 (2022-12-26) | 0.51.0 |
+
+`Session.get()`, `Window.get()`, `Pane.get()` and `Session[key]`, `Window[key]`,
+`Pane[key]` are the rows above; `Server` has no equivalent.
 
 ### Removed Items
 
@@ -112,6 +123,38 @@ sections below for detailed migration examples and code samples.
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
+
+(deprecatederror-hierarchy)=
+
+## Next release: `DeprecatedError` leaves the tmux-failure hierarchy
+
+{exc}`~libtmux.exc.DeprecatedError`, raised by every removed API in the
+{ref}`Complete Deprecation Reference <migration>` above, no longer subclasses
+{exc}`~libtmux.exc.LibTmuxException`. It now derives from {class}`Exception`
+directly.
+
+Before, a broad handler took the removed-API path as if tmux had failed:
+
+```python
+from libtmux import exc
+
+try:
+    window = session.attached_window  # removed; raises DeprecatedError
+except exc.LibTmuxException:
+    window = None  # silently taken: the removal was hidden
+```
+
+Now the `DeprecatedError` propagates, and the message names the replacement
+(`Session.active_window`).
+
+- **Upgrade path:** replace the removed call with the replacement in the
+  table. Handlers for tmux failures need no change.
+- **Who is affected:** only code that relied on `except LibTmuxException`
+  catching a removed-API call. `except DeprecatedError` and
+  `except Exception` still catch it. To keep one handler for both, name them:
+  `except (exc.LibTmuxException, exc.DeprecatedError)`.
+- **Not changed:** the exception still takes `deprecated`, `replacement`, and
+  `version`, and its message is unchanged.
 
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 

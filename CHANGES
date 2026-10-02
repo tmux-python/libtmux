@@ -45,6 +45,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### `DeprecatedError` no longer subclasses `LibTmuxException`
+
+{exc}`~libtmux.exc.DeprecatedError`, raised by every removed API, now derives
+from {class}`Exception` instead of {exc}`~libtmux.exc.LibTmuxException`.
+Downstream code with `except LibTmuxException` fallbacks no longer swallows a
+call to a removed method such as `Session.attached_window`; the error names the
+replacement instead. Code that catches `DeprecatedError` itself is unaffected.
+See {ref}`migration` for the full removed-API table.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
