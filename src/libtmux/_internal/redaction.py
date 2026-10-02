@@ -179,6 +179,17 @@ def set_argv_redactor(
     _argv_redactor = redactor if redactor is not None else redact_env_values
 
 
+def _redacted_argv(argv: Sequence[str]) -> tuple[str, ...]:
+    """Return ``argv`` with the active redactor applied, as a tuple.
+
+    Examples
+    --------
+    >>> _redacted_argv(["tmux", "new-window", "-eTOKEN=hunter2"])
+    ('tmux', 'new-window', '-eTOKEN=***')
+    """
+    return tuple(_argv_redactor(argv))
+
+
 def _loggable_cmd(argv: Sequence[str]) -> str:
     """Return the shell-quoted argv with the active redactor applied."""
-    return shlex.join(_argv_redactor(argv))
+    return shlex.join(_redacted_argv(argv))

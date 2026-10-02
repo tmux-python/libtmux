@@ -12,6 +12,8 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass, field
 
+from libtmux._internal.redaction import _redacted_argv
+
 if t.TYPE_CHECKING:
     import pathlib
     import subprocess
@@ -273,7 +275,10 @@ class CommandResult:
     Attributes
     ----------
     cmd : tuple[str, ...]
-        The full argv that ran, including the tmux binary and connection flags.
+        The full argv that ran, including the tmux binary and connection flags,
+        exactly as handed to the engine. Environment values and other secrets
+        are *not* masked here; use :attr:`args` for anything that is logged or
+        shown.
     stdout : tuple[str, ...]
         Captured standard-output lines, trailing blanks removed.
     stderr : tuple[str, ...]
@@ -309,6 +314,34 @@ class CommandResult:
         compare=False,
         repr=False,
     )
+
+    @property
+    def args(self) -> tuple[str, ...]:
+        """The argv that ran, with the active argv redactor applied.
+
+        Mirrors :attr:`subprocess.CompletedProcess.args`. The same masking
+        libtmux's own log lines and exception messages use is applied, so this
+        is the argv to log, display or ship to another process: by default the
+        values of ``-e NAME=value`` environment arguments are replaced with
+        ``***``. See :func:`libtmux.common.set_argv_redactor`. :attr:`cmd` is
+        the unmasked argv.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Binary, connection flags, then the command, redacted.
+
+        Examples
+        --------
+        >>> result = CommandResult(
+        ...     cmd=("tmux", "-Lwork", "new-window", "-eTOKEN=hunter2"),
+        ... )
+        >>> result.args
+        ('tmux', '-Lwork', 'new-window', '-eTOKEN=***')
+        >>> result.cmd[-1]
+        '-eTOKEN=hunter2'
+        """
+        return _redacted_argv(self.cmd)
 
     @property
     def ok(self) -> bool:

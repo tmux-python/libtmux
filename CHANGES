@@ -47,6 +47,14 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
+#### Redacted argv on command results
+
+{attr}`CommandResult.args <libtmux.engines.base.CommandResult.args>` and
+{attr}`tmux_cmd.args <libtmux.common.tmux_cmd.args>` give the argv a call ran
+with the active argv redactor applied (named after
+{attr}`subprocess.CompletedProcess.args`). `-e NAME=value` values read `***`,
+so the argv is safe to log or show. `cmd` is unchanged and still exact.
+
 #### Pluggable command engines (#739)
 
 Every tmux command libtmux runs now goes through an *engine* — an object that

@@ -21,6 +21,7 @@ from . import exc
 from ._compat import LooseVersion
 from ._internal.redaction import (
     _loggable_cmd,
+    _redacted_argv,
     redact_env_values as redact_env_values,  # noqa: PLC0414
     redact_send_keys as redact_send_keys,  # noqa: PLC0414
     set_argv_redactor as set_argv_redactor,  # noqa: PLC0414
@@ -587,7 +588,11 @@ class tmux_cmd:
     Attributes
     ----------
     cmd : list[str]
-        The full argv that ran, tmux binary first.
+        The full argv that ran, tmux binary first, unmasked.
+    args : list[str]
+        The same argv with the active argv redactor applied (environment
+        values are ``***`` by default), safe to log or display. Mirrors
+        :attr:`subprocess.CompletedProcess.args`.
     stdout : list[str]
         Standard output, one line per item.
     stderr : list[str]
@@ -641,6 +646,15 @@ class tmux_cmd:
 
     >>> print(f'tmux command returned {" ".join(proc.stdout)}')
     tmux command returned 2
+
+    ``args`` is the argv that ran with secrets masked, for logs and messages;
+    ``cmd`` is the exact argv:
+
+    >>> masked = tmux_cmd(
+    ...     f'-L{server.socket_name}', 'new-window', '-d', '-eTOKEN=hunter2',
+    ... )
+    >>> masked.args[-1], masked.cmd[-1]
+    ('-eTOKEN=***', '-eTOKEN=hunter2')
 
     Equivalent to:
 
@@ -715,6 +729,7 @@ class tmux_cmd:
         result = _dispatch_run(runner, request)
 
         self.cmd = list(result.cmd)
+        self.args = list(_redacted_argv(self.cmd))
         self.returncode = result.returncode
         self.stderr = list(result.stderr)
         # Read defensively: ``process`` is the one field of ``CommandResult``

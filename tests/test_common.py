@@ -1199,3 +1199,19 @@ def test_timeout_log_and_message_redact_environment_values(
     assert "hunter2" not in caplog.text
     assert "TOKEN=***" in str(excinfo.value)
     assert excinfo.value.cmd[-1] == "TOKEN=hunter2"
+
+
+def test_cmd_args_is_the_redacted_argv_and_cmd_stays_exact(server: Server) -> None:
+    """``args`` masks what the redactor masks; ``cmd`` is what actually ran."""
+    proc = server.cmd("new-session", "-d", "-s", "args_redact", "-eAPI_KEY=sekrit")
+    assert proc.returncode == 0
+    assert "-eAPI_KEY=sekrit" in proc.cmd
+    assert "-eAPI_KEY=***" in proc.args
+    assert "sekrit" not in " ".join(proc.args)
+    assert len(proc.args) == len(proc.cmd)
+
+    common.set_argv_redactor(lambda argv: ["tmux", *argv[-1:]])
+    try:
+        assert server.cmd("display-message", "-p", "x").args == ["tmux", "x"]
+    finally:
+        common.set_argv_redactor(None)
