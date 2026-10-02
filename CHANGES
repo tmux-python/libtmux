@@ -57,6 +57,13 @@ used to be retried by tmux as a session name, so
 names no longer match by prefix either: `kill_window("foo")` leaves `foobar`
 alone. Ids (`@1`) and indexes are unchanged.
 
+#### `clear_env` removes `TMUX` and `TMUX_PANE`
+
+The pytest plugin's `clear_env` fixture kept every variable whose name contains
+`tmux` or `pane`, including `TMUX` and `TMUX_PANE`. A test run from inside tmux
+that built a bare {class}`~libtmux.Server` therefore followed `$TMUX` to the
+outer session. `clear_env` now removes both.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
