@@ -36,12 +36,14 @@ from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
 from libtmux.neo import PANE_LABEL_OPTION, Obj, fetch_obj
 from libtmux.options import OptionsMixin
+from libtmux.run import _run
 
 if t.TYPE_CHECKING:
     import sys
     import types
 
     from libtmux._internal.types import StrPath
+    from libtmux.run import PaneRunResult
 
     from .server import Server
     from .session import Session
@@ -997,6 +999,99 @@ class Pane(
 
         if enter and copy_mode_cmd is None:
             self.enter()
+
+    def run(
+        self,
+        command: str,
+        *,
+        timeout: float = 120.0,
+    ) -> PaneRunResult:
+        """Run a shell command in the pane; return its exit status and output.
+
+        Reach for this instead of :meth:`send_keys` followed by
+        :meth:`capture_pane` when you need to know *that the command
+        finished*, *how it ended*, and *what it printed*. Nothing polls the
+        screen: the shell reports back through the tmux server and
+        :meth:`Server.wait_for() <libtmux.Server.wait_for>`.
+
+        Parameters
+        ----------
+        command : str
+            Shell command line, run by the pane's own shell (``cd`` and
+            ``export`` take effect there). Multiple lines are allowed.
+        timeout : float
+            Seconds to wait for the command to finish. Defaults to 120.
+            Every call is bounded; pass a larger number for a long command.
+
+        Returns
+        -------
+        :class:`~libtmux.run.PaneRunResult`
+            ``returncode``, ``stdout`` lines (stderr included), ``args``.
+            A nonzero status is a result, not an exception.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.PaneRunTimeout`
+            When *timeout* elapses, carrying the output so far (a
+            :exc:`~libtmux.exc.TmuxTimeout`). The command keeps running in
+            the pane. Its ``started`` attribute is False when the pane's shell
+            never acknowledged the line within five seconds: the pane is not
+            at a shell prompt, or its shell cannot reach this tmux server, as
+            in ``ssh`` and ``docker exec`` panes. The typed line stays in
+            that pane.
+        :exc:`~libtmux.exc.TmuxServerGone`
+            When the tmux server exits.
+        :exc:`~libtmux.exc.PaneNotFound`
+            When the pane closes or dies before the command reports, such as
+            a command that runs ``exit``. A pane killed from outside
+            (``kill-pane``) is reported at *timeout*: tmux runs no hook for it.
+        :exc:`ValueError`
+            When *timeout* is not positive.
+
+        Notes
+        -----
+        The pane MUST be at an interactive prompt of a Bourne-style shell
+        (bash, zsh, dash and sh are tested); fish and csh are not supported.
+
+        A syntax error or an unterminated quote in *command* is the shell's
+        error and a nonzero ``returncode``. An interrupt (``C-c``) ends the
+        command with status 130.
+
+        The typed line starts with a space and, in bash, removes its own
+        history entry. zsh keeps the entry unless ``hist_ignore_space`` is
+        set.
+
+        While the call waits, it installs ``pane-exited`` and ``pane-died``
+        hooks (global, at an array index of their own, filtered to this pane)
+        and removes them on every path out.
+
+        Output is what the terminal drew, so cursor-addressed output arrives
+        as rendered and trailing blanks are dropped.
+
+        .. versionadded:: 0.63
+
+        Examples
+        --------
+        >>> result = pane.run('echo hello')
+        >>> result.returncode, result.stdout
+        (0, ['hello'])
+
+        A nonzero status is a result, not an exception:
+
+        >>> pane.run('sh -c "echo oops; exit 3"').returncode
+        3
+
+        Bound the wait; the partial output rides on the exception:
+
+        >>> from libtmux import exc
+        >>> try:
+        ...     pane.run('echo before; sleep 30', timeout=1)
+        ... except exc.TmuxTimeout as e:
+        ...     print(e.stdout)
+        ['before']
+        >>> pane.send_keys('C-c', enter=False)
+        """
+        return _run(self, command, timeout=timeout)
 
     @t.overload
     def display_message(

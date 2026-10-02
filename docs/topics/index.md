@@ -68,6 +68,12 @@ Built-in calls that replace typed setup, name maps, and "assume one session".
 Common patterns for scripting and automation.
 :::
 
+:::{grid-item-card} Run a Command
+:link: run_a_command
+:link-type: doc
+Run a shell command in a pane and get its exit status and output.
+:::
+
 :::{grid-item-card} Context Managers
 :link: context_managers
 :link-type: doc
@@ -116,6 +122,7 @@ floating_panes
 workspace_setup
 wrapper_recipes
 automation_patterns
+run_a_command
 context_managers
 throwaway_server
 options_and_hooks
