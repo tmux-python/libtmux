@@ -17,16 +17,110 @@
 
 libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelling out and parsing `tmux ls`. Instead, interact with real Python objects: `Server`, `Session`, `Window`, and `Pane`. The same API powers [tmuxp], so it stays battle-tested in real-world workflows.
 
-### ✨ Features
+## What do you want to do?
 
-- Typed, object-oriented control of tmux state
-- Query and [traverse](https://libtmux.git-pull.com/topics/traversal/) live sessions, windows, and panes
-- [Locate yourself](https://libtmux.git-pull.com/topics/self_location/) from inside a pane with `from_env()`
-- Raw escape hatch via `.cmd(...)` on any object
-- Works with multiple tmux sockets and servers
-- [Context managers](https://libtmux.git-pull.com/topics/context_managers/) for automatic cleanup
-- [pytest plugin](https://libtmux.git-pull.com/api/pytest-plugin/) for isolated tmux fixtures
-- Proven in production via tmuxp and other tooling
+| I want to | Use |
+|-----------|-----|
+| Run a command and get its output | `Pane.run()` |
+| Wait for text to appear | `Pane.wait_for_text()` |
+| Send text safely | `Pane.paste_text()` |
+| Use a throwaway server | `Server.owned()` |
+| Test a TUI | `assert_screen()` |
+| Orchestrate many panes | `Window.split_many()` |
+
+Each example below is a test. The full task-to-call map, with return values, exceptions, and tmux mechanism, is [Which call do I want?](https://libtmux.git-pull.com/topics/which_call/)
+
+### Run a command and get its output
+
+[**Learn more**](https://libtmux.git-pull.com/topics/run_a_command/)
+
+`Pane.run()` waits for the command to finish and returns its exit status and output. No sleeping, no screen scraping.
+
+```python
+>>> result = pane.run('echo hello; sh -c "exit 3"', timeout=30)
+>>> result.returncode
+3
+>>> result.stdout
+['hello']
+```
+
+### Wait for text
+
+[**Learn more**](https://libtmux.git-pull.com/topics/pane_interaction/#recipe-wait-for-text-without-matching-your-own-command)
+
+`Pane.wait_for_text()` searches only output written after an anchor. Anchor the pattern to the whole row (`^...$`) so the echo of your own command, which shares the row with the prompt, cannot match:
+
+```python
+>>> start = pane.capture_since().cursor
+>>> pane.send_keys('echo deploy_ok')
+>>> pane.wait_for_text(r'^deploy_ok$', regex=True, since=start, timeout=5).match.string
+'deploy_ok'
+```
+
+### Send text safely
+
+[**Learn more**](https://libtmux.git-pull.com/topics/pane_interaction/)
+
+`Pane.paste_text()` sends multi-line or large text through a paste buffer. It is never read as key names or flags, and tmux's 16 KiB command limit does not apply:
+
+```python
+>>> cat = window.split(attach=False, shell='cat')
+>>> start = cat.capture_since().cursor
+>>> cat.paste_text('- a line;\nsecond --line\n')
+>>> cat.wait_for_text('second --line', since=start, timeout=5).match.string
+'second --line'
+>>> cat.kill()
+```
+
+### Use a throwaway server
+
+[**Learn more**](https://libtmux.git-pull.com/topics/throwaway_server/)
+
+`Server.owned()` starts a private tmux server that reads no config, never sees `$TMUX`, and is removed when the block ends, even if the process is killed:
+
+```python
+>>> import libtmux
+>>> with libtmux.Server.owned() as scratch:
+...     shell = scratch.new_session(session_name="demo").active_pane
+...     shell.run("echo isolated", timeout=30).stdout
+['isolated']
+>>> scratch.is_alive()
+False
+```
+
+### Test a TUI
+
+[**Learn more**](https://libtmux.git-pull.com/topics/testing_terminal_apps/)
+
+The pytest plugin gives each test its own server. `assert_screen()` retries until the screen matches, then fails with a line diff:
+
+```python
+import pytest
+from libtmux.test.screen import assert_screen
+
+
+@pytest.mark.deterministic_shell  # bash, no rc files, prompt "$ "
+def test_greeter(session):
+    pane = session.active_pane
+    pane.send_keys('read -p "name? " n; echo "hello $n"')
+    assert_screen(pane, "name?", contains=True)
+```
+
+### Orchestrate many panes
+
+[**Learn more**](https://libtmux.git-pull.com/topics/automation_patterns/)
+
+`Window.split_many()` re-applies a layout after every split, so a window never runs out of room mid-fan-out:
+
+```python
+>>> fleet = session.new_window(window_name="fleet", attach=False)
+>>> panes = fleet.split_many(3)
+>>> [p.run("echo $((6 * 7))", timeout=30).stdout for p in panes]
+[['42'], ['42'], ['42']]
+>>> fleet.kill()
+```
+
+Also: [traverse](https://libtmux.git-pull.com/topics/traversal/) and [filter](https://libtmux.git-pull.com/topics/filtering/) live objects, [locate yourself](https://libtmux.git-pull.com/topics/self_location/) with `from_env()`, [context managers](https://libtmux.git-pull.com/topics/context_managers/), the `.cmd(...)` escape hatch, and [options and hooks](https://libtmux.git-pull.com/topics/options_and_hooks/).
 
 ## Requirements & support
 
@@ -68,21 +162,11 @@ From the main branch (bleeding edge):
 $ pip install 'git+https://github.com/tmux-python/libtmux.git'
 ```
 
-Tip: libtmux is pre-1.0. Pin a range in projects to avoid surprises:
+Tip: libtmux is pre-1.0 and minor releases can change the API. Pin the minor version you tested against, for example `libtmux==X.Y.*`, and read the [changelog][history] before upgrading.
 
-requirements.txt:
+## 🚀 Explore the object model
 
-```ini
-libtmux==0.50.*
-```
-
-pyproject.toml:
-
-```toml
-libtmux = "0.50.*"
-```
-
-## 🚀 Quickstart
+The jobs above work on any pane. To poke at a live session by hand:
 
 ### Open a tmux session
 
@@ -187,6 +271,8 @@ Window(@... ...:bg-work, Session($... ...))
 
 ### Split windows and send keys
 
+`send_keys()` types and returns at once. It suits starting a program or answering a prompt; to know a command finished, use `Pane.run()`.
+
 [**Learn more about Pane Interaction**](https://libtmux.git-pull.com/topics/pane_interaction/)
 
 ```python
@@ -204,13 +290,15 @@ Type inside the pane (send keystrokes):
 Pane(%... ...)
 ```
 
-### Capture pane output
+### Snapshot the screen
+
+`capture_pane()` returns the visible rows. To get a command's output, use `Pane.run()`; to read only what is new, use `Pane.capture_since()`.
 
 ```python
 >>> pane.clear()
 Pane(%... ...)
 >>> pane.send_keys("echo 'hello world'", enter=True)
->>> pane.cmd('capture-pane', '-p').stdout  # doctest: +SKIP
+>>> pane.capture_pane()  # doctest: +SKIP
 ["$ echo 'hello world'", 'hello world', '$']
 ```
 
@@ -250,6 +338,9 @@ In a real pane tmux has already set those two variables, so `from_env()` takes n
 
 ## Core concepts
 
+The jobs above sit on a four-level hierarchy that mirrors tmux.
+
+
 | libtmux object | tmux concept                | Notes                          |
 |----------------|-----------------------------|--------------------------------|
 | [`Server`](https://libtmux.git-pull.com/api/libtmux.server/) | tmux server / socket | Entry point; owns sessions |
@@ -279,7 +370,7 @@ pane.send_keys("echo 'hello from libtmux'", enter=True)
 
 ## Testing & fixtures
 
-[**Learn more about the pytest plugin**](https://libtmux.git-pull.com/api/pytest-plugin/)
+[**Learn more about the pytest plugin**](https://libtmux.git-pull.com/api/pytest-plugin/) · [**Testing terminal apps**](https://libtmux.git-pull.com/topics/testing_terminal_apps/)
 
 Writing a tool that interacts with tmux? Use our fixtures to keep your tests clean and isolated.
 
@@ -288,14 +379,16 @@ def test_my_tmux_tool(session):
     # session is a real tmux session in an isolated server
     window = session.new_window(window_name="test")
     pane = window.active_pane
-    pane.send_keys("echo 'hello from test'", enter=True)
-
+    assert pane.run("echo hello from test").stdout == ["hello from test"]
     assert window.window_name == "test"
     # Fixtures handle cleanup automatically
 ```
 
 - Fresh `server` and `session` fixtures per test, each on an isolated
   tmux socket; derive windows and panes from `session`
+- `assert_screen()` retries until a pane's screen matches, then fails with a line diff
+- `@pytest.mark.deterministic_shell` fixes the shell, prompt, and environment
+- A failing test prints the command that attaches to its tmux server
 - Temporary HOME and tmux config fixtures keep indices stable
 - `TestServer` helper spins up multiple isolated tmux servers
 
@@ -308,6 +401,10 @@ def test_my_tmux_tool(session):
 ## Project links
 
 **Topics:**
+[Which call do I want?](https://libtmux.git-pull.com/topics/which_call/) ·
+[Run a Command](https://libtmux.git-pull.com/topics/run_a_command/) ·
+[Throwaway Server](https://libtmux.git-pull.com/topics/throwaway_server/) ·
+[Testing Terminal Apps](https://libtmux.git-pull.com/topics/testing_terminal_apps/) ·
 [Traversal](https://libtmux.git-pull.com/topics/traversal/) ·
 [Filtering](https://libtmux.git-pull.com/topics/filtering/) ·
 [Pane Interaction](https://libtmux.git-pull.com/topics/pane_interaction/) ·
