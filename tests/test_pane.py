@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
+import subprocess
 import typing as t
 
 import pytest
@@ -1878,3 +1879,116 @@ def test_new_pane_error_tags_subcommand(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
             pane.new_pane(target="%99999")
+
+
+def test_label_roundtrip_and_lookup(session: Session) -> None:
+    """Verify a label set on one pane is found by ``panes.get(label=)``."""
+    window = session.active_window
+    first = window.active_pane
+    assert first is not None
+    second = window.split()
+
+    assert first.label is None
+    first.set_label("editor")
+
+    assert first.label == "editor"
+    assert second.label is None
+    assert window.panes.get(label="editor") == first
+    assert window.panes.get(label="missing", default=None) is None
+
+
+def test_label_lookup_is_one_tmux_call(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify labels ride the pane listing instead of one call per pane.
+
+    Counts tmux processes started; the old per-pane ``show-option`` read
+    cost 1 + N calls for N panes.
+    """
+    window = session.new_window()
+    first = window.active_pane
+    assert first is not None
+    panes = [first]
+    for _ in range(5):
+        panes.append(window.split())
+        window.select_layout("tiled")
+    for index, pane in enumerate(panes):
+        pane.set_label(f"w{index}")
+
+    calls: list[tuple[t.Any, ...]] = []
+    real_popen = subprocess.Popen
+
+    def counting_popen(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        calls.append(args)
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", counting_popen)
+
+    found = window.panes.get(label="w3")
+    assert found is not None
+    assert found.label == "w3"
+    assert sorted(p.label or "" for p in window.panes) == [f"w{i}" for i in range(6)]
+
+    # one listing for get(), one for the second window.panes
+    assert len(calls) == 2
+
+
+def test_label_refresh_picks_up_external_change(session: Session) -> None:
+    """Verify a listing-backed label is a snapshot that ``refresh`` renews."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.set_label("old")
+    pane.cmd("set-option", "-p", "@name", "new")
+    assert pane.label == "old"
+
+    pane.refresh()
+    assert pane.label == "new"
+
+    pane.cmd("set-option", "-p", "-u", "@name")
+    pane.refresh()
+    assert pane.label is None
+
+
+def test_label_survives_title_rewrite(session: Session) -> None:
+    """Verify an OSC 2 title rewrite leaves the label alone.
+
+    This is the reason labels live in a user option and not the title.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.set_label("stable")
+    pane.send_keys(r"printf '\033]2;rewritten\007'", literal=False)
+
+    def title_rewritten() -> bool:
+        pane.refresh()
+        return pane.pane_title == "rewritten"
+
+    assert retry_until(title_rewritten)
+    assert pane.label == "stable"
+
+
+def test_label_clear_and_custom_option(session: Session) -> None:
+    """Verify ``None`` removes a label and ``option=`` picks another name."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    pane.set_label("a;b #{x}")
+    assert pane.label == "a;b #{x}"
+    pane.set_label(None)
+    assert pane.label is None
+    pane.set_label(None)  # idempotent
+
+    pane.set_label("build", option="@role")
+    assert pane.get_label(option="@role") == "build"
+    assert pane.label is None
+
+
+def test_label_option_must_be_a_user_option(session: Session) -> None:
+    """Verify a name without ``@`` is rejected before reaching tmux."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="must start with '@'"):
+        pane.set_label("x", option="name")
+    with pytest.raises(ValueError, match="must start with '@'"):
+        pane.get_label(option="pane-border-format")

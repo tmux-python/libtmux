@@ -45,6 +45,20 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Stable pane labels
+
+{meth}`Pane.set_label() <libtmux.Pane.set_label>` stores a label on a pane as
+a tmux user option (`@name` by default), and {attr}`Pane.label
+<libtmux.Pane.label>` reads it back, so `window.panes.get(label="editor")`
+finds a pane by name. A pane title is not a durable name, since any program in
+the pane can rewrite it with an OSC 2 escape; a user option is not touched by
+the terminal. The label rides the same tmux listing that builds each pane, so
+finding one among hundreds costs a single call; it is a snapshot, so call
+{meth}`~libtmux.Pane.refresh` after another client changes it. Pass `option=` to {meth}`~libtmux.Pane.set_label` or
+{meth}`~libtmux.Pane.get_label` to use another `@`-prefixed option.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

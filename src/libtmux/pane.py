@@ -25,7 +25,7 @@ from libtmux.constants import (
 )
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
-from libtmux.neo import Obj, fetch_obj
+from libtmux.neo import PANE_LABEL_OPTION, Obj, fetch_obj
 from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
@@ -44,6 +44,14 @@ if t.TYPE_CHECKING:
         from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_LABEL_OPTION = PANE_LABEL_OPTION
+
+
+def _check_label_option(option: str) -> None:
+    if not option.startswith("@"):
+        msg = f"label option must start with '@', got {option!r}"
+        raise ValueError(msg)
 
 
 @dataclasses.dataclass()
@@ -72,6 +80,9 @@ class Pane(
     server : Server
         Server the pane was queried from, and the connection every command
         and refresh runs over.
+    pane_label : str or None
+        The ``@name`` user option as of the last listing, ``""`` when unset;
+        ``None`` until a listing has run. Read it through :attr:`label`.
 
     Examples
     --------
@@ -113,6 +124,7 @@ class Pane(
     default_option_scope: OptionScope | None = OptionScope.Pane
     default_hook_scope: OptionScope | None = OptionScope.Pane
     server: Server
+    pane_label: str | None = None
 
     def __enter__(self) -> Self:
         """Enter the context, returning self.
@@ -1652,6 +1664,85 @@ class Pane(
         self.refresh()
         return self
 
+    def set_label(
+        self,
+        label: str | None,
+        *,
+        option: str = _DEFAULT_LABEL_OPTION,
+    ) -> Pane:
+        """Store a stable label on the pane as a user option.
+
+        A program running in the pane can rewrite its title with an OSC 2
+        escape, so :attr:`pane_title` is not a durable name. A user option
+        is not touched by the terminal.
+
+        Parameters
+        ----------
+        label : str or None
+            Label to store, or ``None`` to remove it.
+        option : str
+            Name of the user option. Must start with ``@``.
+
+        Returns
+        -------
+        :class:`Pane`
+            The pane instance, for method chaining.
+
+        Raises
+        ------
+        ValueError
+            If ``option`` does not start with ``@``.
+
+        Examples
+        --------
+        >>> pane.set_label('editor')
+        Pane(...)
+
+        >>> pane.label
+        'editor'
+
+        >>> pane.set_label(None).label is None
+        True
+        """
+        _check_label_option(option)
+        if label is None:
+            self.unset_option(option, ignore_errors=True)
+        else:
+            self.set_option(option, label)
+        if option == _DEFAULT_LABEL_OPTION:
+            self.pane_label = label or ""
+        return self
+
+    def get_label(self, *, option: str = _DEFAULT_LABEL_OPTION) -> str | None:
+        """Return the label stored by :meth:`set_label`, or ``None``.
+
+        Always asks tmux, one call; :attr:`label` reuses the last listing.
+
+        Parameters
+        ----------
+        option : str
+            Name of the user option. Must start with ``@``.
+
+        Raises
+        ------
+        ValueError
+            If ``option`` does not start with ``@``.
+
+        Examples
+        --------
+        >>> pane.get_label() is None
+        True
+
+        >>> pane.set_label('build', option='@role')
+        Pane(...)
+
+        >>> pane.get_label(option='@role')
+        'build'
+        """
+        _check_label_option(option)
+        value = self.show_option(option, ignore_errors=True)
+        return None if value is None else str(value)
+
     def enter(self) -> Pane:
         """Send carriage return to pane.
 
@@ -2707,6 +2798,29 @@ class Pane(
         True
         """
         return self.pane_title
+
+    @property
+    def label(self) -> str | None:
+        """Stable pane label from the ``@name`` user option, or ``None``.
+
+        Read from the listing that built this pane, so every pane returned by
+        ``panes`` carries its label at no extra tmux call, and
+        ``panes.get(label=...)`` costs the one listing. Like the other
+        fields it is a snapshot: call :meth:`refresh` after another client
+        changes it. A pane built without a listing reads it live.
+
+        >>> pane.set_label('logs')
+        Pane(...)
+
+        >>> pane.label
+        'logs'
+
+        >>> window.panes.get(label='logs') == pane
+        True
+        """
+        if self.pane_label is not None:
+            return self.pane_label or None
+        return self.get_label()
 
     @property
     def at_top(self) -> bool:
