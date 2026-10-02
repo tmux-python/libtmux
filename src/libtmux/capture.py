@@ -323,6 +323,11 @@ class _PaneState(t.NamedTuple):
         has no such counter (before tmux 3.8).
     history_generation : int | None
         Times history was cleared, or ``None`` before tmux 3.8.
+    output_generation : int | None
+        Chunks of output tmux has processed for the pane, or ``None`` before
+        tmux 3.8. It moves on any output, including output that leaves every
+        other field unchanged, so equal states prove nothing was written
+        between two reads.
     """
 
     history_size: int
@@ -334,6 +339,7 @@ class _PaneState(t.NamedTuple):
     pane_width: int | None = None
     history_collected: int | None = None
     history_generation: int | None = None
+    output_generation: int | None = None
 
 
 #: tmux format read by :func:`_read_pane_state`. A fixed literal -- no
@@ -343,6 +349,7 @@ class _PaneState(t.NamedTuple):
 PANE_STATE_FORMAT = (
     "#{history_size}|#{cursor_y}|#{pane_height}|#{pane_pid}|#{pane_dead}"
     "|#{alternate_on}|#{pane_width}|#{history_collected}|#{history_generation}"
+    "|#{pane_output_generation}"
 )
 
 #: ``history-limit`` read, split out because it never changes between reads.
@@ -474,7 +481,7 @@ def _parse_pane_state(raw: str) -> _PaneState:
     >>> _parse_pane_state('100|5|24|4242|0|0')
     _PaneState(history_size=100, cursor_y=5, pane_height=24, pane_pid='4242', \
 pane_dead=False, alternate_on=False, pane_width=None, history_collected=None, \
-history_generation=None)
+history_generation=None, output_generation=None)
 
     A build without ``alternate_on`` still parses:
 
@@ -485,16 +492,16 @@ history_generation=None)
 
     tmux 3.8 adds the trim counters; older builds leave them empty:
 
-    >>> _parse_pane_state('7|0|24|4242|0|0|80|5|2')
+    >>> _parse_pane_state('7|0|24|4242|0|0|80|5|2|31')
     _PaneState(history_size=7, cursor_y=0, pane_height=24, pane_pid='4242', \
 pane_dead=False, alternate_on=False, pane_width=80, history_collected=5, \
-history_generation=2)
-    >>> _parse_pane_state('7|0|24|4242|0|0|80||').history_collected is None
+history_generation=2, output_generation=31)
+    >>> _parse_pane_state('7|0|24|4242|0|0|80|||').history_collected is None
     True
     """
-    parts = raw.split("|", 8)
+    parts = raw.split("|", 9)
     history_size, cursor_y, pane_height, pane_pid, pane_dead = parts[:5]
-    extra = [*parts[5:], *([""] * (4 - len(parts[5:])))]
+    extra = [*parts[5:], *([""] * (5 - len(parts[5:])))]
     return _PaneState(
         history_size=int(history_size),
         cursor_y=int(cursor_y),
@@ -505,6 +512,7 @@ history_generation=2)
         pane_width=_optional_count(extra[1]),
         history_collected=_optional_count(extra[2]),
         history_generation=_optional_count(extra[3]),
+        output_generation=_optional_count(extra[4]),
     )
 
 
@@ -1629,6 +1637,36 @@ def _timed_out(
     return exc.WaitTimeout(msg)
 
 
+def _unchanged_since(
+    pane: Pane,
+    settled: _PaneState | None,
+    *,
+    timeout: float | None = None,
+) -> bool:
+    """Whether tmux proves ``pane`` has not changed since ``settled`` was read.
+
+    One ``display-message`` replaces a full read. ``settled`` is the state a
+    read settled on, so equal states mean no output was processed since: the
+    rows that read returned are still the rows. Always *False* before
+    tmux 3.8, where the state has no output counter, and when the read did not
+    settle.
+
+    Examples
+    --------
+    >>> _unchanged_since(pane, None)
+    False
+
+    A different state is never "unchanged":
+
+    >>> state = _read_pane_state(pane)
+    >>> _unchanged_since(pane, state._replace(pane_pid='0'))
+    False
+    """
+    if settled is None or settled.output_generation is None:
+        return False
+    return _read_pane_state(pane, timeout=timeout) == settled
+
+
 def _wait_for_text(
     pane: Pane,
     pattern: str | re.Pattern[str],
@@ -1665,29 +1703,34 @@ def _wait_for_text(
     )
     delay = _POLL_MIN
     saw_alternate_screen = False
+    settled: _PaneState | None = None
     while True:
-        read = _read_since(pane, anchor, timeout=_remaining(deadline))
-        if read.state.alternate_on:
-            # A full-screen program owns the grid and repaints it, so rows
-            # "after the anchor" are its paint, not output. Skip, and never
-            # latch: quitting the program resumes an honest wait.
-            saw_alternate_screen = True
-        else:
-            found = _first_row_match(
-                compiled,
-                _searchable_rows(
-                    read.lines,
-                    anchor_reported=read.anchor_reported,
-                    lines_missed=read.lines_missed,
-                    cursor=anchor,
-                ),
-            )
-            if found is not None:
-                return TextMatch(
-                    match=found,
-                    cursor=_build_cursor(anchor.pane_id, read.state, read.cursor_rows),
-                    lines_missed=read.lines_missed,
+        if not _unchanged_since(pane, settled, timeout=_remaining(deadline)):
+            read = _read_since(pane, anchor, timeout=_remaining(deadline))
+            settled = None if read.lines_missed else read.state
+            if read.state.alternate_on:
+                # A full-screen program owns the grid and repaints it, so rows
+                # "after the anchor" are its paint, not output. Skip, and never
+                # latch: quitting the program resumes an honest wait.
+                saw_alternate_screen = True
+            else:
+                found = _first_row_match(
+                    compiled,
+                    _searchable_rows(
+                        read.lines,
+                        anchor_reported=read.anchor_reported,
+                        lines_missed=read.lines_missed,
+                        cursor=anchor,
+                    ),
                 )
+                if found is not None:
+                    return TextMatch(
+                        match=found,
+                        cursor=_build_cursor(
+                            anchor.pane_id, read.state, read.cursor_rows
+                        ),
+                        lines_missed=read.lines_missed,
+                    )
         if deadline is not None and time.monotonic() >= deadline:
             raise _timed_out(
                 pane,
@@ -1726,18 +1769,24 @@ def _wait_for_idle(
         else _capture_since(pane, timeout=_remaining(deadline)).cursor
     )
     previous: tuple[tuple[str, ...], int] | None = None
+    settled: _PaneState | None = None
     changed_at = time.monotonic()
     interval = min(max(quiet / 5, _POLL_MIN), _POLL_MAX)
     while True:
-        visible = _read_stable_visible(
-            pane,
-            baseline_pid=start.pane_pid,
-            timeout=_remaining(deadline),
-        )
-        snapshot = (tuple(visible.lines), visible.state.cursor_y)
-        now = time.monotonic()
-        if snapshot != previous or visible.lines_missed:
+        if _unchanged_since(pane, settled, timeout=_remaining(deadline)):
+            changed = False
+        else:
+            visible = _read_stable_visible(
+                pane,
+                baseline_pid=start.pane_pid,
+                timeout=_remaining(deadline),
+            )
+            snapshot = (tuple(visible.lines), visible.state.cursor_y)
+            changed = snapshot != previous or visible.lines_missed
             previous = snapshot
+            settled = None if visible.lines_missed else visible.state
+        now = time.monotonic()
+        if changed:
             changed_at = now
         elif now - changed_at >= quiet:
             return _capture_since(pane, start, timeout=_remaining(deadline))

@@ -244,226 +244,6 @@ stops it. See {ref}`attach_to_failed_test`.
 raised `TypeError` on a tmux 3.8 server's `show-hooks` output. tmux 3.8
 removes `after-queue`; the field stays for older servers.
 
-#### `Server.owned()` runs a throwaway tmux server
-
-{meth}`Server.owned() <libtmux.Server.owned>` is a context manager that runs a
-tmux server for one block. It listens on a new private socket directory, reads
-no configuration file (`config_file` defaults to {data}`os.devnull`), and runs
-tmux without `$TMUX` and `$TMUX_PANE`, so it cannot reach the tmux you are
-working in. The server and its directory are removed when the block ends,
-including on an exception, and also when the process dies from `SIGTERM`,
-`SIGHUP` or `SIGKILL`: a small reaper process notices the owner exit. No
-signal handler is installed. The socket path is measured first and raises
-{exc}`~libtmux.exc.SocketPathTooLong` when it cannot bind. See
-{ref}`throwaway_server`.
-
-#### Socket paths are measured before tmux sees them (#730)
-
-A tmux socket is a UNIX domain socket, so its path is capped by `sockaddr_un`
-— 107 bytes on Linux, 103 on macOS. {class}`~libtmux.Server` now measures the
-path and raises the new {exc}`~libtmux.exc.SocketPathTooLong`, carrying the
-byte count, how far over the limit it is, and where the length came from.
-tmux reports the overrun as `error connecting to <path> (File name too long)`,
-which names the path but not the numbers, nor which variable made it long.
-
-Where the measurement happens follows what tmux actually reads. A
-`socket_path` is passed through unchanged as `-S<path>`, so it is measured at
-construction, where the caller can still change it. A `socket_name` resolves
-against `$TMUX_TMPDIR` — which tmux re-reads when it runs, not when the
-{class}`~libtmux.Server` was built — so it is measured on each command
-instead. The inherited case is the one that bites: a pytest `tmp_path`, an XDG
-runtime dir, a nested worktree, a CI checkout under a long workspace prefix.
-The fix is a shorter socket directory: {func}`tempfile.mkdtemp` or a short
-`$TMUX_TMPDIR`. See {ref}`socket_path_length` for the pytest case.
-
-Naming a server that way stays free of side effects, so
-{meth}`~libtmux.Server.is_alive` keeps answering — an address the kernel
-cannot hold is one more way of not being alive — and
-{meth}`~libtmux.Server.raise_if_dead` keeps being the way to ask why.
-
-A bare {class}`~libtmux.Server` inside a tmux pane is left alone. tmux prefers
-`$TMUX` over `$TMUX_TMPDIR` when no socket is named, so a script running
-inside tmux is measured against the socket it will actually use rather than a
-directory tmux never consults.
-
-#### Secrets masked in logged tmux commands
-
-libtmux logs each tmux command line at `DEBUG`, which put values passed through
-`environment=` into any handler that listened. They are now masked by default
-(`TOKEN=***`), along with the value of
-{meth}`Session.set_environment() <libtmux.Session.set_environment>`; the
-command tmux receives is unchanged. {func}`libtmux.common.set_argv_redactor`
-replaces the masking, and {func}`~libtmux.common.redact_send_keys` hides the
-text of {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` as well. Typed text
-is logged unless you opt in, since it is what most people debug from.
-
-#### Splits that keep a layout and fan out to N panes
-
-{meth}`Window.split() <libtmux.Window.split>` and
-{meth}`Pane.split() <libtmux.Pane.split>` take `layout=`, which re-applies a
-layout such as `"tiled"` after the split. Every split halves a pane, so
-repeated plain splits of one window fail with tmux's "no space for new pane"
-after a handful of panes; with `layout=`, a split that hits that error applies
-the layout and is tried once more. A layout name tmux does not recognize now
-raises {exc}`ValueError` before any pane is created, because tmux 3.3a exits
-the whole server on one.
-
-{meth}`Window.split_many() <libtmux.Window.split_many>` adds N panes in one
-call and keeps the layout applied between splits.
-
-#### Stable pane labels
-
-{meth}`Pane.set_label() <libtmux.Pane.set_label>` stores a label on a pane as
-a tmux user option (`@name` by default), and {attr}`Pane.label
-<libtmux.Pane.label>` reads it back, so `window.panes.get(label="editor")`
-finds a pane by name. A pane title is not a durable name, since any program in
-the pane can rewrite it with an OSC 2 escape; a user option is not touched by
-the terminal. The label rides the same tmux listing that builds each pane, so
-finding one among hundreds costs a single call; it is a snapshot, so call
-{meth}`~libtmux.Pane.refresh` after another client changes it. Pass `option=` to {meth}`~libtmux.Pane.set_label` or
-{meth}`~libtmux.Pane.get_label` to use another `@`-prefixed option.
-
-#### Send data to a tmux command's standard input
-
-{class}`~libtmux.common.tmux_cmd` and the `cmd()` methods of
-{meth}`Server <libtmux.Server.cmd>`, {meth}`Session <libtmux.Session.cmd>`,
-{meth}`Window <libtmux.Window.cmd>` and {meth}`Pane <libtmux.Pane.cmd>` take
-`input=`, a `str` or `bytes` written to the tmux client's standard input.
-Commands that accept `-` as a path read it there, for example
-`server.cmd("load-buffer", "-b", name, "-", input=data)`.
-
-`str` is encoded as UTF-8; `bytes` go through unchanged, so binary data works.
-Standard input is not part of tmux's 16 KiB command size limit, so a payload of
-any size loads. Without `input`, the call runs as before.
-
-#### Paste text of any size with `Pane.paste_text()`
-
-{meth}`Pane.paste_text() <libtmux.Pane.paste_text>` pastes text into a pane
-through a throwaway paste buffer loaded from standard input. It has no size
-limit, never reads the text as key names or flags, keeps line feeds and control
-characters intact, and leaves no temporary file or buffer behind. It does not
-send Enter. Use it where {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
-would exceed tmux's 16 KiB command limit.
-
-#### Bounded tmux commands
-
-{meth}`Server.cmd() <libtmux.Server.cmd>`,
-{meth}`Session.cmd() <libtmux.Session.cmd>`,
-{meth}`Window.cmd() <libtmux.Window.cmd>`,
-{meth}`Pane.cmd() <libtmux.Pane.cmd>` and {class}`~libtmux.common.tmux_cmd`
-take a keyword-only `timeout` in seconds. A command that outlives it has its tmux
-client killed and reaped, then raises {exc}`~libtmux.exc.TmuxTimeout`, which
-carries the `cmd` and the `timeout`. The default, `None`, waits as before.
-
-{exc}`~libtmux.exc.TmuxTimeout` is not a {exc}`~libtmux.exc.LibTmuxException`, so
-the lenient list accessors do not read a hung server as an empty one. Only the
-client dies; work the command started keeps running.
-
-#### Bounded, distinguishable `Server.wait_for()`
-
-{meth}`Server.wait_for() <libtmux.Server.wait_for>` takes a `timeout` in seconds
-and ends one of three ways: a signal returns `None`, the clock raises
-{exc}`~libtmux.exc.TmuxTimeout`, and a tmux server that exited raises the new
-{exc}`~libtmux.exc.TmuxServerGone`. tmux releases waiters at server exit exactly
-as if the channel had been signalled, so a wake alone could not tell them apart;
-`wait_for()` now asks the server again after any wake.
-
-An expired wait is released through tmux before the client is reaped. Killing
-the client alone leaves a ghost waiter on tmux 3.2a through the first 3.8
-release candidate that swallows the next signal on the channel. Before tmux 3.8
-the release is a signal, which wakes every waiter on the channel, so a channel
-should have one waiter. From tmux 3.8 the expired waiter is released by name with
-`wait-for -w`, and other waiters on the channel keep waiting. `timeout` combined
-with `lock`, `unlock` or `set_flag` raises `ValueError`.
-
-#### `Pane.run()` runs a command and returns its exit status and output
-
-{meth}`Pane.run() <libtmux.Pane.run>` types a shell command into a pane, waits
-for it through {meth}`Server.wait_for() <libtmux.Server.wait_for>`, and returns a
-{class}`~libtmux.run.PaneRunResult` with `returncode` and the command's `stdout`
-lines, without echoed command text or screen polling. See
-{ref}`run-a-command`.
-
-```python
-result = pane.run("make test", timeout=60)
-result.returncode, result.stdout
-```
-
-Every call is bounded: `timeout` defaults to 120 seconds, and expiry raises
-{exc}`~libtmux.exc.PaneRunTimeout`, a {exc}`~libtmux.exc.TmuxTimeout` that carries
-the output so far. A shell that never acknowledges the line within five seconds,
-as in `ssh` and `docker exec` panes, raises it with `started=False` instead of
-waiting out `timeout`.
-
-The command runs through `eval`, so a syntax error or an unterminated quote is a
-nonzero `returncode`, and `C-c` ends it with status 130; neither leaves the call
-waiting. The typed line starts with a space and, in bash, removes its own history
-entry. bash, zsh and sh are tested.
-
-A command that closes its pane raises {exc}`~libtmux.exc.PaneNotFound` at once: the call
-installs `pane-exited` and `pane-died` hooks, filtered to the pane, for its duration and
-removes them on every path out. A pane killed from outside is reported at `timeout`.
-
-#### Strict listings: tell "no rows" from "tmux unreachable"
-
-{attr}`Server.sessions <libtmux.Server.sessions>` returns an empty list when
-tmux cannot be queried, so code that reconciles saved state against it can
-mistake a dead server for "every session is gone". The new
-{meth}`Server.fetch_sessions() <libtmux.Server.fetch_sessions>`,
-{meth}`~libtmux.Server.fetch_windows` and {meth}`~libtmux.Server.fetch_panes`
-return the same objects as lists but raise {exc}`libtmux.exc.ListCommandFailed`
-(a {exc}`~libtmux.exc.LibTmuxException`) when the `list-*` command fails. The
-lenient properties are unchanged.
-
-#### `Server.ensure_session()` gets or creates a session by exact name
-
-{meth}`Server.ensure_session() <libtmux.Server.ensure_session>` returns the
-session with the given name, creating it only when absent, so setup code can
-run repeatedly without catching {exc}`~libtmux.exc.TmuxSessionExists`. The
-name is matched exactly, never as a prefix. When the session already exists it
-is returned unchanged and the creation options are ignored.
-
-#### Session names can match exactly with `exact=True`
-
-{meth}`Server.kill_session() <libtmux.Server.kill_session>`,
-{meth}`Server.switch_client() <libtmux.Server.switch_client>`, and
-{meth}`Server.attach_session() <libtmux.Server.attach_session>` take an
-`exact` keyword, like {meth}`Server.has_session() <libtmux.Server.has_session>`.
-tmux resolves a bare session name by exact match, then by prefix, then as an
-`fnmatch(3)` pattern, so `kill_session("foo")` kills `foobar` when no `foo`
-exists.
-
-`exact=True` matches the name exactly. `exact=False` keeps tmux's matching and
-does not warn. The default, `exact=None`, still matches like tmux but emits a
-{class}`FutureWarning` when a name has no exact match and tmux resolves it by
-prefix or pattern. A name that matches exactly, a session id such as `$1`,
-and a name tmux rejects anyway never warn. A later release will make
-`exact=True` the default.
-
-```python
-# Before: kills "foobar" when "foo" does not exist
-server.kill_session("foo")
-
-# After: raises LibTmuxException unless "foo" exists
-server.kill_session("foo", exact=True)
-
-# Keep prefix or pattern matching, without the warning
-server.kill_session("build-*", exact=False)
-```
-
-#### Set scrollback before the first pane with `new_session(history_limit=)`
-
-{meth}`Server.new_session() <libtmux.Server.new_session>` takes `history_limit`,
-the scrollback for the new session's panes. The first pane gets it on every
-tmux version; before tmux 3.7 a `set_option()` call after `new_session()` only
-reached panes created later. The limit is stored on the new session, so the
-server-wide value and other sessions keep theirs. Before tmux 3.7 the
-server-wide value is raised and restored inside the one tmux command that
-creates the session, and `attach=True` raises `ValueError`; from tmux 3.7 it is
-never touched, because tmux 3.7 trims the history of existing panes when the
-server-wide limit drops. A negative value raises `ValueError`. See
-{ref}`workspace-setup` for a recipe.
-
 ### Breaking changes
 
 #### `raise_if_dead()` no longer echoes tmux's error (#739)
@@ -714,6 +494,226 @@ instead of typing `cd` and `source` into a pane, `windows.get()` and
 `panes.filter()` instead of a hand-kept name map, and
 {meth}`Pane.from_env() <libtmux.Pane.from_env>` instead of assuming one
 session. Every example runs as a doctest.
+
+#### `Server.owned()` runs a throwaway tmux server
+
+{meth}`Server.owned() <libtmux.Server.owned>` is a context manager that runs a
+tmux server for one block. It listens on a new private socket directory, reads
+no configuration file (`config_file` defaults to {data}`os.devnull`), and runs
+tmux without `$TMUX` and `$TMUX_PANE`, so it cannot reach the tmux you are
+working in. The server and its directory are removed when the block ends,
+including on an exception, and also when the process dies from `SIGTERM`,
+`SIGHUP` or `SIGKILL`: a small reaper process notices the owner exit. No
+signal handler is installed. The socket path is measured first and raises
+{exc}`~libtmux.exc.SocketPathTooLong` when it cannot bind. See
+{ref}`throwaway_server`.
+
+#### Socket paths are measured before tmux sees them (#730)
+
+A tmux socket is a UNIX domain socket, so its path is capped by `sockaddr_un`
+— 107 bytes on Linux, 103 on macOS. {class}`~libtmux.Server` now measures the
+path and raises the new {exc}`~libtmux.exc.SocketPathTooLong`, carrying the
+byte count, how far over the limit it is, and where the length came from.
+tmux reports the overrun as `error connecting to <path> (File name too long)`,
+which names the path but not the numbers, nor which variable made it long.
+
+Where the measurement happens follows what tmux actually reads. A
+`socket_path` is passed through unchanged as `-S<path>`, so it is measured at
+construction, where the caller can still change it. A `socket_name` resolves
+against `$TMUX_TMPDIR` — which tmux re-reads when it runs, not when the
+{class}`~libtmux.Server` was built — so it is measured on each command
+instead. The inherited case is the one that bites: a pytest `tmp_path`, an XDG
+runtime dir, a nested worktree, a CI checkout under a long workspace prefix.
+The fix is a shorter socket directory: {func}`tempfile.mkdtemp` or a short
+`$TMUX_TMPDIR`. See {ref}`socket_path_length` for the pytest case.
+
+Naming a server that way stays free of side effects, so
+{meth}`~libtmux.Server.is_alive` keeps answering — an address the kernel
+cannot hold is one more way of not being alive — and
+{meth}`~libtmux.Server.raise_if_dead` keeps being the way to ask why.
+
+A bare {class}`~libtmux.Server` inside a tmux pane is left alone. tmux prefers
+`$TMUX` over `$TMUX_TMPDIR` when no socket is named, so a script running
+inside tmux is measured against the socket it will actually use rather than a
+directory tmux never consults.
+
+#### Secrets masked in logged tmux commands
+
+libtmux logs each tmux command line at `DEBUG`, which put values passed through
+`environment=` into any handler that listened. They are now masked by default
+(`TOKEN=***`), along with the value of
+{meth}`Session.set_environment() <libtmux.Session.set_environment>`; the
+command tmux receives is unchanged. {func}`libtmux.common.set_argv_redactor`
+replaces the masking, and {func}`~libtmux.common.redact_send_keys` hides the
+text of {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` as well. Typed text
+is logged unless you opt in, since it is what most people debug from.
+
+#### Splits that keep a layout and fan out to N panes
+
+{meth}`Window.split() <libtmux.Window.split>` and
+{meth}`Pane.split() <libtmux.Pane.split>` take `layout=`, which re-applies a
+layout such as `"tiled"` after the split. Every split halves a pane, so
+repeated plain splits of one window fail with tmux's "no space for new pane"
+after a handful of panes; with `layout=`, a split that hits that error applies
+the layout and is tried once more. A layout name tmux does not recognize now
+raises {exc}`ValueError` before any pane is created, because tmux 3.3a exits
+the whole server on one.
+
+{meth}`Window.split_many() <libtmux.Window.split_many>` adds N panes in one
+call and keeps the layout applied between splits.
+
+#### Stable pane labels
+
+{meth}`Pane.set_label() <libtmux.Pane.set_label>` stores a label on a pane as
+a tmux user option (`@name` by default), and {attr}`Pane.label
+<libtmux.Pane.label>` reads it back, so `window.panes.get(label="editor")`
+finds a pane by name. A pane title is not a durable name, since any program in
+the pane can rewrite it with an OSC 2 escape; a user option is not touched by
+the terminal. The label rides the same tmux listing that builds each pane, so
+finding one among hundreds costs a single call; it is a snapshot, so call
+{meth}`~libtmux.Pane.refresh` after another client changes it. Pass `option=` to {meth}`~libtmux.Pane.set_label` or
+{meth}`~libtmux.Pane.get_label` to use another `@`-prefixed option.
+
+#### Send data to a tmux command's standard input
+
+{class}`~libtmux.common.tmux_cmd` and the `cmd()` methods of
+{meth}`Server <libtmux.Server.cmd>`, {meth}`Session <libtmux.Session.cmd>`,
+{meth}`Window <libtmux.Window.cmd>` and {meth}`Pane <libtmux.Pane.cmd>` take
+`input=`, a `str` or `bytes` written to the tmux client's standard input.
+Commands that accept `-` as a path read it there, for example
+`server.cmd("load-buffer", "-b", name, "-", input=data)`.
+
+`str` is encoded as UTF-8; `bytes` go through unchanged, so binary data works.
+Standard input is not part of tmux's 16 KiB command size limit, so a payload of
+any size loads. Without `input`, the call runs as before.
+
+#### Paste text of any size with `Pane.paste_text()`
+
+{meth}`Pane.paste_text() <libtmux.Pane.paste_text>` pastes text into a pane
+through a throwaway paste buffer loaded from standard input. It has no size
+limit, never reads the text as key names or flags, keeps line feeds and control
+characters intact, and leaves no temporary file or buffer behind. It does not
+send Enter. Use it where {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
+would exceed tmux's 16 KiB command limit.
+
+#### Bounded tmux commands
+
+{meth}`Server.cmd() <libtmux.Server.cmd>`,
+{meth}`Session.cmd() <libtmux.Session.cmd>`,
+{meth}`Window.cmd() <libtmux.Window.cmd>`,
+{meth}`Pane.cmd() <libtmux.Pane.cmd>` and {class}`~libtmux.common.tmux_cmd`
+take a keyword-only `timeout` in seconds. A command that outlives it has its tmux
+client killed and reaped, then raises {exc}`~libtmux.exc.TmuxTimeout`, which
+carries the `cmd` and the `timeout`. The default, `None`, waits as before.
+
+{exc}`~libtmux.exc.TmuxTimeout` is not a {exc}`~libtmux.exc.LibTmuxException`, so
+the lenient list accessors do not read a hung server as an empty one. Only the
+client dies; work the command started keeps running.
+
+#### Bounded, distinguishable `Server.wait_for()`
+
+{meth}`Server.wait_for() <libtmux.Server.wait_for>` takes a `timeout` in seconds
+and ends one of three ways: a signal returns `None`, the clock raises
+{exc}`~libtmux.exc.TmuxTimeout`, and a tmux server that exited raises the new
+{exc}`~libtmux.exc.TmuxServerGone`. tmux releases waiters at server exit exactly
+as if the channel had been signalled, so a wake alone could not tell them apart;
+`wait_for()` now asks the server again after any wake.
+
+An expired wait is released through tmux before the client is reaped. Killing
+the client alone leaves a ghost waiter on tmux 3.2a through the first 3.8
+release candidate that swallows the next signal on the channel. Before tmux 3.8
+the release is a signal, which wakes every waiter on the channel, so a channel
+should have one waiter. From tmux 3.8 the expired waiter is released by name with
+`wait-for -w`, and other waiters on the channel keep waiting. `timeout` combined
+with `lock`, `unlock` or `set_flag` raises `ValueError`.
+
+#### `Pane.run()` runs a command and returns its exit status and output
+
+{meth}`Pane.run() <libtmux.Pane.run>` types a shell command into a pane, waits
+for it through {meth}`Server.wait_for() <libtmux.Server.wait_for>`, and returns a
+{class}`~libtmux.run.PaneRunResult` with `returncode` and the command's `stdout`
+lines, without echoed command text or screen polling. See
+{ref}`run-a-command`.
+
+```python
+result = pane.run("make test", timeout=60)
+result.returncode, result.stdout
+```
+
+Every call is bounded: `timeout` defaults to 120 seconds, and expiry raises
+{exc}`~libtmux.exc.PaneRunTimeout`, a {exc}`~libtmux.exc.TmuxTimeout` that carries
+the output so far. A shell that never acknowledges the line within five seconds,
+as in `ssh` and `docker exec` panes, raises it with `started=False` instead of
+waiting out `timeout`.
+
+The command runs through `eval`, so a syntax error or an unterminated quote is a
+nonzero `returncode`, and `C-c` ends it with status 130; neither leaves the call
+waiting. The typed line starts with a space and, in bash, removes its own history
+entry. bash, zsh and sh are tested.
+
+A command that closes its pane raises {exc}`~libtmux.exc.PaneNotFound` at once: the call
+installs `pane-exited` and `pane-died` hooks, filtered to the pane, for its duration and
+removes them on every path out. A pane killed from outside is reported at `timeout`.
+
+#### Strict listings: tell "no rows" from "tmux unreachable"
+
+{attr}`Server.sessions <libtmux.Server.sessions>` returns an empty list when
+tmux cannot be queried, so code that reconciles saved state against it can
+mistake a dead server for "every session is gone". The new
+{meth}`Server.fetch_sessions() <libtmux.Server.fetch_sessions>`,
+{meth}`~libtmux.Server.fetch_windows` and {meth}`~libtmux.Server.fetch_panes`
+return the same objects as lists but raise {exc}`libtmux.exc.ListCommandFailed`
+(a {exc}`~libtmux.exc.LibTmuxException`) when the `list-*` command fails. The
+lenient properties are unchanged.
+
+#### `Server.ensure_session()` gets or creates a session by exact name
+
+{meth}`Server.ensure_session() <libtmux.Server.ensure_session>` returns the
+session with the given name, creating it only when absent, so setup code can
+run repeatedly without catching {exc}`~libtmux.exc.TmuxSessionExists`. The
+name is matched exactly, never as a prefix. When the session already exists it
+is returned unchanged and the creation options are ignored.
+
+#### Session names can match exactly with `exact=True`
+
+{meth}`Server.kill_session() <libtmux.Server.kill_session>`,
+{meth}`Server.switch_client() <libtmux.Server.switch_client>`, and
+{meth}`Server.attach_session() <libtmux.Server.attach_session>` take an
+`exact` keyword, like {meth}`Server.has_session() <libtmux.Server.has_session>`.
+tmux resolves a bare session name by exact match, then by prefix, then as an
+`fnmatch(3)` pattern, so `kill_session("foo")` kills `foobar` when no `foo`
+exists.
+
+`exact=True` matches the name exactly. `exact=False` keeps tmux's matching and
+does not warn. The default, `exact=None`, still matches like tmux but emits a
+{class}`FutureWarning` when a name has no exact match and tmux resolves it by
+prefix or pattern. A name that matches exactly, a session id such as `$1`,
+and a name tmux rejects anyway never warn. A later release will make
+`exact=True` the default.
+
+```python
+# Before: kills "foobar" when "foo" does not exist
+server.kill_session("foo")
+
+# After: raises LibTmuxException unless "foo" exists
+server.kill_session("foo", exact=True)
+
+# Keep prefix or pattern matching, without the warning
+server.kill_session("build-*", exact=False)
+```
+
+#### Set scrollback before the first pane with `new_session(history_limit=)`
+
+{meth}`Server.new_session() <libtmux.Server.new_session>` takes `history_limit`,
+the scrollback for the new session's panes. The first pane gets it on every
+tmux version; before tmux 3.7 a `set_option()` call after `new_session()` only
+reached panes created later. The limit is stored on the new session, so the
+server-wide value and other sessions keep theirs. Before tmux 3.7 the
+server-wide value is raised and restored inside the one tmux command that
+creates the session, and `attach=True` raises `ValueError`; from tmux 3.7 it is
+never touched, because tmux 3.7 trims the history of existing panes when the
+server-wide limit drops. A negative value raises `ValueError`. See
+{ref}`workspace-setup` for a recipe.
 
 #### Automation patterns waits for tmux instead of guessing (#734)
 
