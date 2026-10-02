@@ -403,6 +403,32 @@ True
 >>> multi_window.kill()
 ```
 
+### Recipe: large scrollback from the first pane
+
+`history-limit` is read when a pane is created, and before tmux 3.7 a later
+`set_option()` call leaves existing panes alone. A session's first pane
+therefore keeps the server's value unless the limit is passed to
+{meth}`~libtmux.Server.new_session`, which sets it for the first pane and
+stores it on the session so later windows and panes get it too:
+
+```python
+>>> logs = server.new_session(session_name='logs', history_limit=50000)
+>>> logs.active_pane.display_message('#{history_limit}', get_text=True)
+['50000']
+
+>>> logs.new_window(window_name='more').active_pane.display_message(
+...     '#{history_limit}', get_text=True
+... )
+['50000']
+
+>>> logs.kill()
+```
+
+The server-wide default and other sessions keep their values. Before tmux 3.7
+libtmux raises the server-wide value for the one tmux command that creates the
+session and restores it inside that command, so other clients never see it;
+that path does not support `attach=True`.
+
 ## Window context managers
 
 When a window is only meant to live for the span of a task — a test run, a
