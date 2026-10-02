@@ -309,7 +309,12 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        env: t.Mapping[str, str] | None = None,
+    ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -335,6 +340,7 @@ class tmux_cmd:
                 text=True,
                 encoding="utf-8",
                 errors="backslashreplace",
+                env=env,
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode

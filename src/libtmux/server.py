@@ -7,17 +7,21 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
+import time
 import typing as t
 import warnings
 
 from libtmux import exc
 from libtmux._internal.env import (
     TMUX,
+    TMUX_PANE,
     TMUX_TMPDIR,
     check_socket_path_length,
     resolve_ambient_socket_path,
@@ -45,6 +49,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
+    from collections.abc import Iterator
     from typing import TypeAlias
 
     from typing_extensions import Self
@@ -54,6 +59,70 @@ if t.TYPE_CHECKING:
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+_REAPER_SCRIPT = (
+    # Block until the owner's end of the pipe closes -- however the owner
+    # died -- then do the cleanup the owner could not.
+    'while read -r _; do :; done; "$1" -S"$2" kill-server >/dev/null 2>&1; rm -rf "$3"'
+)
+"""POSIX shell run by :meth:`Server.owned`'s reaper process.
+
+``read`` returns non-zero on end-of-file, which arrives when the owner exits
+for any reason, including ``SIGKILL``.
+"""
+
+_OWNED_EXIT_WAIT = 2.0
+"""Seconds :meth:`Server.owned` waits for a killed daemon to be gone."""
+
+
+def _pid_running(pid: int) -> bool:
+    """Return whether *pid* is a live process; a zombie is not.
+
+    ``kill(pid, 0)`` succeeds against a zombie, and a daemon whose parent is
+    gone stays one until init reaps it, so Linux's ``/proc`` state is read
+    first.
+    """
+    try:
+        stat = pathlib.Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        pass
+    else:
+        # ``pid (comm) S ...``: the state follows the last closing parenthesis.
+        return stat.rpartition(")")[2].split()[0] != "Z"
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _spawn_reaper(
+    tmux_bin: str,
+    socket_path: pathlib.Path,
+    directory: pathlib.Path,
+    env: t.Mapping[str, str],
+) -> subprocess.Popen[bytes] | None:
+    """Start the process that cleans up if the owner dies without unwinding.
+
+    Returns ``None`` where there is no POSIX ``sh``; the owner's ``finally``
+    is then the only cleanup.
+    """
+    argv = ["sh", "-c", _REAPER_SCRIPT, "sh", tmux_bin, str(socket_path)]
+    try:
+        return subprocess.Popen(
+            [*argv, str(directory)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            # Out of the owner's process group: a terminal's SIGINT or SIGHUP
+            # must not take the reaper down before it has cleaned up.
+            start_new_session=True,
+            env=env,
+        )
+    except OSError:
+        return None
 
 
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
@@ -241,6 +310,8 @@ class Server(
     connection, so the same handle addresses a daemon whether or not this
     process started it — scoping one is not grounds to destroy it.
     """
+    _isolate_env: bool = False
+    """Whether tmux subprocesses run without ``$TMUX`` and ``$TMUX_PANE``."""
 
     def __init__(
         self,
@@ -340,6 +411,143 @@ class Server(
         .. versionadded:: 0.62
         """
         return cls(socket_path=socket_path_from_env(env))
+
+    @classmethod
+    @contextlib.contextmanager
+    def owned(
+        cls,
+        *,
+        config_file: str | None = os.devnull,
+        tmux_bin: str | pathlib.Path | None = None,
+        directory: StrPath | None = None,
+    ) -> Iterator[Self]:
+        """Run a throwaway tmux server for the duration of a block.
+
+        The server listens on a socket in a fresh private directory, reads no
+        configuration file, never sees ``$TMUX`` or ``$TMUX_PANE``, and is
+        killed, with its socket directory removed, when the block ends. It
+        cannot reach, or be mistaken for, any other tmux server.
+
+        tmux starts when the first session is created.
+
+        Cleanup runs when the block ends normally, on an exception, and when
+        the process dies without unwinding (``SIGTERM``, ``SIGHUP``,
+        ``SIGKILL``): a small reaper process started with the server notices
+        the owner exit and removes the daemon and the directory. No signal
+        handler is installed, so the caller's own handlers are untouched. On
+        a normal exit the reaper is gone and the daemon has exited before
+        this returns.
+
+        Parameters
+        ----------
+        config_file : str, optional
+            Configuration file for the new server. Defaults to
+            :data:`os.devnull`, so ``~/.tmux.conf`` is not read. Pass ``None``
+            to let tmux read its usual configuration.
+        tmux_bin : str or :class:`pathlib.Path`, optional
+            Path to the tmux binary. Defaults to ``tmux`` on ``PATH``.
+        directory : str or :class:`os.PathLike`, optional
+            Directory to create the private socket directory in. Defaults to
+            :func:`tempfile.gettempdir`.
+
+        Yields
+        ------
+        :class:`Server`
+            Server addressed by the private socket, with ``kill_on_exit`` set.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket path would not fit in a UNIX socket address, which
+            usually means ``$TMPDIR`` or *directory* is too deep.
+        :exc:`~libtmux.exc.LibTmuxException`
+            When tmux cannot be told to stop on exit; the socket directory is
+            kept for the reaper to retry.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server as TmuxServer
+        >>> with TmuxServer.owned() as scratch:
+        ...     _ = scratch.new_session(session_name="build")
+        ...     scratch.is_alive()
+        True
+        >>> scratch.is_alive()
+        False
+
+        .. versionadded:: 0.63
+        """
+        base = pathlib.Path(directory) if directory is not None else None
+        scratch = pathlib.Path(
+            tempfile.mkdtemp(prefix="lt-", dir=base),
+        )
+        socket_path = scratch / "s"
+        try:
+            check_socket_path_length(
+                socket_path,
+                env_var=None if base is not None else "TMPDIR",
+                env_value=None if base is not None else tempfile.gettempdir(),
+            )
+        except exc.SocketPathTooLong:
+            shutil.rmtree(scratch, ignore_errors=True)
+            raise
+
+        def _handle(factory: type[Server]) -> Server:
+            handle = factory(
+                socket_path=socket_path,
+                config_file=config_file,
+                tmux_bin=tmux_bin,
+                kill_on_exit=True,
+            )
+            handle._isolate_env = True
+            return handle
+
+        yielded = cls(
+            socket_path=socket_path,
+            config_file=config_file,
+            tmux_bin=tmux_bin,
+            kill_on_exit=True,
+        )
+        yielded._isolate_env = True
+        reaper = _spawn_reaper(
+            yielded.tmux_bin or shutil.which("tmux") or "tmux",
+            socket_path,
+            scratch,
+            yielded._tmux_env() or {},
+        )
+        try:
+            yield yielded
+        finally:
+            cleanup_error: Exception | None = None
+            try:
+                # A fresh handle: the caller may have changed the yielded one.
+                cls._stop_owned(_handle(Server))
+            except Exception as err:
+                cleanup_error = err
+            else:
+                shutil.rmtree(scratch, ignore_errors=True)
+            if reaper is not None:
+                # Closing the pipe releases the reaper; it retries whatever
+                # the owner could not finish.
+                if reaper.stdin is not None:
+                    reaper.stdin.close()
+                reaper.wait()
+            if cleanup_error is not None:
+                raise cleanup_error
+
+    @staticmethod
+    def _stop_owned(handle: Server) -> None:
+        """Kill *handle*'s daemon and return once the process has exited."""
+        pid_line = handle.cmd("display-message", "-p", "#{pid}").stdout
+        handle.kill()
+        if not pid_line or not pid_line[0].isdigit():
+            return
+        pid = int(pid_line[0])
+        deadline = time.monotonic() + _OWNED_EXIT_WAIT
+        while time.monotonic() < deadline:
+            if not _pid_running(pid):
+                return
+            time.sleep(0.002)
+        logger.warning("owned server still running", extra={"tmux_pid": pid})
 
     def __enter__(self) -> Self:
         """Enter the context, returning self.
@@ -474,13 +682,28 @@ class Server(
             cmd_args.insert(0, f"-f{self.config_file}")
 
         try:
-            subprocess.check_call([resolved, *cmd_args])
+            subprocess.check_call([resolved, *cmd_args], env=self._tmux_env())
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
 
     #
     # Command
     #
+    def _tmux_env(self) -> dict[str, str] | None:
+        """Return the environment tmux subprocesses run in.
+
+        ``None`` inherits this process's environment. A server built by
+        :meth:`owned` returns it without ``$TMUX`` and ``$TMUX_PANE``, so the
+        pane this process happens to run in never reaches the private daemon.
+        """
+        if not self._isolate_env:
+            return None
+        return {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {TMUX, TMUX_PANE}
+        }
+
     def _socket_args(self) -> list[str]:
         """Return this server's ``-S``/``-L`` flags, measuring the socket path.
 
@@ -643,7 +866,12 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self.tmux_bin,
+            env=self._tmux_env(),
+        )
 
     @property
     def attached_sessions(self) -> list[Session]:

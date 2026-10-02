@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import functools
 import logging
 import os
 import pathlib
 import shutil
+import signal
 import socket
 import subprocess
+import sys
+import threading
 import time
 import typing as t
 
@@ -17,7 +21,8 @@ import pytest
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux._internal.env import SOCKET_PATH_MAX_BYTES, resolve_socket_path
-from libtmux.server import Server
+from libtmux.server import Server, _pid_running
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -2196,3 +2201,219 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def _ps_args() -> list[str]:
+    """Return every process's command line, as ``ps`` renders it."""
+    out = subprocess.run(
+        ["ps", "-axo", "args="],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return out.splitlines()
+
+
+def _reapers_for(scratch: str) -> int:
+    """Count processes whose command line names *scratch*."""
+    return sum(1 for line in _ps_args() if scratch in line)
+
+
+_OWNER_SCRIPT = """
+import sys
+from libtmux.server import Server
+
+with Server.owned() as server:
+    server.new_session(session_name="owned")
+    pid = server.cmd("display-message", "-p", "#{pid}").stdout[0]
+    print(server.socket_path, pid, flush=True)
+    sys.stdin.read()
+"""
+
+
+def _start_owner(env: dict[str, str]) -> tuple[subprocess.Popen[str], str, int]:
+    """Run a process that holds a ``Server.owned()`` block open."""
+    owner = subprocess.Popen(
+        [sys.executable, "-c", _OWNER_SCRIPT],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    assert owner.stdout is not None
+    socket_path, pid = owner.stdout.readline().split()
+    return owner, socket_path, int(pid)
+
+
+def test_owned_kills_server_and_removes_directory() -> None:
+    """The block ends the daemon, the socket and the directory."""
+    with Server.owned() as scratch:
+        scratch.new_session(session_name="owned")
+        socket_path = pathlib.Path(str(scratch.socket_path))
+        assert scratch.is_alive()
+        assert socket_path.exists()
+        pid = int(scratch.cmd("display-message", "-p", "#{pid}").stdout[0])
+
+    assert not scratch.is_alive()
+    assert not socket_path.parent.exists()
+    assert not _pid_running(pid)
+    assert _reapers_for(str(socket_path.parent)) == 0
+
+
+def test_owned_cleans_up_on_exception() -> None:
+    """An exception in the block still ends the daemon."""
+    with pytest.raises(RuntimeError, match="boom"), Server.owned() as scratch:
+        scratch.new_session(session_name="owned")
+        socket_path = pathlib.Path(str(scratch.socket_path))
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    assert not scratch.is_alive()
+    assert not socket_path.parent.exists()
+
+
+def test_owned_leaves_other_servers_alone(TestServer: type[Server]) -> None:
+    """A server already running, including one named by ``$TMUX``, survives."""
+    bystander = TestServer()
+    bystander.new_session(session_name="important-work")
+
+    with Server.owned() as scratch:
+        scratch.new_session(session_name="owned")
+        assert scratch.socket_path != bystander.socket_path
+
+    assert bystander.is_alive()
+    assert [s.session_name for s in bystander.sessions] == ["important-work"]
+
+
+def test_owned_never_inherits_tmux_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Tmux subprocesses run without ``$TMUX`` and ``$TMUX_PANE``."""
+    seen = tmp_path / "env.txt"
+    real = shutil.which("tmux")
+    assert real is not None
+    wrapper = tmp_path / "tmux-wrapper"
+    wrapper.write_text(f'#!/bin/sh\nenv > "{seen}"\nexec "{real}" "$@"\n')
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("TMUX", "/tmp/decoy,1,0")
+    monkeypatch.setenv("TMUX_PANE", "%9")
+
+    with Server.owned(tmux_bin=wrapper) as scratch:
+        scratch.new_session(session_name="owned")
+        assert scratch.is_alive()
+        assert scratch.sessions[0].session_name == "owned"
+
+    names = {line.partition("=")[0] for line in seen.read_text().splitlines()}
+    assert "TMUX" not in names
+    assert "TMUX_PANE" not in names
+    assert "PATH" in names
+
+
+class OwnedConfigFixture(t.NamedTuple):
+    """A ``config_file`` choice and whether ``~/.tmux.conf`` takes effect."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+    expect_marker: bool
+
+
+OWNED_CONFIG_FIXTURES: list[OwnedConfigFixture] = [
+    OwnedConfigFixture("default_ignores_user_config", {}, False),
+    OwnedConfigFixture("none_reads_user_config", {"config_file": None}, True),
+]
+
+
+@pytest.mark.parametrize(
+    list(OwnedConfigFixture._fields),
+    OWNED_CONFIG_FIXTURES,
+    ids=[f.test_id for f in OWNED_CONFIG_FIXTURES],
+)
+def test_owned_reads_no_user_config_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    expect_marker: bool,
+) -> None:
+    """``config_file`` defaults to :data:`os.devnull`."""
+    (tmp_path / ".tmux.conf").write_text("set -g @owned_marker yes\n")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    with Server.owned(**kwargs) as scratch:
+        scratch.new_session(session_name="owned")
+        shown = scratch.cmd("show-options", "-gqv", "@owned_marker").stdout
+
+    assert (shown == ["yes"]) is expect_marker
+
+
+def test_owned_is_independent_under_concurrency() -> None:
+    """Concurrent scopes get distinct sockets and each cleans up its own."""
+    barrier = threading.Barrier(4)
+
+    def work(index: int) -> tuple[str, int]:
+        with Server.owned() as scratch:
+            scratch.new_session(session_name=f"owned-{index}")
+            barrier.wait(timeout=10)
+            assert [s.session_name for s in scratch.sessions] == [f"owned-{index}"]
+            pid = int(scratch.cmd("display-message", "-p", "#{pid}").stdout[0])
+            return str(scratch.socket_path), pid
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(work, range(4)))
+
+    assert len({path for path, _ in results}) == 4
+    for path, pid in results:
+        assert not pathlib.Path(path).parent.exists()
+        assert not _pid_running(pid)
+        assert _reapers_for(str(pathlib.Path(path).parent)) == 0
+
+
+def test_owned_refuses_socket_path_that_cannot_bind(tmp_path: pathlib.Path) -> None:
+    """A directory too deep for a UNIX socket raises, and leaves nothing."""
+    deep = tmp_path / ("d" * 100)
+    deep.mkdir()
+
+    with (
+        pytest.raises(exc.SocketPathTooLong) as excinfo,
+        Server.owned(directory=deep),
+    ):
+        pytest.fail("the block must not run")
+
+    assert excinfo.value.limit == SOCKET_PATH_MAX_BYTES
+    assert excinfo.value.over > 0
+    assert list(deep.iterdir()) == []
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="owner is stopped with POSIX signals",
+)
+@pytest.mark.parametrize(
+    "sig",
+    [signal.SIGTERM, signal.SIGHUP, signal.SIGKILL],
+    ids=lambda sig: sig.name,
+)
+def test_owned_cleans_up_when_the_owner_is_killed(sig: signal.Signals) -> None:
+    """The daemon, socket directory and reaper go when the owner dies mid-block."""
+    owner, socket_path, pid = _start_owner(dict(os.environ))
+    scratch = str(pathlib.Path(socket_path).parent)
+    try:
+        assert _pid_running(pid)
+        assert _reapers_for(scratch) >= 1
+
+        owner.send_signal(sig)
+        owner.wait(timeout=10)
+
+        def _gone() -> bool:
+            return (
+                not _pid_running(pid)
+                and not pathlib.Path(scratch).exists()
+                and _reapers_for(scratch) == 0
+            )
+
+        assert retry_until(_gone, seconds=5, raises=False)
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+            owner.wait()

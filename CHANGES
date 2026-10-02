@@ -69,7 +69,24 @@ with Server(socket_name="my-work") as server:
 with Server(socket_name="my-work", kill_on_exit=True) as server:
     pass
 ```
+
+For a server that exists only for the block, use the new
+{meth}`Server.owned() <libtmux.Server.owned>` below.
+
 ### What's new
+
+#### `Server.owned()` runs a throwaway tmux server
+
+{meth}`Server.owned() <libtmux.Server.owned>` is a context manager that runs a
+tmux server for one block. It listens on a new private socket directory, reads
+no configuration file (`config_file` defaults to {data}`os.devnull`), and runs
+tmux without `$TMUX` and `$TMUX_PANE`, so it cannot reach the tmux you are
+working in. The server and its directory are removed when the block ends,
+including on an exception, and also when the process dies from `SIGTERM`,
+`SIGHUP` or `SIGKILL`: a small reaper process notices the owner exit. No
+signal handler is installed. The socket path is measured first and raises
+{exc}`~libtmux.exc.SocketPathTooLong` when it cannot bind. See
+{ref}`throwaway_server`.
 
 #### Socket paths are measured before tmux sees them (#730)
 

@@ -82,6 +82,7 @@ class ControlMode:
                     stderr=subprocess.PIPE,
                     text=True,
                     encoding="utf-8",
+                    env=self.server._tmux_env(),
                 )
             finally:
                 # subprocess owns read_fd now

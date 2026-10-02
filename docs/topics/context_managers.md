@@ -65,6 +65,11 @@ When teardown *is* what you want, say so with `kill_on_exit`:
 False
 ```
 
+For a server that exists only for the block, use
+{meth}`Server.owned() <libtmux.Server.owned>` instead: it makes a private
+socket, sets `kill_on_exit`, and cleans up even when the process is killed. See
+{ref}`throwaway_server`.
+
 That is the one asymmetry in this page. A session, window or pane is yours by
 construction — you called {meth}`~libtmux.Server.new_session` or
 {meth}`~libtmux.Window.split` to get it. A server was very likely already
