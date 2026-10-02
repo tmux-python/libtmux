@@ -76,6 +76,19 @@ swallows the next signal on the channel. The signal wakes every waiter on the
 channel, so a channel should have one waiter. `timeout` combined with `lock`,
 `unlock` or `set_flag` raises `ValueError`.
 
+#### `Pane.wait()` returns how a pane's process ended
+
+{meth}`Pane.wait() <libtmux.Pane.wait>` blocks until the process tmux started in
+a pane exits and returns a {class}`~libtmux.pane.PaneExit` with its `status` and
+terminating `signal`. It raises {exc}`~libtmux.exc.WaitTimeout` when the process
+outlives `timeout`, {exc}`~libtmux.exc.PaneNotFound` when the pane is closed
+under it, and {exc}`~libtmux.exc.TmuxServerGone` when the server exits.
+
+tmux discards a pane's status when it closes the pane, so `wait` sets the pane's
+`remain-on-exit` for the call, leaves the dead pane in place, and restores the
+option. tmux 3.2a does not report the terminating signal; a process ended by a
+signal returns `PaneExit(status=None, signal=None)` there.
+
 ### Documentation
 
 #### Automation patterns waits for tmux instead of guessing (#734)

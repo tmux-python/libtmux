@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import time
 import typing as t
 import warnings
 
@@ -44,6 +45,37 @@ if t.TYPE_CHECKING:
         from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
+
+
+class PaneExit(t.NamedTuple):
+    """How a pane's process ended, as returned by :meth:`Pane.wait`.
+
+    Attributes
+    ----------
+    status : int or None
+        Exit status. *None* when a signal ended the process.
+    signal : int or None
+        Terminating signal number. *None* when the process exited normally,
+        and always *None* on tmux 3.2a, which does not report it.
+
+    Examples
+    --------
+    >>> PaneExit(status=3, signal=None)
+    PaneExit(status=3, signal=None)
+
+    >>> status, signal = PaneExit(status=None, signal=9)
+    >>> signal
+    9
+
+    .. versionadded:: 0.63
+    """
+
+    status: int | None
+    signal: int | None
+
+
+_WAIT_POLL_START = 0.01
+_WAIT_POLL_CAP = 0.1
 
 
 @dataclasses.dataclass()
@@ -1031,6 +1063,138 @@ class Pane(
             return proc.stdout
 
         return None
+
+    def wait(self, timeout: float | None = None) -> PaneExit:
+        """Block until the pane's process exits, and return how it ended.
+
+        Waits for the process tmux started in the pane (the shell, or the
+        command given to :meth:`Window.split() <libtmux.Window.split>`), not for
+        a command typed into that shell. For a typed command, have it signal
+        a channel and use :meth:`Server.wait_for() <libtmux.Server.wait_for>`.
+
+        tmux closes a pane when its process exits, taking the exit status
+        with it. ``wait`` sets the pane's ``remain-on-exit`` for the duration
+        of the call, so the pane stays on screen as a dead pane afterwards
+        and you can kill or respawn it. The option is put back the way it
+        was. A pane that is already dead is returned at once, and a pane that
+        closed before ``wait`` ran is gone, so enable ``remain-on-exit``
+        before the process can exit when it is short-lived.
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Seconds to wait. *None* (the default) waits indefinitely.
+
+        Returns
+        -------
+        PaneExit
+            Exit ``status`` and terminating ``signal``. On tmux 3.2a
+            ``signal`` is always *None*, so a process ended by a signal
+            returns ``PaneExit(None, None)``.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.WaitTimeout`
+            When the process is still running after *timeout*.
+        :exc:`~libtmux.exc.PaneNotFound`
+            When the pane was closed before it could be read.
+        :exc:`~libtmux.exc.TmuxServerGone`
+            When the tmux server exited.
+
+        Notes
+        -----
+        The wait polls the pane's state with a short, growing interval rather
+        than waiting on a ``pane-died`` hook: a hook never fires for a pane that
+        is killed, so a ``timeout=None`` wait would block forever, and it
+        replaces any hook the pane already has.
+
+        .. versionadded:: 0.63
+
+        Examples
+        --------
+        >>> pane = window.split(attach=False, shell='sleep 0.5; exit 3')
+        >>> pane.wait(timeout=30)
+        PaneExit(status=3, signal=None)
+
+        The pane remains, dead, until you remove it:
+
+        >>> pane.refresh()
+        >>> pane.pane_dead
+        '1'
+
+        >>> pane.kill()
+
+        A process that is still running costs *timeout* seconds:
+
+        >>> from libtmux import exc
+        >>> sleeper = window.split(attach=False, shell='sleep 30')
+        >>> try:
+        ...     sleeper.wait(timeout=0.25)
+        ... except exc.WaitTimeout:
+        ...     print('still running')
+        still running
+
+        >>> sleeper.kill()
+        """
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        exit_ = self._read_exit()
+        if exit_ is not None:
+            return exit_
+
+        previous = self.cmd("show-options", "-pqv", "remain-on-exit").stdout
+        proc = self.cmd("set-option", "-p", "remain-on-exit", "on")
+        if proc.stderr:
+            raise self._lost()
+        try:
+            interval = _WAIT_POLL_START
+            while True:
+                exit_ = self._read_exit()
+                if exit_ is not None:
+                    return exit_
+                if deadline is not None and time.monotonic() >= deadline:
+                    msg = f"pane {self.pane_id} still running after {timeout}s"
+                    raise exc.WaitTimeout(msg)
+                time.sleep(interval)
+                interval = min(interval * 2, _WAIT_POLL_CAP)
+        finally:
+            if previous:
+                self.cmd("set-option", "-p", "remain-on-exit", previous[0])
+            else:
+                self.cmd("set-option", "-p", "-u", "remain-on-exit")
+
+    def _lost(self) -> exc.LibTmuxException:
+        """Return the exception for a pane tmux can no longer find."""
+        if not self.server.is_alive():
+            return exc.TmuxServerGone(str(self.pane_id))
+        return exc.PaneNotFound(self.pane_id)
+
+    def _read_exit(self) -> PaneExit | None:
+        """Return the pane's exit, or *None* while its process still runs.
+
+        ``display-message -p`` answers success with empty fields for a pane
+        that does not exist, so the pane id is part of the format and the
+        answer is trusted only when it comes back.
+        """
+        sep = FORMAT_SEPARATOR
+        fmt = sep.join(
+            (
+                "#{pane_id}",
+                "#{pane_dead}",
+                "#{pane_dead_status}",
+                "#{pane_dead_signal}",
+            ),
+        )
+        proc = self.cmd("display-message", "-p", fmt)
+        row = proc.stdout[0].split(sep) if proc.stdout else []
+        if proc.stderr or len(row) != 4 or row[0] != self.pane_id:
+            raise self._lost()
+        if row[1] != "1":
+            return None
+        return PaneExit(
+            status=int(row[2]) if row[2] else None,
+            signal=int(row[3]) if row[3] else None,
+        )
 
     def kill(
         self,

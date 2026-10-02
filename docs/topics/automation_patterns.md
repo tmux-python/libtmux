@@ -543,6 +543,44 @@ read it back.
 `timeout` applies to a plain wait. Combining it with `lock`, `unlock` or
 `set_flag` raises {exc}`ValueError`.
 
+### Waiting for a pane's process to exit
+
+{meth}`Pane.wait() <libtmux.Pane.wait>` blocks until the process tmux started in
+the pane exits and returns how it ended. Reach for it when the pane *is* the
+job: a pane created with `shell=` running one command. For a command typed into
+a shell that keeps running, signal a channel instead
+({ref}`bounded-wait`).
+
+```python
+>>> job_window = session.new_window(window_name='job-demo', attach=False)
+>>> job = job_window.split(attach=False, shell='sleep 0.5; exit 3')
+
+>>> job.wait(timeout=30)
+PaneExit(status=3, signal=None)
+
+>>> job_window.kill()
+```
+
+`status` is the exit status. A process ended by a signal has no status and
+reports the `signal` instead, from tmux 3.3. tmux 3.2a does not report the
+signal, so that case returns `PaneExit(status=None, signal=None)` there.
+
+tmux closes a pane the moment its process exits, and the status goes with it.
+`wait` therefore sets the pane's `remain-on-exit` while it runs, leaves the dead
+pane in place for you to kill or respawn, and restores the option afterwards. A
+process that can exit before `wait` is called needs `remain-on-exit` set first,
+for example with `window.set_option('remain-on-exit', 'on')` before the split;
+otherwise the pane is gone and `wait` raises {exc}`~libtmux.exc.PaneNotFound`.
+
+A running process raises {exc}`~libtmux.exc.WaitTimeout` after `timeout` and is
+left running. A killed pane raises {exc}`~libtmux.exc.PaneNotFound` and an exited
+server {exc}`~libtmux.exc.TmuxServerGone`.
+
+The wait polls the pane with a short, growing interval, 10 ms up to 100 ms, so it
+is a busy wait and not an event. A `pane-died` hook would wake at once, but it
+never fires for a pane that is killed, so an unbounded wait would hang, and it
+would replace a hook the pane already had.
+
 ### Retry pattern
 
 For flaky work that succeeds on a later attempt, wait for each attempt to finish and

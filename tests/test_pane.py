@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
+import threading
 import typing as t
 
 import pytest
@@ -12,11 +13,13 @@ import pytest
 from libtmux import exc
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
+from libtmux.pane import PaneExit
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
     from libtmux.pane import Pane
+    from libtmux.server import Server
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -1878,3 +1881,134 @@ def test_new_pane_error_tags_subcommand(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
             pane.new_pane(target="%99999")
+
+
+def _act_once_wait_has_armed(
+    pane: Pane, action: t.Callable[[], object]
+) -> threading.Thread:
+    """Run *action* from a thread once ``Pane.wait`` has set ``remain-on-exit``.
+
+    The pane must outlive the call to ``wait`` until the option is set, or it
+    closes and its status is gone. Waiting on the option rather than a delay
+    keeps the ordering deterministic under load.
+    """
+
+    def armed() -> bool:
+        return pane.cmd("show-options", "-pqv", "remain-on-exit").stdout == ["on"]
+
+    def run() -> None:
+        retry_until(armed, seconds=10)
+        action()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return thread
+
+
+def _own_remain_on_exit(pane: Pane) -> list[str]:
+    return pane.cmd("show-options", "-pqv", "remain-on-exit").stdout
+
+
+def test_pane_wait_returns_the_exit_status(session: Session) -> None:
+    """The status comes back, and the pane stays as a dead pane."""
+    pane = session.active_window.split(attach=False, shell="read go; exit 7")
+    thread = _act_once_wait_has_armed(pane, lambda: pane.send_keys("go"))
+
+    try:
+        assert pane.wait(timeout=30) == PaneExit(status=7, signal=None)
+    finally:
+        thread.join()
+
+    pane.refresh()
+    assert pane.pane_dead == "1"
+
+
+def test_pane_wait_returns_the_signal_that_ended_the_process(
+    session: Session,
+) -> None:
+    """A signal death has no status; the signal is reported from tmux 3.3."""
+    pane = session.active_window.split(attach=False, shell="read go; kill -9 $$")
+    thread = _act_once_wait_has_armed(pane, lambda: pane.send_keys("go"))
+
+    try:
+        result = pane.wait(timeout=30)
+    finally:
+        thread.join()
+
+    expected_signal = 9 if has_gte_version("3.3") else None
+    assert result == PaneExit(status=None, signal=expected_signal)
+
+
+def test_pane_wait_leaves_remain_on_exit_as_it_found_it(session: Session) -> None:
+    """The option is restored after a wait, on a result and on a timeout."""
+    window = session.active_window
+    pane = window.split(attach=False, shell="read go; exit 0")
+    assert _own_remain_on_exit(pane) == []
+
+    with pytest.raises(exc.WaitTimeout):
+        pane.wait(timeout=0.2)
+    assert _own_remain_on_exit(pane) == []
+
+    pane.cmd("set-option", "-p", "remain-on-exit", "on")
+    with pytest.raises(exc.WaitTimeout):
+        pane.wait(timeout=0.2)
+    assert _own_remain_on_exit(pane) == ["on"]
+
+    thread = _act_once_wait_has_armed(pane, lambda: pane.send_keys("go"))
+    try:
+        pane.wait(timeout=30)
+    finally:
+        thread.join()
+    assert _own_remain_on_exit(pane) == ["on"]
+
+
+def test_pane_wait_times_out_on_a_running_process(session: Session) -> None:
+    """A process that keeps running raises a timeout and is left alone."""
+    pane = session.active_window.split(attach=False, shell="sleep 30")
+
+    with pytest.raises(exc.WaitTimeout, match=r"still running after 0\.2s"):
+        pane.wait(timeout=0.2)
+
+    pane.refresh()
+    assert pane.pane_dead == "0"
+
+
+def test_pane_wait_returns_at_once_for_a_pane_that_is_already_dead(
+    session: Session,
+) -> None:
+    """A dead pane is read, not waited on, and its options are not touched."""
+    window = session.active_window
+    window.set_option("remain-on-exit", "on")
+    pane = window.split(attach=False, shell="exit 4")
+    retry_until(
+        lambda: pane.cmd("display-message", "-p", "#{pane_dead}").stdout == ["1"]
+    )
+
+    assert pane.wait(timeout=5) == PaneExit(status=4, signal=None)
+    assert _own_remain_on_exit(pane) == []
+
+
+def test_pane_wait_reports_a_pane_that_was_closed(session: Session) -> None:
+    """Killing the pane mid-wait raises ``PaneNotFound`` instead of hanging."""
+    pane = session.active_window.split(attach=False, shell="sleep 30")
+    thread = _act_once_wait_has_armed(pane, pane.kill)
+
+    try:
+        with pytest.raises(exc.PaneNotFound):
+            pane.wait(timeout=30)
+    finally:
+        thread.join()
+
+
+def test_pane_wait_reports_a_server_that_exited(TestServer: type[Server]) -> None:
+    """A dead server is not a missing pane."""
+    doomed = TestServer()
+    pane = doomed.new_session(session_name="wait_doomed").active_window.active_pane
+    assert pane is not None
+    thread = _act_once_wait_has_armed(pane, doomed.kill)
+
+    try:
+        with pytest.raises(exc.TmuxServerGone):
+            pane.wait(timeout=30)
+    finally:
+        thread.join()

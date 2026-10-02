@@ -17,3 +17,8 @@
     :show-inheritance:
     :member-order: bysource
 ```
+
+```{eval-rst}
+.. autoclass:: libtmux.pane.PaneExit
+    :show-inheritance:
+```
