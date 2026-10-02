@@ -398,6 +398,59 @@ class TmuxEngine(t.Protocol):
 
 
 @t.runtime_checkable
+class AsyncTmuxEngine(t.Protocol):
+    """An asynchronous executor of tmux commands.
+
+    The awaitable twin of :class:`TmuxEngine`: ``run`` and ``run_batch`` are
+    coroutines and ``aclose`` releases whatever the engine holds open. It is
+    what :mod:`libtmux.aio` objects are built on. :class:`~libtmux.Server`
+    takes only a synchronous engine and raises
+    :exc:`~libtmux.exc.AsyncEngineMismatch` for this one.
+
+    The protocol is structural and checked by name, like :class:`TmuxEngine`,
+    so :func:`isinstance` cannot tell the two apart; use
+    :func:`inspect.iscoroutinefunction` on ``run`` for that.
+
+    Cancelling any awaited call must leave nothing behind: no tmux process the
+    call started and no reply the engine still owes. The tmux command may
+    still complete on the server, since a cancelled caller cannot recall it.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.engines import AsyncTmuxEngine, CommandRequest, CommandResult
+    >>> class EchoEngine:
+    ...     async def run(self, request):
+    ...         return CommandResult(cmd=("tmux", *request.args), stdout=("ok",))
+    ...
+    ...     async def run_batch(self, requests):
+    ...         return [await self.run(request) for request in requests]
+    ...
+    ...     async def aclose(self):
+    ...         pass
+    >>> isinstance(EchoEngine(), AsyncTmuxEngine)
+    True
+    >>> asyncio.run(EchoEngine().run(CommandRequest.from_args("list-sessions"))).stdout
+    ('ok',)
+    """
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Execute one tmux command and return its structured result."""
+        ...
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Execute requests in order, returning one result per request."""
+        ...
+
+    async def aclose(self) -> None:
+        """Release the engine's resources; safe to call twice."""
+        ...
+
+
+@t.runtime_checkable
 class SupportsCommandLine(t.Protocol):
     """An engine that can render the argv it *would* run, without running it.
 

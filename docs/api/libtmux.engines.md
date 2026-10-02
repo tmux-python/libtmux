@@ -51,6 +51,10 @@ single place either is computed.
 
 ## The default engine
 
+{class}`~libtmux.engines.subprocess.AsyncSubprocessEngine`, in the same module,
+is the awaitable form for `async` code. It implements
+{class}`~libtmux.engines.base.AsyncTmuxEngine`.
+
 ```{eval-rst}
 .. automodule:: libtmux.engines.subprocess
    :members:
@@ -65,9 +69,13 @@ single place either is computed.
 
 ## Other hosts
 
+{class}`~libtmux.engines.exec.AsyncExecEngine` is the awaitable form of
+{class}`~libtmux.engines.exec.ExecEngine`.
+
 ```{eval-rst}
 .. automodule:: libtmux.engines.exec
    :members:
+   :inherited-members:
 ```
 
 ## Observing an engine

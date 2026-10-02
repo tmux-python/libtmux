@@ -6,6 +6,8 @@ import pytest
 
 from libtmux.common import get_version, get_version_str
 
+from ._aio import SpawnCounter
+
 
 @pytest.fixture(autouse=True)
 def _clear_get_version_cache() -> None:
@@ -20,3 +22,9 @@ def _clear_get_version_cache() -> None:
     """
     get_version.cache_clear()
     get_version_str.cache_clear()
+
+
+@pytest.fixture
+def spawns(monkeypatch: pytest.MonkeyPatch) -> SpawnCounter:
+    """Spy on async client spawns, so a test waits for them instead of sleeping."""
+    return SpawnCounter(monkeypatch)

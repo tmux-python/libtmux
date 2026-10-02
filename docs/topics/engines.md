@@ -362,6 +362,58 @@ loaded development machine (load average 10), milliseconds:
 The two control processes are the `list-sessions` probe that picks the session
 and the client itself. Connecting costs about 3 to 6 ms once.
 
+## Asyncio
+
+{class}`~libtmux.engines.subprocess.AsyncSubprocessEngine` is the awaitable
+engine. It speaks the same {class}`~libtmux.engines.base.CommandRequest` and
+{class}`~libtmux.engines.base.CommandResult`; only the calls are coroutines.
+{class}`~libtmux.Server` takes a synchronous engine only, so an async engine is
+used from your own `async` code:
+
+```python
+>>> import asyncio
+>>> from libtmux.engines import AsyncSubprocessEngine, CommandRequest
+>>> async def demo():
+...     async with AsyncSubprocessEngine.for_server(server) as engine:
+...         result = await engine.run(
+...             CommandRequest.from_args("display-message", "-p", "#{session_name}")
+...         )
+...         return result.stdout
+>>> asyncio.run(demo())
+('libtmux_...',)
+```
+
+What it adds over a blocking call in a thread is cancellation. Each command is
+one tmux client in its own process group; cancelling the task, or a `timeout`
+elapsing, kills the group and waits for the operating system to reap it before
+the call returns. Ten blocked commands cancelled together leave no tmux client
+behind, which the test suite counts with `ps`. `asyncio.to_thread` cannot do
+that: cancelling it abandons the thread, and the tmux client it started keeps
+running.
+
+```python
+>>> import asyncio
+>>> from libtmux import exc
+>>> from libtmux.engines import AsyncSubprocessEngine, CommandRequest
+>>> async def demo():
+...     engine = AsyncSubprocessEngine.for_server(server)
+...     try:
+...         await engine.run(
+...             CommandRequest.from_args("wait-for", "never_signalled", timeout=0.25)
+...         )
+...     except exc.TmuxTimeout as error:
+...         return error.timeout
+>>> asyncio.run(demo())
+0.25
+```
+
+tmux may still finish a command whose caller was cancelled: the client is gone,
+but the server received the line. Commands that change state are not undone.
+
+`AsyncExecEngine` runs tmux behind a transport command like `ExecEngine`
+does, with the same cancellation guarantee: the transport program, `docker` or
+`ssh`, dies with the client.
+
 ## Tmux in a container or on another host
 
 {class}`~libtmux.engines.exec.ExecEngine` puts a transport command in front of

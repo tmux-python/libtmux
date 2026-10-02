@@ -19,52 +19,17 @@ import typing as t
 from libtmux import exc
 from libtmux.engines.base import CommandRequest, CommandResult
 from libtmux.engines.connection import ServerConnection
-from libtmux.engines.subprocess import run_argv
+from libtmux.engines.subprocess import run_argv, run_argv_async
 
 if t.TYPE_CHECKING:
+    import types
     from collections.abc import Sequence
 
     from typing_extensions import Self
 
 
-class ExecEngine:
-    """Run tmux commands through a transport command such as ``docker exec``.
-
-    Each request becomes one local process: *prefix*, then tmux and its
-    arguments. The transport carries stdin, stdout, stderr and the exit status,
-    so a tmux-side failure is data on the result exactly as with the subprocess
-    engine.
-
-    Parameters
-    ----------
-    prefix : sequence of str
-        The transport command, such as ``("docker", "exec", "-i", "box")``.
-        Empty runs tmux locally.
-    tmux : str
-        The tmux binary as the far side knows it.
-    socket_args : sequence of str
-        Connection flags for the far side, such as ``("-Lwork",)``.
-        :class:`~libtmux.Server` fills them in from its own socket.
-    shell : bool
-        Join tmux and its arguments with :func:`shlex.join` into a single
-        word. Set it for transports that re-parse their command through a
-        shell, such as ``ssh`` and ``su -c``: without it, a value with a space
-        or a quote is split or mangled on the way. ``docker exec`` and
-        ``kubectl exec`` pass argv through untouched and need no quoting.
-
-    Notes
-    -----
-    The transport never gets ``-t``: a pty rewrites newlines. ``-i`` is
-    required for a request's ``input``, and the named constructors add it.
-    A request's ``timeout`` kills the local transport process; the remote tmux
-    command may still complete.
-
-    Examples
-    --------
-    >>> engine = ExecEngine.ssh("build-host", options=("-p", "2222"))
-    >>> engine.command_line(CommandRequest.from_args("display-message", "-p", "a b"))
-    ('ssh', '-p', '2222', 'build-host', "tmux display-message -p 'a b'")
-    """
+class _Transport:
+    """The prefix, quoting and constructors both exec engines share."""
 
     def __init__(
         self,
@@ -189,7 +154,7 @@ class ExecEngine:
         """The far side's tmux binary and connection flags."""
         return ServerConnection.of(self._tmux, self._socket_args)
 
-    def with_connection(self, connection: ServerConnection) -> ExecEngine:
+    def with_connection(self, connection: ServerConnection) -> Self:
         """Return an equivalent engine for the server *connection* names.
 
         :attr:`Server.engine <libtmux.Server.engine>` calls this to give an
@@ -219,6 +184,53 @@ class ExecEngine:
             return (*self._prefix, shlex.join(tmux_argv))
         return (*self._prefix, *tmux_argv)
 
+    def _version_command(self) -> tuple[str, ...]:
+        """Return the local argv for ``tmux -V``, which takes no socket flags."""
+        probe = (self._tmux, "-V")
+        if self._shell:
+            return (*self._prefix, shlex.join(probe))
+        return (*self._prefix, *probe)
+
+
+class ExecEngine(_Transport):
+    """Run tmux commands through a transport command such as ``docker exec``.
+
+    Each request becomes one local process: *prefix*, then tmux and its
+    arguments. The transport carries stdin, stdout, stderr and the exit status,
+    so a tmux-side failure is data on the result exactly as with the subprocess
+    engine. :class:`AsyncExecEngine` is the awaitable form.
+
+    Parameters
+    ----------
+    prefix : sequence of str
+        The transport command, such as ``("docker", "exec", "-i", "box")``.
+        Empty runs tmux locally.
+    tmux : str
+        The tmux binary as the far side knows it.
+    socket_args : sequence of str
+        Connection flags for the far side, such as ``("-Lwork",)``.
+        :class:`~libtmux.Server` fills them in from its own socket.
+    shell : bool
+        Join tmux and its arguments with :func:`shlex.join` into a single
+        word. Set it for transports that re-parse their command through a
+        shell, such as ``ssh`` and ``su -c``: without it, a value with a space
+        or a quote is split or mangled on the way. ``docker exec`` and
+        ``kubectl exec`` pass argv through untouched and need no quoting.
+
+    Notes
+    -----
+    The transport never gets ``-t``: a pty rewrites newlines. ``-i`` is
+    required for a request's ``input``, and the named constructors add it.
+    A request's ``timeout`` kills the local transport process; the remote tmux
+    command may still complete.
+
+    Examples
+    --------
+    >>> engine = ExecEngine.ssh("build-host", options=("-p", "2222"))
+    >>> engine.command_line(CommandRequest.from_args("display-message", "-p", "a b"))
+    ('ssh', '-p', '2222', 'build-host', "tmux display-message -p 'a b'")
+    """
+
     def tmux_version(self) -> str | None:
         """Report the far side's tmux version, probing once.
 
@@ -229,15 +241,11 @@ class ExecEngine:
         """
         if not self._version_probed:
             self._version_probed = True
-            # `-V` is a tmux flag, not a command, and takes no socket flags.
-            probe = (self._tmux, "-V")
-            cmd = (
-                (*self._prefix, shlex.join(probe))
-                if self._shell
-                else (*self._prefix, *probe)
-            )
             try:
-                result = run_argv(cmd, CommandRequest(args=("-V",), timeout=30))
+                result = run_argv(
+                    self._version_command(),
+                    CommandRequest(args=("-V",), timeout=30),
+                )
             except (exc.LibTmuxException, exc.TmuxTimeout, OSError):
                 return None
             if result.ok and result.stdout:
@@ -265,3 +273,106 @@ class ExecEngine:
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Run each request in order, one transport process per command."""
         return [self.run(request) for request in requests]
+
+
+class AsyncExecEngine(_Transport):
+    """Run tmux commands through a transport command, from ``async`` code.
+
+    The awaitable twin of :class:`ExecEngine`, with the same prefix, quoting
+    and constructors. Cancelling the awaiting task, or a request's ``timeout``
+    elapsing, kills the whole process group of the local transport program and
+    reaps it, so a ``docker exec`` or ``ssh`` process does not outlive the call.
+    The remote tmux command may still complete.
+
+    Takes the same ``prefix``, ``tmux``, ``socket_args`` and ``shell`` as
+    :class:`ExecEngine`, and has the same ``docker``, ``kubectl`` and ``ssh``
+    constructors.
+
+    Examples
+    --------
+    >>> engine = AsyncExecEngine.docker("build-7f3a")
+    >>> engine.command_line(CommandRequest.from_args("list-sessions"))
+    ('docker', 'exec', '-i', 'build-7f3a', 'tmux', 'list-sessions')
+    """
+
+    def __init__(
+        self,
+        prefix: Sequence[str] = (),
+        *,
+        tmux: str = "tmux",
+        socket_args: Sequence[str] = (),
+        shell: bool = False,
+    ) -> None:
+        super().__init__(prefix, tmux=tmux, socket_args=socket_args, shell=shell)
+        self._closed = False
+
+    async def tmux_version(self) -> str | None:
+        """Report the far side's tmux version, probing once.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> asyncio.run(AsyncExecEngine().tmux_version()) is not None
+        True
+        """
+        if not self._version_probed:
+            try:
+                result = await run_argv_async(
+                    self._version_command(),
+                    CommandRequest(args=("-V",), timeout=30),
+                )
+            except (exc.LibTmuxException, exc.TmuxTimeout, OSError):
+                return None
+            self._version_probed = True
+            if result.ok and result.stdout:
+                self._version = result.stdout[0].removeprefix("tmux ").strip()
+        return self._version
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Run one tmux command through the transport.
+
+        Raises
+        ------
+        ~libtmux.exc.EngineClosed
+            The engine was closed.
+        ~libtmux.exc.EngineError
+            The transport program itself is missing.
+        ~libtmux.exc.TmuxTimeout
+            ``request.timeout`` elapsed; the transport process group was killed
+            and reaped.
+        asyncio.CancelledError
+            The caller was cancelled; the group was killed and reaped first.
+        """
+        if self._closed:
+            msg = "the async exec engine is closed"
+            raise exc.EngineClosed(msg)
+        cmd = self.command_line(request)
+        try:
+            return await run_argv_async(cmd, request)
+        except exc.TmuxCommandNotFound:
+            msg = f"cannot run {cmd[0]!r}: command not found"
+            raise exc.EngineError(msg) from None
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Run each request in order, one transport process per command."""
+        return [await self.run(request) for request in requests]
+
+    async def aclose(self) -> None:
+        """Close the engine. Safe to call twice."""
+        self._closed = True
+
+    async def __aenter__(self) -> Self:
+        """Return this engine."""
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Close the engine."""
+        await self.aclose()

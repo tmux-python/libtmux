@@ -9,6 +9,7 @@ behaviour ``shell=True`` exists for.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import pathlib
@@ -24,6 +25,8 @@ import pytest
 from libtmux import exc
 from libtmux.common import get_version_str
 from libtmux.engines import (
+    AsyncExecEngine,
+    AsyncTmuxEngine,
     CommandRequest,
     ExecEngine,
     ServerConnection,
@@ -34,6 +37,8 @@ from libtmux.engines import (
     TmuxEngine,
 )
 from libtmux.server import Server
+
+from ._aio import SpawnCounter, processes, run_checked
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterator
@@ -364,6 +369,151 @@ def test_with_connection_keeps_the_transport_and_takes_the_socket() -> None:
     assert bound.connection.args == ("-Lci",)
     assert bound.command_line(request("list-panes"))[-1] == "tmux -Lci list-panes"
     assert engine.connection.args == ()
+
+
+def async_round_trip(
+    server: Server,
+    engine: AsyncExecEngine,
+    values: list[str],
+) -> list[str]:
+    """Return the values the async transport stored differently than a local run."""
+    local = SubprocessEngine.for_server(server)
+
+    async def main() -> list[tuple[bool, tuple[str, ...]]]:
+        out = []
+        for value in values:
+            result = await engine.run(request("set-option", "-g", "@rt", value))
+            shown = await engine.run(request("show-options", "-gqv", "@rt"))
+            out.append((result.ok, shown.stdout))
+        return out
+
+    return [
+        value
+        for value, got in zip(values, run_checked(main), strict=True)
+        if got != stored(local, value)
+    ]
+
+
+def test_async_engine_is_an_async_engine_with_the_same_command_lines() -> None:
+    """``AsyncExecEngine`` renders exactly the argv ``ExecEngine`` does."""
+    sync = ExecEngine.ssh("host", options=("-p", "2222"), socket_args=("-Lx",))
+    awaitable = AsyncExecEngine.ssh(
+        "host", options=("-p", "2222"), socket_args=("-Lx",)
+    )
+
+    assert isinstance(awaitable, AsyncTmuxEngine)
+    assert awaitable.command_line(request("list-panes")) == sync.command_line(
+        request("list-panes"),
+    )
+
+
+def test_async_ssh_needs_shell_quoting_to_keep_awkward_values(
+    server: Server,
+    shims: Shims,
+) -> None:
+    """The async transport quotes exactly as the blocking one does."""
+    server.new_session("quoting_async")
+    flags = (f"-L{server.socket_name}",)
+
+    quoted = AsyncExecEngine.ssh("host", socket_args=flags)
+    bare = AsyncExecEngine.ssh("host", socket_args=flags, shell=False)
+
+    assert async_round_trip(server, quoted, AWKWARD) == []
+    assert len(async_round_trip(server, bare, AWKWARD)) == 10
+
+
+def test_async_stdin_payload_is_byte_exact(
+    server: Server,
+    shims: Shims,
+    tmp_path: pathlib.Path,
+) -> None:
+    """``input`` reaches ``load-buffer -`` unchanged through the async transport."""
+    server.new_session("stdin_async")
+    engine = AsyncExecEngine.docker("box", socket_args=(f"-L{server.socket_name}",))
+    payload = bytes(range(256)) * 200
+    saved = tmp_path / "out.bin"
+
+    async def main() -> None:
+        loaded = await engine.run(
+            request("load-buffer", "-b", "ta", "-", input=payload)
+        )
+        loaded.raise_for_status()
+        (
+            await engine.run(request("save-buffer", "-b", "ta", str(saved)))
+        ).raise_for_status()
+
+    run_checked(main)
+
+    assert saved.read_bytes() == payload
+
+
+def test_async_cancel_leaves_no_transport_or_client(
+    server: Server,
+    shims: Shims,
+    spawns: SpawnCounter,
+) -> None:
+    """Cancelling a blocked command ends the transport process and its tmux client."""
+    server.new_session("cancel_async")
+    flags = (f"-L{server.socket_name}",)
+    engine = AsyncExecEngine.docker("box", socket_args=flags)
+
+    async def main() -> int:
+        started = spawns.expect(5)
+        tasks = [
+            asyncio.ensure_future(engine.run(request("wait-for", f"exec_cancel_{n}")))
+            for n in range(5)
+        ]
+        await started.wait()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        return spawns.started
+
+    assert run_checked(main) == 5
+    assert processes(f"-L{server.socket_name}", "wait-for") == []
+
+
+def test_async_timeout_raises_tmux_timeout(server: Server, shims: Shims) -> None:
+    """A request ``timeout`` kills the transport process group and raises."""
+    server.new_session("timeout_async")
+    engine = AsyncExecEngine.docker("box", socket_args=(f"-L{server.socket_name}",))
+
+    async def main() -> exc.TmuxTimeout:
+        try:
+            await engine.run(request("wait-for", "exec_timeout", timeout=0.3))
+        except exc.TmuxTimeout as error:
+            return error
+        msg = "wait-for returned"
+        raise AssertionError(msg)
+
+    error = run_checked(main)
+
+    assert error.cmd[:4] == ["docker", "exec", "-i", "box"]
+    assert processes(f"-L{server.socket_name}", "wait-for") == []
+
+
+def test_async_missing_transport_is_an_engine_error() -> None:
+    """The local program that carries the command must exist."""
+    engine = AsyncExecEngine(("no-such-transport-for-libtmux",))
+
+    async def main() -> None:
+        await engine.run(request("list-sessions"))
+
+    with pytest.raises(exc.EngineError, match="no-such-transport-for-libtmux"):
+        run_checked(main)
+
+
+def test_async_far_side_version_is_probed_once(server: Server, shims: Shims) -> None:
+    """``tmux -V`` runs once through the async transport, without socket flags."""
+    engine = AsyncExecEngine.docker("box", socket_args=(f"-L{server.socket_name}",))
+
+    async def main() -> tuple[str | None, str | None]:
+        return await engine.tmux_version(), await engine.tmux_version()
+
+    first, second = run_checked(main)
+
+    assert first == second == get_version_str()
+    assert [call[-2:] for call in shims.calls()] == [["tmux", "-V"]]
 
 
 @pytest.fixture(autouse=True)
