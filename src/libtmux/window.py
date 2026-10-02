@@ -318,6 +318,9 @@ class Window(
         holders takes two list commands total, independent of how many there
         are.
         If either listing fails, the result is empty.
+        :exc:`~libtmux.exc.AsyncEngineMismatch` is not a listing failure --
+        it means the server's engine cannot be dispatched synchronously at
+        all -- so it always propagates instead.
 
         Returns
         -------
@@ -364,6 +367,8 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
+        except exc.AsyncEngineMismatch:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
 
@@ -490,13 +495,13 @@ class Window(
         target : str, optional
             Optional custom target override. By default, the target is the window ID.
         timeout : float, optional
-            Seconds to allow this command to run before killing the tmux
-            client libtmux spawned and raising
-            :exc:`~libtmux.exc.TmuxTimeout`. *None* (the default)
-            waits indefinitely.
+            Seconds to allow this command to run before the engine gives up and
+            raises :exc:`~libtmux.exc.TmuxTimeout`; a subprocess engine kills
+            and reaps the tmux client first. *None* (the default) waits
+            indefinitely.
         input : str or bytes, optional
-            Data for the tmux client's standard input, as in
-            :class:`~libtmux.common.tmux_cmd`.
+            Data for the tmux client's standard input, for commands that read
+            ``-``. See :class:`~libtmux.common.tmux_cmd`.
 
         Returns
         -------
@@ -506,6 +511,9 @@ class Window(
         ------
         :exc:`~libtmux.exc.TmuxTimeout`
             When *timeout* elapses.
+
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            The server's engine is asynchronous; see :meth:`Server.cmd`.
 
         Notes
         -----

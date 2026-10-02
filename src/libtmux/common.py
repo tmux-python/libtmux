@@ -7,20 +7,31 @@ libtmux.common
 
 from __future__ import annotations
 
+import contextlib
 import functools
+import inspect
 import logging
 import re
-import shlex
-import shutil
 import subprocess
 import sys
 import typing as t
+import warnings
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal.redaction import (
+    _loggable_cmd,
+    redact_env_values as redact_env_values,  # noqa: PLC0414
+    redact_send_keys as redact_send_keys,  # noqa: PLC0414
+    set_argv_redactor as set_argv_redactor,  # noqa: PLC0414
+)
+from .engines.base import CommandRequest, SupportsCommandLine
+from .engines.subprocess import SubprocessEngine, _kill_and_reap
 
 if t.TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
+
+    from .engines.base import CommandResult, TmuxEngine
 
 logger = logging.getLogger(__name__)
 
@@ -280,93 +291,139 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
-# tmux's global flags that take a value, and new-session's (getopt "...").
-_TMUX_GLOBAL_VALUE_FLAGS = "cfLST"
-_NEW_SESSION_VALUE_FLAGS = "cefFnstxy"
+def _guard_sync(
+    engine: object,
+    member: Callable[[CommandRequest], t.Any],
+    method: str,
+    request: CommandRequest,
+) -> t.Any:
+    """Call one synchronous engine capability, guarding the result.
 
-
-def _flag_letters(
-    tokens: t.Sequence[str],
-    value_flags: str,
-) -> tuple[str, list[str]]:
-    """Return ``(flag_letters, rest)`` for the leading option tokens.
-
-    Stops at the first token that is not an option or a flag's value.
-    """
-    letters = ""
-    i = 0
-    while i < len(tokens) and tokens[i].startswith("-") and len(tokens[i]) > 1:
-        token = tokens[i]
-        i += 1
-        for pos, letter in enumerate(token[1:], start=1):
-            letters += letter
-            if letter in value_flags:
-                if pos == len(token) - 1:
-                    i += 1  # the value is the next token
-                break
-    return letters, list(tokens[i:])
-
-
-def _runs_interactive_client(args: t.Sequence[t.Any]) -> bool:
-    """Return whether *args* make tmux run an interactive client.
-
-    ``attach-session`` and a foreground ``new-session`` (or a bare ``tmux``)
-    own a terminal. They must detect its encoding themselves, so
-    :class:`tmux_cmd` does not force ``-u`` on them.
-    """
-    letters, rest = _flag_letters([str(a) for a in args], _TMUX_GLOBAL_VALUE_FLAGS)
-    if "C" in letters or "V" in letters:
-        return False
-    if not rest:
-        return True  # bare ``tmux`` starts a foreground session
-    name = rest[0]
-    if "attach-session".startswith(name) or name == "attach":
-        return True
-    if name == "new" or ("new-session".startswith(name) and len(name) > 4):
-        flags, _ = _flag_letters(rest[1:], _NEW_SESSION_VALUE_FLAGS)
-        return "d" not in flags
-    return False
-
-
-def _kill_and_reap(process: subprocess.Popen[t.Any]) -> None:
-    """Kill a subprocess that outstayed its timeout, then reap it.
-
-    :meth:`subprocess.Popen.communicate` leaves the child running when its
-    *timeout* expires -- the caller has to kill and reap it, the same dance
-    :func:`subprocess.run` does on its own timeout path. Skipping it leaks one
-    tmux process per expiry.
-
-    The child is waited for rather than drained: after ``SIGKILL`` it exits
-    promptly, while reading its pipes to EOF could block on a grandchild that
-    inherited them -- past the bound the caller just asked to enforce. The
-    pipes are closed by hand instead, since nothing will read them.
+    The single call site every engine capability -- ``run()`` and the
+    optional ``command_line()`` -- is invoked through.
+    :class:`~libtmux.engines.base.TmuxEngine` and
+    :class:`~libtmux.engines.base.SupportsCommandLine` are
+    :func:`~typing.runtime_checkable` :class:`typing.Protocol` classes, so
+    ``isinstance()`` accepts an engine on attribute *names* alone -- never
+    signatures, never async-ness -- and an ``async def run`` (or ``async def
+    command_line``) engine passes structurally and reaches here. Routing
+    every dispatch through this one function means the guard below only has
+    to be written once: a call site added later inherits it instead of
+    needing its own copy.
 
     Parameters
     ----------
-    process : :class:`subprocess.Popen`
-        The timed-out child.
+    engine : object
+        The engine the capability belongs to; named in the error.
+    member : :class:`~collections.abc.Callable`
+        The already-resolved bound method to invoke.
+    method : str
+        Its name, ``"run"`` or ``"command_line"``, for the error message.
+    request : CommandRequest
+        Forwarded as the sole positional argument.
 
-    Examples
-    --------
-    >>> from libtmux.common import _kill_and_reap
-    >>> process = subprocess.Popen(
-    ...     [sys.executable, '-c', 'import time; time.sleep(300)'],
-    ...     stdout=subprocess.PIPE,
-    ...     stderr=subprocess.PIPE,
-    ...     text=True,
-    ... )
-    >>> process.poll() is None  # still running
-    True
+    Returns
+    -------
+    typing.Any
+        Whatever *method* returned. Never an awaitable.
 
-    >>> _kill_and_reap(process)
-    >>> process.returncode is not None  # dead, and its exit status collected
-    True
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        *method* returned an awaitable instead of the value its protocol
+        promises.
+
+    Notes
+    -----
+    Declared-``async def`` members are rejected *before* the call, so the
+    common shape never creates a coroutine at all and nothing is left to warn
+    about. That check cannot be complete on its own -- CPython says as much in
+    :mod:`unittest.async_case`, whose case 3 is a "regular ``def`` that
+    returns an awaitable object" -- so the value is tested too.
+
+    A coroutine that did get created is closed, which is safe precisely
+    because it has never been started: :c:func:`gen_close` on a frame still in
+    ``FRAME_CREATED`` clears it without running a line of the body, and
+    ``"coroutine ... was never awaited"`` is only warned for a frame still in
+    that state at collection. Closing is best-effort -- guarded against
+    :class:`BaseException`, since :exc:`asyncio.CancelledError` is not an
+    :class:`Exception` -- so a hostile awaitable cannot replace the
+    diagnostic with an error of its own.
+
+    Only genuine coroutines are closed. A :class:`asyncio.Task` or
+    :class:`asyncio.Future` is dropped untouched: one bound to another
+    thread's event loop silently fails to receive
+    :meth:`~asyncio.Task.cancel` (that needs ``loop.call_soon_threadsafe``),
+    and cancelling one shared with another awaiter would destroy that
+    awaiter's result. An eager-started ``Task`` (3.12+) has already run its
+    body synchronously before ``run()`` returned, so nothing here could have
+    prevented that side effect either way.
     """
-    process.kill()
-    process.wait()
-    for stream in (process.stdout, process.stderr):
-        if stream is not None:
-            stream.close()
+    if inspect.iscoroutinefunction(member):
+        raise exc.AsyncEngineMismatch(engine, method)
+
+    result = member(request)
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            with contextlib.suppress(BaseException):
+                result.close()
+        raise exc.AsyncEngineMismatch(engine, method)
+    return result
+
+
+def _dispatch_run(engine: TmuxEngine, request: CommandRequest) -> CommandResult:
+    """Run one command through *engine*, guarding the result.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The engine to dispatch through.
+    request : CommandRequest
+        The command.
+
+    Returns
+    -------
+    CommandResult
+        Whatever ``run()`` returned. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        ``run`` is asynchronous.
+    """
+    return t.cast(
+        "CommandResult",
+        _guard_sync(engine, engine.run, "run", request),
+    )
+
+
+def _dispatch_command_line(
+    engine: SupportsCommandLine,
+    request: CommandRequest,
+) -> tuple[str, ...]:
+    """Render *request*'s argv through *engine*, guarding the result.
+
+    Parameters
+    ----------
+    engine : SupportsCommandLine
+        The engine to ask.
+    request : CommandRequest
+        The command.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The argv. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        ``command_line`` is asynchronous.
+    """
+    return t.cast(
+        "tuple[str, ...]",
+        _guard_sync(engine, engine.command_line, "command_line", request),
+    )
 
 
 _RELEASE_GRACE = 5.0
@@ -436,18 +493,6 @@ def _release_waiter(
     return True
 
 
-def _decode_text(data: bytes) -> str:
-    r"""Decode tmux output as ``tmux_cmd`` does in text mode.
-
-    Examples
-    --------
-    >>> _decode_text(b"a\r\nb\rc\xff")
-    'a\nb\nc\\xff'
-    """
-    text = data.decode("utf-8", errors="backslashreplace")
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
 def _escape_trailing_semicolon(text: str) -> str:
     r"""Return ``text`` so tmux keeps a trailing ``;`` as data.
 
@@ -469,179 +514,62 @@ def _escape_trailing_semicolon(text: str) -> str:
     return text
 
 
-_REDACTED = "***"
-
-_GLOBAL_FLAGS_WITH_VALUE = frozenset({"-c", "-f", "-L", "-S", "-T"})
-_ENV_FLAG_SUBCOMMANDS = frozenset(
-    {
-        "new-session",
-        "new",
-        "new-window",
-        "neww",
-        "new-pane",
-        "split-window",
-        "splitw",
-        "respawn-pane",
-        "respawnp",
-        "respawn-window",
-        "respawnw",
-    },
-)
-_SEND_KEYS_FLAGS_WITH_VALUE = frozenset({"-c", "-N", "-t"})
-
-
-def _subcommand_index(argv: Sequence[str]) -> int | None:
-    """Return where the tmux subcommand sits in *argv*, or ``None``."""
-    i = 1  # argv[0] is the tmux binary
-    while i < len(argv):
-        arg = argv[i]
-        if not arg.startswith("-"):
-            return i
-        i += 2 if arg in _GLOBAL_FLAGS_WITH_VALUE else 1
-    return None
-
-
-def redact_env_values(argv: Sequence[str]) -> list[str]:
-    """Mask environment values in a tmux argv, keeping the variable names.
-
-    Covers ``-e NAME=value`` on the commands that take it, and the value of
-    ``set-environment``. This is the default for the argv libtmux logs.
-
-    Parameters
-    ----------
-    argv : sequence of str
-        Full command line, with the tmux binary first.
-
-    Returns
-    -------
-    list of str
-        A copy of *argv*; *argv* itself is not modified.
-
-    Examples
-    --------
-    >>> redact_env_values(["tmux", "new-window", "-eTOKEN=hunter2", "-d"])
-    ['tmux', 'new-window', '-eTOKEN=***', '-d']
-
-    >>> redact_env_values(["tmux", "split-window", "-e", "TOKEN=hunter2"])
-    ['tmux', 'split-window', '-e', 'TOKEN=***']
-
-    >>> redact_env_values(["tmux", "set-environment", "-t", "$0", "TOKEN", "hunter2"])
-    ['tmux', 'set-environment', '-t', '$0', 'TOKEN', '***']
-
-    >>> redact_env_values(["tmux", "capture-pane", "-e", "-p"])
-    ['tmux', 'capture-pane', '-e', '-p']
-    """
-    out = list(argv)
-    sub = _subcommand_index(out)
-    if sub is None:
-        return out
-    name = out[sub]
-    if name in _ENV_FLAG_SUBCOMMANDS:
-        i = sub + 1
-        while i < len(out):
-            if out[i] == "-e" and i + 1 < len(out):
-                key, eq, _ = out[i + 1].partition("=")
-                out[i + 1] = f"{key}={_REDACTED}" if eq else out[i + 1]
-                i += 2
-                continue
-            if out[i].startswith("-e") and "=" in out[i]:
-                key = out[i].partition("=")[0]
-                out[i] = f"{key}={_REDACTED}"
-            i += 1
-    elif name in {"set-environment", "setenv"}:
-        positional = [
-            i
-            for i in range(sub + 1, len(out))
-            if not out[i].startswith("-") and out[i - 1] != "-t"
-        ]
-        if len(positional) >= 2:
-            out[positional[1]] = _REDACTED
-    return out
-
-
-def redact_send_keys(argv: Sequence[str]) -> list[str]:
-    """Mask the keys typed by ``send-keys`` in a tmux argv.
-
-    Opt-in: text typed into a pane is what most people debug from, so
-    libtmux logs it unless this is part of the redactor in use.
-
-    Parameters
-    ----------
-    argv : sequence of str
-        Full command line, with the tmux binary first.
-
-    Returns
-    -------
-    list of str
-        A copy of *argv*; *argv* itself is not modified.
-
-    Examples
-    --------
-    >>> redact_send_keys(["tmux", "send-keys", "-t", "%1", "echo hunter2", "Enter"])
-    ['tmux', 'send-keys', '-t', '%1', '***', '***']
-
-    >>> redact_send_keys(["tmux", "new-window", "-d"])
-    ['tmux', 'new-window', '-d']
-    """
-    out = list(argv)
-    sub = _subcommand_index(out)
-    if sub is None or out[sub] not in {"send-keys", "send"}:
-        return out
-    i = sub + 1
-    only_keys = False
-    while i < len(out):
-        if only_keys or not out[i].startswith("-"):
-            out[i] = _REDACTED
-        elif out[i] == "--":
-            only_keys = True
-        elif out[i] in _SEND_KEYS_FLAGS_WITH_VALUE:
-            i += 1
-        i += 1
-    return out
-
-
-_argv_redactor: Callable[[Sequence[str]], Sequence[str]] = redact_env_values
-
-
-def set_argv_redactor(
-    redactor: Callable[[Sequence[str]], Sequence[str]] | None,
-) -> None:
-    """Choose how the tmux argv is masked before libtmux logs it.
-
-    libtmux logs each command line at ``DEBUG`` (the ``tmux_cmd`` key on
-    records from ``libtmux.common``). The list queries in ``libtmux.neo``
-    carry only format strings and are not passed through. By default
-    :func:`redact_env_values` masks environment values so a secret passed
-    with ``environment=`` never reaches a log handler. Replace it to mask
-    more, for example the text of :meth:`Pane.send_keys`. The real argv
-    handed to tmux, and :attr:`tmux_cmd.cmd`, are unchanged.
-
-    Process-wide: applies to every server in this process, and to every
-    thread. Set it once at start-up.
-
-    Parameters
-    ----------
-    redactor : callable or None
-        Takes the full argv (tmux binary first) and returns the argv to
-        log. ``None`` restores :func:`redact_env_values`. An exception
-        raised by the redactor is not caught, so make it total.
-
-    Examples
-    --------
-    >>> set_argv_redactor(lambda argv: redact_send_keys(redact_env_values(argv)))
-    >>> set_argv_redactor(None)
-    """
-    global _argv_redactor
-    _argv_redactor = redactor if redactor is not None else redact_env_values
-
-
-def _loggable_cmd(argv: Sequence[str]) -> str:
-    """Return the shell-quoted argv with the active redactor applied."""
-    return shlex.join(_argv_redactor(argv))
-
-
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+    """Run any :term:`tmux(1)` command, returning list-shaped output.
+
+    Dispatches through a :class:`~libtmux.engines.base.TmuxEngine` --
+    :class:`~libtmux.engines.subprocess.SubprocessEngine` unless one is passed --
+    and adapts the engine's :class:`~libtmux.engines.base.CommandResult` to the
+    ``list``-of-``str`` attributes libtmux's wrappers read.
+
+    Parameters
+    ----------
+    *args : typing.Any
+        tmux argv. Connection flags may be included inline (``"-Lwork"``); an
+        engine supplies its own, so :meth:`libtmux.Server.cmd` passes only the
+        subcommand.
+    tmux_bin : str, optional
+        Path to the tmux binary. Ignored when *engine* is given -- the engine
+        owns its binary.
+    engine : :class:`~libtmux.engines.base.TmuxEngine`, optional
+        Executor to dispatch through.
+    timeout : float, optional
+        Seconds to allow tmux to run. *None* (the default) waits as long as
+        tmux takes, which is what a rendezvous like ``wait-for`` needs when
+        nobody is watching the clock. Give it a number when the command can
+        block on something that may never happen.
+    input : str or bytes, optional
+        Data written to the tmux client's standard input, which is then
+        closed. ``str`` is encoded as UTF-8 and raises
+        :exc:`UnicodeEncodeError` when it cannot be; ``bytes`` are sent
+        unchanged, so non-UTF-8 data works. ``None`` (the default) leaves
+        standard input inherited from the calling process. Payload size is
+        not limited by tmux's 16 KiB command size limit, which covers
+        arguments only.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        The full argv that ran, tmux binary first.
+    stdout : list[str]
+        Standard output, one line per item.
+    stderr : list[str]
+        Standard error, one line per item, blanks removed.
+    returncode : int
+        tmux exit code.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxTimeout`
+        When *timeout* elapses. A subprocess engine kills and reaps the tmux
+        client it spawned before the exception leaves; work the command
+        started -- a pane's foreground process, the tmux server -- keeps
+        running.
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        *engine* is asynchronous -- its ``run()`` (or ``command_line()``,
+        while rendering a DEBUG log line) handed back an awaitable, which
+        this synchronous dispatch cannot await. Both calls route through
+        :func:`_guard_sync`, the one place this is checked.
 
     Parameters
     ----------
@@ -686,27 +614,14 @@ class tmux_cmd:
     A foreground ``run-shell`` blocks until its shell command exits. Bound
     it, and a command that never exits costs a known amount of time:
 
-    >>> from libtmux import exc
     >>> try:
     ...     tmux_cmd(
     ...         f'-L{server.socket_name}', 'run-shell', 'sleep 5',
     ...         timeout=0.25,
     ...     )
     ... except exc.TmuxTimeout as e:
-    ...     print(e)
-    tmux command timed out after 0.25s: ...run-shell 'sleep 5'
-
-    The exception carries what was killed and the bound it blew, so a caller
-    does not have to parse the message back apart:
-
-    >>> try:
-    ...     tmux_cmd(
-    ...         f'-L{server.socket_name}', 'run-shell', 'sleep 5',
-    ...         timeout=0.25,
-    ...     )
-    ... except exc.TmuxTimeout as e:
-    ...     (e.timeout, e.cmd[-2:])
-    (0.25, ['run-shell', 'sleep 5'])
+    ...     print(e.timeout, e.cmd[-2:])
+    0.25 ['run-shell', 'sleep 5']
 
     Send data on the client's standard input with ``input``. Commands that
     take ``-`` as a path, such as ``load-buffer``, read it from there:
@@ -719,17 +634,6 @@ class tmux_cmd:
     0
     >>> server.show_buffer(buffer_name='doc_stdin')
     'from stdin'
-
-    Parameters
-    ----------
-    input : str or bytes, optional
-        Data written to the tmux client's standard input, which is then
-        closed. ``str`` is encoded as UTF-8 and raises
-        :exc:`UnicodeEncodeError` when it cannot be; ``bytes`` are sent
-        unchanged, so non-UTF-8 data works. ``None`` (the default) leaves
-        standard input inherited from the calling process. Payload size is
-        not limited by tmux's 16 KiB command size limit, which covers
-        arguments only.
 
     Notes
     -----
@@ -749,107 +653,57 @@ class tmux_cmd:
         self,
         *args: t.Any,
         tmux_bin: str | None = None,
+        engine: TmuxEngine | None = None,
         timeout: float | None = None,
         input: str | bytes | None = None,  # noqa: A002
-        env: t.Mapping[str, str] | None = None,
     ) -> None:
-        self.process: subprocess.Popen[str] | subprocess.Popen[bytes]
-        resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
-
-        cmd = [resolved]
-        # -u: tmux treats a client as UTF-8 only from -u, $TMUX or a UTF-8
-        # LC_ALL/LC_CTYPE/LANG, and otherwise rewrites every non-ASCII
-        # character in its output to "_" -- FORMAT_SEPARATOR included.
-        # An interactive client keeps the terminal's own locale detection.
-        if not _runs_interactive_client(args):
-            cmd.append("-u")
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
-
-        self.cmd = cmd
+        runner: TmuxEngine = (
+            engine if engine is not None else SubprocessEngine.of(tmux_bin)
+        )
+        request = CommandRequest.from_args(*args, timeout=timeout, input=input)
 
         if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = _loggable_cmd(cmd)
             logger.debug(
                 "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
-
-        try:
-            if input is None:
-                text_process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    encoding="utf-8",
-                    errors="backslashreplace",
-                    env=env,
-                )
-                self.process = text_process
-                stdout, stderr = text_process.communicate(timeout=timeout)
-            else:
-                # Bytes cannot go through a text-mode pipe, so this branch
-                # reads binary and decodes the way text mode does.
-                payload = input.encode("utf-8") if isinstance(input, str) else input
-                binary_process = subprocess.Popen(
-                    cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=env,
-                )
-                self.process = binary_process
-                raw_out, raw_err = binary_process.communicate(
-                    payload,
-                    timeout=timeout,
-                )
-                stdout = _decode_text(raw_out)
-                stderr = _decode_text(raw_err)
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except subprocess.TimeoutExpired as e:
-            _kill_and_reap(self.process)
-            logger.error(  # noqa: TRY400
-                "tmux command timed out",
                 extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
-                    "tmux_timeout": e.timeout,
+                    "tmux_cmd": _loggable_cmd(
+                        _dispatch_command_line(runner, request)
+                        if isinstance(runner, SupportsCommandLine)
+                        else request.args,
+                    ),
+                    "tmux_subcommand": request.subcommand,
                 },
             )
-            raise exc.TmuxTimeout(cmd=cmd, timeout=e.timeout) from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
-                extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
-                },
-            )
-            raise
 
-        self.returncode = returncode
+        result = _dispatch_run(runner, request)
 
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
+        self.cmd = list(result.cmd)
+        self.returncode = result.returncode
+        self.stderr = list(result.stderr)
+        # Read defensively: ``process`` is the one field of ``CommandResult``
+        # that no protocol declares, so an engine returning its own
+        # result type -- which ``TmuxEngine`` permits -- need not carry it.
+        process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = getattr(
+            result, "process", None
+        )
+        self._process = process
 
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
-
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
+        # tmux writes ``has-session``'s answer to stderr; the wrappers have
+        # always read it off stdout. Adapted here, not in an engine, so every
+        # engine stays a plain executor.
+        stdout = list(result.stdout)
+        self.stdout = (
+            [self.stderr[0]]
+            if "has-session" in self.cmd and self.stderr and not stdout
+            else stdout
+        )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
+                    "tmux_cmd": _loggable_cmd(self.cmd),
+                    "tmux_subcommand": request.subcommand,
                     "tmux_exit_code": self.returncode,
                     "tmux_stdout": self.stdout[:100],
                     "tmux_stderr": self.stderr[:100],
@@ -857,6 +711,46 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    @property
+    def process(self) -> subprocess.Popen[str] | subprocess.Popen[bytes]:
+        """Return the finished :class:`subprocess.Popen`.
+
+        Returns
+        -------
+        subprocess.Popen
+            The process the default engine forked.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            The engine that ran the command never forked a process. Only an
+            injected engine can do that; the default engine always forks.
+
+        Notes
+        -----
+        Deprecated: read :attr:`returncode`, :attr:`stdout` and :attr:`stderr`,
+        which every engine fills in. Accessing this emits a
+        :exc:`DeprecationWarning`.
+
+        Examples
+        --------
+        >>> import warnings
+        >>> with warnings.catch_warnings():
+        ...     warnings.simplefilter("ignore", DeprecationWarning)
+        ...     server.cmd("display-message", "-p", "hi").process.returncode
+        0
+        """
+        warnings.warn(
+            "tmux_cmd.process is deprecated: it is unavailable on engines that "
+            "fork no process. Read returncode, stdout and stderr instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self._process is None:
+            msg = "engine did not fork a subprocess; tmux_cmd.process is unavailable"
+            raise exc.LibTmuxException(msg)
+        return self._process
 
 
 class _TmuxVersionUnavailable(Exception):

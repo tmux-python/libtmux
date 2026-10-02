@@ -881,7 +881,7 @@ def test_tmux_cmd_passes_u_except_to_interactive_clients(
         returncode = 0
 
         def __init__(self, cmd: list[str], **kwargs: t.Any) -> None:
-            argvs.append(cmd)
+            argvs.append(list(cmd))
 
         def communicate(self, timeout: float | None = None) -> tuple[str, str]:
             return "", ""
@@ -1170,6 +1170,7 @@ def test_timeout_log_and_message_redact_environment_values(
 
     class FakePopen:
         returncode = None
+        stdin = None
         stdout = None
         stderr = None
 

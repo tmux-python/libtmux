@@ -86,6 +86,12 @@ Automatic cleanup with temporary sessions and windows.
 A private tmux server for scripts and tests, always cleaned up.
 :::
 
+:::{grid-item-card} Engines
+:link: engines
+:link-type: doc
+Swap how tmux commands execute: record, fake, or retarget the binary.
+:::
+
 :::{grid-item-card} Options & Hooks
 :link: options_and_hooks
 :link-type: doc
@@ -126,6 +132,7 @@ run_a_command
 context_managers
 throwaway_server
 options_and_hooks
+engines
 clients
 format-tokens
 ```

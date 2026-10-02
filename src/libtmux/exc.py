@@ -10,7 +10,11 @@ from __future__ import annotations
 import os
 import typing as t
 
+from libtmux._internal.redaction import _loggable_cmd
+
 if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from libtmux._internal.types import StrPath
     from libtmux.neo import ListExtraArgs
 
@@ -150,6 +154,133 @@ class TmuxSessionExists(LibTmuxException):
 
 class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
+
+
+class TmuxCommandError(LibTmuxException):
+    """tmux rejected a command that an engine ran successfully.
+
+    Raised by :meth:`libtmux.engines.base.CommandResult.raise_for_status`. An
+    engine reports a tmux-side failure as data; this is that data as an
+    exception, for callers who would rather not check ``returncode``.
+
+    Parameters
+    ----------
+    cmd : sequence of str
+        The argv that ran.
+    returncode : int
+        tmux exit code.
+    stderr : sequence of str
+        tmux's error lines.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> error = exc.TmuxCommandError(("tmux", "kill-window"), 1, ("no window",))
+    >>> str(error), error.returncode
+    ('no window', 1)
+    >>> issubclass(exc.TmuxCommandError, exc.LibTmuxException)
+    True
+    """
+
+    def __init__(
+        self,
+        cmd: Sequence[str],
+        returncode: int,
+        stderr: Sequence[str] = (),
+    ) -> None:
+        self.cmd = tuple(cmd)
+        self.returncode = returncode
+        self.stderr = tuple(stderr)
+        super().__init__(" ".join(self.stderr) or f"tmux exited {returncode}")
+
+
+class ControlModeError(LibTmuxException):
+    """A control-mode connection failed."""
+
+
+class EngineError(LibTmuxException):
+    """An engine could not run a command: the transport failed, not tmux."""
+
+
+class EngineClosed(EngineError):
+    """A command reached an engine after :meth:`close` ran."""
+
+
+class ControlConnectionLost(ControlModeError, EngineError):
+    """The ``tmux -C`` client exited while a command was waiting for its reply.
+
+    tmux may or may not have run the command. The message carries the tail of
+    the client's stderr, where tmux reports ``server exited unexpectedly``.
+    """
+
+
+class ControlProtocolError(ControlModeError):
+    """tmux's control-mode output is malformed or out of sequence.
+
+    A parser never resynchronises by guessing, so a driver that sees this
+    discards the connection and starts a new one.
+    """
+
+
+class AsyncEngineMismatch(LibTmuxException):
+    """A synchronous dispatch path received an engine call that returned an awaitable.
+
+    :class:`~libtmux.engines.base.TmuxEngine` and
+    :class:`~libtmux.engines.base.SupportsCommandLine` are
+    :func:`typing.runtime_checkable` :class:`typing.Protocol` classes, which
+    check attribute *names* only -- never signatures or async-ness. An engine
+    declared with ``async def run`` (or ``async def command_line``) still
+    satisfies ``isinstance(engine, TmuxEngine)`` and reaches
+    :class:`~libtmux.common.tmux_cmd`, whose dispatch is synchronous and
+    cannot await it.
+
+    Raised from what the call actually returned, not from inspecting the
+    method beforehand, so it also catches a method that is not itself
+    declared ``async`` but still hands back an awaitable -- an engine that
+    wraps its coroutine in an :class:`asyncio.Task` or :class:`asyncio.Future`
+    before returning it.
+
+    Parameters
+    ----------
+    engine : object
+        The engine instance whose method returned an awaitable.
+    method : str
+        Name of the method that returned it -- ``"run"`` or
+        ``"command_line"``.
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> class AsyncEngine:
+    ...     async def run(self, request): ...
+    ...     async def run_batch(self, requests): ...
+    >>> print(  # doctest: +NORMALIZE_WHITESPACE
+    ...     exc.AsyncEngineMismatch(AsyncEngine(), "run")
+    ... )
+    AsyncEngine.run() returned an awaitable: libtmux dispatches tmux commands
+    synchronously and cannot await it. Await this engine directly from your
+    own async code, or pass a synchronous engine.
+
+    It is part of the :exc:`LibTmuxException` hierarchy:
+
+    >>> issubclass(exc.AsyncEngineMismatch, exc.LibTmuxException)
+    True
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(self, engine: object, method: str, *args: object) -> None:
+        self.engine = engine
+        self.method = method
+        msg = (
+            f"{type(engine).__name__}.{method}() returned an awaitable: "
+            "libtmux dispatches tmux commands synchronously and cannot "
+            "await it. Await this engine directly from your own async "
+            "code, or pass a synchronous engine."
+        )
+        super().__init__(msg, *args)
 
 
 class NotInsideTmux(LibTmuxException):
@@ -520,15 +651,18 @@ class WaitTimeout(LibTmuxException):
 
 
 class TmuxTimeout(Exception):
-    """A tmux command outlived its ``timeout`` and its client was killed.
+    """A tmux command outlived its ``timeout``.
 
-    Raised by :class:`~libtmux.common.tmux_cmd`, and so by
+    Raised when a ``timeout`` is given, whether on
+    :class:`~libtmux.engines.base.CommandRequest`, on
+    :class:`~libtmux.common.tmux_cmd`, or on
     :meth:`Server.cmd() <libtmux.Server.cmd>`,
     :meth:`Session.cmd() <libtmux.Session.cmd>`,
     :meth:`Window.cmd() <libtmux.Window.cmd>` and
-    :meth:`Pane.cmd() <libtmux.Pane.cmd>`, when a ``timeout`` is given and
-    tmux does not return within it. The tmux client libtmux spawned is sent
-    ``SIGKILL`` and reaped before this is raised.
+    :meth:`Pane.cmd() <libtmux.Pane.cmd>`, and tmux does not return within it.
+    A subprocess engine kills and reaps the tmux client it spawned before this
+    is raised; a control-mode engine abandons the reply and keeps its
+    connection.
 
     Not a :exc:`LibTmuxException`. The list accessors
     (:attr:`Server.sessions`, :attr:`Server.clients`) treat a
@@ -543,14 +677,14 @@ class TmuxTimeout(Exception):
     Parameters
     ----------
     cmd : list[str]
-        Full tmux command line that was killed, argv-style.
+        Full tmux command line that timed out, argv-style.
     timeout : float
         Bound, in seconds, that the command exceeded.
 
     Attributes
     ----------
     cmd : list[str]
-        Full tmux command line that was killed, argv-style.
+        Full tmux command line that timed out, argv-style.
     timeout : float
         Bound, in seconds, that the command exceeded.
 
@@ -575,9 +709,6 @@ class TmuxTimeout(Exception):
     def __init__(self, cmd: list[str], timeout: float) -> None:
         self.cmd = cmd
         self.timeout = timeout
-        # Local import: libtmux.common imports this module.
-        from libtmux.common import _loggable_cmd
-
         super().__init__(
             f"tmux command timed out after {timeout}s: {_loggable_cmd(cmd)}"
         )
