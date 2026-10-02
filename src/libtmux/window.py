@@ -536,7 +536,7 @@ class Window(
     Commands (tmux-like)
     """
 
-    def select_pane(self, target_pane: str | int) -> Pane | None:
+    def select_pane(self, target_pane: str | int) -> Pane:
         """Select pane and return selected :class:`Pane`.
 
         ``$ tmux select-pane``.
@@ -902,7 +902,7 @@ class Window(
         disable_input: bool | None = None,
         enable_input: bool | None = None,
         keep_zoom: bool | None = None,
-    ) -> Pane | None:
+    ) -> Pane:
         """Select the last (previously active) pane via ``$ tmux last-pane``.
 
         Parameters
@@ -1782,12 +1782,21 @@ class Window(
     # Computed properties
     #
     @property
-    def active_pane(self) -> Pane | None:
-        """Return attached :class:`Pane`."""
+    def active_pane(self) -> Pane:
+        """Return the active :class:`Pane` object.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.NoActivePane`
+            When the listing holds no active pane. tmux gives every live
+            window one, so this does not happen for a window that exists. A
+            window that was killed raises :exc:`~libtmux.exc.LibTmuxException`
+            from the listing instead.
+        """
         panes = self.panes.filter(pane_active="1")
-        if len(panes) > 0:
-            return panes[0]
-        return None
+        if len(panes) == 0:
+            raise exc.NoActivePane
+        return panes[0]
 
     #
     # Dunder

@@ -584,6 +584,23 @@ and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
 share one connection. A `colors=` value other than `256` or `88` raises
 {exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
 
+#### `active_pane` is typed `Pane`, not `Pane | None`
+
+`Window.active_pane` and `Session.active_pane` returned `Pane | None`, so every
+caller wrote `assert pane is not None` for a case tmux does not produce: each
+live window has one active pane, and a killed window raises
+{exc}`~libtmux.exc.LibTmuxException` from its pane listing, never `None`.
+Both now return `Pane`, as `Session.active_window` already returned `Window`.
+`Window.select_pane()` and `Window.last_pane()` return `Pane` for the same
+reason.
+
+A listing that holds no active pane raises the new
+{exc}`~libtmux.exc.NoActivePane` instead of returning `None`. Code that
+asserted the result is not `None` is unaffected, and `if pane is None` keeps
+running but is now dead code. {attr}`Client.attached_pane
+<libtmux.Client.attached_pane>` keeps returning `None`, since a client can be
+attached to nothing.
+
 #### `QueryList.get()` is typed to match what it does
 
 `get()` without `default` returns the object or raises

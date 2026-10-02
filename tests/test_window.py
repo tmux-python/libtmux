@@ -1452,3 +1452,36 @@ def test_split_many_rejects_negative_count(session: Session) -> None:
 
     with pytest.raises(ValueError, match="must not be negative"):
         window.split_many(-1)
+
+
+def test_active_pane_is_never_none_for_a_live_window(session: Session) -> None:
+    """Verify every live window reports exactly one active pane."""
+    window = session.new_window()
+    window.split()
+
+    assert isinstance(window.active_pane, Pane)
+    assert [pane.pane_active for pane in window.panes].count("1") == 1
+    assert session.active_pane == session.active_window.active_pane
+
+
+def test_active_pane_of_a_killed_window_raises_not_none(session: Session) -> None:
+    """Verify a window that no longer exists raises instead of returning None."""
+    window = session.new_window()
+    window.kill()
+
+    with pytest.raises(exc.LibTmuxException, match="can't find window"):
+        _ = window.active_pane
+
+
+def test_active_pane_raises_when_no_pane_is_active(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify an inconsistent listing raises ``NoActivePane``."""
+    from libtmux._internal.query_list import QueryList
+
+    window = session.new_window()
+    monkeypatch.setattr(Window, "panes", property(lambda self: QueryList([])))
+
+    with pytest.raises(exc.NoActivePane):
+        _ = window.active_pane

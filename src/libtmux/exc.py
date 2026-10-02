@@ -963,6 +963,17 @@ class PaneError(LibTmuxException):
     """Any type of pane related error."""
 
 
+class NoActivePane(PaneError):
+    """A window listed no active pane.
+
+    tmux gives every live window one active pane, so this reports a listing
+    that came back inconsistent, not a window that is merely empty.
+    """
+
+    def __init__(self, *args: object) -> None:
+        super().__init__("No active pane found")
+
+
 class PaneNotFound(PaneError):
     """Pane not found."""
 

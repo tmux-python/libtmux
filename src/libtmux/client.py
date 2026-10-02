@@ -183,7 +183,10 @@ class Client(Obj):
         window = self.attached_window
         if window is None:
             return None
-        return window.active_pane
+        try:
+            return window.active_pane
+        except exc.NoActivePane:
+            return None
 
     def _resolve_attached(
         self,
@@ -231,4 +234,7 @@ class Client(Obj):
             window = session.active_window
         except exc.NoActiveWindow:
             return session, None, None
-        return session, window, window.active_pane
+        try:
+            return session, window, window.active_pane
+        except exc.NoActivePane:
+            return session, window, None
