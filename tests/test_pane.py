@@ -40,25 +40,29 @@ def _bytes_received(
     session: Session,
     tmp_path: pathlib.Path,
     send: t.Callable[[Pane], None],
+    *,
+    stty: str = "",
 ) -> str:
     """Run ``send`` against a pane whose process writes its stdin to a file.
 
-    The pane runs ``cat``, so the file holds exactly the bytes tmux delivered,
-    free of echo, wrapping, and prompt noise.
+    The pane runs ``cat`` and marks ``done`` once it sees EOF, so the file
+    holds exactly the bytes tmux delivered, free of echo, wrapping, and
+    prompt noise. ``stty`` holds terminal settings to apply first, such as
+    ``-icrnl`` to see a carriage return instead of the line feed it becomes.
     """
     out = tmp_path / "received"
+    done = tmp_path / "done"
     window = session.new_window(
-        window_shell=f"cat > {shlex.quote(str(out))}",
+        window_shell=(
+            f"stty {stty}; cat > {shlex.quote(str(out))}; : > {shlex.quote(str(done))}"
+        ),
     )
     pane = window.active_pane
     assert pane is not None
     send(pane)
     pane.send_keys("C-d", enter=False)  # EOF: cat flushes and exits
 
-    def received() -> bool:
-        return out.exists() and out.read_text().endswith("\n")
-
-    retry_until(received, 2, raises=True)
+    retry_until(done.exists, 2, raises=True)
     return out.read_text()
 
 
@@ -187,6 +191,55 @@ def test_send_keys_hex_keys_rejects_malformed(
     assert pane is not None
     with pytest.raises(ValueError, match="hex"):
         pane.send_keys(hex_text, hex_keys=True)
+
+
+def _lines(count: int, width: int) -> str:
+    """Return ``count`` newline-terminated lines of ``width`` bytes each.
+
+    The terminal reads a line at a time and truncates a line over 4,095 bytes,
+    so a big payload has to be many short lines.
+    """
+    return ("A" * (width - 1) + "\n") * count
+
+
+def test_send_keys_payload_near_the_limit_is_delivered(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Pane.send_keys() delivers a payload close to tmux's message limit."""
+    text = _lines(160, 100)  # 16,000 bytes
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(text, literal=True, enter=False),
+    )
+    assert received == text
+
+
+@pytest.mark.parametrize(
+    "size",
+    [16_345, 20_000, 100_000],
+    ids=["failed_to_send", "command_too_long", "far_over"],
+)
+def test_send_keys_raises_when_tmux_refuses_oversize_text(
+    session: Session,
+    tmp_path: pathlib.Path,
+    size: int,
+) -> None:
+    """Pane.send_keys() raises tmux's refusal and sends neither text nor Enter.
+
+    tmux rejects a command above its 16 KiB message size with "failed to send
+    command" or "command too long", depending on the size. The test reads
+    nothing about the limit: it sends sizes on both sides and expects
+    whatever tmux reports to surface.
+    """
+
+    def send(pane: Pane) -> None:
+        with pytest.raises(exc.LibTmuxException) as excinfo:
+            pane.send_keys("A" * size, literal=True)
+        assert excinfo.value.subcommand == "send-keys"
+
+    assert _bytes_received(session, tmp_path, send) == ""
 
 
 def test_set_height(session: Session) -> None:

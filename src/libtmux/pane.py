@@ -813,6 +813,10 @@ class Pane(
             If ``cmd`` is ``None`` and no flag-only path is selected
             (``reset``, ``repeat``, or ``copy_mode_cmd``), or ``hex_keys`` is
             set and ``cmd`` is not valid hex.
+        :exc:`~libtmux.exc.LibTmuxException`
+            If tmux rejects the text. tmux refuses a command above its 16 KiB
+            message size (``command too long`` or ``failed to send command``);
+            nothing is sent and no Enter follows.
 
         Examples
         --------
@@ -894,7 +898,8 @@ class Pane(
                     keys = ("20", *keys)
             else:
                 keys = (_escape_trailing_semicolon(prefix + cmd),)
-            self.cmd("send-keys", *tmux_args, "--", *keys)
+            proc = self.cmd("send-keys", *tmux_args, "--", *keys)
+            raise_if_stderr(proc, "send-keys")
 
         if enter and copy_mode_cmd is None:
             self.enter()

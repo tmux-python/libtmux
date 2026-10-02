@@ -88,6 +88,15 @@ argument per byte, as `send-keys -H` requires, and accepts `1b5b32`,
 `1b 5b 32`, and `0x1b 0x5b`. Only a single byte was delivered before; longer
 payloads vanished without an error. Malformed hex raises {exc}`ValueError`.
 
+#### `Pane.send_keys()` raises when tmux refuses the text
+
+tmux rejects a `send-keys` command above about 16 KiB with `command too long`
+or `failed to send command`. {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
+previously ignored that reply, so the text vanished and the Enter that followed
+still went to the pane. It now raises {exc}`~libtmux.exc.LibTmuxException` with
+tmux's message, sends no Enter, and so also surfaces any other error tmux
+reports for the text, such as a pane that no longer exists.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
