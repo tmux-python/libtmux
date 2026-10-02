@@ -8,6 +8,7 @@ libtmux.exc
 from __future__ import annotations
 
 import os
+import subprocess
 import typing as t
 
 from libtmux._internal.redaction import _loggable_cmd
@@ -37,8 +38,35 @@ def _format_query(query: t.Mapping[str, t.Any]) -> str:
     return ", ".join(f"{key}={value!r}" for key, value in query.items())
 
 
-class LibTmuxException(Exception):
-    """Base Exception for libtmux Errors.
+class TmuxError(Exception):
+    """Root of every exception libtmux defines.
+
+    One ``except TmuxError`` catches anything libtmux raises on purpose. It has
+    two children: :exc:`LibTmuxException`, for a tmux operation that failed or
+    gave up, and :exc:`DeprecatedError`, for calling an API that no longer
+    exists.
+
+    The split matters to broad handlers. Code that falls back on
+    ``except LibTmuxException`` ("tmux said no, try something else") must not
+    also swallow :exc:`DeprecatedError`, which reports a bug in the caller, so
+    that one is a sibling of :exc:`LibTmuxException`, not a child.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> issubclass(exc.LibTmuxException, exc.TmuxError)
+    True
+    >>> issubclass(exc.DeprecatedError, exc.TmuxError)
+    True
+    >>> issubclass(exc.DeprecatedError, exc.LibTmuxException)
+    False
+
+    .. versionadded:: 0.63
+    """
+
+
+class LibTmuxException(TmuxError):
+    """A tmux operation failed or gave up: the base of every tmux-side error.
 
     Parameters
     ----------
@@ -68,21 +96,30 @@ class LibTmuxException(Exception):
         return f"{self.subcommand}: {base}"
 
 
-class DeprecatedError(Exception):
+class DeprecatedError(TmuxError, AttributeError):
     """Raised when a removed function, method, or parameter is used.
 
     This exception provides clear guidance on what to use instead.
 
-    It deliberately does not subclass :class:`LibTmuxException`. It reports a
-    caller bug (code written against an API that no longer exists), not a tmux
-    failure, so a broad ``except LibTmuxException`` fallback must not swallow
-    it.
+    It is a :exc:`TmuxError` but deliberately not a :class:`LibTmuxException`.
+    It reports a caller bug (code written against an API that no longer
+    exists), not a tmux failure, so a broad ``except LibTmuxException``
+    fallback must not swallow it.
+
+    It is also an :class:`AttributeError`, as Python's own removed-name errors
+    are (numpy's ``np.float``, a module ``__getattr__`` per :pep:`562`). That
+    keeps feature detection working: ``hasattr(obj, "old")`` is ``False`` and
+    ``getattr(obj, "old", default)`` returns the default, so a ladder that tries
+    the new name and then the old one still runs. Reading the name directly
+    raises, with the message naming the replacement.
 
     Examples
     --------
     >>> from libtmux.exc import DeprecatedError, LibTmuxException
     >>> issubclass(DeprecatedError, LibTmuxException)
     False
+    >>> issubclass(DeprecatedError, AttributeError)
+    True
     >>> str(DeprecatedError(deprecated="A.old()", replacement="A.new()", version="1.0"))
     'A.old() was deprecated in 1.0 and has been removed. Use A.new() instead.'
 
@@ -110,7 +147,27 @@ class DeprecatedError(Exception):
         super().__init__(msg)
 
 
-class ListCommandFailed(LibTmuxException):
+class TmuxCommandFailed(LibTmuxException):
+    """tmux ran a command and did not give a usable answer.
+
+    Raised when tmux writes to stderr (``no server running``, ``can't find
+    pane``) or returns output libtmux cannot parse. This is the failure the
+    lenient list accessors (:attr:`Server.sessions`, :attr:`Server.clients`)
+    read as "nothing to list". They catch this class and its unreachable-server
+    neighbours, not :exc:`LibTmuxException`, so a timeout or any future
+    subclass of :exc:`LibTmuxException` is never mistaken for an empty server.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> issubclass(exc.TmuxCommandFailed, exc.LibTmuxException)
+    True
+
+    .. versionadded:: 0.63
+    """
+
+
+class ListCommandFailed(TmuxCommandFailed):
     """A strict listing could not ask tmux for its rows.
 
     Raised by :meth:`Server.fetch_sessions() <libtmux.Server.fetch_sessions>`,
@@ -135,7 +192,7 @@ class ListCommandFailed(LibTmuxException):
     >>> err = exc.ListCommandFailed("no server running", list_cmd="list-sessions")
     >>> err.list_cmd
     'list-sessions'
-    >>> issubclass(exc.ListCommandFailed, exc.LibTmuxException)
+    >>> issubclass(exc.ListCommandFailed, exc.TmuxCommandFailed)
     True
     """
 
@@ -647,11 +704,25 @@ class AmbiguousOption(OptionError):
 
 
 class WaitTimeout(LibTmuxException):
-    """Function timed out without meeting condition."""
+    """A wait gave up: the condition it polls for was not met in time.
+
+    Raised by :meth:`Pane.wait() <libtmux.Pane.wait>`,
+    :meth:`Pane.wait_for_text() <libtmux.Pane.wait_for_text>`,
+    :meth:`Pane.run() <libtmux.Pane.run>` (as :exc:`PaneRunTimeout`) and the
+    ``retry_until`` test helpers. Nothing was killed: the thing being waited
+    on, such as a process or a line of output, is still free to happen. Compare
+    :exc:`TmuxTimeout`, where a tmux client was cut off mid-call.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> issubclass(exc.WaitTimeout, exc.LibTmuxException)
+    True
+    """
 
 
-class TmuxTimeout(Exception):
-    """A tmux command outlived its ``timeout``.
+class TmuxTimeout(LibTmuxException):
+    """A tmux command outlived its ``timeout`` and its client was killed.
 
     Raised when a ``timeout`` is given, whether on
     :class:`~libtmux.engines.base.CommandRequest`, on
@@ -664,11 +735,13 @@ class TmuxTimeout(Exception):
     is raised; a control-mode engine abandons the reply and keeps its
     connection.
 
-    Not a :exc:`LibTmuxException`. The list accessors
-    (:attr:`Server.sessions`, :attr:`Server.clients`) treat a
-    :exc:`LibTmuxException` as "nothing to list"; a server that has stopped
-    answering is not an empty server, so a timeout passes through them.
-    It is also not a :exc:`WaitTimeout`, which means a helper gave up on a
+    A :exc:`LibTmuxException`, so one ``except TmuxError`` or
+    ``except LibTmuxException`` covers it. The list accessors
+    (:attr:`Server.sessions`, :attr:`Server.clients`) catch
+    :exc:`TmuxCommandFailed` and its unreachable-server neighbours, not
+    :exc:`LibTmuxException`: a server that has stopped answering is not an
+    empty server, so a timeout passes through them.
+    It is not a :exc:`WaitTimeout`, which means a helper gave up on a
     condition: here the command may or may not have taken effect.
 
     Only the client dies. Work the command started, such as a pane's
@@ -698,10 +771,8 @@ class TmuxTimeout(Exception):
     >>> err.timeout
     1.5
 
-    A timeout is not swallowed by ``except LibTmuxException``:
-
     >>> isinstance(err, exc.LibTmuxException)
-    False
+    True
 
     .. versionadded:: 0.63
     """
@@ -714,12 +785,17 @@ class TmuxTimeout(Exception):
         )
 
 
-class PaneRunTimeout(TmuxTimeout):
+class PaneRunTimeout(WaitTimeout, TmuxTimeout):
     """:meth:`Pane.run() <libtmux.Pane.run>` outlived its ``timeout``.
 
-    A :exc:`TmuxTimeout`, so one ``except TmuxTimeout`` covers every bounded
-    wait in libtmux. It is a subclass, not the bare class, because the caller
-    needs two facts the base cannot carry: the output the command had
+    Both kinds of timeout, because :meth:`Pane.run() <libtmux.Pane.run>` is
+    both: a wait for a condition (the command finishing), so it is a
+    :exc:`WaitTimeout`; carried out by a bounded tmux ``wait-for`` client, so
+    it is a :exc:`TmuxTimeout`, and ``except TmuxTimeout`` covers it as it
+    covers :meth:`Server.cmd() <libtmux.Server.cmd>` and
+    :meth:`Server.wait_for() <libtmux.Server.wait_for>`. The command itself is
+    never killed. It is a subclass, not a bare timeout, because the caller
+    needs two facts the bases cannot carry: the output the command had
     printed (an agent must see where a hung command stopped) and whether the
     pane's shell ever started the command.
 
@@ -761,8 +837,8 @@ class PaneRunTimeout(TmuxTimeout):
     >>> err.stdout, err.started
     (['partial'], True)
 
-    >>> isinstance(err, exc.TmuxTimeout)
-    True
+    >>> isinstance(err, exc.TmuxTimeout), isinstance(err, exc.WaitTimeout)
+    (True, True)
 
     .. versionadded:: 0.63
     """
@@ -789,7 +865,7 @@ class PaneRunTimeout(TmuxTimeout):
                 "at a shell prompt, or its shell cannot reach this tmux server "
                 f"(ssh, docker exec): {command}"
             )
-        Exception.__init__(self, msg)
+        LibTmuxException.__init__(self, msg)
 
 
 class TmuxServerGone(LibTmuxException):
@@ -821,6 +897,59 @@ class TmuxServerGone(LibTmuxException):
         super().__init__(
             f"tmux server is gone; channel {channel} was released by its exit",
         )
+
+
+class TmuxServerNotRunning(TmuxServerGone, subprocess.CalledProcessError):
+    """No tmux server answered :meth:`Server.raise_if_dead`.
+
+    A :exc:`TmuxServerGone`, so it sits under :exc:`LibTmuxException` and
+    ``except TmuxError`` catches it. It is also a
+    :class:`subprocess.CalledProcessError`, the type
+    :meth:`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` raised
+    before it joined this tree, so existing ``except CalledProcessError``
+    handlers keep working. ``returncode`` and ``cmd`` are the failed
+    ``list-sessions`` probe's.
+
+    Parameters
+    ----------
+    returncode : int
+        Exit status of the ``list-sessions`` probe.
+    cmd : list[str]
+        The probe's argv.
+    output : str, optional
+        The probe's standard output.
+    stderr : str, optional
+        tmux's own message, as :attr:`subprocess.CalledProcessError.stderr`.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.TmuxServerNotRunning(1, ["tmux", "list-sessions"])
+    >>> str(err)
+    'tmux server is not running (list-sessions exited 1)'
+
+    >>> isinstance(err, exc.TmuxServerGone), isinstance(err, OSError)
+    (True, False)
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(
+        self,
+        returncode: int,
+        cmd: t.Sequence[str],
+        output: str | None = None,
+        stderr: str | None = None,
+    ) -> None:
+        subprocess.CalledProcessError.__init__(
+            self, returncode, list(cmd), output, stderr
+        )
+        self.subcommand = None
+        self.channel = ""
+
+    def __str__(self) -> str:
+        """Render the probe's exit status."""
+        return f"tmux server is not running (list-sessions exited {self.returncode})"
 
 
 class VariableUnpackingError(LibTmuxException):

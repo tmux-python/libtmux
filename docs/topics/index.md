@@ -98,6 +98,12 @@ Swap how tmux commands execute: record, fake, or retarget the binary.
 Get and set tmux options and hooks.
 :::
 
+:::{grid-item-card} Exceptions
+:link: exceptions
+:link-type: doc
+The exception tree, which timeout is which, and what to catch.
+:::
+
 :::{grid-item-card} Clients
 :link: clients
 :link-type: doc
@@ -134,5 +140,6 @@ throwaway_server
 options_and_hooks
 engines
 clients
+exceptions
 format-tokens
 ```

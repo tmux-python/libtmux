@@ -71,9 +71,10 @@ Every call has a bound; the default is 120 seconds. On expiry
 
 {exc}`~libtmux.exc.PaneRunTimeout` is a {exc}`~libtmux.exc.TmuxTimeout`, the same
 exception {meth}`Server.wait_for() <libtmux.Server.wait_for>` and the `timeout`
-argument of `cmd()` raise, so one `except TmuxTimeout` covers all three. It is not
-a {exc}`~libtmux.exc.LibTmuxException`. The command keeps running in the pane;
-interrupt it yourself.
+argument of `cmd()` raise, so one `except TmuxTimeout` covers all three. It is also
+a {exc}`~libtmux.exc.WaitTimeout`, like {meth}`Pane.wait() <libtmux.Pane.wait>`'s:
+the command did not finish in time. The command keeps running in the pane;
+interrupt it yourself. See {ref}`exceptions`.
 
 ## What a call tolerates
 

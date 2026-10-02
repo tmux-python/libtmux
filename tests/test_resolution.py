@@ -469,7 +469,7 @@ def test_linked_sessions_returns_empty_when_session_snapshot_fails(
     def fail_session_snapshot(**kwargs: t.Any) -> list[dict[str, str]]:
         if kwargs["list_cmd"] == "list-sessions":
             msg = "session snapshot failed"
-            raise exc.LibTmuxException(msg)
+            raise exc.TmuxCommandFailed(msg)
         return real_fetch_objs(**kwargs)
 
     monkeypatch.setattr(window_module, "fetch_objs", fail_session_snapshot)

@@ -148,13 +148,14 @@ def test_run_timeout_raises_with_partial_output(pane: Pane) -> None:
     assert excinfo.value.started is True
 
 
-def test_run_timeout_joins_the_one_timeout_hierarchy(pane: Pane) -> None:
-    """One ``except TmuxTimeout`` covers Pane.run, Server.wait_for and cmd()."""
+def test_run_timeout_is_both_a_wait_and_a_bounded_call(pane: Pane) -> None:
+    """``except TmuxTimeout`` and ``except WaitTimeout`` each cover Pane.run."""
     with pytest.raises(exc.TmuxTimeout) as excinfo:
         pane.run("sleep 30", timeout=0.5)
 
     assert isinstance(excinfo.value, exc.PaneRunTimeout)
-    assert not isinstance(excinfo.value, exc.LibTmuxException)
+    assert isinstance(excinfo.value, exc.WaitTimeout)
+    assert isinstance(excinfo.value, exc.LibTmuxException)
 
 
 def test_run_default_timeout_is_finite() -> None:

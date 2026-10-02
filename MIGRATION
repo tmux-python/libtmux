@@ -25,9 +25,9 @@ This table provides a quick reference for all deprecated APIs. See version-speci
 sections below for detailed migration examples and code samples.
 
 Every row whose **Raises** column holds a version raises
-{exc}`~libtmux.exc.DeprecatedError` naming the replacement. It does not subclass
-{exc}`~libtmux.exc.LibTmuxException`; see
-{ref}`deprecatederror-hierarchy`.
+{exc}`~libtmux.exc.DeprecatedError` naming the replacement. It is a
+{exc}`~libtmux.exc.TmuxError` but not a {exc}`~libtmux.exc.LibTmuxException`;
+see {ref}`deprecatederror-hierarchy`.
 
 ### Method Renamings
 
@@ -126,12 +126,13 @@ _Detailed migration steps for the next version will be posted here._
 
 (deprecatederror-hierarchy)=
 
-## Next release: `DeprecatedError` leaves the tmux-failure hierarchy
+## Next release: one exception root, and `DeprecatedError` beside `LibTmuxException`
 
 {exc}`~libtmux.exc.DeprecatedError`, raised by every removed API in the
 {ref}`Complete Deprecation Reference <migration>` above, no longer subclasses
-{exc}`~libtmux.exc.LibTmuxException`. It now derives from {class}`Exception`
-directly.
+{exc}`~libtmux.exc.LibTmuxException`. It derives from the new root
+{exc}`~libtmux.exc.TmuxError`, as {exc}`~libtmux.exc.LibTmuxException` now does,
+so `except TmuxError` catches both. See {ref}`exceptions`.
 
 Before, a broad handler took the removed-API path as if tmux had failed:
 
@@ -150,9 +151,14 @@ Now the `DeprecatedError` propagates, and the message names the replacement
 - **Upgrade path:** replace the removed call with the replacement in the
   table. Handlers for tmux failures need no change.
 - **Who is affected:** only code that relied on `except LibTmuxException`
-  catching a removed-API call. `except DeprecatedError` and
-  `except Exception` still catch it. To keep one handler for both, name them:
-  `except (exc.LibTmuxException, exc.DeprecatedError)`.
+  catching a removed-API call. `except DeprecatedError`, `except TmuxError` and
+  `except Exception` still catch it. To keep one handler for both, use
+  `except exc.TmuxError`.
+- **Feature detection:** `DeprecatedError` is also an `AttributeError`.
+  `hasattr(session, "attached_window")` is `False` and
+  `getattr(session, "attached_window", None)` returns `None`; reading the name
+  directly still raises with the message naming the replacement. Only
+  `except AttributeError` handlers around a removed name take the old path.
 - **Not changed:** the exception still takes `deprecated`, `replacement`, and
   `version`, and its message is unchanged.
 
@@ -177,6 +183,24 @@ same message, when one is read.
   (`client_*`, `mouse_*`, `pane_*` on a `Window`) are still readable.
 - **Special methods:** `Session[key]`, `Window[key]` and `Pane[key]` still raise
   `DeprecatedError`.
+
+### Timeouts and `raise_if_dead` join `LibTmuxException`
+
+{exc}`~libtmux.exc.TmuxTimeout` and {exc}`~libtmux.exc.PaneRunTimeout` are
+{exc}`~libtmux.exc.LibTmuxException`s, so an existing `except LibTmuxException`
+now also catches them. {meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>`
+raises {exc}`~libtmux.exc.TmuxServerNotRunning`, which is a
+{class}`subprocess.CalledProcessError` and a
+{exc}`~libtmux.exc.LibTmuxException`: `except CalledProcessError` keeps
+working, and so does `except LibTmuxException`, which did not catch it before.
+
+The lenient list accessors now catch command failures
+({exc}`~libtmux.exc.TmuxCommandFailed`, {exc}`~libtmux.exc.TmuxCommandNotFound`,
+{exc}`~libtmux.exc.SocketPathTooLong`, {exc}`~libtmux.exc.VersionTooLow`) rather
+than every {exc}`~libtmux.exc.LibTmuxException`. A plain
+{exc}`~libtmux.exc.LibTmuxException` raised inside a listing, for example by a
+test double that patches `fetch_objs`, now propagates; raise
+{exc}`~libtmux.exc.TmuxCommandFailed` to keep the empty-list behavior.
 
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 

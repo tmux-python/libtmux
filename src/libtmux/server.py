@@ -45,7 +45,13 @@ from libtmux.engines.base import SupportsConnection
 from libtmux.engines.connection import ServerConnection
 from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
-from libtmux.neo import _split_records, fetch_objs, get_output_format, parse_output
+from libtmux.neo import (
+    _LENIENT_LIST_ERRORS,
+    _split_records,
+    fetch_objs,
+    get_output_format,
+    parse_output,
+)
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
@@ -202,7 +208,7 @@ def _fetch_strict(
         return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
     except exc.TmuxCommandNotFound:
         raise
-    except exc.LibTmuxException as e:
+    except _LENIENT_LIST_ERRORS as e:
         raise exc.ListCommandFailed(*e.args, list_cmd=list_cmd) from e
 
 
@@ -876,22 +882,29 @@ class Server(
         :exc:`~libtmux.exc.AsyncEngineMismatch`
             An injected engine's ``run()`` returned an awaitable; this path
             cannot await it.
-        :class:`subprocess.CalledProcessError`
+        :exc:`~libtmux.exc.TmuxServerNotRunning`
             When the tmux server is not running (non-zero exit from
-            ``list-sessions``), carrying tmux's own message.
+            ``list-sessions``). A :exc:`~libtmux.exc.TmuxServerGone`, and so a
+            :exc:`~libtmux.exc.LibTmuxException`; also still a
+            :class:`subprocess.CalledProcessError`, which it was raised as
+            before 0.63.
 
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
         ...     tmux.raise_if_dead()
-        ... except Exception as e:
-        ...     print(type(e))
-        ...     print("no_exist" in e.stderr)
-        <class 'subprocess.CalledProcessError'>
-        True
+        ... except exc.TmuxError as e:
+        ...     print(type(e).__name__)
+        TmuxServerNotRunning
+
+        .. versionchanged:: 0.63
+
+           Raises :exc:`~libtmux.exc.TmuxServerNotRunning`, a
+           :class:`subprocess.CalledProcessError` subclass, instead of the bare
+           :class:`~subprocess.CalledProcessError`.
         """
         result = self.cmd("list-sessions")
         if result.returncode != 0:
-            raise subprocess.CalledProcessError(
+            raise exc.TmuxServerNotRunning(
                 result.returncode,
                 result.cmd,
                 output="\n".join(result.stdout),
@@ -3510,9 +3523,7 @@ class Server(
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
-        except exc.AsyncEngineMismatch:
-            raise
-        except exc.LibTmuxException:
+        except _LENIENT_LIST_ERRORS:
             return QueryList([])
         return QueryList(sessions)
 
@@ -3674,9 +3685,7 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
-        except exc.AsyncEngineMismatch:
-            raise
-        except exc.LibTmuxException:
+        except _LENIENT_LIST_ERRORS:
             return QueryList([])
         return QueryList(clients)
 

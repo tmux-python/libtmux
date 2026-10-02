@@ -26,7 +26,7 @@ from libtmux.constants import (
     WindowDirection,
 )
 from libtmux.hooks import HooksMixin
-from libtmux.neo import Obj, fetch_obj, fetch_objs
+from libtmux.neo import _LENIENT_LIST_ERRORS, Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
@@ -369,9 +369,7 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
-        except exc.AsyncEngineMismatch:
-            raise
-        except exc.LibTmuxException:
+        except _LENIENT_LIST_ERRORS:
             return QueryList([])
 
         sessions_by_id = {
