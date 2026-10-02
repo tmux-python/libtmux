@@ -54,14 +54,15 @@ tmux write its message straight to the terminal. It now captures that text onto
 the raised {exc}`subprocess.CalledProcessError`. The exception type is
 unchanged.
 
-#### `tmux_cmd.process` is a property (#739)
+#### `tmux_cmd.process` is a deprecated property (#739)
 
 {attr}`~libtmux.common.tmux_cmd.process` was a plain attribute holding the
-{class}`subprocess.Popen` that ran the command; it is now a read-only property.
-Reading it is unchanged under the default engine. Assigning to it no longer
-works, and reading it after a command ran through an engine that forks no
-process raises {exc}`~libtmux.exc.LibTmuxException` rather than returning
-`None`.
+{class}`subprocess.Popen` that ran the command; it is now a read-only property
+that emits {exc}`DeprecationWarning`. Under the default engine it still returns
+the process. Assigning to it no longer works, and reading it after a command ran
+through an engine that forks no process raises
+{exc}`~libtmux.exc.LibTmuxException` rather than returning `None`. Read
+`returncode`, `stdout` and `stderr` instead; every engine fills them in.
 
 ### What's new
 
@@ -89,6 +90,16 @@ so injecting one into a socket-scoped {class}`~libtmux.Server` cannot silently
 dispatch to the ambient tmux server. Engines that name a server keep it. A
 custom `tmux_bin` selects a program rather than a server, so an engine carrying
 only one adopts the server's flags and keeps its own binary.
+
+#### `CommandResult.ok` and `raise_for_status()` (#739)
+
+{class}`~libtmux.engines.base.CommandResult` gains
+{attr}`~libtmux.engines.base.CommandResult.ok` and
+{meth}`~libtmux.engines.base.CommandResult.raise_for_status`. A tmux-side
+failure stays data on the result; `raise_for_status()` turns it into
+{exc}`~libtmux.exc.TmuxCommandError`, which carries `cmd`, `returncode` and
+`stderr`. {meth}`Server.cmd() <libtmux.Server.cmd>` still returns a
+{class}`~libtmux.common.tmux_cmd` and is unchanged.
 
 #### Observing what an engine runs (#739)
 

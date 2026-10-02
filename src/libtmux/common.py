@@ -15,6 +15,7 @@ import re
 import shlex
 import sys
 import typing as t
+import warnings
 
 from . import exc
 from ._compat import LooseVersion
@@ -559,11 +560,26 @@ class tmux_cmd:
             The engine that ran the command never forked a process. Only an
             injected engine can do that; the default engine always forks.
 
+        Notes
+        -----
+        Deprecated: read :attr:`returncode`, :attr:`stdout` and :attr:`stderr`,
+        which every engine fills in. Accessing this emits a
+        :exc:`DeprecationWarning`.
+
         Examples
         --------
-        >>> server.cmd("display-message", "-p", "hi").process.returncode
+        >>> import warnings
+        >>> with warnings.catch_warnings():
+        ...     warnings.simplefilter("ignore", DeprecationWarning)
+        ...     server.cmd("display-message", "-p", "hi").process.returncode
         0
         """
+        warnings.warn(
+            "tmux_cmd.process is deprecated: it is unavailable on engines that "
+            "fork no process. Read returncode, stdout and stderr instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self._process is None:
             msg = "engine did not fork a subprocess; tmux_cmd.process is unavailable"
             raise exc.LibTmuxException(msg)

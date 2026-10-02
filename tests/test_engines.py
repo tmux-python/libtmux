@@ -94,7 +94,7 @@ def test_process_raises_on_engine_without_subprocess() -> None:
     server = Server(socket_name="canned_process", engine=CannedEngine())
     proc = server.cmd("list-sessions")
 
-    with pytest.raises(exc.LibTmuxException):
+    with pytest.warns(DeprecationWarning), pytest.raises(exc.LibTmuxException):
         _ = proc.process
 
 
@@ -139,7 +139,7 @@ def test_server_drives_engine_returning_a_foreign_result() -> None:
     assert proc.stdout == ["$7"]
     assert proc.returncode == 0
     assert proc.cmd == ["foreign-tmux", "new-session", "-P", "-F#{session_id}"]
-    with pytest.raises(exc.LibTmuxException):
+    with pytest.warns(DeprecationWarning), pytest.raises(exc.LibTmuxException):
         _ = proc.process
 
 
@@ -147,8 +147,46 @@ def test_process_is_popen_under_default_engine(session: Session) -> None:
     """``.process`` reads exactly as it did before the seam existed."""
     proc = session.server.cmd("display-message", "-p", "hi")
 
-    assert isinstance(proc.process, subprocess.Popen)
-    assert proc.process.returncode == 0
+    with pytest.warns(DeprecationWarning, match="tmux_cmd.process is deprecated"):
+        process = proc.process
+
+    assert isinstance(process, subprocess.Popen)
+    assert process.returncode == 0
+
+
+def test_result_ok_follows_returncode() -> None:
+    """``ok`` is true exactly when tmux exited zero."""
+    assert CommandResult(cmd=("tmux", "list-sessions")).ok
+    assert not CommandResult(cmd=("tmux", "kill-window"), returncode=1).ok
+
+
+def test_raise_for_status_carries_the_failure(server: Server) -> None:
+    """A real tmux rejection becomes ``TmuxCommandError`` with its data."""
+    engine = SubprocessEngine.for_server(server)
+    result = engine.run(CommandRequest.from_args("kill-window", "-t", "@999"))
+
+    with pytest.raises(exc.TmuxCommandError) as excinfo:
+        result.raise_for_status()
+
+    assert excinfo.value.returncode == result.returncode != 0
+    assert excinfo.value.stderr == result.stderr
+    assert excinfo.value.cmd == result.cmd
+    assert isinstance(excinfo.value, exc.LibTmuxException)
+
+
+def test_raise_for_status_passes_on_success(server: Server) -> None:
+    """A zero exit does not raise."""
+    engine = SubprocessEngine.for_server(server)
+    engine.run(CommandRequest.from_args("new-session", "-d")).raise_for_status()
+
+
+def test_cmd_stays_the_adapter_not_the_result(session: Session) -> None:
+    """``Server.cmd()`` returns ``tmux_cmd`` (lists), never the frozen result."""
+    proc = session.server.cmd("display-message", "-p", "hi")
+
+    assert type(proc) is tmux_cmd
+    assert proc.stdout == ["hi"]
+    assert not isinstance(proc, CommandResult)
 
 
 def test_connection_follows_socket_name_mutation() -> None:

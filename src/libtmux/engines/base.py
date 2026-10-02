@@ -270,6 +270,12 @@ class CommandResult:
     >>> CommandResult(cmd=("tmux", "display-message", "-p", "hi"), stdout=("hi",))
     CommandResult(cmd=('tmux', 'display-message', '-p', 'hi'), stdout=('hi',),
     stderr=(), returncode=0)
+
+    A rejected command is data until the caller asks for the exception:
+
+    >>> result = CommandResult(cmd=("tmux", "kill-window"), returncode=1)
+    >>> result.ok
+    False
     """
 
     cmd: tuple[str, ...]
@@ -281,6 +287,58 @@ class CommandResult:
         compare=False,
         repr=False,
     )
+
+    @property
+    def ok(self) -> bool:
+        """Whether tmux accepted the command.
+
+        Returns
+        -------
+        bool
+            ``True`` when :attr:`returncode` is zero.
+
+        Examples
+        --------
+        >>> CommandResult(cmd=("tmux", "list-sessions")).ok
+        True
+        >>> CommandResult(cmd=("tmux", "kill-window"), returncode=1).ok
+        False
+        """
+        return self.returncode == 0
+
+    def raise_for_status(self) -> None:
+        """Raise :exc:`~libtmux.exc.TmuxCommandError` when tmux rejected the command.
+
+        Engines report a tmux-side failure as data so a caller can inspect it.
+        This turns that data back into an exception at the point a caller would
+        rather not continue.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxCommandError`
+            :attr:`returncode` is nonzero. The message carries tmux's stderr,
+            and the exception carries :attr:`cmd`, :attr:`returncode` and
+            :attr:`stderr`.
+
+        Examples
+        --------
+        >>> ok = CommandResult(cmd=("tmux", "list-sessions"), stdout=("a",))
+        >>> ok.raise_for_status()
+
+        >>> CommandResult(
+        ...     cmd=("tmux", "kill-window", "-t", "@9"),
+        ...     stderr=("can't find window @9",),
+        ...     returncode=1,
+        ... ).raise_for_status()
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.TmuxCommandError: can't find window @9
+        """
+        if self.ok:
+            return
+        from libtmux import exc
+
+        raise exc.TmuxCommandError(self.cmd, self.returncode, self.stderr)
 
 
 @t.runtime_checkable

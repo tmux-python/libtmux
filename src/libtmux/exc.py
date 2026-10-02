@@ -10,6 +10,8 @@ from __future__ import annotations
 import typing as t
 
 if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from libtmux.neo import ListExtraArgs
 
 
@@ -97,6 +99,44 @@ class TmuxSessionExists(LibTmuxException):
 
 class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
+
+
+class TmuxCommandError(LibTmuxException):
+    """tmux rejected a command that an engine ran successfully.
+
+    Raised by :meth:`libtmux.engines.base.CommandResult.raise_for_status`. An
+    engine reports a tmux-side failure as data; this is that data as an
+    exception, for callers who would rather not check ``returncode``.
+
+    Parameters
+    ----------
+    cmd : sequence of str
+        The argv that ran.
+    returncode : int
+        tmux exit code.
+    stderr : sequence of str
+        tmux's error lines.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> error = exc.TmuxCommandError(("tmux", "kill-window"), 1, ("no window",))
+    >>> str(error), error.returncode
+    ('no window', 1)
+    >>> issubclass(exc.TmuxCommandError, exc.LibTmuxException)
+    True
+    """
+
+    def __init__(
+        self,
+        cmd: Sequence[str],
+        returncode: int,
+        stderr: Sequence[str] = (),
+    ) -> None:
+        self.cmd = tuple(cmd)
+        self.returncode = returncode
+        self.stderr = tuple(stderr)
+        super().__init__(" ".join(self.stderr) or f"tmux exited {returncode}")
 
 
 class AsyncEngineMismatch(LibTmuxException):
