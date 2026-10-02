@@ -15,6 +15,7 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
+from libtmux._internal.env import resolve_socket_path
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -49,12 +50,6 @@ def _track_server(item: pytest.Item, server: Server) -> None:
     item.stash.setdefault(_SERVERS_KEY, []).append(server)
 
 
-def _socket_file(socket_name: str) -> pathlib.Path:
-    """Return the path tmux uses for the socket named ``socket_name``."""
-    tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
-    return tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name
-
-
 def _attach_report(item: pytest.Item, *, keep: bool) -> str | None:
     """Return the attach commands for the live servers of ``item``.
 
@@ -69,7 +64,7 @@ def _attach_report(item: pytest.Item, *, keep: bool) -> str | None:
         socket_path = srv.cmd("display-message", "-p", "#{socket_path}").stdout
         path = socket_path[0] if socket_path else None
         if not path and srv.socket_name:
-            path = str(_socket_file(srv.socket_name))
+            path = str(resolve_socket_path(srv.socket_name))
         if not path:
             continue
         tmux = srv.tmux_bin or "tmux"
@@ -141,7 +136,7 @@ def _reap_test_server(socket_name: str | None) -> None:
     # resolve where tmux put the socket to unlink it regardless of daemon
     # state.
     with contextlib.suppress(OSError):
-        _socket_file(socket_name).unlink(missing_ok=True)
+        resolve_socket_path(socket_name).unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")

@@ -318,3 +318,23 @@ def test_default_reaps_failed_server(pytester: pytest.Pytester) -> None:
     )
     server = Server(socket_path=pathlib.Path(attach.split()[2]))
     assert not server.is_alive()
+
+
+def test_reap_test_server_unlinks_socket_under_empty_tmux_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty ``$TMUX_TMPDIR`` means ``/tmp`` to tmux, and to the reaper."""
+    monkeypatch.setenv("TMUX_TMPDIR", "")
+    name = "libtmux_test_reap_empty_tmpdir"
+    server = Server(socket_name=name)
+    server.new_session(session_name="reap_probe")
+    socket_path = pathlib.Path("/tmp") / f"tmux-{os.geteuid()}" / name
+    try:
+        assert socket_path.exists()
+
+        _reap_test_server(name)
+
+        assert not socket_path.exists()
+    finally:
+        with contextlib.suppress(OSError):
+            socket_path.unlink(missing_ok=True)
