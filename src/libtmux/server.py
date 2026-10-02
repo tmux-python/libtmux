@@ -2197,6 +2197,73 @@ class Server(
 
         raise_if_stderr(proc, "attach-session")
 
+    def ensure_session(
+        self,
+        session_name: str,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> Session:
+        """Return the session named ``session_name``, creating it if absent.
+
+        Idempotent get-or-create, in the spirit of :meth:`dict.setdefault` and
+        Django's ``get_or_create``: calling it twice with the same name yields
+        the same session. The name is matched exactly (tmux target
+        ``=session_name``), never as a prefix or fnmatch pattern, so
+        ``ensure_session("dev")`` does not return a session named ``dev2``.
+
+        When the session already exists it is returned as-is and every creation
+        option (``start_directory``, ``window_name``, ``environment``, ``x``,
+        ``y``, ...) is ignored, as with the default of ``setdefault``. Compare
+        the returned session's state if that matters to you.
+
+        Parameters
+        ----------
+        session_name : str
+            Exact session name to find or create.
+        *args, **kwargs
+            Passed to :meth:`new_session` when the session must be created.
+            ``kill_session`` is rejected: it contradicts "reuse if present".
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+            ``session_name`` contains ``.`` or ``:``.
+        :exc:`TypeError`
+            ``kill_session`` was passed.
+
+        Examples
+        --------
+        >>> first = server.ensure_session("ensure_doc")
+        >>> first
+        Session($... ensure_doc)
+
+        >>> server.ensure_session("ensure_doc").session_id == first.session_id
+        True
+
+        A different prefix is a different session:
+
+        >>> server.ensure_session("ensure").session_id == first.session_id
+        False
+        """
+        if "kill_session" in kwargs:
+            msg = "ensure_session() reuses an existing session; use new_session()"
+            raise TypeError(msg)
+
+        session_check_name(session_name)
+
+        existing = self.sessions.get(session_name=session_name, default=None)
+        if existing is not None:
+            return existing
+
+        try:
+            return self.new_session(session_name, *args, **kwargs)
+        except exc.TmuxSessionExists:
+            # Lost a race with another client creating the same name.
+            raced = self.sessions.get(session_name=session_name, default=None)
+            if raced is None:
+                raise
+            return raced
+
     def new_session(
         self,
         session_name: str | None = None,

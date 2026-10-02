@@ -32,6 +32,47 @@ def test_has_session(server: Server, session: Session) -> None:
     assert not server.has_session("asdf2314324321")
 
 
+def test_ensure_session_is_idempotent_and_exact(server: Server) -> None:
+    """Server.ensure_session() reuses by exact name, ignoring options and prefixes."""
+    first = server.ensure_session("ensure_me", window_name="first")
+    again = server.ensure_session("ensure_me", window_name="ignored")
+    assert again.session_id == first.session_id
+    assert again.active_window.window_name == "first"
+
+    other = server.ensure_session("ensure")
+    assert other.session_id != first.session_id
+    assert len(server.sessions) == 2
+
+
+def test_ensure_session_rejects_kill_session(server: Server) -> None:
+    """Server.ensure_session() refuses kill_session; it contradicts reuse."""
+    with pytest.raises(TypeError):
+        server.ensure_session("ensure_kill", kill_session=True)
+
+
+def test_ensure_session_bad_name(server: Server) -> None:
+    """Server.ensure_session() validates the name like new_session()."""
+    with pytest.raises(exc.BadSessionName):
+        server.ensure_session("bad.name")
+
+
+def test_ensure_session_lost_race(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Server.ensure_session() returns the winner when creation races."""
+    real_new_session = server.new_session
+
+    def racing_new_session(name: str, *a: t.Any, **kw: t.Any) -> Session:
+        real_new_session(name)  # another client wins first
+        return real_new_session(name, *a, **kw)  # raises TmuxSessionExists
+
+    monkeypatch.setattr(server, "new_session", racing_new_session)
+    session = server.ensure_session("ensure_race")
+    assert session.session_name == "ensure_race"
+    assert len(server.sessions) == 1
+
+
 def test_socket_name(server: Server) -> None:
     """``-L`` socket_name.
 
