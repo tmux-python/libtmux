@@ -45,6 +45,18 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### `kill_window()` and `select_window()` match window names exactly
+
+{meth}`Session.kill_window() <libtmux.Session.kill_window>` and
+{meth}`Session.select_window() <libtmux.Session.select_window>` now target
+`$session_id:=name`. A bare window name that matched no window in the session
+used to be retried by tmux as a session name, so
+`other.kill_window("victim")` destroyed the whole session `victim`. Window
+names no longer match by prefix either: `kill_window("foo")` leaves `foobar`
+alone. Ids (`@1`) and indexes are unchanged.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

@@ -674,6 +674,28 @@ def session_check_name(session_name: str | None) -> None:
         raise exc.BadSessionName(reason="contains colons", session_name=session_name)
 
 
+_WINDOW_SPECIAL_TARGET = re.compile(r"\d+|[@=].*|[!^$]|[+-]\d*")
+
+
+def _exact_window_target(target: str | int) -> str | int:
+    """Return the window part of a tmux target so a name matches exactly.
+
+    Window indexes, ids (``@1``), ``=name`` and tmux's relative tokens
+    (``!``, ``^``, ``$``, ``+``, ``-``, ``+2``) pass through untouched; any
+    other string is a window name and gets a leading ``=``.
+
+    >>> _exact_window_target("foo")
+    '=foo'
+    >>> _exact_window_target("2")
+    '2'
+    >>> _exact_window_target("@3")
+    '@3'
+    """
+    if isinstance(target, int) or _WINDOW_SPECIAL_TARGET.fullmatch(target):
+        return target
+    return f"={target}"
+
+
 def get_libtmux_version() -> LooseVersion:
     """Return libtmux version is a PEP386 compliant format.
 
