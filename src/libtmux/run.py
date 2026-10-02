@@ -41,6 +41,7 @@ import typing as t
 import uuid
 
 from libtmux import exc
+from libtmux.engines.base import CommandSeparator
 
 if t.TYPE_CHECKING:
     from libtmux.pane import Pane
@@ -427,12 +428,10 @@ def _remove_gone_hooks(server: Server, index: int) -> None:
 
 
 def _chain(commands: t.Iterable[tuple[str, ...]]) -> list[str]:
-    """Join tmux commands into one argv, separated by the ``;`` argument.
+    """Join tmux commands into one argv, separated by a ``CommandSeparator``.
 
-    tmux reads an argument that *ends* in ``;`` as a separator, so only a
-    lone ``;`` is added here and no command text is touched. Text that may
-    itself end in ``;`` would be split, so it must be escaped before it is
-    passed in; the lines :func:`_build_line` types never end that way.
+    Only the separator is a boundary: the engine escapes a final ``;`` on every
+    other argument, so command text is passed through untouched.
 
     Examples
     --------
@@ -442,7 +441,7 @@ def _chain(commands: t.Iterable[tuple[str, ...]]) -> list[str]:
     argv: list[str] = []
     for command in commands:
         if argv:
-            argv.append(";")
+            argv.append(CommandSeparator(";"))
         argv.extend(command)
     return argv
 

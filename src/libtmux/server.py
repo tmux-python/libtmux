@@ -33,7 +33,6 @@ from libtmux._internal.query_list import QueryList
 from libtmux._surface import SurfaceMixin
 from libtmux.client import Client
 from libtmux.common import (
-    _escape_trailing_semicolon,
     get_version,
     has_gte_version,
     has_lt_version,
@@ -41,7 +40,7 @@ from libtmux.common import (
     tmux_cmd,
 )
 from libtmux.constants import OptionScope
-from libtmux.engines.base import SupportsConnection
+from libtmux.engines.base import CommandSeparator, SupportsConnection
 from libtmux.engines.connection import ServerConnection
 from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
@@ -2807,7 +2806,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += ("--", _escape_trailing_semicolon(data))
+        tmux_args += ("--", data)
 
         proc = self.cmd("set-buffer", *tmux_args)
 
@@ -3483,7 +3482,7 @@ class Server(
                     # none of them sees the temporary value.
                     probe = self.cmd(
                         "start-server",
-                        ";",
+                        CommandSeparator(";"),
                         "show-options",
                         "-gv",
                         "history-limit",
@@ -3495,10 +3494,10 @@ class Server(
                         "-g",
                         "history-limit",
                         str(history_limit),
-                        ";",
+                        CommandSeparator(";"),
                         "new-session",
                         *tmux_args,
-                        ";",
+                        CommandSeparator(";"),
                         "set-option",
                         "-g",
                         "history-limit",

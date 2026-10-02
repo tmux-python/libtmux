@@ -21,6 +21,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux import exc
+from libtmux.engines.base import is_command_separator
 
 if t.TYPE_CHECKING:
     import pathlib
@@ -93,6 +94,40 @@ def with_utf8(argv: tuple[str, ...]) -> tuple[str, ...]:
     if runs_interactive_client(argv[1:]):
         return argv
     return (argv[0], "-u", *argv[1:])
+
+
+def escape_data_semicolons(args: Sequence[str]) -> tuple[str, ...]:
+    r"""Return *args* so tmux keeps every trailing ``;`` as data.
+
+    tmux's argv parser ends a command at any argument that ends in ``;`` and
+    drops the character, so ``set-option @x 'a;b;'`` stores ``a;b`` and a lone
+    ``";"`` is "empty value". A backslash before the ``;`` keeps it. Every
+    argv-building engine runs its arguments through here once, so no caller
+    escapes by hand, and a text that already ends in ``\;`` gains a second
+    backslash. A :class:`~libtmux.engines.base.CommandSeparator` is the one
+    token left bare: it is the boundary the caller meant.
+
+    Control mode does not need this: it quotes every argument.
+
+    Examples
+    --------
+    >>> escape_data_semicolons(("send-keys", "--", "echo A;"))
+    ('send-keys', '--', 'echo A\\;')
+    >>> escape_data_semicolons(("set-option", "@x", "a\\;"))
+    ('set-option', '@x', 'a\\\\;')
+    >>> escape_data_semicolons(("display-message", "a;b"))
+    ('display-message', 'a;b')
+
+    A separator survives; the same character as plain data is escaped:
+
+    >>> from libtmux.engines.base import CommandSeparator
+    >>> escape_data_semicolons(("kill-window", CommandSeparator(";"), "x", ";"))
+    ('kill-window', ';', 'x', '\\;')
+    """
+    return tuple(
+        f"{arg[:-1]}\\;" if arg.endswith(";") and not is_command_separator(arg) else arg
+        for arg in args
+    )
 
 
 class _BinaryResolver:

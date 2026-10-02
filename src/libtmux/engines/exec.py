@@ -18,7 +18,11 @@ import typing as t
 
 from libtmux import exc
 from libtmux.engines.base import CommandRequest, CommandResult
-from libtmux.engines.connection import ServerConnection, with_utf8
+from libtmux.engines.connection import (
+    ServerConnection,
+    escape_data_semicolons,
+    with_utf8,
+)
 from libtmux.engines.subprocess import run_argv
 
 if t.TYPE_CHECKING:
@@ -215,7 +219,11 @@ class ExecEngine:
     def command_line(self, request: CommandRequest) -> tuple[str, ...]:
         """Return the local argv that runs *request*, without running it."""
         tmux_argv = with_utf8(
-            (request.tmux_bin or self._tmux, *self._socket_args, *request.args),
+            (
+                request.tmux_bin or self._tmux,
+                *self._socket_args,
+                *escape_data_semicolons(request.args),
+            ),
         )
         if self._shell:
             return (*self._prefix, shlex.join(tmux_argv))

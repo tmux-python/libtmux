@@ -30,7 +30,6 @@ from libtmux.capture import (
     _wait_for_text,
 )
 from libtmux.common import (
-    _escape_trailing_semicolon,
     _release_waiter,
     get_version_str,
     has_gte_version,
@@ -44,6 +43,7 @@ from libtmux.constants import (
     PaneDirection,
     ResizeAdjustmentDirection,
 )
+from libtmux.engines.base import CommandSeparator
 from libtmux.engines.subprocess import _kill_and_reap
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
@@ -1278,7 +1278,7 @@ class Pane(
                 if prefix:
                     keys = ("20", *keys)
             else:
-                keys = (_escape_trailing_semicolon(prefix + cmd),)
+                keys = (prefix + cmd,)
             proc = self.cmd("send-keys", *tmux_args, "--", *keys)
             raise_if_stderr(proc, "send-keys")
 
@@ -3533,7 +3533,7 @@ class Pane(
             "-t",
             self.pane_id,
             "-R",
-            ";",
+            CommandSeparator(";"),
             "clear-history",
             "-t",
             self.pane_id,

@@ -778,3 +778,68 @@ def test_server_cmd_timeout_end_to_end(server: Server) -> None:
 
     with pytest.raises(exc.TmuxTimeout):
         server.cmd("run-shell", "sleep 3", timeout=0.3)
+
+
+SEMICOLON_VALUES = ["a;b;", ";", "trailing;", "x;;", "two words;", r"end\;", "mid;dle"]
+
+
+@pytest.mark.parametrize("value", SEMICOLON_VALUES, ids=range(len(SEMICOLON_VALUES)))
+def test_trailing_semicolon_is_data_for_every_command(
+    server: Server,
+    value: str,
+) -> None:
+    """A data argument ending in ``;`` survives set-option, rename-window and formats.
+
+    tmux's argv parser ends a command at an argument ending in ``;`` and drops
+    the character, so the argv builder escapes each one. Three unrelated
+    commands prove the fix is not specific to ``send-keys``/``set-buffer``.
+    """
+    session = server.new_session("semi")
+    window = session.active_window
+
+    server.cmd("set-option", "-g", "@semi", value)
+    assert server.cmd("show-options", "-gqv", "@semi").stdout == [value]
+
+    if "\\" not in value:  # tmux stores a window name vis-encoded
+        window.cmd("rename-window", value)
+        assert window.cmd("display-message", "-p", "#{window_name}").stdout == [value]
+
+    assert server.cmd("display-message", "-p", f"fmt:{value}").stdout == [
+        f"fmt:{value}",
+    ]
+
+
+def test_command_separator_still_chains_commands(server: Server) -> None:
+    """A real separator splits the argv into two commands next to escaped data."""
+    from libtmux.engines import CommandSeparator
+
+    server.new_session("semi_chain")
+    proc = server.cmd(
+        "set-option",
+        "-g",
+        "@one",
+        "1;",
+        CommandSeparator(";"),
+        "set-option",
+        "-g",
+        "@two",
+        "2;",
+    )
+    assert proc.stderr == []
+    assert server.cmd("show-options", "-gqv", "@one").stdout == ["1;"]
+    assert server.cmd("show-options", "-gqv", "@two").stdout == ["2;"]
+
+
+def test_engines_escape_data_semicolons_in_the_rendered_argv() -> None:
+    r"""Subprocess and exec argv escape data ``;`` and keep a separator bare."""
+    from libtmux.engines import CommandSeparator, ExecEngine
+
+    request = CommandRequest.from_args(
+        "display-message",
+        "a;",
+        CommandSeparator(";"),
+        "list-windows",
+    )
+    for engine in (SubprocessEngine.of("tmux"), ExecEngine(tmux="tmux")):
+        argv = engine.command_line(request)
+        assert argv[-3:] == ("a\\;", ";", "list-windows")

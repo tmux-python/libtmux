@@ -775,6 +775,21 @@ unaffected.
 parsing before the data and escapes a final `;`. `-x` previously raised
 `unknown flag`, and `echo A;` stored `echo A`.
 
+#### An argument ending in `;` reaches every tmux command whole
+
+The subprocess and exec engines escape a final `;` on every argument, so it
+reaches tmux as data. tmux's argv parser otherwise ended the command at the
+`;` and dropped it: `set-option @x 'a;b;'` stored `a;b`, and a lone `;` was an
+"empty value". This covers `set-option` values, `rename-window` names and
+`display-message` formats, not only `send_keys()` and `set_buffer()`.
+
+A command boundary is now a {class}`~libtmux.engines.base.CommandSeparator`.
+Code that passed a bare `";"` string to {meth}`Server.cmd() <libtmux.Server.cmd>`
+to chain commands must pass `CommandSeparator(";")`; a plain `";"` is data.
+libtmux's own chained calls ({meth}`Pane.reset() <libtmux.Pane.reset>`, the
+`history_limit` path of {meth}`Server.new_session() <libtmux.Server.new_session>`)
+already do.
+
 #### `Pane.send_keys(hex_keys=True)` sends multi-byte payloads
 
 {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` splits a hex `cmd` into one

@@ -15,7 +15,11 @@ import typing as t
 from libtmux import exc
 from libtmux._internal.redaction import _loggable_cmd
 from libtmux.engines.base import CommandResult
-from libtmux.engines.connection import ServerConnection, with_utf8
+from libtmux.engines.connection import (
+    ServerConnection,
+    escape_data_semicolons,
+    with_utf8,
+)
 
 if t.TYPE_CHECKING:
     import pathlib
@@ -374,7 +378,12 @@ class SubprocessEngine:
         ... )
         ('tmux', '-u', '-Lwork', 'send-keys', 'echo hi')
         """
-        return with_utf8(self._conn.argv(*request.args, tmux_bin=request.tmux_bin))
+        return with_utf8(
+            self._conn.argv(
+                *escape_data_semicolons(request.args),
+                tmux_bin=request.tmux_bin,
+            ),
+        )
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command via :mod:`subprocess` and return its result.
