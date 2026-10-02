@@ -280,6 +280,54 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+# tmux's global flags that take a value, and new-session's (getopt "...").
+_TMUX_GLOBAL_VALUE_FLAGS = "cfLST"
+_NEW_SESSION_VALUE_FLAGS = "cefFnstxy"
+
+
+def _flag_letters(
+    tokens: t.Sequence[str],
+    value_flags: str,
+) -> tuple[str, list[str]]:
+    """Return ``(flag_letters, rest)`` for the leading option tokens.
+
+    Stops at the first token that is not an option or a flag's value.
+    """
+    letters = ""
+    i = 0
+    while i < len(tokens) and tokens[i].startswith("-") and len(tokens[i]) > 1:
+        token = tokens[i]
+        i += 1
+        for pos, letter in enumerate(token[1:], start=1):
+            letters += letter
+            if letter in value_flags:
+                if pos == len(token) - 1:
+                    i += 1  # the value is the next token
+                break
+    return letters, list(tokens[i:])
+
+
+def _runs_interactive_client(args: t.Sequence[t.Any]) -> bool:
+    """Return whether *args* make tmux run an interactive client.
+
+    ``attach-session`` and a foreground ``new-session`` (or a bare ``tmux``)
+    own a terminal. They must detect its encoding themselves, so
+    :class:`tmux_cmd` does not force ``-u`` on them.
+    """
+    letters, rest = _flag_letters([str(a) for a in args], _TMUX_GLOBAL_VALUE_FLAGS)
+    if "C" in letters or "V" in letters:
+        return False
+    if not rest:
+        return True  # bare ``tmux`` starts a foreground session
+    name = rest[0]
+    if "attach-session".startswith(name) or name == "attach":
+        return True
+    if name == "new" or ("new-session".startswith(name) and len(name) > 4):
+        flags, _ = _flag_letters(rest[1:], _NEW_SESSION_VALUE_FLAGS)
+        return "d" not in flags
+    return False
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
@@ -305,6 +353,11 @@ class tmux_cmd:
 
     Notes
     -----
+    Every command runs as ``tmux -u``, so output keeps its non-ASCII
+    characters whatever locale the environment sets. ``attach-session``
+    and a foreground ``new-session`` run an interactive client and do not
+    get ``-u``.
+
     .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
@@ -315,6 +368,12 @@ class tmux_cmd:
             raise exc.TmuxCommandNotFound
 
         cmd = [resolved]
+        # -u: tmux treats a client as UTF-8 only from -u, $TMUX or a UTF-8
+        # LC_ALL/LC_CTYPE/LANG, and otherwise rewrites every non-ASCII
+        # character in its output to "_" -- FORMAT_SEPARATOR included.
+        # An interactive client keeps the terminal's own locale detection.
+        if not _runs_interactive_client(args):
+            cmd.append("-u")
         cmd += args  # add the command arguments to cmd
         cmd = [str(c) for c in cmd]
 
@@ -478,6 +537,8 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     If using OpenBSD's base system tmux, the version will have ``-openbsd``
     appended to the latest version, e.g. ``2.4-openbsd``.
 
+    A release candidate reads as its release: ``3.8-rc3`` returns ``3.8``.
+
     Parameters
     ----------
     tmux_bin : str, optional
@@ -510,6 +571,9 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     if version == "master":
         return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 
+    # A release candidate (``3.8-rc``, ``3.8-rc3``) reads as its release; the
+    # candidate number must not survive the letter strip as a minor digit.
+    version = re.sub(r"-rc\d*$", "", version)
     version = re.sub(r"[a-z-]", "", version)
 
     return LooseVersion(version)

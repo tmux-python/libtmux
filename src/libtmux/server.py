@@ -22,7 +22,7 @@ from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
-from libtmux.neo import fetch_objs, get_output_format, parse_output
+from libtmux.neo import _split_records, fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
@@ -2377,7 +2377,7 @@ class Server(
 
             raise_if_stderr(proc, "new-session")
 
-            session_stdout = proc.stdout[0]
+            session_stdout = _split_records(proc.stdout, len(_fields))[0]
 
         finally:
             if env:
