@@ -125,6 +125,11 @@ A command that closes its pane raises {exc}`~libtmux.exc.PaneNotFound` at once: 
 installs `pane-exited` and `pane-died` hooks, filtered to the pane, for its duration and
 removes them on every path out. A pane killed from outside is reported at `timeout`.
 
+A call on a pane whose shell has not yet drawn its first prompt returns the command's
+output and nothing else. A shell that leaves its tty in cooked mode echoes a line typed
+before the first prompt, and the prompt then shared a row with the begin marker; the
+marker now starts its own row.
+
 #### tmux 3.8 hooks in `Hooks`
 
 {class}`~libtmux._internal.constants.Hooks` parses the hooks tmux 3.8 adds:

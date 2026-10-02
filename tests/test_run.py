@@ -100,6 +100,31 @@ def test_run_output_excludes_echoed_command(pane: Pane) -> None:
     assert result.stdout == ["echo"]
 
 
+@pytest.mark.parametrize("shell", sorted(SHELLS))
+def test_run_on_a_shell_that_starts_late_returns_clean_output(
+    session: Session, shell: str
+) -> None:
+    """A line typed before the shell reads input does not leak into stdout.
+
+    The pane's tty echoes a line that arrives before the shell has set it up,
+    and the shell's prompt then shares a row with the begin marker. dash, which
+    never leaves cooked mode, did this on 4 of 15 fresh panes; the late start
+    is forced here instead of waiting for load to cause it.
+    """
+    if shutil.which(shell) is None:
+        pytest.skip(f"{shell} not installed")
+    window = session.new_window(
+        attach=False,
+        window_shell=f"sh -c 'sleep 0.2; exec {SHELLS[shell]}'",
+    )
+    pane = window.active_pane
+    assert pane is not None
+    result = pane.run("echo hi", timeout=10)
+    assert result.stdout == ["hi"]
+    assert result.returncode == 0
+    assert not result.truncated
+
+
 def test_run_twice_does_not_mix_output(pane: Pane) -> None:
     """A second call reports only its own output, not the first call's."""
     assert pane.run("echo first", timeout=10).stdout == ["first"]

@@ -13,7 +13,12 @@ Mechanism, in order:
 3. The option and the pane's text are read back.
 
 The markers are assembled by ``printf`` from two words, so the echoed command
-line never contains them: only the shell's output does.
+line never contains them: only the shell's output does. The begin marker is
+preceded by a newline so it always owns its row. A shell that never leaves
+cooked mode (dash) lets the tty echo a line typed before its first prompt, and
+the prompt then shares a row with whatever the line prints first; without the
+newline the begin marker would be ``$ LTRUN_B_...``, match nothing, and the
+echoed line would be returned as output.
 
 The command runs through ``eval`` on a single-quoted string. The typed line is
 therefore always well formed, so a syntax error or an unterminated quote in the
@@ -113,7 +118,7 @@ def _build_line(
     ...     "true", tmux="tmux", pane_id="%1", token="T",
     ...     started="s", done="d", option="@o",
     ... )
-    >>> line.startswith(" printf '%s%s\\n' LTRUN_B_ T; tmux wait-for -S s; ")
+    >>> line.startswith(" printf '\\n%s%s\\n' LTRUN_B_ T; tmux wait-for -S s; ")
     True
     >>> line.endswith("tmux wait-for -S d")
     True
@@ -121,7 +126,7 @@ def _build_line(
     True
     """
     return (
-        f" printf '%s%s\\n' {_BEGIN} {token}; {tmux} wait-for -S {started}; "
+        f" printf '\\n%s%s\\n' {_BEGIN} {token}; {tmux} wait-for -S {started}; "
         f"_lt_c={shlex.quote(command)}; trap : INT; "
         'if [ -n "$ZSH_VERSION" ]; then eval "$_lt_c"; '
         'else command eval "$_lt_c"; fi; '
