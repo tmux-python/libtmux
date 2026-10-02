@@ -177,6 +177,22 @@ detecting the terminal's encoding themselves and do not get `-u`.
 
 ### None
 
+#### Bounded tmux commands
+
+{meth}`Server.cmd() <libtmux.Server.cmd>`,
+{meth}`Session.cmd() <libtmux.Session.cmd>`,
+{meth}`Window.cmd() <libtmux.Window.cmd>`,
+{meth}`Pane.cmd() <libtmux.Pane.cmd>` and {class}`~libtmux.common.tmux_cmd`
+take a keyword-only `timeout` in seconds. A command that outlives it has its tmux
+client killed and reaped, then raises {exc}`~libtmux.exc.TmuxTimeout`, which
+carries the `cmd` and the `timeout`. The default, `None`, waits as before.
+
+{exc}`~libtmux.exc.TmuxTimeout` is not a {exc}`~libtmux.exc.LibTmuxException`, so
+the lenient list accessors do not read a hung server as an empty one. Only the
+client dies; work the command started keeps running.
+
+### None
+
 #### Strict listings: tell "no rows" from "tmux unreachable"
 
 {attr}`Server.sessions <libtmux.Server.sessions>` returns an empty list when
@@ -239,6 +255,20 @@ server-wide limit drops. A negative value raises `ValueError`. See
 
 
 ### Documentation
+
+#### Automation patterns waits for tmux instead of guessing (#734)
+
+The examples on {ref}`automation-patterns` waited for a command to finish by
+sleeping a fixed amount and then reading the pane. A sleep long enough to be
+safe is dead time on every run, and one short enough to feel quick reports
+failure on a busy machine.
+
+They now have the command signal a channel when it finishes and block on that
+with {meth}`Server.wait_for() <libtmux.Server.wait_for>`, which returns the
+moment the command is done. Checks compare whole captured lines rather than
+searching the joined capture, because {meth}`~libtmux.Pane.capture_pane`
+returns the command tmux echoed onto the pane -- a substring search matches
+that echo and is already true before the shell has run.
 
 #### Cleaner `from_env` examples (#719)
 

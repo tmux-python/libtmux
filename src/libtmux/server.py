@@ -384,6 +384,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -417,17 +418,41 @@ class Server(
         ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
+        Most tmux commands return at once. The few that block, such as
+        a foreground ``run-shell``, can be bounded:
+
+        >>> from libtmux import exc
+        >>> try:
+        ...     server.cmd('run-shell', 'sleep 5', timeout=0.25)
+        ... except exc.TmuxTimeout:
+        ...     print('gave up')
+        gave up
+
         Parameters
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Seconds to allow this command to run before killing the tmux
+            client libtmux spawned and raising
+            :exc:`~libtmux.exc.TmuxTimeout`. *None* (the default)
+            waits indefinitely.
 
         Returns
         -------
         :class:`common.tmux_cmd`
 
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxTimeout`
+            When *timeout* elapses.
+
         Notes
         -----
+        .. versionchanged:: 0.63
+
+            Added ``timeout``.
+
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
@@ -450,7 +475,12 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self.tmux_bin,
+            timeout=timeout,
+        )
 
     @property
     def attached_sessions(self) -> list[Session]:
