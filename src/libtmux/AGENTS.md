@@ -34,6 +34,11 @@ manager) rather than changing the default contract of an existing
 accessor or hard-coding raise-on-tmux-error into a new one.
 Empty-on-tmux-error stays the default; raise is opt-in.
 
+The opt-in is `Server.fetch_sessions()`, `fetch_windows()` and
+`fetch_panes()`: separate methods that raise `exc.ListCommandFailed`, so
+the lenient property contract is untouched and the choice is visible at
+the call site.
+
 ## Logging
 
 These rules guide future logging changes; existing code may not yet

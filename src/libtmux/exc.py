@@ -91,6 +91,44 @@ class DeprecatedError(LibTmuxException):
         super().__init__(msg)
 
 
+class ListCommandFailed(LibTmuxException):
+    """A strict listing could not ask tmux for its rows.
+
+    Raised by :meth:`Server.fetch_sessions() <libtmux.Server.fetch_sessions>`,
+    :meth:`~libtmux.Server.fetch_windows` and :meth:`~libtmux.Server.fetch_panes`
+    when the underlying ``list-*`` command fails: no running daemon, a missing
+    socket, a permission error. The lenient accessors (``Server.sessions``)
+    return an empty list in these cases; the strict methods raise so a caller
+    can tell "no rows" from "tmux unreachable".
+
+    The original error is chained as ``__cause__``.
+
+    Parameters
+    ----------
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+    list_cmd : str, optional
+        The tmux list command that failed, e.g. ``"list-sessions"``.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.ListCommandFailed("no server running", list_cmd="list-sessions")
+    >>> err.list_cmd
+    'list-sessions'
+    >>> issubclass(exc.ListCommandFailed, exc.LibTmuxException)
+    True
+    """
+
+    def __init__(
+        self,
+        *args: object,
+        list_cmd: str | None = None,
+    ) -> None:
+        super().__init__(*args, subcommand=list_cmd)
+        self.list_cmd = list_cmd
+
+
 class TmuxSessionExists(LibTmuxException):
     """Session does not exist in the server."""
 

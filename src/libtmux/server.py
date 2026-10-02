@@ -104,6 +104,25 @@ def _fetch_or_empty(
         raise
 
 
+def _fetch_strict(
+    server: Server,
+    list_cmd: str,
+    **kwargs: t.Any,
+) -> list[dict[str, t.Any]]:
+    """Wrap :func:`fetch_objs`: raise :exc:`~libtmux.exc.ListCommandFailed`.
+
+    Unlike :func:`_fetch_or_empty`, a daemon that is not running is an error
+    here too. :exc:`~libtmux.exc.TmuxCommandNotFound` passes through; it already
+    names the problem.
+    """
+    try:
+        return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
+    except exc.TmuxCommandNotFound:
+        raise
+    except exc.LibTmuxException as e:
+        raise exc.ListCommandFailed(*e.args, list_cmd=list_cmd) from e
+
+
 class Server(
     EnvironmentMixin,
     OptionsMixin,
@@ -2664,7 +2683,9 @@ class Server(
         tmux's ``list-sessions`` fails for any reason — no running daemon, a
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no sessions" from "tmux unreachable", call
-        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`, or use the
+        strict :meth:`Server.fetch_sessions`, which raises
+        :exc:`~libtmux.exc.ListCommandFailed` instead.
         """
         try:
             sessions: list[Session] = [
@@ -2712,6 +2733,92 @@ class Server(
         ]
 
         return QueryList(panes)
+
+    def fetch_sessions(self) -> list[Session]:
+        """Return sessions, raising if tmux cannot be queried.
+
+        Strict counterpart of :attr:`sessions`. Use it when an empty answer
+        must mean "no sessions" and never "tmux unreachable", e.g. when
+        reconciling saved state against live state.
+
+        Returns
+        -------
+        list of :class:`Session`
+
+        Raises
+        ------
+        :exc:`exc.ListCommandFailed`
+            When ``list-sessions`` fails: no running daemon, a missing
+            socket, a permission error.
+
+        Examples
+        --------
+        >>> session.session_id in [s.session_id for s in server.fetch_sessions()]
+        True
+
+        >>> from libtmux import Server, exc
+        >>> try:
+        ...     Server(socket_name="no_exist_strict").fetch_sessions()
+        ... except exc.ListCommandFailed as e:
+        ...     print(e.list_cmd)
+        list-sessions
+        """
+        return [
+            Session(server=self, **obj)
+            for obj in _fetch_strict(server=self, list_cmd="list-sessions")
+        ]
+
+    def fetch_windows(self) -> list[Window]:
+        """Return windows of every session, raising if tmux cannot be queried.
+
+        Strict counterpart of :attr:`windows`; see :meth:`fetch_sessions`.
+
+        Raises
+        ------
+        :exc:`exc.ListCommandFailed`
+            When ``list-windows -a`` fails.
+
+        Examples
+        --------
+        >>> [w.window_id for w in server.fetch_windows()] == [
+        ...     w.window_id for w in server.windows
+        ... ]
+        True
+        """
+        return [
+            Window(server=self, **obj)
+            for obj in _fetch_strict(
+                server=self,
+                list_cmd="list-windows",
+                list_extra_args=("-a",),
+            )
+        ]
+
+    def fetch_panes(self) -> list[Pane]:
+        """Return panes of every window, raising if tmux cannot be queried.
+
+        Strict counterpart of :attr:`panes`; see :meth:`fetch_sessions`.
+
+        Raises
+        ------
+        :exc:`exc.ListCommandFailed`
+            When ``list-panes -a`` fails.
+
+        Examples
+        --------
+        >>> [p.pane_id for p in server.fetch_panes()] == [
+        ...     p.pane_id for p in server.panes
+        ... ]
+        True
+        """
+        return [
+            Pane(server=self, **obj)
+            for obj in _fetch_strict(
+                server=self,
+                list_cmd="list-panes",
+                list_extra_args=("-a",),
+            )
+        ]
 
     @property
     def clients(self) -> QueryList[Client]:
