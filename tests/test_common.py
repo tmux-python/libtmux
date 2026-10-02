@@ -780,3 +780,89 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     result = parse_output(line, "list-sessions", tmux_version)
     assert isinstance(result, dict)
     assert "session_id" in result
+
+
+@pytest.mark.parametrize("locale_name", ["C", "POSIX"])
+def test_tmux_cmd_listings_survive_non_utf8_client_locale(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    locale_name: str,
+) -> None:
+    """A non-UTF-8 locale in the environment must not alter tmux's output.
+
+    Without ``-u`` tmux rewrites every non-ASCII character in format output
+    to ``_``: ``FORMAT_SEPARATOR`` first, so listings fail to parse, then
+    any non-ASCII name or title. ``LC_ALL`` wins over ``LC_CTYPE``, so
+    setting the latter does not help.
+    """
+    monkeypatch.setenv("LC_ALL", locale_name)
+    monkeypatch.delenv("LC_CTYPE", raising=False)
+    monkeypatch.delenv("LANG", raising=False)
+
+    session = server.new_session(session_name="locale", window_name="café")
+
+    assert [s.session_name for s in server.sessions] == ["locale"]
+    assert session.active_window.window_name == "café"
+
+
+class InteractiveArgvFixture(t.NamedTuple):
+    """One tmux argv and whether ``tmux_cmd`` may pass ``-u`` to it."""
+
+    test_id: str
+    args: tuple[str, ...]
+    expect_u: bool
+
+
+INTERACTIVE_ARGV_FIXTURES: list[InteractiveArgvFixture] = [
+    InteractiveArgvFixture("list_sessions", ("list-sessions",), True),
+    InteractiveArgvFixture("version", ("-V",), True),
+    InteractiveArgvFixture("detached_new_session", ("new-session", "-d", "-P"), True),
+    InteractiveArgvFixture("combined_detach_flag", ("new-session", "-dP"), True),
+    InteractiveArgvFixture("attach_session", ("attach-session",), False),
+    InteractiveArgvFixture("attach_alias", ("attach", "-t", "s"), False),
+    InteractiveArgvFixture(
+        "attach_behind_socket_flags",
+        ("-Lsock", "-f", "tmux.conf", "attach-session", "-t", "s"),
+        False,
+    ),
+    InteractiveArgvFixture("foreground_new_session", ("new-session", "-s", "x"), False),
+    InteractiveArgvFixture("new_alias", ("-L", "sock", "new", "-s", "x"), False),
+    InteractiveArgvFixture("d_as_a_flag_value", ("new-session", "-s", "-d"), False),
+    InteractiveArgvFixture("bare_tmux", (), False),
+]
+
+
+@pytest.mark.parametrize(
+    InteractiveArgvFixture._fields,
+    INTERACTIVE_ARGV_FIXTURES,
+    ids=[fixture.test_id for fixture in INTERACTIVE_ARGV_FIXTURES],
+)
+def test_tmux_cmd_passes_u_except_to_interactive_clients(
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    args: tuple[str, ...],
+    expect_u: bool,
+) -> None:
+    """``-u`` rides on every command but those that run an interactive client.
+
+    An interactive client reads its terminal's encoding itself; forcing
+    ``-u`` on ``attach-session`` would override that. The argv is captured
+    at ``Popen``, so no tmux server is involved.
+    """
+    assert test_id
+    argvs: list[list[str]] = []
+
+    class FakePopen:
+        returncode = 0
+
+        def __init__(self, cmd: list[str], **kwargs: t.Any) -> None:
+            argvs.append(cmd)
+
+        def communicate(self) -> tuple[str, str]:
+            return "", ""
+
+    monkeypatch.setattr("libtmux.common.subprocess.Popen", FakePopen)
+
+    tmux_cmd(*args, tmux_bin="tmux")
+
+    assert argvs == [["tmux", *(["-u"] if expect_u else []), *args]]

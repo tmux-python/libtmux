@@ -86,6 +86,18 @@ the field separator, as the listings do.
 returned `3.83`, so a numbered candidate passed `has_gte_version("3.9")`.
 `3.8-rc`, `3.8-rc1` and `3.8-rc2` read as `3.8` the same way.
 
+#### tmux output survives a non-UTF-8 locale
+
+Under `LC_ALL=C`, `LC_ALL=POSIX` or any locale whose name lacks `UTF-8`,
+tmux rewrote every non-ASCII character in its output to `_`.
+`Server.new_session()` and the object listings failed because tmux rewrote
+the field separator, and non-ASCII window names and pane titles read back
+as `_`. {class}`~libtmux.common.tmux_cmd` now runs every command as
+`tmux -u`, so output is unchanged whatever locale the environment sets.
+Commands that run an interactive client, such as `attach-session`, keep
+detecting the terminal's encoding themselves and do not get `-u`.
+`LIBTMUX_TMUX_FORMAT_SEPARATOR` and the default separator are unchanged.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
