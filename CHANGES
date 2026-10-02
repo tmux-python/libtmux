@@ -45,6 +45,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Retrying screen assertions
+
+{func}`~libtmux.test.screen.assert_screen` waits for a pane's screen to match,
+retrying the capture until a timeout, and fails with a line diff of the last
+screen. It compares the whole screen, one row, or a substring.
+{func}`~libtmux.test.screen.eventually` gives the same retrying behavior to
+`==`, `!=`, and `in`, and under pytest explains a failed comparison with that
+diff. See {ref}`screen_assertions`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
