@@ -112,6 +112,15 @@ meanwhile. {meth}`Pane.capture_since() <libtmux.Pane.capture_since>` takes
 
 See {ref}`recipe-read-incrementally` and {ref}`recipe-wait-for-text`.
 
+On tmux 3.8, `wait_for_text` and `wait_for_idle` compare the pane's state, which
+now includes `pane_output_generation`, and read the rows only when it changed.
+A quiet pane costs one `display-message` per tick instead of five commands: a
+3 second `wait_for_text` on a quiet pane starts about 41 tmux processes instead
+of about 135, and a `wait_for_idle(quiet=1)` about 25 instead of 55. The same
+counter makes the before/after check of a read exact: output that moves no row
+and no cursor, which tmux 3.7 and earlier cannot see, now makes the read retry.
+Results are the same on every version.
+
 #### tmux 3.8 hooks in `Hooks`
 
 {class}`~libtmux._internal.constants.Hooks` parses the hooks tmux 3.8 adds:

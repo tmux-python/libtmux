@@ -8,12 +8,15 @@ bounded and an unmet condition raises :exc:`~libtmux.exc.WaitTimeout`).
 
 from __future__ import annotations
 
+import collections
+import threading
 import time
 import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import capture, exc
+from libtmux.common import has_gte_version
 from libtmux.pane import Pane
 from tests.test_capture_since import (
     _pane_with_history_limit,
@@ -149,3 +152,128 @@ def test_wait_for_idle_times_out_on_a_screen_that_keeps_changing(
 
     with pytest.raises(exc.WaitTimeout, match="quiet"):
         pane.wait_for_idle(quiet=0.4, timeout=0.8)
+
+
+needs_tmux_3_8 = pytest.mark.skipif(
+    not has_gte_version("3.8"),
+    reason="pane_output_generation needs tmux 3.8",
+)
+
+
+def _count_tmux_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> collections.Counter[str]:
+    """Count the tmux commands issued through :meth:`Pane.cmd`, by name."""
+    counts: collections.Counter[str] = collections.Counter()
+    real_cmd = Pane.cmd
+
+    def counting_cmd(self: Pane, cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        counts[cmd] += 1
+        return real_cmd(self, cmd, *args, **kwargs)
+
+    monkeypatch.setattr(Pane, "cmd", counting_cmd)
+    return counts
+
+
+def _quiet_pane(session: Session, name: str) -> Pane:
+    pane = session.new_window(window_name=name).active_pane
+    assert pane is not None
+    run_and_wait(pane, "true")
+    quiesce(pane)
+    return pane
+
+
+@needs_tmux_3_8
+def test_wait_for_text_does_not_read_a_pane_that_has_not_changed(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equal pane state means no output, so a quiet pane is not re-read per tick."""
+    pane = _quiet_pane(session, "wait_text_quiet")
+    counts = _count_tmux_commands(monkeypatch)
+
+    with pytest.raises(exc.WaitTimeout):
+        pane.wait_for_text("WAIT_TEXT_NEVER", timeout=0.6)
+
+    assert counts["capture-pane"] <= 6
+    assert counts["display-message"] >= 5, "the quiet pane was not even polled"
+
+
+def test_wait_for_text_reads_every_tick_without_the_output_counter(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Before tmux 3.8 the state has no counter, so every tick reads the rows."""
+    monkeypatch.setattr(
+        capture,
+        "PANE_STATE_FORMAT",
+        capture.PANE_STATE_FORMAT.removesuffix("|#{pane_output_generation}"),
+    )
+    pane = _quiet_pane(session, "wait_text_nocounter")
+    counts = _count_tmux_commands(monkeypatch)
+
+    with pytest.raises(exc.WaitTimeout):
+        pane.wait_for_text("WAIT_TEXT_NEVER", timeout=0.6)
+
+    assert counts["capture-pane"] >= 10
+
+
+def test_wait_for_text_finds_output_after_a_quiet_stretch(session: Session) -> None:
+    """A pane that was skipped as unchanged is read again when it writes."""
+    pane = _quiet_pane(session, "wait_text_late")
+    writer = threading.Timer(
+        0.6, lambda: pane.send_keys("echo WAIT_TEXT_LATE_MARK", enter=True)
+    )
+    writer.start()
+    try:
+        start = time.monotonic()
+        hit = pane.wait_for_text("WAIT_TEXT_LATE_MARK", timeout=10)
+    finally:
+        writer.join()
+
+    assert hit.match.string == "WAIT_TEXT_LATE_MARK"
+    assert time.monotonic() - start < 3
+
+
+@needs_tmux_3_8
+def test_wait_for_idle_does_not_read_a_pane_that_has_not_changed(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The quiet period is measured on pane state, not on a capture per tick."""
+    pane = _quiet_pane(session, "wait_idle_quiet")
+    counts = _count_tmux_commands(monkeypatch)
+
+    pane.wait_for_idle(quiet=0.6, timeout=10)
+
+    assert counts["capture-pane"] <= 8
+
+
+@needs_tmux_3_8
+def test_a_read_torn_by_invisible_output_is_retried(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Output that moves no row and no cursor still fails the before/after check.
+
+    Saving the cursor, homing it and restoring it changes nothing the state
+    held before tmux 3.8 and bumps ``pane_output_generation``.
+    """
+    pane = _quiet_pane(session, "wait_text_torn")
+    tty = pane.pane_tty
+    real_capture_rows = capture._capture_rows
+    calls = 0
+
+    def capture_rows_then_write(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        nonlocal calls
+        calls += 1
+        rows = real_capture_rows(*args, **kwargs)
+        if calls == 1:
+            pane.cmd("run-shell", f"printf '\\0337\\033[H\\0338' > {tty}")
+        return rows
+
+    monkeypatch.setattr(capture, "_capture_rows", capture_rows_then_write)
+
+    capture._read_stable_visible(pane)
+
+    assert calls > 2, "the torn read was returned without a retry"
