@@ -328,7 +328,7 @@ def _runs_interactive_client(args: t.Sequence[t.Any]) -> bool:
     return False
 
 
-def _kill_and_reap(process: subprocess.Popen[str]) -> None:
+def _kill_and_reap(process: subprocess.Popen[t.Any]) -> None:
     """Kill a subprocess that outstayed its timeout, then reap it.
 
     :meth:`subprocess.Popen.communicate` leaves the child running when its
@@ -432,6 +432,18 @@ def _release_waiter(
     return True
 
 
+def _decode_text(data: bytes) -> str:
+    r"""Decode tmux output as ``tmux_cmd`` does in text mode.
+
+    Examples
+    --------
+    >>> _decode_text(b"a\r\nb\rc\xff")
+    'a\nb\nc\\xff'
+    """
+    text = data.decode("utf-8", errors="backslashreplace")
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
@@ -499,6 +511,28 @@ class tmux_cmd:
     ... except exc.TmuxTimeout as e:
     ...     (e.timeout, e.cmd[-2:])
     (0.25, ['run-shell', 'sleep 5'])
+    Send data on the client's standard input with ``input``. Commands that
+    take ``-`` as a path, such as ``load-buffer``, read it from there:
+
+    >>> proc = tmux_cmd(
+    ...     f'-L{server.socket_name}', 'load-buffer', '-b', 'doc_stdin', '-',
+    ...     input='from stdin',
+    ... )
+    >>> proc.returncode
+    0
+    >>> server.show_buffer(buffer_name='doc_stdin')
+    'from stdin'
+
+    Parameters
+    ----------
+    input : str or bytes, optional
+        Data written to the tmux client's standard input, which is then
+        closed. ``str`` is encoded as UTF-8 and raises
+        :exc:`UnicodeEncodeError` when it cannot be; ``bytes`` are sent
+        unchanged, so non-UTF-8 data works. ``None`` (the default) leaves
+        standard input inherited from the calling process. Payload size is
+        not limited by tmux's 16 KiB command size limit, which covers
+        arguments only.
 
     Notes
     -----
@@ -519,7 +553,9 @@ class tmux_cmd:
         *args: t.Any,
         tmux_bin: str | None = None,
         timeout: float | None = None,
+        input: str | bytes | None = None,  # noqa: A002
     ) -> None:
+        self.process: subprocess.Popen[str] | subprocess.Popen[bytes]
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -544,15 +580,31 @@ class tmux_cmd:
             )
 
         try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate(timeout=timeout)
+            if input is None:
+                text_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="backslashreplace",
+                )
+                self.process = text_process
+                stdout, stderr = text_process.communicate(timeout=timeout)
+            else:
+                # Bytes cannot go through a text-mode pipe, so this branch
+                # reads binary and decodes the way text mode does.
+                payload = input.encode("utf-8") if isinstance(input, str) else input
+                binary_process = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                self.process = binary_process
+                raw_out, raw_err = binary_process.communicate(payload)
+                stdout = _decode_text(raw_out)
+                stderr = _decode_text(raw_err)
             returncode = self.process.returncode
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None

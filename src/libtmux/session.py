@@ -420,6 +420,7 @@ class Session(
         *args: t.Any,
         target: str | int | None = None,
         timeout: float | None = None,
+        input: str | bytes | None = None,  # noqa: A002
     ) -> tmux_cmd:
         """Execute tmux subcommand within session context.
 
@@ -446,6 +447,9 @@ class Session(
             client libtmux spawned and raising
             :exc:`~libtmux.exc.TmuxTimeout`. *None* (the default)
             waits indefinitely.
+        input : str or bytes, optional
+            Data for the tmux client's standard input, as in
+            :class:`~libtmux.common.tmux_cmd`.
 
         Returns
         -------
@@ -472,7 +476,13 @@ class Session(
         """
         if target is None:
             target = self.session_id
-        return self.server.cmd(cmd, *args, target=target, timeout=timeout)
+        return self.server.cmd(
+            cmd,
+            *args,
+            target=target,
+            timeout=timeout,
+            input=input,
+        )
 
     """
     Commands (tmux-like)

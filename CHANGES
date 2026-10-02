@@ -177,6 +177,21 @@ detecting the terminal's encoding themselves and do not get `-u`.
 
 ### None
 
+#### Send data to a tmux command's standard input
+
+{class}`~libtmux.common.tmux_cmd` and the `cmd()` methods of
+{meth}`Server <libtmux.Server.cmd>`, {meth}`Session <libtmux.Session.cmd>`,
+{meth}`Window <libtmux.Window.cmd>` and {meth}`Pane <libtmux.Pane.cmd>` take
+`input=`, a `str` or `bytes` written to the tmux client's standard input.
+Commands that accept `-` as a path read it there, for example
+`server.cmd("load-buffer", "-b", name, "-", input=data)`.
+
+`str` is encoded as UTF-8; `bytes` go through unchanged, so binary data works.
+Standard input is not part of tmux's 16 KiB command size limit, so a payload of
+any size loads. Without `input`, the call runs as before.
+
+### None
+
 #### Bounded tmux commands
 
 {meth}`Server.cmd() <libtmux.Server.cmd>`,
@@ -190,8 +205,6 @@ carries the `cmd` and the `timeout`. The default, `None`, waits as before.
 {exc}`~libtmux.exc.TmuxTimeout` is not a {exc}`~libtmux.exc.LibTmuxException`, so
 the lenient list accessors do not read a hung server as an empty one. Only the
 client dies; work the command started keeps running.
-
-### None
 
 #### Bounded, distinguishable `Server.wait_for()`
 
@@ -208,8 +221,6 @@ swallows the next signal on the channel. The signal wakes every waiter on the
 channel, so a channel should have one waiter. `timeout` combined with `lock`,
 `unlock` or `set_flag` raises `ValueError`.
 
-### None
-
 #### `Pane.wait()` returns how a pane's process ended
 
 {meth}`Pane.wait() <libtmux.Pane.wait>` blocks until the process tmux started in
@@ -222,8 +233,6 @@ tmux discards a pane's status when it closes the pane, so `wait` sets the pane's
 `remain-on-exit` for the call, leaves the dead pane in place, and restores the
 option. tmux 3.2a does not report the terminating signal; a process ended by a
 signal returns `PaneExit(status=None, signal=None)` there.
-
-### None
 
 #### Strict listings: tell "no rows" from "tmux unreachable"
 

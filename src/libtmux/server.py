@@ -405,6 +405,7 @@ class Server(
         *args: t.Any,
         target: str | int | None = None,
         timeout: float | None = None,
+        input: str | bytes | None = None,  # noqa: A002
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -447,6 +448,14 @@ class Server(
         ... except exc.TmuxTimeout:
         ...     print('gave up')
         gave up
+        Load a buffer from standard input, then read it back:
+
+        >>> server.cmd(
+        ... 'load-buffer', '-b', 'cmd_stdin', '-', input=b'hello bytes'
+        ... ).returncode
+        0
+        >>> server.show_buffer(buffer_name='cmd_stdin')
+        'hello bytes'
 
         Parameters
         ----------
@@ -457,6 +466,9 @@ class Server(
             client libtmux spawned and raising
             :exc:`~libtmux.exc.TmuxTimeout`. *None* (the default)
             waits indefinitely.
+        input : str or bytes, optional
+            Data for the tmux client's standard input, as in
+            :class:`~libtmux.common.tmux_cmd`.
 
         Returns
         -------
@@ -485,6 +497,7 @@ class Server(
             *cmd_args,
             tmux_bin=self.tmux_bin,
             timeout=timeout,
+            input=input,
         )
 
     @property
