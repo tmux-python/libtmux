@@ -67,6 +67,12 @@ Common patterns for scripting and automation.
 Automatic cleanup with temporary sessions and windows.
 :::
 
+:::{grid-item-card} Throwaway Server
+:link: throwaway_server
+:link-type: doc
+A private tmux server for scripts and tests, always cleaned up.
+:::
+
 :::{grid-item-card} Options & Hooks
 :link: options_and_hooks
 :link-type: doc
@@ -103,6 +109,7 @@ workspace_setup
 wrapper_recipes
 automation_patterns
 context_managers
+throwaway_server
 options_and_hooks
 clients
 format-tokens

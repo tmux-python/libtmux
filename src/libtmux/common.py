@@ -747,6 +747,7 @@ class tmux_cmd:
         tmux_bin: str | None = None,
         timeout: float | None = None,
         input: str | bytes | None = None,  # noqa: A002
+        env: t.Mapping[str, str] | None = None,
     ) -> None:
         self.process: subprocess.Popen[str] | subprocess.Popen[bytes]
         resolved = tmux_bin or shutil.which("tmux")
@@ -781,6 +782,7 @@ class tmux_cmd:
                     text=True,
                     encoding="utf-8",
                     errors="backslashreplace",
+                    env=env,
                 )
                 self.process = text_process
                 stdout, stderr = text_process.communicate(timeout=timeout)
@@ -793,6 +795,7 @@ class tmux_cmd:
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
+                    env=env,
                 )
                 self.process = binary_process
                 raw_out, raw_err = binary_process.communicate(

@@ -7,17 +7,28 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
 import shlex
 import shutil
 import subprocess
+import tempfile
+import time
 import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux._internal.env import socket_path_from_env
+from libtmux._internal.env import (
+    TMUX,
+    TMUX_PANE,
+    TMUX_TMPDIR,
+    check_socket_path_length,
+    resolve_ambient_socket_path,
+    resolve_socket_path,
+    socket_path_from_env,
+)
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import (
@@ -47,6 +58,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
+    from collections.abc import Iterator
     from typing import TypeAlias
 
     from typing_extensions import Self
@@ -56,6 +68,70 @@ if t.TYPE_CHECKING:
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+_REAPER_SCRIPT = (
+    # Block until the owner's end of the pipe closes -- however the owner
+    # died -- then do the cleanup the owner could not.
+    'while read -r _; do :; done; "$1" -S"$2" kill-server >/dev/null 2>&1; rm -rf "$3"'
+)
+"""POSIX shell run by :meth:`Server.owned`'s reaper process.
+
+``read`` returns non-zero on end-of-file, which arrives when the owner exits
+for any reason, including ``SIGKILL``.
+"""
+
+_OWNED_EXIT_WAIT = 2.0
+"""Seconds :meth:`Server.owned` waits for a killed daemon to be gone."""
+
+
+def _pid_running(pid: int) -> bool:
+    """Return whether *pid* is a live process; a zombie is not.
+
+    ``kill(pid, 0)`` succeeds against a zombie, and a daemon whose parent is
+    gone stays one until init reaps it, so Linux's ``/proc`` state is read
+    first.
+    """
+    try:
+        stat = pathlib.Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        pass
+    else:
+        # ``pid (comm) S ...``: the state follows the last closing parenthesis.
+        return stat.rpartition(")")[2].split()[0] != "Z"
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _spawn_reaper(
+    tmux_bin: str,
+    socket_path: pathlib.Path,
+    directory: pathlib.Path,
+    env: t.Mapping[str, str],
+) -> subprocess.Popen[bytes] | None:
+    """Start the process that cleans up if the owner dies without unwinding.
+
+    Returns ``None`` where there is no POSIX ``sh``; the owner's ``finally``
+    is then the only cleanup.
+    """
+    argv = ["sh", "-c", _REAPER_SCRIPT, "sh", tmux_bin, str(socket_path)]
+    try:
+        return subprocess.Popen(
+            [*argv, str(directory)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            # Out of the owner's process group: a terminal's SIGINT or SIGHUP
+            # must not take the reaper down before it has cleaned up.
+            start_new_session=True,
+            env=env,
+        )
+    except OSError:
+        return None
 
 
 def _warn_unknown_kwargs(callable_name: str, kwargs: dict[str, t.Any]) -> None:
@@ -143,6 +219,21 @@ class Server(
 
     When instantiated stores information on live, running tmux server.
 
+    A tmux socket is a UNIX domain socket, so its path is capped by
+    ``sockaddr_un`` -- 107 bytes on Linux, 103 on macOS. An explicit
+    *socket_path* is handed to tmux unchanged, so it is measured here and an
+    over-long one raises :exc:`~libtmux.exc.SocketPathTooLong` from the
+    constructor.
+
+    Naming a server is free. A *socket_name* resolves against ``$TMUX_TMPDIR``
+    when tmux runs, so it is measured then rather than now: a named or bare
+    :class:`Server` can always be constructed and asked :meth:`is_alive`, and
+    the first command that would have to bind the socket is what raises. When
+    the depth is not yours to choose -- a pytest ``tmp_path``, a nested
+    worktree, a CI checkout under a long workspace prefix -- put the socket
+    under :func:`tempfile.mkdtemp` or point ``$TMUX_TMPDIR`` at something
+    short.
+
     Parameters
     ----------
     socket_name : str, optional
@@ -152,6 +243,11 @@ class Server(
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
+    kill_on_exit : bool, optional
+        Whether leaving a ``with`` block kills the server. Off by default.
+        See :attr:`Server.kill_on_exit`.
+
+        .. versionadded:: 0.63
 
     Examples
     --------
@@ -170,12 +266,53 @@ class Server(
     >>> server.sessions[0].active_pane
     Pane(%1 Window(@1 1:..., Session($1 ...)))
 
-    The server can be used as a context manager to ensure proper cleanup:
+    A server can be used as a context manager to scope a block, but unlike
+    :class:`~libtmux.Session`, :class:`~libtmux.Window` and
+    :class:`~libtmux.Pane`, **leaving the block does not kill it**. A server is
+    a handle on a socket, and holding one says nothing about who started the
+    daemon behind it — often it is the tmux the reader has been working in all
+    day. Ask for teardown when you want it:
 
-    >>> with Server() as server:
-    ...     session = server.new_session()
-    ...     # Do work with the session
-    ...     # Server will be killed automatically when exiting the context
+    >>> with Server(socket_name="libtmux_doctest_scoped", kill_on_exit=True) as scoped:
+    ...     _ = scoped.new_session()
+    >>> scoped.is_alive()
+    False
+
+    A ``socket_path`` is handed to tmux unchanged, so one that cannot fit in a
+    UNIX socket address is refused where it was written:
+
+    >>> from libtmux.server import Server as TmuxServer
+    >>> try:
+    ...     TmuxServer(socket_path="/tmp/" + "d" * 120 + "/sock")
+    ... except exc.SocketPathTooLong as e:
+    ...     print(e.length)
+    130
+
+    A name resolves against ``$TMUX_TMPDIR``, which tmux re-reads when it runs,
+    so its length is only knowable at dispatch. The directory has to exist:
+    tmux falls back to ``/tmp`` when it cannot resolve one, and a socket it
+    never binds is not worth measuring. The server builds, and one at an
+    unbindable address is simply not alive:
+
+    >>> deep = request.getfixturevalue("tmp_path") / ("d" * 120)
+    >>> deep.mkdir()
+
+    >>> with monkeypatch.context() as m:
+    ...     m.setenv("TMUX_TMPDIR", str(deep))
+    ...     named = TmuxServer(socket_name="dev")
+    ...     named.is_alive()
+    False
+
+    The command that would have had to bind it says so, with the byte count
+    tmux would not have given:
+
+    >>> with monkeypatch.context() as m:
+    ...     m.setenv("TMUX_TMPDIR", str(deep))
+    ...     try:
+    ...         named.cmd("list-sessions")
+    ...     except exc.SocketPathTooLong as e:
+    ...         print(e.socket_name)
+    dev
 
     References
     ----------
@@ -210,6 +347,15 @@ class Server(
     """For hook management."""
     tmux_bin: str | None = None
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
+    kill_on_exit: bool = False
+    """Whether leaving a ``with`` block kills the server.
+
+    Off by default. A :class:`Server` is a handle on a socket, not a
+    connection, so the same handle addresses a daemon whether or not this
+    process started it — scoping one is not grounds to destroy it.
+    """
+    _isolate_env: bool = False
+    """Whether tmux subprocesses run without ``$TMUX`` and ``$TMUX_PANE``."""
 
     def __init__(
         self,
@@ -220,15 +366,24 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
+        kill_on_exit: bool = False,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         _warn_unknown_kwargs("Server()", kwargs)
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self.kill_on_exit = kill_on_exit
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
         if socket_path is not None:
+            # ``socket_path`` is the one socket libtmux passes through
+            # unchanged, as ``-S<path>``, so its length is settled here and
+            # measuring it now costs the caller nothing it can still change.
+            # A name or a bare server resolves against the environment tmux
+            # reads at exec, which is not knowable yet -- those are measured in
+            # :meth:`_socket_args`.
+            check_socket_path_length(socket_path)
             self.socket_path = socket_path
         elif socket_name is not None:
             self.socket_name = socket_name
@@ -302,13 +457,161 @@ class Server(
         """
         return cls(socket_path=socket_path_from_env(env))
 
+    @classmethod
+    @contextlib.contextmanager
+    def owned(
+        cls,
+        *,
+        config_file: str | None = os.devnull,
+        tmux_bin: str | pathlib.Path | None = None,
+        directory: StrPath | None = None,
+    ) -> Iterator[Self]:
+        """Run a throwaway tmux server for the duration of a block.
+
+        The server listens on a socket in a fresh private directory, reads no
+        configuration file, never sees ``$TMUX`` or ``$TMUX_PANE``, and is
+        killed, with its socket directory removed, when the block ends. It
+        cannot reach, or be mistaken for, any other tmux server.
+
+        tmux starts when the first session is created.
+
+        Cleanup runs when the block ends normally, on an exception, and when
+        the process dies without unwinding (``SIGTERM``, ``SIGHUP``,
+        ``SIGKILL``): a small reaper process started with the server notices
+        the owner exit and removes the daemon and the directory. No signal
+        handler is installed, so the caller's own handlers are untouched. On
+        a normal exit the reaper is gone and the daemon has exited before
+        this returns.
+
+        Parameters
+        ----------
+        config_file : str, optional
+            Configuration file for the new server. Defaults to
+            :data:`os.devnull`, so ``~/.tmux.conf`` is not read. Pass ``None``
+            to let tmux read its usual configuration.
+        tmux_bin : str or :class:`pathlib.Path`, optional
+            Path to the tmux binary. Defaults to ``tmux`` on ``PATH``.
+        directory : str or :class:`os.PathLike`, optional
+            Directory to create the private socket directory in. Defaults to
+            :func:`tempfile.gettempdir`.
+
+        Yields
+        ------
+        :class:`Server`
+            Server addressed by the private socket, with ``kill_on_exit`` set.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket path would not fit in a UNIX socket address, which
+            usually means ``$TMPDIR`` or *directory* is too deep.
+        :exc:`~libtmux.exc.LibTmuxException`
+            When tmux cannot be told to stop on exit; the socket directory is
+            kept for the reaper to retry.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server as TmuxServer
+        >>> with TmuxServer.owned() as scratch:
+        ...     _ = scratch.new_session(session_name="build")
+        ...     scratch.is_alive()
+        True
+        >>> scratch.is_alive()
+        False
+
+        .. versionadded:: 0.63
+        """
+        base = pathlib.Path(directory) if directory is not None else None
+        scratch = pathlib.Path(
+            tempfile.mkdtemp(prefix="lt-", dir=base),
+        )
+        socket_path = scratch / "s"
+        try:
+            check_socket_path_length(
+                socket_path,
+                env_var=None if base is not None else "TMPDIR",
+                env_value=None if base is not None else tempfile.gettempdir(),
+            )
+        except exc.SocketPathTooLong:
+            shutil.rmtree(scratch, ignore_errors=True)
+            raise
+
+        def _handle(factory: type[Server]) -> Server:
+            handle = factory(
+                socket_path=socket_path,
+                config_file=config_file,
+                tmux_bin=tmux_bin,
+                kill_on_exit=True,
+            )
+            handle._isolate_env = True
+            return handle
+
+        yielded = cls(
+            socket_path=socket_path,
+            config_file=config_file,
+            tmux_bin=tmux_bin,
+            kill_on_exit=True,
+        )
+        yielded._isolate_env = True
+        reaper = _spawn_reaper(
+            yielded.tmux_bin or shutil.which("tmux") or "tmux",
+            socket_path,
+            scratch,
+            yielded._tmux_env() or {},
+        )
+        try:
+            yield yielded
+        finally:
+            cleanup_error: Exception | None = None
+            try:
+                # A fresh handle: the caller may have changed the yielded one.
+                cls._stop_owned(_handle(Server))
+            except Exception as err:
+                cleanup_error = err
+            else:
+                shutil.rmtree(scratch, ignore_errors=True)
+            if reaper is not None:
+                # Closing the pipe releases the reaper; it retries whatever
+                # the owner could not finish.
+                if reaper.stdin is not None:
+                    reaper.stdin.close()
+                reaper.wait()
+            if cleanup_error is not None:
+                raise cleanup_error
+
+    @staticmethod
+    def _stop_owned(handle: Server) -> None:
+        """Kill *handle*'s daemon and return once the process has exited."""
+        pid_line = handle.cmd("display-message", "-p", "#{pid}").stdout
+        handle.kill()
+        if not pid_line or not pid_line[0].isdigit():
+            return
+        pid = int(pid_line[0])
+        deadline = time.monotonic() + _OWNED_EXIT_WAIT
+        while time.monotonic() < deadline:
+            if not _pid_running(pid):
+                return
+            time.sleep(0.002)
+        logger.warning("owned server still running", extra={"tmux_pid": pid})
+
     def __enter__(self) -> Self:
         """Enter the context, returning self.
+
+        Costs nothing and probes nothing: whether the block may destroy the
+        daemon is decided by :attr:`Server.kill_on_exit`, which the caller set
+        before entering.
 
         Returns
         -------
         :class:`Server`
             The server instance
+
+        Examples
+        --------
+        >>> with Server() as scoped:
+        ...     _ = scoped.new_session()
+        ...     scoped.is_alive()
+        True
         """
         return self
 
@@ -318,7 +621,17 @@ class Server(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the server if it exists.
+        """Exit the context, killing the server only if asked to.
+
+        A :class:`Server` is a handle on a socket, not a connection, so the
+        same handle addresses a daemon whether or not this process started it.
+        Scoping one to a block is therefore not grounds to destroy it, and the
+        default socket is usually the tmux the reader has been working in all
+        day. Set :attr:`Server.kill_on_exit` when teardown is what you want.
+
+        This is why a server differs from :class:`~libtmux.Session`,
+        :class:`~libtmux.Window` and :class:`~libtmux.Pane`, which do tear
+        themselves down.
 
         Parameters
         ----------
@@ -328,15 +641,55 @@ class Server(
             The instance of the exception that was raised
         exc_tb : types.TracebackType | None
             The traceback of the exception that was raised
+
+        Examples
+        --------
+        A server survives the block, even one the block started:
+
+        >>> booted = Server()
+        >>> with booted:
+        ...     _ = booted.new_session()
+        >>> booted.is_alive()
+        True
+        >>> booted.kill()
+
+        ``kill_on_exit=True`` asks for teardown:
+
+        >>> disposable = Server(kill_on_exit=True)
+        >>> with disposable:
+        ...     _ = disposable.new_session()
+        >>> disposable.is_alive()
+        False
+
+        .. versionchanged:: 0.63
+
+           Previously killed any live server on the way out, including one the
+           block did not start. Pass ``kill_on_exit=True`` for that.
         """
-        if self.is_alive():
+        if self.kill_on_exit and self.is_alive():
             self.kill()
 
     def is_alive(self) -> bool:
         """Return True if tmux server alive.
 
+        Every way of failing to reach the server is a ``False`` here, so this
+        stays answerable for any :class:`Server` that exists. Callers who need
+        the reason use :meth:`raise_if_dead`.
+
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
+
+        A socket path too long to bind is one of those ways -- nothing can be
+        listening at an address the kernel cannot hold:
+
+        >>> from libtmux.server import Server as TmuxServer
+        >>> deep = request.getfixturevalue("tmp_path") / ("d" * 120)
+        >>> deep.mkdir()
+
+        >>> with monkeypatch.context() as m:
+        ...     m.delenv("TMUX", raising=False)
+        ...     m.setenv("TMUX_TMPDIR", str(deep))
+        ...     assert not TmuxServer(socket_name="unbindable").is_alive()
         """
         try:
             res = self.cmd("list-sessions")
@@ -351,6 +704,9 @@ class Server(
         ------
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket this server names cannot fit in a UNIX socket
+            address, so no tmux command could ever reach it.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``).
@@ -366,29 +722,123 @@ class Server(
         if resolved is None:
             raise exc.TmuxCommandNotFound
 
-        cmd_args: list[str] = ["list-sessions"]
-        if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
+        cmd_args: list[str] = [*self._socket_args(), "list-sessions"]
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
         try:
-            subprocess.check_call([resolved, *cmd_args])
+            subprocess.check_call([resolved, *cmd_args], env=self._tmux_env())
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
 
     #
     # Command
     #
+    def _tmux_env(self) -> dict[str, str] | None:
+        """Return the environment tmux subprocesses run in.
+
+        ``None`` inherits this process's environment. A server built by
+        :meth:`owned` returns it without ``$TMUX`` and ``$TMUX_PANE``, so the
+        pane this process happens to run in never reaches the private daemon.
+        """
+        if not self._isolate_env:
+            return None
+        return {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {TMUX, TMUX_PANE}
+        }
+
+    def _socket_args(self) -> list[str]:
+        """Return this server's ``-S``/``-L`` flags, measuring the socket path.
+
+        Every path that spawns tmux for this server builds its argv from here,
+        which is what makes the measurement total: a socket flag cannot reach
+        tmux without having been measured on the way.
+
+        A tmux socket is a UNIX domain socket, so its path has to fit in
+        :data:`~libtmux._internal.env.SOCKET_PATH_MAX_BYTES`. An explicit
+        :attr:`socket_path` is settled the moment it is passed and is measured
+        in ``__init__``; measuring it again here is free and keeps this method
+        total over every flag it renders.
+
+        A name or a bare server is different, and is measured only here, for
+        the same reason ``colors`` is checked at this point: naming a server is
+        not using one, so :meth:`is_alive` has to stay answerable for a server
+        that cannot be reached. It also reads ``$TMUX_TMPDIR`` at the moment
+        the tmux binary would read it, so an environment changed after
+        construction is measured as tmux sees it rather than as it once was.
+
+        Returns
+        -------
+        list[str]
+            ``["-S<path>"]``, ``["-L<name>"]``, or ``[]`` for a bare server,
+            which leaves tmux to pick the socket itself -- ``$TMUX`` inside a
+            pane, and a path under ``$TMUX_TMPDIR`` outside one.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket path -- given, or resolved from ``socket_name`` --
+            cannot fit in a UNIX socket address.
+
+        Examples
+        --------
+        >>> server._socket_args()
+        ['-Llibtmux_test...']
+
+        >>> from libtmux.server import Server as TmuxServer
+        >>> TmuxServer(socket_path="/tmp/short/sock")._socket_args()
+        ['-S/tmp/short/sock']
+
+        A bare server names no socket, and tmux falls back to its own default:
+
+        >>> TmuxServer()._socket_args()
+        []
+
+        A path too long to bind is refused here, before tmux is spawned:
+
+        >>> try:
+        ...     TmuxServer(socket_path="/tmp/" + "d" * 120 + "/sock")._socket_args()
+        ... except exc.SocketPathTooLong as e:
+        ...     print(e.length)
+        130
+
+        .. versionadded:: 0.63
+        """
+        tmpdir = os.environ.get(TMUX_TMPDIR) or None
+
+        if self.socket_path:
+            check_socket_path_length(self.socket_path)
+        elif self.socket_name:
+            # ``-L`` sends tmux to ``$TMUX_TMPDIR`` whatever ``$TMUX`` says, so
+            # the name resolves against the directory even inside a pane.
+            check_socket_path_length(
+                resolve_socket_path(self.socket_name),
+                socket_name=self.socket_name,
+                env_var=TMUX_TMPDIR if tmpdir else None,
+                env_value=tmpdir,
+            )
+        else:
+            # A bare client prefers the pane's own socket and only computes a
+            # path under ``$TMUX_TMPDIR`` when there is no pane to inherit.
+            inside_pane = bool(os.environ.get(TMUX))
+            check_socket_path_length(
+                resolve_ambient_socket_path(),
+                env_var=TMUX_TMPDIR if tmpdir and not inside_pane else None,
+                env_value=None if inside_pane else tmpdir,
+            )
+
+        args: list[str] = []
+        if self.socket_path:
+            args.append(f"-S{self.socket_path}")
+        if self.socket_name:
+            args.append(f"-L{self.socket_name}")
+        return args
+
     def _server_flags(self) -> list[str]:
         """Return the tmux client flags that select this server, in argv order."""
-        flags: list[str] = []
-        if self.socket_name:
-            flags.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            flags.insert(0, f"-S{self.socket_path}")
+        flags = self._socket_args()
         if self.config_file:
             flags.insert(0, f"-f{self.config_file}")
         if self.colors:
@@ -478,6 +928,11 @@ class Server(
 
         Raises
         ------
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket path -- given, or resolved from ``socket_name`` --
+            cannot fit in a UNIX socket address. See :meth:`_socket_args`.
+        :exc:`~libtmux.exc.UnknownColorOption`
+            When ``colors`` is neither 88 nor 256.
         :exc:`~libtmux.exc.TmuxTimeout`
             When *timeout* elapses.
 
@@ -500,6 +955,7 @@ class Server(
             tmux_bin=self.tmux_bin,
             timeout=timeout,
             input=input,
+            env=self._tmux_env(),
         )
 
     @property
@@ -3210,17 +3666,45 @@ class Server(
         return False
 
     def __repr__(self) -> str:
-        """Representation of :class:`Server` object."""
+        """Representation of :class:`Server` object.
+
+        A server given neither ``socket_name`` nor ``socket_path`` talks to
+        whichever socket a bare tmux client would: ``$TMUX`` when it runs
+        inside a pane, and the path resolved from ``$TMUX_TMPDIR`` otherwise.
+        That is the path shown, so the repr names the server the object will
+        actually reach.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server
+        >>> Server(socket_name="libtmux_repr_demo")
+        Server(socket_name=libtmux_repr_demo)
+
+        >>> Server(socket_path="/run/user/1000/tmux-1000/demo")
+        Server(socket_path=/run/user/1000/tmux-1000/demo)
+
+        Outside a pane the socket directory is the one ``$TMUX_TMPDIR`` names:
+
+        >>> with monkeypatch.context() as m:
+        ...     m.delenv("TMUX", raising=False)
+        ...     m.setenv("TMUX_TMPDIR", "/usr")
+        ...     Server()
+        Server(socket_path=/usr/tmux-.../default)
+
+        Inside one, ``$TMUX`` names the socket outright and the directory is
+        not consulted:
+
+        >>> with monkeypatch.context() as m:
+        ...     m.setenv("TMUX", "/tmp/tmux-1000/inherited,8421,0")
+        ...     m.setenv("TMUX_TMPDIR", "/usr")
+        ...     Server()
+        Server(socket_path=/tmp/tmux-1000/inherited)
+        """
         if self.socket_name is not None:
-            return (
-                f"{self.__class__.__name__}"
-                f"(socket_name={getattr(self, 'socket_name', 'default')})"
-            )
+            return f"{self.__class__.__name__}(socket_name={self.socket_name})"
         if self.socket_path is not None:
             return f"{self.__class__.__name__}(socket_path={self.socket_path})"
-        return (
-            f"{self.__class__.__name__}(socket_path=/tmp/tmux-{os.geteuid()}/default)"
-        )
+        return f"{self.__class__.__name__}(socket_path={resolve_ambient_socket_path()})"
 
     #
     # Legacy: Redundant stuff we want to remove

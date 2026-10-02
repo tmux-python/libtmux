@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import functools
 import logging
 import os
 import pathlib
 import shutil
+import signal
+import socket
 import subprocess
+import sys
 import threading
 import time
 import typing as t
@@ -17,9 +21,10 @@ import pytest
 
 from libtmux import common, exc, neo, server as server_module
 from libtmux._internal.control_mode import ControlMode
+from libtmux._internal.env import SOCKET_PATH_MAX_BYTES, resolve_socket_path
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
-from libtmux.server import Server
+from libtmux.server import Server, _pid_running
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
@@ -109,6 +114,361 @@ def test_socket_path_not_derived_from_socket_name() -> None:
 
     assert myserver.socket_name == "libtmux_test_named_socket"
     assert myserver.socket_path is None
+
+
+def test_repr_socket_path_honors_tmux_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A default ``Server()`` reprs the socket tmux resolves, not ``/tmp``.
+
+    Regression for #723: the repr hard-coded ``/tmp/tmux-<euid>/default``, so
+    under any ``$TMUX_TMPDIR`` it named a socket the object was not using.
+    """
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path))
+
+    myserver = Server()
+
+    socket_path = tmp_path / f"tmux-{os.geteuid()}" / "default"
+    assert repr(myserver) == f"Server(socket_path={socket_path})"
+
+
+def test_repr_socket_path_resolves_a_symlinked_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A symlinked ``$TMUX_TMPDIR`` reprs the path tmux reports, not the link.
+
+    tmux resolves the socket directory before binding, so the link's own
+    length is not what a socket has to fit in. Reporting the unresolved path
+    would name a socket tmux never creates.
+    """
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(target)
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setenv("TMUX_TMPDIR", str(link))
+
+    myserver = Server()
+
+    socket_path = target.resolve() / f"tmux-{os.geteuid()}" / "default"
+    assert repr(myserver) == f"Server(socket_path={socket_path})"
+
+
+def test_repr_socket_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A named socket reprs its name, whatever ``$TMUX_TMPDIR`` says."""
+    monkeypatch.setenv("TMUX_TMPDIR", "/nonexistent-tmux-tmpdir")
+
+    myserver = Server(socket_name="libtmux_test_repr")
+
+    assert repr(myserver) == "Server(socket_name=libtmux_test_repr)"
+
+
+def _af_unix_path_fits(length: int) -> bool:
+    """Return True if a *length*-byte path fits in a UNIX socket address.
+
+    CPython measures ``sun_path`` itself and refuses an oversized path before
+    any syscall, so this asks the live platform for its limit without creating a
+    socket file. A path that fits fails for an ordinary reason instead --
+    nothing is listening at it.
+    """
+    sock = socket.socket(socket.AF_UNIX)
+    try:
+        sock.connect("/" + "x" * (length - 1))
+    except OSError as e:
+        return "too long" not in str(e)
+    finally:
+        sock.close()
+    return True
+
+
+def test_socket_path_max_bytes_matches_platform() -> None:
+    """The compiled-in limit is the one this platform actually enforces.
+
+    ``sun_path``'s size is not exposed by the stdlib, so libtmux spells it out
+    per platform. This keeps that number honest by probing.
+    """
+    assert _af_unix_path_fits(SOCKET_PATH_MAX_BYTES)
+    assert not _af_unix_path_fits(SOCKET_PATH_MAX_BYTES + 1)
+
+
+def test_socket_path_too_long_raises_at_construction() -> None:
+    """An explicit ``socket_path`` is measurable the moment it is passed.
+
+    Regression for #725: without the measurement the overrun surfaced as a
+    passed-through ``File name too long`` without the byte count.
+
+    This is the one socket libtmux hands to tmux unchanged, as ``-S<path>``,
+    so its length cannot be revised by anything that happens later. A name or
+    a bare server resolves against an environment tmux re-reads at exec, which
+    is why those are measured at dispatch instead.
+    """
+    socket_path = f"/tmp/{'d' * 200}/sock"
+
+    with pytest.raises(exc.SocketPathTooLong) as excinfo:
+        Server(socket_path=socket_path)
+
+    assert excinfo.value.length == len(socket_path)
+    assert excinfo.value.limit == SOCKET_PATH_MAX_BYTES
+    assert excinfo.value.over == len(socket_path) - SOCKET_PATH_MAX_BYTES
+    assert excinfo.value.socket_name is None
+    assert excinfo.value.env_var is None
+
+
+def test_socket_path_at_limit_is_accepted() -> None:
+    """A path that exactly fills the limit is usable, so it is dispatched."""
+    socket_path = "/tmp/" + "d" * (SOCKET_PATH_MAX_BYTES - len("/tmp/"))
+    assert len(socket_path) == SOCKET_PATH_MAX_BYTES
+
+    myserver = Server(socket_path=socket_path)
+
+    assert myserver.socket_path == socket_path
+    assert myserver._socket_args() == [f"-S{socket_path}"]
+
+
+def test_socket_name_too_long_via_tmux_tmpdir(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A short name resolving under a long ``$TMUX_TMPDIR`` overruns too.
+
+    Regression for #725. This is the case that bites: the length is inherited
+    from the environment, so the caller never saw the path that failed -- hence
+    the resolved path and the name are both reported.
+    """
+    _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+    myserver = Server(socket_name="dev")
+
+    with pytest.raises(exc.SocketPathTooLong) as excinfo:
+        myserver.cmd("list-sessions")
+
+    assert excinfo.value.socket_name == "dev"
+    assert str(excinfo.value.socket_path).endswith(f"/tmux-{os.geteuid()}/dev")
+
+
+def test_socket_name_factory_too_long_via_tmux_tmpdir(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A factory-generated name resolves under ``$TMUX_TMPDIR`` like any other.
+
+    The factory runs in ``__init__``, so its name is on the object well before
+    dispatch -- the measurement still happens at dispatch, against the name the
+    factory produced.
+    """
+    _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+    myserver = Server(socket_name_factory=lambda: "factory_made")
+
+    assert myserver.socket_name == "factory_made"
+    assert not myserver.is_alive()
+
+    with pytest.raises(exc.SocketPathTooLong) as excinfo:
+        myserver.cmd("list-sessions")
+
+    assert excinfo.value.socket_name == "factory_made"
+
+
+def test_socket_path_measured_at_dispatch_not_construction(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``$TMUX_TMPDIR`` is read when tmux would read it, not before.
+
+    The tmux binary resolves its socket directory at exec time, so a server
+    built under a short ``$TMUX_TMPDIR`` and used under a long one is measured
+    against the long one -- and the reverse recovers without rebuilding the
+    object.
+    """
+    myserver = Server(socket_name="dev")
+    assert myserver._socket_args() == ["-Ldev"]
+
+    _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+    with pytest.raises(exc.SocketPathTooLong):
+        myserver._socket_args()
+
+    monkeypatch.delenv("TMUX_TMPDIR")
+    assert myserver._socket_args() == ["-Ldev"]
+
+
+def test_long_symlinked_tmpdir_is_measured_after_resolving(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A long ``$TMUX_TMPDIR`` symlink to a short directory is accepted.
+
+    tmux resolves the socket directory before binding, so the link's own
+    length is not what has to fit. Measuring the unresolved path would refuse
+    a server tmux runs happily.
+    """
+    target = tmp_path / "t"
+    target.mkdir()
+    link = tmp_path / ("s" * 120)
+    link.symlink_to(target)
+    monkeypatch.setenv("TMUX_TMPDIR", str(link))
+
+    assert len(os.fsencode(str(link))) > SOCKET_PATH_MAX_BYTES
+
+    myserver = Server(socket_name="dev")
+
+    assert myserver._socket_args() == ["-Ldev"]
+
+
+def _unbindable_tmux_tmpdir(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> pathlib.Path:
+    """Point ``$TMUX_TMPDIR`` at a real directory too deep to hold a socket.
+
+    The directory has to exist: tmux falls back to ``/tmp`` when it cannot
+    create ``$TMUX_TMPDIR/tmux-<uid>``, and would then reach a real server
+    instead of failing. ``$TMUX`` is cleared because a bare tmux client
+    prefers it over ``$TMUX_TMPDIR``, so a suite run from inside a pane would
+    otherwise be measuring a socket nothing here chose.
+    """
+    tmpdir = tmp_path / ("d" * 120)
+    tmpdir.mkdir()
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmpdir))
+    return tmpdir
+
+
+def test_default_socket_too_long_via_tmux_tmpdir(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bare ``Server()`` inherits its whole path, so it is measured as well.
+
+    The constructor still succeeds and :meth:`Server.is_alive` still answers:
+    a server at an address the kernel cannot hold is not alive.
+    """
+    _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+
+    myserver = Server()
+
+    assert not myserver.is_alive()
+
+    with pytest.raises(exc.SocketPathTooLong) as excinfo:
+        myserver.cmd("list-sessions")
+
+    assert excinfo.value.socket_name is None
+    assert str(excinfo.value.socket_path).endswith("/default")
+    assert excinfo.value.env_var == "TMUX_TMPDIR"
+
+
+def test_unusable_tmux_tmpdir_falls_back_to_tmp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ``$TMUX_TMPDIR`` tmux cannot use is not the path that gets measured.
+
+    tmux takes the first of ``$TMUX_TMPDIR`` and ``/tmp`` that resolves, so a
+    directory that does not exist never holds the socket however long its name
+    is. Measuring it anyway would refuse a server tmux reaches without
+    difficulty: :meth:`Server.is_alive` would report a live daemon dead and the
+    first command would raise.
+    """
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setenv("TMUX_TMPDIR", f"/nonexistent-{'d' * 200}")
+
+    assert resolve_socket_path("dev") == pathlib.Path(
+        f"/tmp/tmux-{os.geteuid()}/dev",
+    )
+
+    myserver = Server(socket_name="dev")
+
+    assert myserver._socket_args() == ["-Ldev"]
+
+
+def test_bare_server_inside_a_pane_ignores_tmux_tmpdir(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """A bare client inside a pane uses ``$TMUX``, so a deep dir is irrelevant.
+
+    Measuring ``$TMUX_TMPDIR`` here would refuse a server tmux reaches without
+    difficulty -- the common case for a script run inside tmux, which is where
+    libtmux is most often used.
+
+    The patched environment is scoped to the assertions rather than the test.
+    The ``server`` fixture takes ``monkeypatch``, so pytest undoes the patches
+    only after that fixture's finalizer has run -- and a finalizer that resolves
+    the socket under an unreachable ``$TMUX_TMPDIR`` finds nothing to kill and
+    unlinks a path that never existed, leaving the daemon running.
+    """
+    socket_path = session.server.cmd(
+        "display-message",
+        "-p",
+        "#{socket_path}",
+    ).stdout[0]
+    deep = tmp_path / ("d" * 120)
+    deep.mkdir()
+
+    with monkeypatch.context() as m:
+        m.setenv("TMUX_TMPDIR", str(deep))
+        m.setenv("TMUX", f"{socket_path},{os.getpid()},0")
+
+        myserver = Server()
+
+        assert myserver._socket_args() == []
+        assert myserver.is_alive()
+
+
+def test_socket_args_covers_every_tmux_spawn(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """Every code path that spawns tmux builds its socket flags in one place.
+
+    The measurement is only as total as the argv construction it rides on, so
+    this pins the audit: each spawn site is exercised against a live server and
+    asserted to have gone through :meth:`Server._socket_args`.
+    """
+    server = session.server
+    calls: list[list[str]] = []
+    real = Server._socket_args
+
+    def spy(self: Server) -> list[str]:
+        args = real(self)
+        calls.append(args)
+        return args
+
+    monkeypatch.setattr(Server, "_socket_args", spy)
+
+    server.cmd("list-sessions")
+    assert calls, "Server.cmd did not build socket flags via _socket_args"
+
+    calls.clear()
+    server.raise_if_dead()
+    assert calls, "Server.raise_if_dead did not build socket flags via _socket_args"
+
+    calls.clear()
+    assert server.sessions
+    assert calls, "neo.fetch_objs did not build socket flags via _socket_args"
+
+    calls.clear()
+    with ControlMode(server=server, session=session) as ctl:
+        assert ctl.client_name != ""
+    assert calls, "ControlMode did not build socket flags via _socket_args"
+
+
+def test_socket_path_too_long_raises_on_raise_if_dead(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``raise_if_dead`` is the loud primitive, so it reports the overrun.
+
+    It builds its own argv and spawns tmux directly rather than going through
+    :meth:`Server.cmd`, which is exactly how a dispatch-time check goes stale.
+    An inherited path is the case that reaches it: an explicit ``socket_path``
+    is refused at construction, so there is no object left to ask.
+    """
+    _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+    myserver = Server()
+
+    with pytest.raises(exc.SocketPathTooLong):
+        myserver.raise_if_dead()
 
 
 def test_config(server: Server) -> None:
@@ -544,15 +904,89 @@ def test_socket_name_precedence(server: Server) -> None:
 
 
 def test_server_context_manager(TestServer: type[Server]) -> None:
-    """Test Server context manager functionality."""
+    """Leaving the block does not kill the server, even one it started."""
     with TestServer() as server:
         session = server.new_session()
         assert server.is_alive()
         assert len(server.sessions) == 1
         assert session in server.sessions
 
-    # Server should be killed after exiting context
-    assert not server.is_alive()
+    assert server.is_alive()
+    assert [s.session_name for s in server.sessions] == [session.session_name]
+
+    server.kill()
+
+
+def test_server_context_manager_spares_pre_existing_server(
+    TestServer: type[Server],
+) -> None:
+    """A server the ``with`` block did not start survives the block."""
+    pre_existing = TestServer()
+    pre_existing.new_session(session_name="important-work")
+
+    with TestServer(socket_name=pre_existing.socket_name) as scoped:
+        assert scoped.is_alive()
+
+    assert pre_existing.is_alive()
+    assert [session.session_name for session in pre_existing.sessions] == [
+        "important-work",
+    ]
+
+    pre_existing.kill()
+
+
+def test_server_context_manager_spares_the_default_socket(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A bare ``Server()`` leaves the default socket's daemon alone.
+
+    The shape of the original report: no socket name, no socket path, so the
+    handle addresses whichever tmux the caller already has open. Every other
+    test here goes through the ``TestServer`` factory, which mints a private
+    socket and therefore cannot reproduce it.
+    """
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path))
+
+    already_running = Server()
+    already_running.new_session(session_name="important-work")
+
+    with Server() as scoped:
+        assert scoped.is_alive()
+
+    assert already_running.is_alive()
+    assert [session.session_name for session in already_running.sessions] == [
+        "important-work",
+    ]
+
+    already_running.kill()
+
+
+def test_server_context_manager_kill_on_exit_true(
+    TestServer: type[Server],
+) -> None:
+    """``kill_on_exit=True`` kills a live server the block did not start."""
+    pre_existing = TestServer()
+    pre_existing.new_session(session_name="important-work")
+
+    with TestServer(
+        socket_name=pre_existing.socket_name,
+        kill_on_exit=True,
+    ) as scoped:
+        assert scoped.is_alive()
+
+    assert not pre_existing.is_alive()
+
+
+def test_server_context_manager_kill_on_exit_true_when_block_started_it(
+    TestServer: type[Server],
+) -> None:
+    """``kill_on_exit=True`` tears down a server the block itself started."""
+    with TestServer(kill_on_exit=True) as scoped:
+        scoped.new_session(session_name="disposable")
+        assert scoped.is_alive()
+
+    assert not scoped.is_alive()
 
 
 class StartDirectoryTestFixture(t.NamedTuple):
@@ -2367,3 +2801,219 @@ def test_wait_for_expiry_that_races_server_exit_reports_the_server(
 
     with pytest.raises(exc.TmuxServerGone):
         doomed.wait_for("libtmux_wait_race", timeout=0.2)
+
+
+def _ps_args() -> list[str]:
+    """Return every process's command line, as ``ps`` renders it."""
+    out = subprocess.run(
+        ["ps", "-axo", "args="],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return out.splitlines()
+
+
+def _reapers_for(scratch: str) -> int:
+    """Count processes whose command line names *scratch*."""
+    return sum(1 for line in _ps_args() if scratch in line)
+
+
+_OWNER_SCRIPT = """
+import sys
+from libtmux.server import Server
+
+with Server.owned() as server:
+    server.new_session(session_name="owned")
+    pid = server.cmd("display-message", "-p", "#{pid}").stdout[0]
+    print(server.socket_path, pid, flush=True)
+    sys.stdin.read()
+"""
+
+
+def _start_owner(env: dict[str, str]) -> tuple[subprocess.Popen[str], str, int]:
+    """Run a process that holds a ``Server.owned()`` block open."""
+    owner = subprocess.Popen(
+        [sys.executable, "-c", _OWNER_SCRIPT],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    assert owner.stdout is not None
+    socket_path, pid = owner.stdout.readline().split()
+    return owner, socket_path, int(pid)
+
+
+def test_owned_kills_server_and_removes_directory() -> None:
+    """The block ends the daemon, the socket and the directory."""
+    with Server.owned() as scratch:
+        scratch.new_session(session_name="owned")
+        socket_path = pathlib.Path(str(scratch.socket_path))
+        assert scratch.is_alive()
+        assert socket_path.exists()
+        pid = int(scratch.cmd("display-message", "-p", "#{pid}").stdout[0])
+
+    assert not scratch.is_alive()
+    assert not socket_path.parent.exists()
+    assert not _pid_running(pid)
+    assert _reapers_for(str(socket_path.parent)) == 0
+
+
+def test_owned_cleans_up_on_exception() -> None:
+    """An exception in the block still ends the daemon."""
+    with pytest.raises(RuntimeError, match="boom"), Server.owned() as scratch:
+        scratch.new_session(session_name="owned")
+        socket_path = pathlib.Path(str(scratch.socket_path))
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    assert not scratch.is_alive()
+    assert not socket_path.parent.exists()
+
+
+def test_owned_leaves_other_servers_alone(TestServer: type[Server]) -> None:
+    """A server already running, including one named by ``$TMUX``, survives."""
+    bystander = TestServer()
+    bystander.new_session(session_name="important-work")
+
+    with Server.owned() as scratch:
+        scratch.new_session(session_name="owned")
+        assert scratch.socket_path != bystander.socket_path
+
+    assert bystander.is_alive()
+    assert [s.session_name for s in bystander.sessions] == ["important-work"]
+
+
+def test_owned_never_inherits_tmux_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Tmux subprocesses run without ``$TMUX`` and ``$TMUX_PANE``."""
+    seen = tmp_path / "env.txt"
+    real = shutil.which("tmux")
+    assert real is not None
+    wrapper = tmp_path / "tmux-wrapper"
+    wrapper.write_text(f'#!/bin/sh\nenv > "{seen}"\nexec "{real}" "$@"\n')
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("TMUX", "/tmp/decoy,1,0")
+    monkeypatch.setenv("TMUX_PANE", "%9")
+
+    with Server.owned(tmux_bin=wrapper) as scratch:
+        scratch.new_session(session_name="owned")
+        assert scratch.is_alive()
+        assert scratch.sessions[0].session_name == "owned"
+
+    names = {line.partition("=")[0] for line in seen.read_text().splitlines()}
+    assert "TMUX" not in names
+    assert "TMUX_PANE" not in names
+    assert "PATH" in names
+
+
+class OwnedConfigFixture(t.NamedTuple):
+    """A ``config_file`` choice and whether ``~/.tmux.conf`` takes effect."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+    expect_marker: bool
+
+
+OWNED_CONFIG_FIXTURES: list[OwnedConfigFixture] = [
+    OwnedConfigFixture("default_ignores_user_config", {}, False),
+    OwnedConfigFixture("none_reads_user_config", {"config_file": None}, True),
+]
+
+
+@pytest.mark.parametrize(
+    list(OwnedConfigFixture._fields),
+    OWNED_CONFIG_FIXTURES,
+    ids=[f.test_id for f in OWNED_CONFIG_FIXTURES],
+)
+def test_owned_reads_no_user_config_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    expect_marker: bool,
+) -> None:
+    """``config_file`` defaults to :data:`os.devnull`."""
+    (tmp_path / ".tmux.conf").write_text("set -g @owned_marker yes\n")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    with Server.owned(**kwargs) as scratch:
+        scratch.new_session(session_name="owned")
+        shown = scratch.cmd("show-options", "-gqv", "@owned_marker").stdout
+
+    assert (shown == ["yes"]) is expect_marker
+
+
+def test_owned_is_independent_under_concurrency() -> None:
+    """Concurrent scopes get distinct sockets and each cleans up its own."""
+    barrier = threading.Barrier(4)
+
+    def work(index: int) -> tuple[str, int]:
+        with Server.owned() as scratch:
+            scratch.new_session(session_name=f"owned-{index}")
+            barrier.wait(timeout=10)
+            assert [s.session_name for s in scratch.sessions] == [f"owned-{index}"]
+            pid = int(scratch.cmd("display-message", "-p", "#{pid}").stdout[0])
+            return str(scratch.socket_path), pid
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(work, range(4)))
+
+    assert len({path for path, _ in results}) == 4
+    for path, pid in results:
+        assert not pathlib.Path(path).parent.exists()
+        assert not _pid_running(pid)
+        assert _reapers_for(str(pathlib.Path(path).parent)) == 0
+
+
+def test_owned_refuses_socket_path_that_cannot_bind(tmp_path: pathlib.Path) -> None:
+    """A directory too deep for a UNIX socket raises, and leaves nothing."""
+    deep = tmp_path / ("d" * 100)
+    deep.mkdir()
+
+    with (
+        pytest.raises(exc.SocketPathTooLong) as excinfo,
+        Server.owned(directory=deep),
+    ):
+        pytest.fail("the block must not run")
+
+    assert excinfo.value.limit == SOCKET_PATH_MAX_BYTES
+    assert excinfo.value.over > 0
+    assert list(deep.iterdir()) == []
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="owner is stopped with POSIX signals",
+)
+@pytest.mark.parametrize(
+    "sig",
+    [signal.SIGTERM, signal.SIGHUP, signal.SIGKILL],
+    ids=lambda sig: sig.name,
+)
+def test_owned_cleans_up_when_the_owner_is_killed(sig: signal.Signals) -> None:
+    """The daemon, socket directory and reaper go when the owner dies mid-block."""
+    owner, socket_path, pid = _start_owner(dict(os.environ))
+    scratch = str(pathlib.Path(socket_path).parent)
+    try:
+        assert _pid_running(pid)
+        assert _reapers_for(scratch) >= 1
+
+        owner.send_signal(sig)
+        owner.wait(timeout=10)
+
+        def _gone() -> bool:
+            return (
+                not _pid_running(pid)
+                and not pathlib.Path(scratch).exists()
+                and _reapers_for(scratch) == 0
+            )
+
+        assert retry_until(_gone, seconds=5, raises=False)
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+            owner.wait()
