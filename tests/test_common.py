@@ -1076,3 +1076,13 @@ def test_cmd_forwards_input_at_every_level(
     proc = obj.cmd("ignored", input="via stdin")
 
     assert proc.stdout == ["via stdin"]
+
+
+def test_tmux_cmd_timeout_applies_when_input_is_given(session: Session) -> None:
+    """``timeout`` bounds a command whose stdin is fed from ``input``.
+
+    ``input`` takes a separate binary-mode ``Popen`` path; the bound must
+    reach it too, and it must kill and reap the child like the text path.
+    """
+    with pytest.raises(exc.TmuxTimeout):
+        session.server.cmd("run-shell", "sleep 5", input=b"payload", timeout=0.25)

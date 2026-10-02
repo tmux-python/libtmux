@@ -602,7 +602,10 @@ class tmux_cmd:
                     stderr=subprocess.PIPE,
                 )
                 self.process = binary_process
-                raw_out, raw_err = binary_process.communicate(payload)
+                raw_out, raw_err = binary_process.communicate(
+                    payload,
+                    timeout=timeout,
+                )
                 stdout = _decode_text(raw_out)
                 stderr = _decode_text(raw_err)
             returncode = self.process.returncode
