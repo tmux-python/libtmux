@@ -49,6 +49,22 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _warn_unknown_kwargs(callable_name: str, kwargs: dict[str, t.Any]) -> None:
+    """Warn that keyword arguments are ignored, as they have always been.
+
+    Raising :exc:`TypeError` would break callers that pass options such as
+    ``environment=`` to :class:`Server`, so the next release can tighten this.
+    """
+    if kwargs:
+        names = ", ".join(sorted(kwargs))
+        warnings.warn(
+            f"{callable_name} ignores unknown keyword argument(s): {names}. "
+            "A future release will raise TypeError.",
+            FutureWarning,
+            stacklevel=3,
+        )
+
+
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
     """Return True if the error indicates the tmux server is not running.
 
@@ -179,6 +195,7 @@ class Server(
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
+        _warn_unknown_kwargs("Server()", kwargs)
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
@@ -2297,6 +2314,7 @@ class Server(
         >>> server.new_session(session_name='my session')
         Session($4 my session)
         """
+        _warn_unknown_kwargs("Server.new_session()", kwargs)
         if session_name is not None:
             session_check_name(session_name)
 

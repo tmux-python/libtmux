@@ -1765,3 +1765,23 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_server_warns_on_unknown_keyword() -> None:
+    """``Server(environment=...)`` and typos warn instead of vanishing."""
+    with pytest.warns(FutureWarning, match="environment"):
+        Server(socket_name="kw_probe", environment={"PROBE": "set"})
+    with pytest.warns(FutureWarning, match="socket_nam"):
+        Server(socket_nam="oops")
+
+
+def test_server_known_keywords_do_not_warn(recwarn: pytest.WarningsRecorder) -> None:
+    """A valid constructor call stays silent."""
+    Server(socket_name="kw_probe", colors=256)
+    assert not [w for w in recwarn if issubclass(w.category, FutureWarning)]
+
+
+def test_new_session_warns_on_unknown_keyword(server: Server) -> None:
+    """``new_session(not_a_parameter=1)`` warns instead of being ignored."""
+    with pytest.warns(FutureWarning, match="not_a_parameter"):
+        server.new_session(session_name="kw_session", not_a_parameter=1)

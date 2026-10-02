@@ -123,7 +123,7 @@ def test_session_rename(session: Session) -> None:
 def test_new_session(server: Server) -> None:
     """Server.new_session creates new session."""
     new_session_name = TEST_SESSION_PREFIX + next(namer)
-    new_session = server.new_session(session_name=new_session_name, detach=True)
+    new_session = server.new_session(session_name=new_session_name)
 
     assert isinstance(new_session, Session)
     assert new_session.session_name == new_session_name
@@ -546,7 +546,7 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     from libtmux.common import tmux_cmd
 
     # Create a new session specifically for this test
-    test_session = server.new_session(detach=True)
+    test_session = server.new_session()
 
     # Store original cmd method
     original_cmd = test_session.cmd

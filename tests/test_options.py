@@ -546,7 +546,7 @@ def test_show_option_pane_fixture(
 
 def test_stable_baseline_options_and_hooks(server: Server) -> None:
     """Ensure stable baseline across tmux versions."""
-    session = server.new_session(session_name="test", detach=True)
+    session = server.new_session(session_name="test")
 
     # List variables
     assert server.show_option("command-alias") == {

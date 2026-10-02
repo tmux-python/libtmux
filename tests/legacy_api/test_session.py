@@ -43,7 +43,7 @@ def test_attach_session_raises_deprecated_error(session: Session) -> None:
 def test_kill_session_raises_deprecated_error(server: Server) -> None:
     """Test Session.kill_session() raises exc.DeprecatedError."""
     # Create a new session to kill (so we don't kill our test session)
-    new_session = server.new_session(session_name="test_kill_session", detach=True)
+    new_session = server.new_session(session_name="test_kill_session")
 
     with pytest.raises(
         exc.DeprecatedError, match=r"Session\.kill_session\(\) was deprecated"

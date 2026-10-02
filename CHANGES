@@ -64,6 +64,15 @@ The pytest plugin's `clear_env` fixture kept every variable whose name contains
 that built a bare {class}`~libtmux.Server` therefore followed `$TMUX` to the
 outer session. `clear_env` now removes both.
 
+#### Unknown keywords to `Server` and `Server.new_session` warn
+
+{class}`~libtmux.Server` and {meth}`Server.new_session() <libtmux.Server.new_session>`
+accepted any keyword argument and ignored it, so `Server(environment=...)`
+set nothing and `Server(socket_nam="x")` fell back to the default tmux server.
+Both now emit a {class}`FutureWarning` naming the ignored keywords; a future
+release will raise {class}`TypeError`. Pass environment variables with
+`new_session(environment=...)`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
