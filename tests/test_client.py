@@ -147,7 +147,7 @@ def test_client_attached_pane_tracks_active_pane(
 
         attached = client.attached_pane
         assert isinstance(attached, Pane)
-        assert attached.pane_id == session.active_window.active_pane.pane_id  # type: ignore[union-attr]
+        assert attached.pane_id == session.active_window.active_pane.pane_id
 
 
 def test_client_attached_properties_return_none_after_detach(
@@ -252,3 +252,28 @@ def test_resolve_attached_catches_no_active_window(
         assert resolved_session is not None
         assert resolved_window is None
         assert resolved_pane is None
+
+
+def test_attached_pane_is_none_when_the_window_lists_no_active_pane(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``attached_pane`` keeps its ``None`` contract now ``active_pane`` raises."""
+    from libtmux import exc as libtmux_exc
+    from libtmux.window import Window as WindowCls
+
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+
+        def raise_no_active_pane(self: WindowCls) -> Pane:
+            raise libtmux_exc.NoActivePane
+
+        monkeypatch.setattr(WindowCls, "active_pane", property(raise_no_active_pane))
+
+        assert client.attached_pane is None
+        session, window, pane = client._resolve_attached()
+        assert session is not None
+        assert window is not None
+        assert pane is None

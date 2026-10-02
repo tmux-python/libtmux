@@ -642,8 +642,16 @@ class Session(
     # Computed properties
     #
     @property
-    def active_pane(self) -> Pane | None:
-        """Return the active :class:`Pane` object."""
+    def active_pane(self) -> Pane:
+        """Return the active :class:`Pane` object.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.NoActiveWindow`
+            See :attr:`active_window`.
+        :exc:`~libtmux.exc.NoActivePane`
+            See :attr:`Window.active_pane`.
+        """
         return self.active_window.active_pane
 
     @property

@@ -177,6 +177,23 @@ passes as an ordinary argument can never become one by accident.
 
 See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
+#### Read numeric fields as numbers with `typed`
+
+tmux reports every format field as text, so `pane.pane_width` is
+`str | None` and `n: int = pane.pane_width` fails `mypy --strict`. Every `Pane`,
+`Window`, `Session`, and `Client` now has a `typed` view of its numeric and
+flag fields: `pane.typed.pane_width` is `int`, `pane.typed.pane_active` is
+`bool`, and the view reads the object's current values, so it follows
+`refresh()`. The `str | None` fields are unchanged, and nothing that reads them
+needs to move.
+
+A field is `int` or `bool` when tmux reports it for every live object on every
+supported version. A field tmux leaves empty for some live objects, such as
+`pane_dead_status` on a running pane, or one that tmux gained after 3.2a, is
+`int | None` or `bool | None`. Reading a non-optional field from an object that
+was never listed raises {exc}`~libtmux.exc.FieldNotReported`. `Client.typed`
+adds the `client_*` fields, all optional. See {ref}`api-fields`.
+
 #### Read only what a pane wrote since you last looked (#740)
 
 {meth}`Pane.capture_since() <libtmux.Pane.capture_since>` returns the rows a
@@ -583,6 +600,45 @@ and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
 `colors=` passed those flags on some commands and not others. All paths now
 share one connection. A `colors=` value other than `256` or `88` raises
 {exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
+
+#### `Server(tmux_bin=...)` rejects values that are not a path
+
+`tmux_bin` is annotated `str | Path`, but the constructor ran `str()` on
+whatever it received, so `Server(tmux_bin=["docker", "exec", "c", "tmux"])`
+built a server whose binary was the text of the list and failed on the first
+command with {exc}`~libtmux.exc.TmuxCommandNotFound`. `Server()` and
+{meth}`Server.owned() <libtmux.Server.owned>` now raise `TypeError` at
+construction for anything that is not a `str` or an `os.PathLike[str]`. To run
+tmux in a container or over ssh, pass `Server(engine=ExecEngine.docker(...))`
+instead; see {class}`~libtmux.engines.exec.ExecEngine`. The annotation widens from `Path` to `os.PathLike[str]`; every value that
+worked before still works.
+
+#### `active_pane` is typed `Pane`, not `Pane | None`
+
+`Window.active_pane` and `Session.active_pane` returned `Pane | None`, so every
+caller wrote `assert pane is not None` for a case tmux does not produce: each
+live window has one active pane, and a killed window raises
+{exc}`~libtmux.exc.LibTmuxException` from its pane listing, never `None`.
+Both now return `Pane`, as `Session.active_window` already returned `Window`.
+`Window.select_pane()` and `Window.last_pane()` return `Pane` for the same
+reason.
+
+A listing that holds no active pane raises the new
+{exc}`~libtmux.exc.NoActivePane` instead of returning `None`. Code that
+asserted the result is not `None` is unaffected, and `if pane is None` keeps
+running but is now dead code. {attr}`Client.attached_pane
+<libtmux.Client.attached_pane>` keeps returning `None`, since a client can be
+attached to nothing.
+
+#### `QueryList.get()` is typed to match what it does
+
+`get()` without `default` returns the object or raises
+{exc}`~libtmux.exc.ObjectDoesNotExist`; it never returns `None`. Its annotation
+said `T | None`, so `mypy --strict` asked for a `None` check that could not
+fire and missed the exception that could. `get()` is now overloaded: without
+`default` it returns `T`, and with `default=X` it returns `T | X`. Runtime
+behavior is unchanged. A caller that already passes `default=None` keeps the
+same type, and one that asserted the result is not `None` keeps working.
 
 #### `kill_window()` and `select_window()` match window names exactly
 

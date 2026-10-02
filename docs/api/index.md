@@ -126,6 +126,12 @@ Dataclass-based query interface.
 How tmux commands are executed, and how to swap that out.
 :::
 
+:::{grid-item-card} Fields
+:link: libtmux.fields
+:link-type: doc
+Read numeric and flag fields as `int` and `bool`.
+:::
+
 :::{grid-item-card} Options
 :link: libtmux.options
 :link-type: doc
@@ -217,6 +223,7 @@ Client <libtmux.client>
 Common <libtmux.common>
 Engine <libtmux.engines>
 Neo <libtmux.neo>
+Fields <libtmux.fields>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
 Run <libtmux.run>

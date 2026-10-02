@@ -3197,3 +3197,51 @@ def test_server_connection_is_measured_on_every_dispatch(
 
     with pytest.raises(exc.SocketPathTooLong):
         myserver.cmd("list-sessions")
+
+
+class _BytesPath:
+    """A path-like whose ``__fspath__`` returns ``bytes``."""
+
+    def __fspath__(self) -> bytes:
+        return b"/usr/bin/tmux"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        ["docker", "exec", "c", "tmux"],
+        ("tmux",),
+        b"tmux",
+        _BytesPath(),
+        0,
+        True,
+    ],
+    ids=["list", "tuple", "bytes", "bytes-pathlike", "int", "bool"],
+)
+def test_tmux_bin_rejects_non_path_values(bad: object) -> None:
+    """Server(tmux_bin=...) raises TypeError for anything but a str or path-like."""
+    with pytest.raises(TypeError, match="tmux_bin must be a str or path-like"):
+        Server(tmux_bin=bad)  # type: ignore[arg-type]
+
+
+def test_tmux_bin_accepts_str_and_path_like(tmp_path: pathlib.Path) -> None:
+    """A str or path-like is stored as a str; None stays None."""
+    assert Server(tmux_bin="/usr/bin/tmux").tmux_bin == "/usr/bin/tmux"
+    assert Server(tmux_bin=tmp_path / "tmux").tmux_bin == str(tmp_path / "tmux")
+    assert Server(tmux_bin=None).tmux_bin is None
+
+
+def test_owned_rejects_bad_tmux_bin_before_creating_a_directory(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Server.owned(tmux_bin=[...]) raises before it makes its socket directory."""
+    with (
+        pytest.raises(TypeError, match="tmux_bin must be a str or path-like"),
+        Server.owned(
+            tmux_bin=["tmux"],  # type: ignore[arg-type]
+            directory=tmp_path,
+        ),
+    ):
+        pass
+
+    assert list(tmp_path.iterdir()) == []

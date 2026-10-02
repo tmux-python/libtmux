@@ -134,4 +134,25 @@ Basics:
 '0'
 ```
 
+## Numbers and flags
+
+tmux reports every field as text, so `pane.pane_width` is a `str`. Read the
+same field as a number through {attr}`~libtmux.neo.Obj.typed`, which `Pane`,
+`Window`, `Session` and `Client` all have:
+
+```python
+>>> pane.typed.pane_width > 0
+True
+
+>>> pane.typed.pane_active
+True
+
+>>> pane.pane_width == str(pane.typed.pane_width)
+True
+```
+
+A field tmux leaves empty for some live objects, such as `pane_dead_status` on
+a running pane, is `None` when empty. See {ref}`api-fields` for which fields
+those are.
+
 [formats]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS

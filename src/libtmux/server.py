@@ -144,6 +144,35 @@ def _spawn_reaper(
         return None
 
 
+def _coerce_tmux_bin(tmux_bin: object) -> str | None:
+    """Return *tmux_bin* as a string path, or raise :exc:`TypeError`.
+
+    Examples
+    --------
+    >>> from libtmux.server import _coerce_tmux_bin
+    >>> _coerce_tmux_bin(None) is None
+    True
+    >>> _coerce_tmux_bin(pathlib.Path("/usr/bin/tmux"))
+    '/usr/bin/tmux'
+    >>> _coerce_tmux_bin(["docker", "exec", "c", "tmux"])
+    Traceback (most recent call last):
+    ...
+    TypeError: tmux_bin must be a str or path-like naming one executable, ...
+    """
+    if tmux_bin is None:
+        return None
+    path = os.fspath(tmux_bin) if isinstance(tmux_bin, (str, os.PathLike)) else None
+    if not isinstance(path, str):
+        msg = (
+            "tmux_bin must be a str or path-like naming one executable, got "
+            f"{type(tmux_bin).__name__}: {tmux_bin!r}. An argv list is not "
+            "accepted; to run tmux through docker, kubectl or ssh, pass "
+            "Server(engine=ExecEngine.docker(...))."
+        )
+        raise TypeError(msg)
+    return path
+
+
 def _warn_unknown_kwargs(callable_name: str, kwargs: dict[str, t.Any]) -> None:
     """Warn that keyword arguments are ignored, as they have always been.
 
@@ -253,7 +282,7 @@ class Server(
     colors : str, optional
     on_init : callable, optional
     socket_name_factory : callable, optional
-    tmux_bin : str or pathlib.Path, optional
+    tmux_bin : str or os.PathLike, optional
     kill_on_exit : bool, optional
         Whether leaving a ``with`` block kills the server. Off by default.
         See :attr:`Server.kill_on_exit`.
@@ -391,14 +420,14 @@ class Server(
         colors: int | None = None,
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
-        tmux_bin: str | pathlib.Path | None = None,
+        tmux_bin: str | os.PathLike[str] | None = None,
         kill_on_exit: bool = False,
         engine: TmuxEngine | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         _warn_unknown_kwargs("Server()", kwargs)
-        self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self.tmux_bin = _coerce_tmux_bin(tmux_bin)
         self.kill_on_exit = kill_on_exit
         self._engine = engine
         self._default_engine = None
@@ -624,7 +653,7 @@ class Server(
         cls,
         *,
         config_file: str | None = os.devnull,
-        tmux_bin: str | pathlib.Path | None = None,
+        tmux_bin: str | os.PathLike[str] | None = None,
         directory: StrPath | None = None,
     ) -> Iterator[Self]:
         """Run a throwaway tmux server for the duration of a block.
@@ -650,7 +679,7 @@ class Server(
             Configuration file for the new server. Defaults to
             :data:`os.devnull`, so ``~/.tmux.conf`` is not read. Pass ``None``
             to let tmux read its usual configuration.
-        tmux_bin : str or :class:`pathlib.Path`, optional
+        tmux_bin : str or :class:`os.PathLike`, optional
             Path to the tmux binary. Defaults to ``tmux`` on ``PATH``.
         directory : str or :class:`os.PathLike`, optional
             Directory to create the private socket directory in. Defaults to
@@ -682,6 +711,7 @@ class Server(
 
         .. versionadded:: 0.63
         """
+        tmux_bin = _coerce_tmux_bin(tmux_bin)
         base = pathlib.Path(directory) if directory is not None else None
         scratch = pathlib.Path(
             tempfile.mkdtemp(prefix="lt-", dir=base),
