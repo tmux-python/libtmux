@@ -27,6 +27,7 @@ from . import exc
 from .common import (
     EnvironmentMixin,
     WindowDict,
+    _exact_window_target,
     session_check_name,
 )
 
@@ -582,7 +583,9 @@ class Session(
 
         Parameters
         ----------
-        window : str
+        target_window : str or int
+            Window index, id such as ``@1``, or window name. A name is matched
+            exactly, so ``'foo'`` does not select ``'foobar'``.
             ``target_window`` can also be 'last-window' (``-l``), 'next-window'
             (``-n``), or 'previous-window' (``-p``)
 
@@ -599,7 +602,7 @@ class Session(
         # Note that we also provide the session ID here, since cmd()
         # will not automatically add it as there is already a '-t'
         # argument provided.
-        target = f"{self.session_id}:{target_window}"
+        target = f"{self.session_id}:{_exact_window_target(target_window)}"
 
         proc = self.cmd("select-window", target=target)
 
@@ -965,7 +968,8 @@ class Session(
         Parameters
         ----------
         target_window : str | int, optional
-            Window to kill.
+            Window to kill: an index, an id such as ``@1``, or a window name,
+            matched exactly within this session.
 
         Raises
         ------
@@ -974,10 +978,11 @@ class Session(
         """
         target: str | int | None = target_window
         if target_window is not None:
-            if isinstance(target_window, int):
-                target = f"{self.session_name}:{target_window}"
+            target_str = str(target_window)
+            if target_str.startswith("@") or ":" in target_str:
+                target = target_str
             else:
-                target = f"{target_window}"
+                target = f"{self.session_id}:{_exact_window_target(target_window)}"
 
         proc = self.cmd("kill-window", target=target)
 

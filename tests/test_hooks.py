@@ -9,9 +9,11 @@ import pytest
 from libtmux._internal.constants import Hooks
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
+from libtmux.constants import OptionScope
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
+    from libtmux.session import Session
 
 
 def test_hooks_raw_cmd(
@@ -1117,3 +1119,46 @@ def test_show_hooks_empty_result(server: Server) -> None:
 
     # Should be a dict (possibly empty)
     assert isinstance(hooks, dict)
+
+
+def test_hooks_session_scope_round_trip(session: Session) -> None:
+    """Every hook helper accepts ``scope=OptionScope.Session`` on a session."""
+    scope = OptionScope.Session
+    session.set_hook("session-renamed[0]", "display-message hi", scope=scope)
+
+    shown = session._show_hook("session-renamed[0]", scope=scope)
+    assert shown is not None
+    assert "display-message" in shown[0]
+
+    assert "session-renamed[0]" in session.show_hooks(scope=scope)
+
+    session.run_hook("session-renamed[0]", scope=scope)
+
+    session.unset_hook("session-renamed[0]", scope=scope)
+    assert "session-renamed[0]" not in session.show_hooks(scope=scope)
+
+
+@pytest.mark.parametrize(
+    "helper",
+    ["run_hook", "set_hook", "unset_hook", "show_hooks", "_show_hook"],
+)
+def test_hooks_session_scope_sends_no_empty_argument(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    helper: str,
+) -> None:
+    """The session scope has no tmux flag, so no empty argument reaches tmux."""
+    seen: list[tuple[object, ...]] = []
+
+    def fake_cmd(cmd: str, *args: object, **kwargs: object) -> t.Any:
+        seen.append(args)
+        return type("Result", (), {"stdout": [], "stderr": [], "returncode": 0})()
+
+    monkeypatch.setattr(session, "cmd", fake_cmd)
+    args: tuple[str, ...] = ("session-renamed[0]",)
+    if helper == "set_hook":
+        args += ("display-message hi",)
+    getattr(session, helper)(*args, scope=OptionScope.Session)
+
+    assert seen
+    assert all(arg != "" for call in seen for arg in call)

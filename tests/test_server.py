@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import time
 import typing as t
+import warnings
 
 import pytest
 
@@ -1931,3 +1932,158 @@ def test_new_session_survives_newline_in_start_directory(
 
     assert session.session_name == "newline"
     assert [s.session_name for s in server.sessions] == ["newline"]
+
+
+def test_server_warns_on_unknown_keyword() -> None:
+    """``Server(environment=...)`` and typos warn instead of vanishing."""
+    with pytest.warns(FutureWarning, match="environment"):
+        Server(socket_name="kw_probe", environment={"PROBE": "set"})
+    with pytest.warns(FutureWarning, match="socket_nam"):
+        Server(socket_nam="oops")
+
+
+def test_server_known_keywords_do_not_warn(recwarn: pytest.WarningsRecorder) -> None:
+    """A valid constructor call stays silent."""
+    Server(socket_name="kw_probe", colors=256)
+    assert not [w for w in recwarn if issubclass(w.category, FutureWarning)]
+
+
+def test_new_session_warns_on_unknown_keyword(server: Server) -> None:
+    """``new_session(not_a_parameter=1)`` warns instead of being ignored."""
+    with pytest.warns(FutureWarning, match="not_a_parameter"):
+        server.new_session(session_name="kw_session", not_a_parameter=1)
+
+
+def _future_warnings(recwarn: pytest.WarningsRecorder) -> list[warnings.WarningMessage]:
+    return [w for w in recwarn if issubclass(w.category, FutureWarning)]
+
+
+def test_kill_session_exact_true_ignores_prefix(server: Server) -> None:
+    """``exact=True`` sends ``=name``, so ``foo`` does not kill ``foobar``."""
+    server.new_session(session_name="foobar")
+    server.new_session(session_name="keeper")
+
+    with pytest.raises(exc.LibTmuxException):
+        server.kill_session("foo", exact=True)
+    assert server.has_session("foobar")
+
+    server.new_session(session_name="foo")
+    server.kill_session("foo", exact=True)
+    assert not server.has_session("foo")
+    assert server.has_session("foobar")
+
+
+def test_kill_session_prefix_match_warns(server: Server) -> None:
+    """A bare name that only prefix-matches still works, and warns."""
+    server.new_session(session_name="foobar")
+    server.new_session(session_name="keeper")
+
+    with pytest.warns(
+        FutureWarning, match=r"'foo' matches by prefix or pattern"
+    ) as record:
+        server.kill_session("foo")
+    assert not server.has_session("foobar")
+    assert record[0].filename == __file__
+
+
+def test_kill_session_glob_match_warns(server: Server) -> None:
+    """An ``fnmatch(3)`` pattern is the other documented bare-name form."""
+    server.new_session(session_name="build-1")
+    server.new_session(session_name="keeper")
+
+    with pytest.warns(FutureWarning, match="matches by prefix or pattern"):
+        server.kill_session("build-*")
+    assert not server.has_session("build-1")
+
+
+def test_kill_session_exact_false_keeps_prefix_silently(
+    server: Server,
+    recwarn: pytest.WarningsRecorder,
+) -> None:
+    """``exact=False`` is the explicit way to keep tmux matching, with no warning."""
+    server.new_session(session_name="foobar")
+    server.new_session(session_name="keeper")
+
+    server.kill_session("foo", exact=False)
+    assert not server.has_session("foobar")
+    assert not _future_warnings(recwarn)
+
+
+@pytest.mark.parametrize("by", ["exact_name", "id", "no_match"])
+def test_kill_session_does_not_warn_when_nothing_changes(
+    server: Server,
+    recwarn: pytest.WarningsRecorder,
+    by: str,
+) -> None:
+    """An exact name, an id, or a name tmux rejects anyway never warns."""
+    session = server.new_session(session_name="foo")
+    server.new_session(session_name="foobar")
+
+    if by == "no_match":
+        with pytest.raises(exc.LibTmuxException):
+            server.kill_session("zzz")
+        assert not _future_warnings(recwarn)
+        return
+
+    target = "foo" if by == "exact_name" else session.session_id
+    assert target is not None
+    server.kill_session(target)
+    assert not server.has_session("foo")
+    assert server.has_session("foobar")
+    assert not _future_warnings(recwarn)
+
+
+@pytest.mark.parametrize("method", ["switch_client", "attach_session"])
+def test_client_session_target_exact(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+) -> None:
+    """``exact=True`` sends ``=name`` and ``exact=False`` sends the bare name.
+
+    Both calls need an attached client, so the test stubs ``cmd`` to record
+    the target instead of running tmux.
+    """
+    seen: list[str | None] = []
+
+    def fake_cmd(
+        cmd: str, *args: object, target: str | None = None, **kwargs: object
+    ) -> object:
+        seen.append(target)
+        raise exc.LibTmuxException(cmd)
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    for exact in (True, False):
+        with pytest.raises(exc.LibTmuxException):
+            getattr(server, method)("foo", exact=exact)
+    assert seen == ["=foo", "foo"]
+
+
+@pytest.mark.parametrize("method", ["switch_client", "attach_session"])
+def test_client_session_prefix_match_warns(server: Server, method: str) -> None:
+    """The default warns for a prefix match before tmux reports no client."""
+    server.new_session(session_name="foobar")
+
+    with (
+        pytest.warns(FutureWarning, match="matches by prefix or pattern"),
+        pytest.raises(exc.LibTmuxException),
+    ):
+        getattr(server, method)("foo")
+
+
+def test_new_session_kill_session_matches_name_exactly(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``new_session(kill_session=True)`` never kills a prefix-matching session.
+
+    ``has_session`` is stubbed to report the name as taken, which is what a
+    session ending between the check and the kill looks like; the kill must
+    then fail rather than take out ``foobar``.
+    """
+    server.new_session(session_name="foobar")
+    monkeypatch.setattr(server, "has_session", lambda *a, **k: True)
+
+    with pytest.raises(exc.LibTmuxException):
+        server.new_session(session_name="foo", kill_session=True)
+    assert server.cmd("has-session", target="=foobar").returncode == 0

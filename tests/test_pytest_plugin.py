@@ -221,3 +221,29 @@ def test_reap_test_server_tolerates_none() -> None:
     other nullable paths in the API.
     """
     _reap_test_server(None)
+
+
+def test_clear_env_drops_outer_tmux_session(
+    pytester: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``clear_env`` drops ``TMUX`` and ``TMUX_PANE``.
+
+    A client with neither ``-L`` nor ``-S`` follows ``$TMUX`` to the outer server.
+    """
+    monkeypatch.setenv("TMUX", "/nonexistent/outer,1,0")
+    monkeypatch.setenv("TMUX_PANE", "%0")
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        textwrap.dedent(
+            """
+import os
+
+def test_inner(clear_env) -> None:
+    assert "TMUX" not in os.environ
+    assert "TMUX_PANE" not in os.environ
+            """,
+        ),
+    )
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)

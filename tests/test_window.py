@@ -1332,3 +1332,61 @@ def test_new_pane(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             window.new_pane(width=40, height=10)
+
+
+@pytest.mark.parametrize("layout", ["-o", "-n", "tiledd", "xyz,1x1,0,0", ""])
+def test_select_layout_rejects_non_layout(
+    server: Server,
+    session: Session,
+    layout: str,
+) -> None:
+    """A flag-like, empty or unparseable layout raises before tmux sees it.
+
+    ``-o`` is tmux's undo flag, and on tmux 3.3 and 3.3a an unparseable layout
+    kills the whole server, so the server must still answer afterwards.
+    """
+    window = session.new_window(window_name="layout_reject")
+    window.split()
+    window.select_layout("even-horizontal")
+    window.select_layout("tiled")
+    before = window.cmd("display-message", "-p", "#{window_layout}").stdout
+
+    with pytest.raises(ValueError, match="layout"):
+        window.select_layout(layout)
+
+    assert server.is_alive()
+    after = window.cmd("display-message", "-p", "#{window_layout}").stdout
+    assert after == before
+
+
+def test_select_layout_accepts_presets_prefixes_and_saved_layouts(
+    session: Session,
+) -> None:
+    """Preset names, unambiguous abbreviations and a saved layout still apply."""
+    window = session.new_window(window_name="layout_accept")
+    window.split()
+
+    for layout in ("even-vertical", "main-horizontal", "tiled", "tile"):
+        window.select_layout(layout)
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    saved = window.window_layout
+    assert saved is not None
+    window.select_layout("tiled")
+    window.select_layout(saved)
+    window.refresh()
+    assert window.window_layout == saved
+
+
+def test_select_layout_mirrored_needs_tmux_3_5(session: Session) -> None:
+    """Mirrored presets exist from tmux 3.5; older tmux gets a clear error."""
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="layout_mirrored")
+    window.split()
+    if has_gte_version("3.5"):
+        window.select_layout("main-vertical-mirrored")
+    else:
+        with pytest.raises(exc.VersionTooLow):
+            window.select_layout("main-vertical-mirrored")

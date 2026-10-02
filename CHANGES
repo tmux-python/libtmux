@@ -47,20 +47,64 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
-#### Set scrollback before the first pane with `new_session(history_limit=)`
-
-{meth}`Server.new_session() <libtmux.Server.new_session>` takes `history_limit`,
-the scrollback for the new session's panes. The first pane gets it on every
-tmux version; before tmux 3.7 a `set_option()` call after `new_session()` only
-reached panes created later. The limit is stored on the new session, so the
-server-wide value and other sessions keep theirs. Before tmux 3.7 the
-server-wide value is raised and restored inside the one tmux command that
-creates the session, and `attach=True` raises `ValueError`; from tmux 3.7 it is
-never touched, because tmux 3.7 trims the history of existing panes when the
-server-wide limit drops. A negative value raises `ValueError`. See
-{ref}`workspace-setup` for a recipe.
-
 ### Fixes
+
+#### `kill_window()` and `select_window()` match window names exactly
+
+{meth}`Session.kill_window() <libtmux.Session.kill_window>` and
+{meth}`Session.select_window() <libtmux.Session.select_window>` now target
+`$session_id:=name`. A bare window name that matched no window in the session
+used to be retried by tmux as a session name, so
+`other.kill_window("victim")` destroyed the whole session `victim`. Window
+names no longer match by prefix either: `kill_window("foo")` leaves `foobar`
+alone. Ids (`@1`) and indexes are unchanged.
+
+#### `new_session(kill_session=True)` kills the exact session
+
+{meth}`Server.new_session() <libtmux.Server.new_session>` with
+`kill_session=True` sent the bare name to tmux, which could match a session by
+prefix. It now targets the name exactly, so `new_session("foo",
+kill_session=True)` cannot kill `foobar`.
+
+#### `clear_env` removes `TMUX` and `TMUX_PANE`
+
+The pytest plugin's `clear_env` fixture kept every variable whose name contains
+`tmux` or `pane`, including `TMUX` and `TMUX_PANE`. A test run from inside tmux
+that built a bare {class}`~libtmux.Server` therefore followed `$TMUX` to the
+outer session. `clear_env` now removes both.
+
+#### Unknown keywords to `Server` and `Server.new_session` warn
+
+{class}`~libtmux.Server` and {meth}`Server.new_session() <libtmux.Server.new_session>`
+accepted any keyword argument and ignored it, so `Server(environment=...)`
+set nothing and `Server(socket_nam="x")` fell back to the default tmux server.
+Both now emit a {class}`FutureWarning` naming the ignored keywords; a future
+release will raise {class}`TypeError`. Pass environment variables with
+`new_session(environment=...)`.
+
+#### Hook helpers accept `scope=OptionScope.Session`
+
+{meth}`set_hook() <libtmux.hooks.HooksMixin.set_hook>`,
+{meth}`unset_hook() <libtmux.hooks.HooksMixin.unset_hook>`,
+{meth}`run_hook() <libtmux.hooks.HooksMixin.run_hook>`, and
+{meth}`show_hooks() <libtmux.hooks.HooksMixin.show_hooks>` sent tmux an empty
+argument when called with `scope=OptionScope.Session`. tmux rejected it with
+`too many arguments`, or `show_hooks` returned `{}` for a session that had a
+hook and `run_hook` silently ran nothing. The session scope now sends no flag,
+as the option helpers already do.
+
+#### `Window.select_layout` checks its layout argument
+
+{meth}`Window.select_layout() <libtmux.Window.select_layout>` appended its
+argument to the tmux command unchecked. `select_layout("-o")` ran tmux's undo
+flag and returned without error, and on tmux 3.3 and 3.3a a layout tmux could
+not parse killed the server and every session on its socket. The argument is
+now sent after `--` and checked first: it must be a layout preset, an
+unambiguous abbreviation such as `"tile"`, or a layout string such as
+{attr}`~libtmux.Window.window_layout` returns. Anything else raises
+{class}`ValueError`, as does an explicit empty string (pass `None` to omit the
+layout); a mirrored preset below tmux 3.5 raises
+{exc}`~libtmux.exc.VersionTooLow`.
 
 #### `new_session(x=, y=)` sizes the first window on tmux 3.2a
 
@@ -119,6 +163,49 @@ as `_`. {class}`~libtmux.common.tmux_cmd` now runs every command as
 Commands that run an interactive client, such as `attach-session`, keep
 detecting the terminal's encoding themselves and do not get `-u`.
 `LIBTMUX_TMUX_FORMAT_SEPARATOR` and the default separator are unchanged.
+
+### None
+
+#### Session names can match exactly with `exact=True`
+
+{meth}`Server.kill_session() <libtmux.Server.kill_session>`,
+{meth}`Server.switch_client() <libtmux.Server.switch_client>`, and
+{meth}`Server.attach_session() <libtmux.Server.attach_session>` take an
+`exact` keyword, like {meth}`Server.has_session() <libtmux.Server.has_session>`.
+tmux resolves a bare session name by exact match, then by prefix, then as an
+`fnmatch(3)` pattern, so `kill_session("foo")` kills `foobar` when no `foo`
+exists.
+
+`exact=True` matches the name exactly. `exact=False` keeps tmux's matching and
+does not warn. The default, `exact=None`, still matches like tmux but emits a
+{class}`FutureWarning` when a name has no exact match and tmux resolves it by
+prefix or pattern. A name that matches exactly, a session id such as `$1`,
+and a name tmux rejects anyway never warn. A later release will make
+`exact=True` the default.
+
+```python
+# Before: kills "foobar" when "foo" does not exist
+server.kill_session("foo")
+
+# After: raises LibTmuxException unless "foo" exists
+server.kill_session("foo", exact=True)
+
+# Keep prefix or pattern matching, without the warning
+server.kill_session("build-*", exact=False)
+```
+
+#### Set scrollback before the first pane with `new_session(history_limit=)`
+
+{meth}`Server.new_session() <libtmux.Server.new_session>` takes `history_limit`,
+the scrollback for the new session's panes. The first pane gets it on every
+tmux version; before tmux 3.7 a `set_option()` call after `new_session()` only
+reached panes created later. The limit is stored on the new session, so the
+server-wide value and other sessions keep theirs. Before tmux 3.7 the
+server-wide value is raised and restored inside the one tmux command that
+creates the session, and `attach=True` raises `ValueError`; from tmux 3.7 it is
+never touched, because tmux 3.7 trims the history of existing panes when the
+server-wide limit drops. A negative value raises `ValueError`. See
+{ref}`workspace-setup` for a recipe.
 
 
 ### Documentation

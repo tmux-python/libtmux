@@ -118,6 +118,10 @@ def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
     tmux show-environment tests were being interrupted due to a lot of crazy env vars.
+
+    ``TMUX`` and ``TMUX_PANE`` are always removed: a tmux client given neither
+    ``-L`` nor ``-S`` follows ``$TMUX`` to the server the test run was started
+    from, so a bare :class:`~libtmux.Server` would act on that outer session.
     """
     for k in os.environ:
         if not any(
@@ -139,6 +143,10 @@ def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
             ]
         ):
             monkeypatch.delenv(k)
+    # The needle list keeps "tmux" and "pane" for TMUX_TMPDIR and the like;
+    # these two name the outer session and must go.
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
 
 
 @pytest.fixture

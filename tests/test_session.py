@@ -123,7 +123,7 @@ def test_session_rename(session: Session) -> None:
 def test_new_session(server: Server) -> None:
     """Server.new_session creates new session."""
     new_session_name = TEST_SESSION_PREFIX + next(namer)
-    new_session = server.new_session(session_name=new_session_name, detach=True)
+    new_session = server.new_session(session_name=new_session_name)
 
     assert isinstance(new_session, Session)
     assert new_session.session_name == new_session_name
@@ -546,7 +546,7 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     from libtmux.common import tmux_cmd
 
     # Create a new session specifically for this test
-    test_session = server.new_session(detach=True)
+    test_session = server.new_session()
 
     # Store original cmd method
     original_cmd = test_session.cmd
@@ -782,3 +782,49 @@ def test_kill_session_group(server: Server) -> None:
     else:
         with pytest.warns(UserWarning, match="group requires tmux 3.7"):
             session.kill(group=True)
+
+
+def test_select_window_matches_name_exactly(session: Session) -> None:
+    """``select_window('foo')`` does not select a window named ``foobar``."""
+    session.new_window(window_name="foobar")
+    with pytest.raises(exc.LibTmuxException):
+        session.select_window("foo")
+
+    foo = session.new_window(window_name="foo", attach=False)
+    selected = session.select_window("foo")
+    assert selected.window_id == foo.window_id
+
+
+def test_kill_window_matches_name_exactly(server: Server, session: Session) -> None:
+    """``kill_window('foo')`` never kills a ``foobar`` window or session.
+
+    tmux resolves a window name that is not in the current session as a session
+    name, so a bare ``kill-window -t foo`` can destroy a whole other session.
+    """
+    other = server.new_session(session_name="foobar")
+    window = session.new_window(window_name="foobarbaz", attach=False)
+
+    with pytest.raises(exc.LibTmuxException):
+        session.kill_window("foo")
+    assert server.has_session("foobar")
+    assert other.session_id is not None
+    assert window.window_id in [w.window_id for w in session.windows]
+
+    session.kill_window("foobarbaz")
+    assert window.window_id not in [w.window_id for w in session.windows]
+
+
+def test_kill_window_name_never_resolves_to_a_session(server: Server) -> None:
+    """``other.kill_window('victim')`` must not destroy the session ``victim``.
+
+    No prefix is involved: tmux retries a window name that is not in the
+    current session as an exact session name.
+    """
+    victim = server.new_session(session_name="victim")
+    other = server.new_session(session_name="other")
+
+    with pytest.raises(exc.LibTmuxException):
+        other.kill_window("victim")
+
+    assert server.has_session("victim")
+    assert victim.session_id in [s.session_id for s in server.sessions]
