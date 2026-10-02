@@ -21,6 +21,7 @@ TmuxError                         the root: catch this for "anything libtmux rai
     ├── VersionTooLow             tmux is older than libtmux supports
     ├── TmuxTimeout               a tmux client outlived its timeout and was killed
     ├── WaitTimeout               a wait gave up; the condition was not met
+    │   ├── WaitAlternateScreen   Pane.wait_for_text: a full-screen program held the pane
     │   └── PaneRunTimeout        Pane.run: both a WaitTimeout and a TmuxTimeout
     ├── TmuxServerGone            the server was not running when a wait ended
     │   └── TmuxServerNotRunning  Server.raise_if_dead: also a CalledProcessError

@@ -771,8 +771,26 @@ its echo cannot contain what it prints, or anchor the pattern to the whole row:
 
 `wait_for_text` raises {exc}`~libtmux.exc.WaitTimeout` when the text never
 arrives, and the result's `lines_missed` is set if a flood destroyed the anchor
-before the match was found. {meth}`~libtmux.Pane.wait_for_idle` is the wait to
-use when there is no text to look for.
+before the match was found. When a full-screen program held the pane, the
+timeout is the {exc}`~libtmux.exc.WaitAlternateScreen` subclass: no row was
+searched, so waiting again will not help.
+
+Pass `stop=` to end the wait early on a failure marker, and `progress=` to be
+called on every poll tick:
+
+```python
+>>> settled = pane.wait_for_idle(quiet=0.2, timeout=5)
+>>> start = pane.capture_since().cursor
+>>> pane.send_keys("printf '%s%s\\n' build_ failed")
+>>> result = pane.wait_for_text(
+...     'build_done', stop=['build_failed'], since=start, timeout=5
+... )
+>>> result.outcome
+'stopped'
+```
+
+{meth}`~libtmux.Pane.wait_for_idle` is the wait to use when there is no text
+to look for.
 
 :::{seealso}
 - {ref}`api` for the full API reference

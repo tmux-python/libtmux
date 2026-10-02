@@ -721,6 +721,29 @@ class WaitTimeout(LibTmuxException):
     """
 
 
+class WaitAlternateScreen(WaitTimeout):
+    """A text wait timed out while the pane was on the alternate screen.
+
+    Raised by :meth:`Pane.wait_for_text() <libtmux.Pane.wait_for_text>` in
+    place of its plain :exc:`WaitTimeout` when a full-screen program (a pager,
+    an editor, a TUI) held the pane for some of the wait. Such a program
+    repaints the whole grid, so no row is searched while it runs: the pattern
+    was not shown to be absent, it was never looked for. Retrying the same
+    wait will not help; read the screen with
+    :meth:`Pane.capture_pane() <libtmux.Pane.capture_pane>` or leave the
+    program first.
+
+    A :exc:`WaitTimeout`, so existing ``except WaitTimeout`` handlers keep
+    catching it.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> issubclass(exc.WaitAlternateScreen, exc.WaitTimeout)
+    True
+    """
+
+
 class TmuxTimeout(LibTmuxException):
     """A tmux command outlived its ``timeout`` and its client was killed.
 

@@ -382,6 +382,35 @@ reading another process's output, it raises {exc}`~libtmux.exc.PaneLifecycleChan
 
 See {ref}`capture-since` for a walkthrough.
 
+#### `Pane.wait_for_text()` stops early, names the alternate screen, and reports progress
+
+{meth}`Pane.wait_for_text() <libtmux.Pane.wait_for_text>` takes three new
+keyword arguments, and every existing call behaves as before.
+
+`stop=` is a pattern or a list of patterns that mean the wait can never
+succeed, such as `error:` in a build log. A row that matches one ends the wait
+at once and returns it instead of raising, with
+{attr}`TextMatch.outcome <libtmux.capture.TextMatch.outcome>` set to
+`'stopped'` and
+{attr}`~libtmux.capture.TextMatch.stop_index` naming which one hit. When a
+single read holds a `stop` row and a `pattern` row, `stop` wins.
+
+A wait that times out after a full-screen program (a pager, an editor) held the
+pane now raises {exc}`~libtmux.exc.WaitAlternateScreen`, a
+{exc}`~libtmux.exc.WaitTimeout` subclass, because no row was searched while the
+program ran: retrying the same wait cannot help. A wait that matches after the
+program exits reports it through
+{attr}`~libtmux.capture.TextMatch.alternate_screen`.
+
+`progress=` is called with a {class}`~libtmux.capture.WaitProgress`
+(`elapsed`, `timeout`, `remaining`, `alternate_screen`) on every poll tick, so
+a caller waiting up to a minute can report that it is alive. An exception it
+raises ends the wait.
+
+{class}`~libtmux.capture.TextMatch` gains `outcome`, `stop_index` and
+`alternate_screen` after its three existing fields, so attribute access is
+unchanged; code that unpacks it into exactly three names must name the rest.
+
 #### Retrying screen assertions
 
 {func}`~libtmux.test.screen.assert_screen` waits for a pane's screen to match,

@@ -18,6 +18,7 @@ import pytest
 from libtmux import capture, exc
 from libtmux.common import has_gte_version
 from libtmux.pane import Pane
+from libtmux.test.retry import retry_until
 from tests.test_capture_since import (
     _pane_with_history_limit,
     quiesce,
@@ -121,6 +122,133 @@ def test_every_tmux_read_in_a_wait_is_bounded(
 
     assert seen
     assert None not in seen
+
+
+def test_a_stop_pattern_ends_the_wait_early_with_a_stopped_outcome(
+    session: Session,
+) -> None:
+    """A failure marker returns at once, naming the ``stop`` that hit."""
+    pane = _quiet_pane(session, "wait_text_stop")
+    start = pane.capture_since().cursor
+
+    pane.send_keys("echo WAIT_STOP_FAIL_MARK", enter=True)
+    started = time.monotonic()
+    hit = pane.wait_for_text(
+        "WAIT_STOP_NEVER",
+        stop=["WAIT_STOP_OTHER", "WAIT_STOP_FAIL_MARK"],
+        since=start,
+        timeout=30,
+    )
+
+    assert time.monotonic() - started < 10
+    assert hit.outcome == "stopped"
+    assert hit.stop_index == 1
+    assert hit.match.string == "WAIT_STOP_FAIL_MARK"
+
+
+def test_a_pattern_hit_reports_matched_and_no_stop_index(session: Session) -> None:
+    """Without a ``stop`` hit the outcome stays ``matched``."""
+    pane = _quiet_pane(session, "wait_text_matched")
+    start = pane.capture_since().cursor
+
+    pane.send_keys("echo WAIT_MATCHED_MARK", enter=True)
+    hit = pane.wait_for_text(
+        "WAIT_MATCHED_MARK", stop="WAIT_MATCHED_NEVER", since=start, timeout=5
+    )
+
+    assert hit.outcome == "matched"
+    assert hit.stop_index is None
+    assert hit.alternate_screen is False
+
+
+def test_stop_wins_when_one_read_holds_both_a_stop_and_a_pattern_row(
+    session: Session,
+) -> None:
+    """A broad ``pattern`` must not swallow a failure row read beside it."""
+    pane = _quiet_pane(session, "wait_text_tie")
+    start = pane.capture_since().cursor
+
+    pane.send_keys("echo WAIT_TIE_OK; echo WAIT_TIE_BAD", enter=True)
+    quiesce(pane)
+    hit = pane.wait_for_text(
+        "WAIT_TIE_OK", stop=r"WAIT_TIE_BAD", regex=True, since=start, timeout=5
+    )
+
+    assert hit.outcome == "stopped"
+
+
+def _enter_alternate_screen(pane: Pane) -> None:
+    pane.send_keys("printf '\\033[?1049h'", enter=True)
+    retry_until(
+        lambda: pane.cmd("display-message", "-p", "#{alternate_on}").stdout == ["1"], 5
+    )
+
+
+def test_a_timeout_on_the_alternate_screen_raises_wait_alternate_screen(
+    session: Session,
+) -> None:
+    """A TUI that never lets rows be searched is not a missing pattern."""
+    pane = _quiet_pane(session, "wait_text_alt")
+    start = pane.capture_since().cursor
+    _enter_alternate_screen(pane)
+
+    with pytest.raises(exc.WaitAlternateScreen, match="alternate screen") as caught:
+        pane.wait_for_text("WAIT_ALT_NEVER", since=start, timeout=0.3)
+
+    assert isinstance(caught.value, exc.WaitTimeout)
+
+
+def test_a_match_after_the_alternate_screen_ends_reports_that_it_was_seen(
+    session: Session,
+) -> None:
+    """The wait resumes when the program exits and records that it paused."""
+    pane = _quiet_pane(session, "wait_text_alt_exit")
+    start = pane.capture_since().cursor
+    _enter_alternate_screen(pane)
+    left: list[bool] = []
+
+    def leave_once_seen(tick: capture.WaitProgress) -> None:
+        if tick.alternate_screen and not left:
+            left.append(True)
+            pane.send_keys("printf '\\033[?1049l'; echo WAIT_ALT_BACK_MARK", enter=True)
+
+    hit = pane.wait_for_text(
+        "WAIT_ALT_BACK_MARK", since=start, timeout=10, progress=leave_once_seen
+    )
+
+    assert hit.alternate_screen is True
+    assert hit.outcome == "matched"
+
+
+def test_progress_is_called_every_tick_with_elapsed_and_budget(
+    session: Session,
+) -> None:
+    """A callback hears the elapsed time and the timeout on each tick."""
+    pane = _quiet_pane(session, "wait_text_progress")
+    ticks: list[capture.WaitProgress] = []
+
+    with pytest.raises(exc.WaitTimeout):
+        pane.wait_for_text("WAIT_PROGRESS_NEVER", timeout=0.3, progress=ticks.append)
+
+    assert len(ticks) >= 2
+    assert ticks[0].elapsed < 0.25
+    assert [tick.elapsed for tick in ticks] == sorted(tick.elapsed for tick in ticks)
+    assert {tick.timeout for tick in ticks} == {0.3}
+    assert ticks[-1].remaining is not None
+
+
+def test_an_exception_from_progress_ends_the_wait(session: Session) -> None:
+    """A caller can cancel a wait from its callback."""
+    pane = _quiet_pane(session, "wait_text_progress_raise")
+
+    class Cancelled(Exception):
+        pass
+
+    def cancel(tick: capture.WaitProgress) -> None:
+        raise Cancelled
+
+    with pytest.raises(Cancelled):
+        pane.wait_for_text("WAIT_PROGRESS_NEVER", timeout=30, progress=cancel)
 
 
 def test_wait_for_idle_returns_the_output_once_the_screen_settles(

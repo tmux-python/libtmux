@@ -25,6 +25,7 @@ from libtmux.capture import (
     CaptureCursor,
     CaptureSince,
     TextMatch,
+    WaitProgress,
     _capture_since,
     _wait_for_idle,
     _wait_for_text,
@@ -54,6 +55,7 @@ from libtmux.run import _run
 if t.TYPE_CHECKING:
     import sys
     import types
+    from collections.abc import Callable, Sequence
 
     from libtmux._internal.types import StrPath
     from libtmux.run import PaneRunCancel, PaneRunResult
@@ -943,6 +945,8 @@ class Pane(
         timeout: float | None = 30.0,
         since: CaptureCursor | None = None,
         regex: bool = False,
+        stop: str | re.Pattern[str] | Sequence[str | re.Pattern[str]] = (),
+        progress: Callable[[WaitProgress], object] | None = None,
     ) -> TextMatch:
         r"""Block until ``pattern`` appears in output written after an anchor.
 
@@ -987,16 +991,37 @@ class Pane(
             Search rows written after this cursor, taken from
             :meth:`capture_since`.
         regex : bool, optional
-            Treat a string ``pattern`` as a regular expression.
+            Treat a string ``pattern`` as a regular expression; applies to
+            ``stop`` as well.
+        stop : str, re.Pattern or sequence of them, optional
+            Failure markers. The wait ends early, and returns rather than
+            raises, as soon as a row matches one of them, so a build that
+            prints ``error:`` does not hold the caller until ``timeout``. A
+            read that holds both a ``stop`` row and a ``pattern`` row reports
+            the ``stop``. Compared like ``pattern``, row by row, in the same
+            searchable rows.
+        progress : callable, optional
+            Called with a :class:`~libtmux.capture.WaitProgress` once per poll
+            tick (and on the first), so a long wait can report that it is
+            alive and how much budget is left. Its return value is ignored;
+            an exception it raises ends the wait and propagates.
 
         Returns
         -------
         TextMatch
-            ``(match, cursor, lines_missed)``. ``cursor`` resumes after the
-            read that found the match.
+            ``(match, cursor, lines_missed, outcome, stop_index,
+            alternate_screen)``. ``cursor`` resumes after the read that found
+            the match. Check ``outcome``: ``'matched'`` for ``pattern``,
+            ``'stopped'`` for a ``stop`` hit (``stop_index`` says which, and
+            ``match`` is that hit). ``alternate_screen`` is *True* when a
+            full-screen program held the pane for part of the wait.
 
         Raises
         ------
+        libtmux.exc.WaitAlternateScreen
+            When nothing matched within ``timeout`` and the pane was on the
+            alternate screen, so its rows were never searched. A
+            :exc:`~libtmux.exc.WaitTimeout`.
         libtmux.exc.WaitTimeout
             When nothing matched within ``timeout``. Nothing is killed.
         libtmux.exc.TmuxTimeout
@@ -1009,8 +1034,9 @@ class Pane(
         Notes
         -----
         While the pane is on the alternate screen, a full-screen program is
-        repainting the grid and nothing is matched; the wait resumes when
-        the program exits.
+        repainting the grid and nothing is matched, ``stop`` included; the
+        wait resumes when the program exits, and a timeout then raises
+        :exc:`~libtmux.exc.WaitAlternateScreen`.
 
         A flood past ``history-limit`` can destroy the anchor. The result
         then has ``lines_missed=True`` and the visible screen was searched,
@@ -1043,6 +1069,28 @@ class Pane(
         ... ).match.group(1)
         '42'
 
+        ``stop`` ends the wait the moment a failure marker shows, instead of
+        at ``timeout``:
+
+        >>> start = pane.capture_since().cursor
+        >>> pane.send_keys("printf '%s%s\\n' fail ure_marker", enter=True)
+        >>> failed = pane.wait_for_text(
+        ...     'all_good', stop=['failure_marker'], since=start, timeout=5
+        ... )
+        >>> failed.outcome, failed.stop_index
+        ('stopped', 0)
+
+        ``progress`` hears from the wait on every tick:
+
+        >>> ticks = []
+        >>> start = pane.capture_since().cursor
+        >>> pane.send_keys("printf '%s%s\\n' tick ed_marker", enter=True)
+        >>> _ = pane.wait_for_text(
+        ...     'ticked_marker', since=start, timeout=5, progress=ticks.append
+        ... )
+        >>> ticks[0].timeout
+        5
+
         .. versionadded:: 0.63
         """
         return _wait_for_text(
@@ -1051,6 +1099,8 @@ class Pane(
             timeout=timeout,
             since=since,
             regex=regex,
+            stop=stop,
+            progress=progress,
         )
 
     def wait_for_idle(

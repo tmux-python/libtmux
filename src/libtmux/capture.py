@@ -48,6 +48,8 @@ from libtmux import exc
 from libtmux.common import raise_if_stderr
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from libtmux.pane import Pane
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,12 @@ class CaptureSince(t.NamedTuple):
     lines_missed: bool
 
 
+WaitOutcome = t.Literal["matched", "stopped"]
+"""How :meth:`~libtmux.pane.Pane.wait_for_text` returned: a ``pattern`` hit or a
+``stop`` hit. Waits that end any other way raise; see
+:exc:`~libtmux.exc.WaitTimeout` and :exc:`~libtmux.exc.WaitAlternateScreen`."""
+
+
 class TextMatch(t.NamedTuple):
     """The row a wait matched, and where to resume reading from.
 
@@ -115,6 +123,8 @@ class TextMatch(t.NamedTuple):
     ----------
     match : re.Match[str]
         Match against one row of pane text. ``match.string`` is that row.
+        When ``outcome`` is ``'stopped'`` this is the match of the ``stop``
+        pattern, not of ``pattern``.
     cursor : CaptureCursor
         Anchored after the read that found the match. Pass it as ``since``
         to the next wait, or to :meth:`~libtmux.pane.Pane.capture_since`,
@@ -123,11 +133,55 @@ class TextMatch(t.NamedTuple):
         ``True`` when the anchor could not be proven, so the rows searched
         were the visible screen rather than a complete delta. The match is
         real, but it may predate the wait. See :class:`CaptureSince`.
+    outcome : WaitOutcome
+        ``'matched'`` when ``pattern`` hit, ``'stopped'`` when a ``stop``
+        pattern hit first. Defaults to ``'matched'``.
+    stop_index : int or None
+        Zero-based index into ``stop`` of the pattern that hit; *None* when
+        ``outcome`` is ``'matched'``.
+    alternate_screen : bool
+        ``True`` when the pane was on the alternate screen at any read during
+        the wait, because a full-screen program (a pager, an editor) held it
+        for a time. Rows were not searched while it did.
     """
 
     match: re.Match[str]
     cursor: CaptureCursor
     lines_missed: bool
+    outcome: WaitOutcome = "matched"
+    stop_index: int | None = None
+    alternate_screen: bool = False
+
+
+class WaitProgress(t.NamedTuple):
+    """A wait's state at one poll tick, handed to its ``progress`` callback.
+
+    Attributes
+    ----------
+    elapsed : float
+        Seconds since the wait began.
+    timeout : float or None
+        The wait's ``timeout``; *None* when it waits without limit.
+    alternate_screen : bool
+        Whether the pane has been on the alternate screen at any read so far.
+
+    Examples
+    --------
+    >>> WaitProgress(elapsed=1.5, timeout=4.0, alternate_screen=False).remaining
+    2.5
+    >>> WaitProgress(elapsed=1.5, timeout=None, alternate_screen=False).remaining
+    """
+
+    elapsed: float
+    timeout: float | None
+    alternate_screen: bool = False
+
+    @property
+    def remaining(self) -> float | None:
+        """Seconds left of ``timeout``, never below zero; *None* if unbounded."""
+        if self.timeout is None:
+            return None
+        return max(self.timeout - self.elapsed, 0.0)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1184,6 +1238,57 @@ def _first_row_match(
     return None
 
 
+def _compile_stop_patterns(
+    stop: str | re.Pattern[str] | Sequence[str | re.Pattern[str]],
+    *,
+    regex: bool,
+) -> list[re.Pattern[str]]:
+    """Compile the ``stop`` argument of a text wait to a list of patterns.
+
+    A lone string or compiled pattern counts as a list of one, so
+    ``stop='error'`` does not iterate over its letters.
+
+    Examples
+    --------
+    >>> [p.pattern for p in _compile_stop_patterns('abc', regex=False)]
+    ['abc']
+    >>> [p.pattern for p in _compile_stop_patterns(['x', 'y'], regex=True)]
+    ['x', 'y']
+    >>> _compile_stop_patterns((), regex=False)
+    []
+    """
+    if isinstance(stop, (str, re.Pattern)):
+        stop = [stop]
+    return [_compile_wait_pattern(item, regex=regex) for item in stop]
+
+
+def _first_stop_match(
+    compiled: list[re.Pattern[str]],
+    rows: list[str],
+) -> tuple[int, re.Match[str]] | None:
+    r"""Return ``(index, match)`` for the first ``stop`` pattern that hits.
+
+    Patterns are tried in list order, each against every row, so the index is
+    the earliest *pattern* that matched anywhere, as a caller who ordered
+    ``stop`` by severity expects.
+
+    Examples
+    --------
+    >>> hit = _first_stop_match(
+    ...     [re.compile('boom'), re.compile('warn')], ['warn: x', 'boom']
+    ... )
+    >>> hit[0], hit[1].string
+    (0, 'boom')
+    >>> _first_stop_match([], ['anything']) is None
+    True
+    """
+    for index, pattern in enumerate(compiled):
+        found = _first_row_match(pattern, rows)
+        if found is not None:
+            return index, found
+    return None
+
+
 def _poll_delay(previous: float) -> float:
     """Grow a poll delay toward :data:`_POLL_MAX`.
 
@@ -1623,6 +1728,9 @@ def _timed_out(
 ) -> exc.WaitTimeout:
     """Build the error for a wait whose condition never held.
 
+    :exc:`~libtmux.exc.WaitAlternateScreen`, a :exc:`~libtmux.exc.WaitTimeout`,
+    when the pane spent the wait under a full-screen program.
+
     Examples
     --------
     >>> str(_timed_out(pane, 'text', 1.5))
@@ -1634,6 +1742,8 @@ def _timed_out(
             "; the pane was on the alternate screen, which a full-screen "
             "program repaints, so its rows were not searched"
         )
+    if alternate_screen:
+        return exc.WaitAlternateScreen(msg)
     return exc.WaitTimeout(msg)
 
 
@@ -1674,6 +1784,8 @@ def _wait_for_text(
     timeout: float | None = 30.0,
     since: CaptureCursor | None = None,
     regex: bool = False,
+    stop: str | re.Pattern[str] | Sequence[str | re.Pattern[str]] = (),
+    progress: Callable[[WaitProgress], object] | None = None,
 ) -> TextMatch:
     r"""Block until ``pattern`` appears in rows written since an anchor.
 
@@ -1695,7 +1807,9 @@ def _wait_for_text(
     'internal_marker'
     """
     compiled = _compile_wait_pattern(pattern, regex=regex)
-    deadline = None if timeout is None else time.monotonic() + timeout
+    compiled_stop = _compile_stop_patterns(stop, regex=regex)
+    began = time.monotonic()
+    deadline = None if timeout is None else began + timeout
     anchor = (
         since
         if since is not None
@@ -1705,6 +1819,14 @@ def _wait_for_text(
     saw_alternate_screen = False
     settled: _PaneState | None = None
     while True:
+        if progress is not None:
+            progress(
+                WaitProgress(
+                    elapsed=time.monotonic() - began,
+                    timeout=timeout,
+                    alternate_screen=saw_alternate_screen,
+                )
+            )
         if not _unchanged_since(pane, settled, timeout=_remaining(deadline)):
             read = _read_since(pane, anchor, timeout=_remaining(deadline))
             settled = None if read.lines_missed else read.state
@@ -1714,22 +1836,28 @@ def _wait_for_text(
                 # latch: quitting the program resumes an honest wait.
                 saw_alternate_screen = True
             else:
-                found = _first_row_match(
-                    compiled,
-                    _searchable_rows(
-                        read.lines,
-                        anchor_reported=read.anchor_reported,
-                        lines_missed=read.lines_missed,
-                        cursor=anchor,
-                    ),
+                rows = _searchable_rows(
+                    read.lines,
+                    anchor_reported=read.anchor_reported,
+                    lines_missed=read.lines_missed,
+                    cursor=anchor,
                 )
-                if found is not None:
+                # ``stop`` is checked first: one read can hold a failure row
+                # and a success row, and a broad ``pattern`` must not hide
+                # the failure the caller asked to hear about.
+                stopped = _first_stop_match(compiled_stop, rows)
+                found = _first_row_match(compiled, rows)
+                hit = stopped[1] if stopped is not None else found
+                if hit is not None:
                     return TextMatch(
-                        match=found,
+                        match=hit,
                         cursor=_build_cursor(
                             anchor.pane_id, read.state, read.cursor_rows
                         ),
                         lines_missed=read.lines_missed,
+                        outcome="matched" if stopped is None else "stopped",
+                        stop_index=None if stopped is None else stopped[0],
+                        alternate_screen=saw_alternate_screen,
                     )
         if deadline is not None and time.monotonic() >= deadline:
             raise _timed_out(
