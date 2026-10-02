@@ -905,6 +905,10 @@ class Obj:
                 setattr(self, k, v)
 
 
+PANE_LABEL_OPTION = "@name"
+PANE_LABEL_FIELD = "pane_label"
+
+
 @functools.cache
 def get_output_format(
     list_cmd: str = "list-panes",
@@ -979,6 +983,11 @@ def get_output_format(
         formats.append(f)
 
     tmux_format = "".join(f"#{{{n}}}{FORMAT_SEPARATOR}" for n in formats)
+    if list_cmd == "list-panes":
+        # A user option is read as ``#{@name}``; tmux expands it in the same
+        # listing, so labels cost no extra call. See :attr:`Pane.label`.
+        formats.append(PANE_LABEL_FIELD)
+        tmux_format += f"#{{{PANE_LABEL_OPTION}}}{FORMAT_SEPARATOR}"
     return tuple(formats), tmux_format
 
 
@@ -1033,7 +1042,8 @@ def parse_output(
         values = values[:-1]
 
     formatter = dict(zip(formats, values, strict=True))
-    return {k: v for k, v in formatter.items() if v}
+    # An empty label is data ("fetched, none set"), unlike other empty fields.
+    return {k: v for k, v in formatter.items() if v or k == PANE_LABEL_FIELD}
 
 
 def _split_records(stdout: list[str], field_count: int) -> list[str]:

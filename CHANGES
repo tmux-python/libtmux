@@ -175,23 +175,6 @@ Commands that run an interactive client, such as `attach-session`, keep
 detecting the terminal's encoding themselves and do not get `-u`.
 `LIBTMUX_TMUX_FORMAT_SEPARATOR` and the default separator are unchanged.
 
-### None
-
-#### Send data to a tmux command's standard input
-
-{class}`~libtmux.common.tmux_cmd` and the `cmd()` methods of
-{meth}`Server <libtmux.Server.cmd>`, {meth}`Session <libtmux.Session.cmd>`,
-{meth}`Window <libtmux.Window.cmd>` and {meth}`Pane <libtmux.Pane.cmd>` take
-`input=`, a `str` or `bytes` written to the tmux client's standard input.
-Commands that accept `-` as a path read it there, for example
-`server.cmd("load-buffer", "-b", name, "-", input=data)`.
-
-`str` is encoded as UTF-8; `bytes` go through unchanged, so binary data works.
-Standard input is not part of tmux's 16 KiB command size limit, so a payload of
-any size loads. Without `input`, the call runs as before.
-
-### Fixes
-
 #### `Pane.send_keys()` sends text that starts with `-`
 
 {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` ends tmux's option parsing
@@ -230,6 +213,33 @@ with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
 
 ### None
 
+#### Stable pane labels
+
+{meth}`Pane.set_label() <libtmux.Pane.set_label>` stores a label on a pane as
+a tmux user option (`@name` by default), and {attr}`Pane.label
+<libtmux.Pane.label>` reads it back, so `window.panes.get(label="editor")`
+finds a pane by name. A pane title is not a durable name, since any program in
+the pane can rewrite it with an OSC 2 escape; a user option is not touched by
+the terminal. The label rides the same tmux listing that builds each pane, so
+finding one among hundreds costs a single call; it is a snapshot, so call
+{meth}`~libtmux.Pane.refresh` after another client changes it. Pass `option=` to {meth}`~libtmux.Pane.set_label` or
+{meth}`~libtmux.Pane.get_label` to use another `@`-prefixed option.
+
+### None
+
+#### Send data to a tmux command's standard input
+
+{class}`~libtmux.common.tmux_cmd` and the `cmd()` methods of
+{meth}`Server <libtmux.Server.cmd>`, {meth}`Session <libtmux.Session.cmd>`,
+{meth}`Window <libtmux.Window.cmd>` and {meth}`Pane <libtmux.Pane.cmd>` take
+`input=`, a `str` or `bytes` written to the tmux client's standard input.
+Commands that accept `-` as a path read it there, for example
+`server.cmd("load-buffer", "-b", name, "-", input=data)`.
+
+`str` is encoded as UTF-8; `bytes` go through unchanged, so binary data works.
+Standard input is not part of tmux's 16 KiB command size limit, so a payload of
+any size loads. Without `input`, the call runs as before.
+
 #### Paste text of any size with `Pane.paste_text()`
 
 {meth}`Pane.paste_text() <libtmux.Pane.paste_text>` pastes text into a pane
@@ -238,8 +248,6 @@ limit, never reads the text as key names or flags, keeps line feeds and control
 characters intact, and leaves no temporary file or buffer behind. It does not
 send Enter. Use it where {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
 would exceed tmux's 16 KiB command limit.
-
-### None
 
 #### Bounded tmux commands
 
