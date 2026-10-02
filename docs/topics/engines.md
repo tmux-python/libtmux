@@ -414,6 +414,74 @@ but the server received the line. Commands that change state are not undone.
 does, with the same cancellation guarantee: the transport program, `docker` or
 `ssh`, dies with the client.
 
+### Asyncio control mode
+
+{class}`~libtmux.engines.control.aio.AsyncControlModeEngine` is the control-mode
+engine for `async` code: one persistent `tmux -C` client on the event loop, with
+the same attach, routing and ordering rules as the blocking one. Many calls can
+be in flight at once and each gets its own reply:
+
+```python
+>>> import asyncio
+>>> from libtmux.engines import AsyncControlModeEngine, CommandRequest
+>>> async def demo():
+...     async with AsyncControlModeEngine.for_server(server) as engine:
+...         results = await asyncio.gather(
+...             *(
+...                 engine.run(CommandRequest.from_args("display-message", "-p", str(n)))
+...                 for n in range(5)
+...             )
+...         )
+...         return [result.stdout[0] for result in results], engine.generation
+>>> asyncio.run(demo())
+(['0', '1', '2', '3', '4'], 1)
+```
+
+Cancelling a call is safe. tmux still sends the reply, and the reader drops it,
+so the next call gets its own. The command itself may still have run.
+
+**Notifications.** Everything tmux announces, such as `window-add` and
+`session-renamed`, reaches every subscriber. A subscriber that falls more than
+`maxsize` behind loses the newest notifications and finds a
+{class}`~libtmux.engines.control.aio.Lagged` where they would have been:
+
+```python
+>>> import asyncio
+>>> from libtmux.engines import AsyncControlModeEngine, CommandRequest
+>>> async def demo():
+...     async with AsyncControlModeEngine.for_server(server) as engine:
+...         await engine.run(CommandRequest.from_args("display-message", "-p", "up"))
+...         with engine.notifications() as events:
+...             await engine.run(
+...                 CommandRequest.from_args("new-window", "-d", "-n", "noted")
+...             )
+...             async for event in events:
+...                 if event.name == "window-add":
+...                     return event.name
+>>> asyncio.run(demo())
+'window-add'
+```
+
+**Pane output.** {meth}`~libtmux.engines.control.aio.AsyncControlModeEngine.output`
+yields a pane's bytes. The client reads tmux's output without pause, so a slow
+consumer never stalls the pane's own process: at the high watermark the engine
+pauses the pane at tmux (`refresh-client -A %3:pause`), and once the consumer
+has drained to the low watermark it resumes it. tmux throws away what the pane
+prints in between, so a {class}`~libtmux.engines.control.flow.Gap` sits in the
+stream where output is missing. A consumer that needs every byte resynchronises
+there.
+
+**If the client dies**, calls in flight raise
+{exc}`~libtmux.exc.ControlConnectionLost` and the next call reconnects. While
+anything subscribes, the engine reconnects by itself, waiting `0.1 * 2**n`
+seconds (at most five) between failed attempts, then puts a notification named
+`libtmux-reconnected` into every notification stream and a `Gap` into every
+output stream.
+
+Closing the engine ends every stream, fails pending calls with
+{exc}`~libtmux.exc.EngineClosed`, and detaches the client. A client that has not
+exited two seconds later is killed and reaped.
+
 ## Tmux in a container or on another host
 
 {class}`~libtmux.engines.exec.ExecEngine` puts a transport command in front of

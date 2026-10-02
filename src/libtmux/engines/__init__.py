@@ -51,6 +51,7 @@ from libtmux.engines.base import (
     is_command_separator,
 )
 from libtmux.engines.connection import ServerConnection
+from libtmux.engines.control.aio import AsyncControlModeEngine
 from libtmux.engines.control.sync import ControlModeEngine
 from libtmux.engines.exec import AsyncExecEngine, ExecEngine
 from libtmux.engines.instrumentation import (
@@ -62,6 +63,7 @@ from libtmux.engines.instrumentation import (
 from libtmux.engines.subprocess import AsyncSubprocessEngine, SubprocessEngine
 
 __all__ = (
+    "AsyncControlModeEngine",
     "AsyncExecEngine",
     "AsyncSubprocessEngine",
     "AsyncTmuxEngine",

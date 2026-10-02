@@ -32,7 +32,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux import exc
-from libtmux.engines.base import is_command_separator
+from libtmux.engines.base import CommandResult, is_command_separator
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
@@ -528,3 +528,59 @@ class BlockSequenceMonitor:
     def reset(self) -> None:
         """Forget the sequence, as a new connection does."""
         self._last = None
+
+
+def result_from_blocks(
+    cmd: tuple[str, ...],
+    blocks: Sequence[Block],
+) -> CommandResult:
+    r"""Merge the reply blocks one request produced into a :class:`CommandResult`.
+
+    A command group answers with one block per command, and tmux stops at the
+    first error, so the blocks are the commands that ran. Output lines are
+    decoded as UTF-8 with ``backslashreplace``, trailing blanks come off stdout,
+    and tmux's ``parse error: `` prefix, which only a control client sees, is
+    removed so the message matches what the tmux CLI and every other engine
+    report.
+
+    Parameters
+    ----------
+    cmd : tuple of str
+        The argv to report as :attr:`CommandResult.cmd`.
+    blocks : sequence of Block
+        The replies, in order.
+
+    Returns
+    -------
+    CommandResult
+        ``returncode`` is 1 when any block was an error, else 0.
+
+    Examples
+    --------
+    >>> ok = Block(1, 2, 1, False, (b"a", b"b", b""))
+    >>> result_from_blocks(("tmux", "x"), [ok])
+    CommandResult(cmd=('tmux', 'x'), stdout=('a', 'b'), stderr=(), returncode=0)
+
+    >>> bad = Block(1, 3, 1, True, (b"parse error: unknown command: nope",))
+    >>> result_from_blocks(("tmux", "nope"), [bad]).stderr
+    ('unknown command: nope',)
+    """
+    stdout: list[str] = []
+    stderr: list[str] = []
+    failed = False
+    for block in blocks:
+        lines = [line.decode("utf-8", "backslashreplace") for line in block.body]
+        if block.is_error:
+            failed = True
+            lines[:1] = [lines[0].removeprefix("parse error: ")] if lines else []
+            stderr += [line for line in lines if line]
+        else:
+            stdout += lines
+    while stdout and stdout[-1] == "":
+        stdout.pop()
+    return CommandResult(
+        cmd=cmd,
+        stdout=tuple(stdout),
+        stderr=tuple(stderr),
+        returncode=1 if failed else 0,
+    )

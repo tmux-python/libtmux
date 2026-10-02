@@ -128,6 +128,30 @@ such as `docker exec` or `ssh`, and its cancellation takes the transport program
 down with the client. {class}`~libtmux.Server` still takes only a synchronous
 engine and raises {exc}`~libtmux.exc.AsyncEngineMismatch` for these.
 
+#### Async control-mode engine (#739)
+
+{class}`~libtmux.engines.control.aio.AsyncControlModeEngine` keeps one `tmux -C`
+client open on the event loop and sends every command down it. Replies are
+matched to callers in order, so hundreds of calls can be in flight at once, and
+cancelling one cannot misalign the rest: tmux's reply is still read and
+dropped. Commands that wait, such as `wait-for` and `run-shell`, run in a
+subprocess so they cannot hold the connection.
+
+The engine also reports what tmux says. {meth}`~libtmux.engines.control.aio.AsyncControlModeEngine.notifications`
+gives every subscriber the notifications as they arrive, and a subscriber that
+falls behind finds a {class}`~libtmux.engines.control.aio.Lagged` in the stream
+where notifications were dropped, never a silent gap. If the client dies, the
+engine reconnects with a growing delay, tells its subscribers, and counts the
+connections in `generation`. Closing it detaches the client and leaves no tmux
+process behind. `prefix=` runs the one client through `docker exec` or `ssh`.
+
+{meth}`~libtmux.engines.control.aio.AsyncControlModeEngine.output` streams a
+pane's output with a bounded queue. When the consumer falls behind, the pane is
+paused at tmux and a {class}`~libtmux.engines.control.flow.Gap` marks the output
+tmux discarded, so loss is never silent and memory stays bounded.
+{meth}`~libtmux.engines.control.aio.AsyncControlModeEngine.watch_output` wakes a
+waiter when a pane prints, which is how a wait for text avoids polling.
+
 #### `timeout` and `input` on commands (#739)
 
 {class}`~libtmux.engines.base.CommandRequest`,

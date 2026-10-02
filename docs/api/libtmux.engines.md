@@ -67,6 +67,20 @@ is the awaitable form for `async` code. It implements
    :members:
 ```
 
+{class}`~libtmux.engines.control.aio.AsyncControlModeEngine` is its asyncio
+form, and the I/O-free watermark policy behind its output streams is
+{class}`~libtmux.engines.control.flow.Watermark`.
+
+```{eval-rst}
+.. automodule:: libtmux.engines.control.aio
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: libtmux.engines.control.flow
+   :members:
+```
+
 ## Other hosts
 
 {class}`~libtmux.engines.exec.AsyncExecEngine` is the awaitable form of

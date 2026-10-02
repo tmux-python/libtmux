@@ -482,29 +482,8 @@ class ControlModeEngine:
         request: CommandRequest,
         blocks: Sequence[protocol.Block],
     ) -> CommandResult:
-        stdout: list[str] = []
-        stderr: list[str] = []
-        failed = False
-        for block in blocks:
-            lines = [line.decode("utf-8", "backslashreplace") for line in block.body]
-            if block.is_error:
-                failed = True
-                # tmux prefixes a command it could not parse with "parse
-                # error: " on a control client only; the CLI prints the bare
-                # message, which is what every other engine reports.
-                lines[:1] = [lines[0].removeprefix("parse error: ")] if lines else []
-                stderr += [line for line in lines if line]
-            else:
-                stdout += lines
-        while stdout and stdout[-1] == "":
-            stdout.pop()
         cmd = self.command_line(request)
-        result = CommandResult(
-            cmd=cmd,
-            stdout=tuple(stdout),
-            stderr=tuple(stderr),
-            returncode=1 if failed else 0,
-        )
+        result = protocol.result_from_blocks(cmd, blocks)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "tmux control command completed",
