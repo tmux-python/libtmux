@@ -143,6 +143,22 @@ class ControlModeError(LibTmuxException):
     """A control-mode connection failed."""
 
 
+class EngineError(LibTmuxException):
+    """An engine could not run a command: the transport failed, not tmux."""
+
+
+class EngineClosed(EngineError):
+    """A command reached an engine after :meth:`close` ran."""
+
+
+class ControlConnectionLost(ControlModeError, EngineError):
+    """The ``tmux -C`` client exited while a command was waiting for its reply.
+
+    tmux may or may not have run the command. The message carries the tail of
+    the client's stderr, where tmux reports ``server exited unexpectedly``.
+    """
+
+
 class ControlProtocolError(ControlModeError):
     """tmux's control-mode output is malformed or out of sequence.
 

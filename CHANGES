@@ -101,13 +101,29 @@ failure stays data on the result; `raise_for_status()` turns it into
 `stderr`. {meth}`Server.cmd() <libtmux.Server.cmd>` still returns a
 {class}`~libtmux.common.tmux_cmd` and is unchanged.
 
+#### Control-mode engine (#739)
+
+{class}`~libtmux.engines.control.sync.ControlModeEngine` runs commands over one
+persistent `tmux -C` client instead of forking tmux for each. Pass it as
+`Server(engine=ControlModeEngine())`. A command takes about 0.1 ms instead of 2
+to 3 ms, and 601 commands start two processes instead of 601. It attaches to an
+existing session and never creates one, and commands that wait (`run-shell`,
+`wait-for`, a non-detached `new-session`) run in a subprocess. See {ref}`engines`
+for the trade-offs.
+
+The client sends `refresh-client -f no-output`, so an idle engine cannot stall a
+pane that prints heavily.
+
+The failures are {exc}`~libtmux.exc.EngineError` (the transport failed),
+{exc}`~libtmux.exc.EngineClosed`, {exc}`~libtmux.exc.ControlConnectionLost`, and
+{exc}`~libtmux.exc.ControlProtocolError`.
+
 #### Control-mode exceptions (#739)
 
 {exc}`~libtmux.exc.ControlModeError` is the base for control-mode failures, and
 {exc}`~libtmux.exc.ControlProtocolError` marks output from `tmux -C` that is
 malformed or out of sequence. The parser behind them lives in
-`libtmux.engines.control.protocol`, which stays private until a control-mode
-engine ships.
+`libtmux.engines.control.protocol` and is not public API.
 
 #### Observing what an engine runs (#739)
 

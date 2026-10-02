@@ -50,6 +50,7 @@ from libtmux.engines.base import (
     is_command_separator,
 )
 from libtmux.engines.connection import ServerConnection
+from libtmux.engines.control.sync import ControlModeEngine
 from libtmux.engines.instrumentation import (
     CountingSink,
     InstrumentedEngine,
@@ -62,6 +63,7 @@ __all__ = (
     "CommandRequest",
     "CommandResult",
     "CommandSeparator",
+    "ControlModeEngine",
     "CountingSink",
     "InstrumentedEngine",
     "ServerConnection",

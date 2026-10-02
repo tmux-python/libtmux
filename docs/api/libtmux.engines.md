@@ -56,6 +56,13 @@ single place either is computed.
    :members:
 ```
 
+## Control mode
+
+```{eval-rst}
+.. automodule:: libtmux.engines.control.sync
+   :members:
+```
+
 ## Observing an engine
 
 {class}`~libtmux.engines.instrumentation.InstrumentedEngine` wraps an engine and

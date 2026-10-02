@@ -257,6 +257,75 @@ dispatch can find the boundaries while every other engine ignores them. The
 default {class}`~libtmux.engines.subprocess.SubprocessEngine` sends one command
 per dispatch and has no use for them.
 
+## Control mode
+
+{class}`~libtmux.engines.control.sync.ControlModeEngine` runs every command over
+one persistent `tmux -C` client instead of forking tmux per command. Reach for
+it when a program issues many commands, such as a loop over panes: a command
+costs about a tenth of a millisecond instead of two or three, and the program
+starts one tmux process instead of one per command.
+
+```python
+>>> from libtmux.engines import ControlModeEngine
+>>> from libtmux.server import Server
+>>> controlled = Server(socket_name=server.socket_name, engine=ControlModeEngine())
+>>> controlled.cmd("display-message", "-p", "over control").stdout
+['over control']
+>>> controlled.engine.generation
+1
+>>> controlled.engine.close()
+```
+
+Nothing else changes: {meth}`Server.cmd() <libtmux.Server.cmd>` returns the same
+{class}`~libtmux.common.tmux_cmd`, and the object API works as before. Close the
+engine when you are done, or use it as a context manager; closing detaches the
+client and reaps the process.
+
+What to know before choosing it:
+
+- **It attaches; it never creates.** The client joins an existing session whose
+  `destroy-unattached` option is off, because a bare `tmux -C` creates a
+  throwaway session on your server. With no such session, commands run in a
+  subprocess until one exists, so `server.new_session()` works as the first call.
+- **Commands that wait run in a subprocess.** `run-shell` without `-b`,
+  `wait-for`, `confirm-before`, a non-detached `new-session` and similar would
+  hold every command behind them on one connection, so the engine forks for
+  those and the result is the same type.
+- **Replies are matched to requests in order**, and tmux's command numbers are
+  checked to increase. A `;` command group is one result, and tmux drops the
+  commands after the first error in it.
+- **Failures are loud.** If the client exits before replying, the call raises
+  {exc}`~libtmux.exc.ControlConnectionLost` with the tail of the client's stderr;
+  malformed output raises {exc}`~libtmux.exc.ControlProtocolError` and the
+  connection is discarded. The next call reconnects.
+- **The client receives no pane output.** It sends `refresh-client -f no-output`
+  after attaching, because nothing reads between calls and a pane printing into
+  an unread pipe stalls on most tmux builds.
+
+### Cost
+
+`scripts/bench/engine_latency.py` runs the same requests through both engines on
+a private server and prints percentiles and process counts as JSON:
+
+```console
+$ TMUX_TMPDIR=/tmp/lt-en uv run scripts/bench/engine_latency.py --calls 300
+```
+
+300 calls each of `display-message -p` and `list-panes -a` (2 sessions), on a
+loaded development machine (load average 10), milliseconds:
+
+| tmux | engine | `display-message` p50 | p95 | `list-panes -a` p50 | p95 | processes for 601 commands |
+| ---- | ------ | --------------------: | --: | ------------------: | --: | -------------------------: |
+| 3.2a | subprocess | 2.59 | 3.99 | 2.31 | 3.90 | 601 |
+| 3.2a | control | 0.07 | 0.13 | 0.10 | 0.18 | 2 |
+| 3.7c | subprocess | 1.65 | 2.24 | 1.83 | 2.82 | 601 |
+| 3.7c | control | 0.09 | 0.16 | 0.11 | 0.19 | 2 |
+| 3.8-rc | subprocess | 2.40 | 3.48 | 2.35 | 3.98 | 601 |
+| 3.8-rc | control | 0.21 | 0.40 | 0.23 | 0.39 | 2 |
+
+The two control processes are the `list-sessions` probe that picks the session
+and the client itself. Connecting costs about 3 to 6 ms once.
+
 ## What an engine does not change
 
 An engine chooses *how* a command runs, not what libtmux does with the answer.
