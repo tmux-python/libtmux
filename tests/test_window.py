@@ -1390,3 +1390,65 @@ def test_select_layout_mirrored_needs_tmux_3_5(session: Session) -> None:
     else:
         with pytest.raises(exc.VersionTooLow):
             window.select_layout("main-vertical-mirrored")
+
+
+def test_split_with_layout_applies_layout(session: Session) -> None:
+    """Verify ``layout=`` re-applies the layout after the split."""
+    window = session.new_window()
+    window.split()
+
+    window.split(layout="even-horizontal")
+
+    assert len(window.panes) == 3
+    assert {pane.pane_top for pane in window.panes} == {"0"}
+
+
+def test_split_layout_recovers_from_no_space(session: Session) -> None:
+    """Verify a cramped window is re-laid-out and the split retried.
+
+    Plain splits halve the active pane, so a window of any size runs out
+    of space after a few; the loop finds that point instead of assuming it.
+    """
+    window = session.new_window()
+    with pytest.raises(exc.LibTmuxException, match="no space for"):
+        for _ in range(30):
+            window.split()
+    cramped = len(window.panes)
+
+    pane = window.split(layout="tiled")
+
+    assert len(window.panes) == cramped + 1
+    assert pane in window.panes
+
+
+def test_split_rejects_unknown_layout_before_splitting(session: Session) -> None:
+    """Verify a bad layout name raises before a pane is created.
+
+    tmux 3.3a exits the whole server on an unrecognized layout name.
+    """
+    window = session.new_window()
+
+    with pytest.raises(ValueError, match="unrecognized layout"):
+        window.split(layout="tild")
+
+    assert len(window.panes) == 1
+
+
+def test_split_many_creates_panes_and_keeps_layout(session: Session) -> None:
+    """Verify ``split_many`` adds *count* panes past the plain-split limit."""
+    window = session.new_window()
+
+    panes = window.split_many(10, layout="tiled")
+
+    assert len(panes) == 10
+    assert len({pane.pane_id for pane in panes}) == 10
+    assert len(window.panes) == 11
+    assert window.split_many(0) == []
+
+
+def test_split_many_rejects_negative_count(session: Session) -> None:
+    """Verify a negative count raises instead of silently adding nothing."""
+    window = session.new_window()
+
+    with pytest.raises(ValueError, match="must not be negative"):
+        window.split_many(-1)

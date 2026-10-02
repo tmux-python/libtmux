@@ -213,6 +213,22 @@ with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
 
 ### None
 
+#### Splits that keep a layout and fan out to N panes
+
+{meth}`Window.split() <libtmux.Window.split>` and
+{meth}`Pane.split() <libtmux.Pane.split>` take `layout=`, which re-applies a
+layout such as `"tiled"` after the split. Every split halves a pane, so
+repeated plain splits of one window fail with tmux's "no space for new pane"
+after a handful of panes; with `layout=`, a split that hits that error applies
+the layout and is tried once more. A layout name tmux does not recognize now
+raises {exc}`ValueError` before any pane is created, because tmux 3.3a exits
+the whole server on one.
+
+{meth}`Window.split_many() <libtmux.Window.split_many>` adds N panes in one
+call and keeps the layout applied between splits.
+
+### None
+
 #### Stable pane labels
 
 {meth}`Pane.set_label() <libtmux.Pane.set_label>` stores a label on a pane as
@@ -224,8 +240,6 @@ the terminal. The label rides the same tmux listing that builds each pane, so
 finding one among hundreds costs a single call; it is a snapshot, so call
 {meth}`~libtmux.Pane.refresh` after another client changes it. Pass `option=` to {meth}`~libtmux.Pane.set_label` or
 {meth}`~libtmux.Pane.get_label` to use another `@`-prefixed option.
-
-### None
 
 #### Send data to a tmux command's standard input
 
