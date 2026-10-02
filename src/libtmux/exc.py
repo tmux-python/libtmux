@@ -979,6 +979,13 @@ class TmuxServerNotRunning(TmuxServerGone, subprocess.CalledProcessError):
     >>> isinstance(err, exc.TmuxServerGone), isinstance(err, OSError)
     (True, False)
 
+    tmux's own message, when it gave one, follows, naming the socket it could
+    not reach:
+
+    >>> err = exc.TmuxServerNotRunning(1, ["tmux"], stderr="no server at /tmp/w")
+    >>> print(err)
+    tmux server is not running (list-sessions exited 1): no server at /tmp/w
+
     .. versionadded:: 0.63
     """
 
@@ -996,8 +1003,12 @@ class TmuxServerNotRunning(TmuxServerGone, subprocess.CalledProcessError):
         self.channel = ""
 
     def __str__(self) -> str:
-        """Render the probe's exit status."""
-        return f"tmux server is not running (list-sessions exited {self.returncode})"
+        """Render the probe's exit status, then tmux's own diagnostic."""
+        message = f"tmux server is not running (list-sessions exited {self.returncode})"
+        detail = (self.stderr or "").strip()
+        if detail:
+            message += f": {detail}"
+        return message
 
 
 class VariableUnpackingError(LibTmuxException):

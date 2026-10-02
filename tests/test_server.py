@@ -836,6 +836,15 @@ def test_raise_if_dead_no_server_raises(server: Server) -> None:
     assert excinfo.value.returncode != 0
 
 
+def test_raise_if_dead_message_names_the_socket(server: Server) -> None:
+    """``raise_if_dead``'s message carries tmux's diagnostic, which names the socket."""
+    with pytest.raises(exc.TmuxServerNotRunning) as excinfo:
+        server.raise_if_dead()
+
+    assert server.socket_name is not None
+    assert server.socket_name in str(excinfo.value)
+
+
 def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
     """Verify new_session() does not raise if tmux server is alive."""
     server.new_session()
