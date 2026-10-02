@@ -1765,3 +1765,36 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_fetch_sessions_no_server_raises(server: Server) -> None:
+    """``fetch_sessions`` raises where ``sessions`` stays lenient."""
+    assert server.sessions == []
+    with pytest.raises(exc.ListCommandFailed) as excinfo:
+        server.fetch_sessions()
+    assert excinfo.value.list_cmd == "list-sessions"
+    assert isinstance(excinfo.value, exc.LibTmuxException)
+    assert isinstance(excinfo.value.__cause__, exc.LibTmuxException)
+
+
+@pytest.mark.parametrize("method", ["fetch_windows", "fetch_panes"])
+def test_fetch_all_no_server_raises(server: Server, method: str) -> None:
+    """Window and pane strict listings raise on a daemon that is not up."""
+    with pytest.raises(exc.ListCommandFailed):
+        getattr(server, method)()
+
+
+def test_fetch_strict_matches_lenient_when_alive(
+    server: Server,
+    session: Session,
+) -> None:
+    """With a live server the strict and lenient views agree."""
+    assert [s.session_id for s in server.fetch_sessions()] == [
+        s.session_id for s in server.sessions
+    ]
+    assert [w.window_id for w in server.fetch_windows()] == [
+        w.window_id for w in server.windows
+    ]
+    assert [p.pane_id for p in server.fetch_panes()] == [
+        p.pane_id for p in server.panes
+    ]

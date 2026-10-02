@@ -45,6 +45,19 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Strict listings: tell "no rows" from "tmux unreachable"
+
+{attr}`Server.sessions <libtmux.Server.sessions>` returns an empty list when
+tmux cannot be queried, so code that reconciles saved state against it can
+mistake a dead server for "every session is gone". The new
+{meth}`Server.fetch_sessions() <libtmux.Server.fetch_sessions>`,
+{meth}`~libtmux.Server.fetch_windows` and {meth}`~libtmux.Server.fetch_panes`
+return the same objects as lists but raise {exc}`libtmux.exc.ListCommandFailed`
+(a {exc}`~libtmux.exc.LibTmuxException`) when the `list-*` command fails. The
+lenient properties are unchanged.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
