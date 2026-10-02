@@ -974,6 +974,18 @@ class NoActivePane(PaneError):
         super().__init__("No active pane found")
 
 
+class FieldNotReported(LibTmuxException):
+    """A typed field was read from an object whose listing never carried it.
+
+    The object was built by hand, or listed before tmux knew the field.
+    Calling ``refresh()`` on an object that exists reads it again.
+    """
+
+    def __init__(self, field: str, *args: object) -> None:
+        self.field = field
+        super().__init__(f"{field} was not reported for this object")
+
+
 class PaneNotFound(PaneError):
     """Pane not found."""
 

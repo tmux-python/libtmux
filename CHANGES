@@ -177,6 +177,23 @@ passes as an ordinary argument can never become one by accident.
 
 See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
+#### Read numeric fields as numbers with `typed`
+
+tmux reports every format field as text, so `pane.pane_width` is
+`str | None` and `n: int = pane.pane_width` fails `mypy --strict`. Every `Pane`,
+`Window`, `Session`, and `Client` now has a `typed` view of its numeric and
+flag fields: `pane.typed.pane_width` is `int`, `pane.typed.pane_active` is
+`bool`, and the view reads the object's current values, so it follows
+`refresh()`. The `str | None` fields are unchanged, and nothing that reads them
+needs to move.
+
+A field is `int` or `bool` when tmux reports it for every live object on every
+supported version. A field tmux leaves empty for some live objects, such as
+`pane_dead_status` on a running pane, or one that tmux gained after 3.2a, is
+`int | None` or `bool | None`. Reading a non-optional field from an object that
+was never listed raises {exc}`~libtmux.exc.FieldNotReported`. `Client.typed`
+adds the `client_*` fields, all optional. See {ref}`api-fields`.
+
 #### Read only what a pane wrote since you last looked (#740)
 
 {meth}`Pane.capture_since() <libtmux.Pane.capture_since>` returns the rows a

@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from libtmux import exc
 from libtmux._compat import LooseVersion
 from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.fields import ObjFields
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -864,6 +865,16 @@ class Obj:
     window_width: str | None = None
     window_zoomed_flag: str | None = None
     wrap_flag: str | None = None
+
+    @property
+    def typed(self) -> ObjFields:
+        """Read the numeric and flag fields as ``int`` and ``bool``.
+
+        The dataclass fields keep tmux's text. ``typed`` reads the same
+        values, parsed, and reads them live, so it follows :meth:`refresh`.
+        See :mod:`libtmux.fields` for which fields can be ``None``.
+        """
+        return ObjFields(self)
 
     def _refresh(
         self,

@@ -12,6 +12,7 @@ import logging
 import typing as t
 
 from libtmux import exc
+from libtmux.fields import ClientFields
 from libtmux.neo import Obj, fetch_obj
 
 if t.TYPE_CHECKING:
@@ -122,6 +123,14 @@ class Client(Obj):
     #
     # Computed properties
     #
+    @property
+    def typed(self) -> ClientFields:
+        """Read the numeric and flag fields, ``client_*`` included, parsed.
+
+        See :attr:`libtmux.neo.Obj.typed`.
+        """
+        return ClientFields(self)
+
     @property
     def attached_session(self) -> Session | None:
         """Return the :class:`Session` this client is currently attached to.
