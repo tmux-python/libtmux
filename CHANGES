@@ -183,6 +183,28 @@ tmux discarded, so loss is never silent and memory stays bounded.
 {meth}`~libtmux.engines.control.aio.AsyncControlModeEngine.watch_output` wakes a
 waiter when a pane prints, which is how a wait for text avoids polling.
 
+#### Stream a pane's output from async code (#739)
+
+`async for item in PaneStream(engine, pane_id)` yields what a pane prints as
+`bytes`, in order, and a {class}`~libtmux.aio.stream.Gap` wherever output was
+discarded. It needs {class}`~libtmux.engines.control.aio.AsyncControlModeEngine`.
+A consumer that falls behind cannot stall the pane: at a high watermark the pane
+is paused, at a low one it is resumed, and the output tmux throws away in
+between is reported as a `Gap` instead of being lost silently. A consumer that
+needs every byte reads the pane's screen on a `Gap`.
+`policy="unbounded"` never pauses and holds whatever is unread.
+
+#### Async `capture_since` and `wait_for_text` (#739)
+
+{func}`~libtmux.aio.capture.capture_since` and
+{func}`~libtmux.aio.capture.wait_for_text` are the awaitable forms of
+{meth}`Pane.capture_since() <libtmux.Pane.capture_since>` and
+{meth}`Pane.wait_for_text() <libtmux.Pane.wait_for_text>`, and read and write
+the same cursors. With a control-mode engine the wait does not poll: pane output
+wakes it, and it decides from a rendered capture, so it finds text within
+milliseconds without a tmux command per tick. Cancelling a wait leaves no
+subscription and no tmux process behind.
+
 #### `timeout` and `input` on commands (#739)
 
 {class}`~libtmux.engines.base.CommandRequest`,

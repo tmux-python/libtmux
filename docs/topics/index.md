@@ -67,6 +67,12 @@ Automatic cleanup with temporary sessions and windows.
 Swap how tmux commands execute: record, fake, or retarget the binary.
 :::
 
+:::{grid-item-card} Asyncio
+:link: asyncio
+:link-type: doc
+Stream pane output and wait for text without blocking the event loop.
+:::
+
 :::{grid-item-card} Options & Hooks
 :link: options_and_hooks
 :link-type: doc
@@ -104,6 +110,7 @@ automation_patterns
 context_managers
 options_and_hooks
 engines
+asyncio
 clients
 format-tokens
 ```

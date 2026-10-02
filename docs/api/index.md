@@ -103,6 +103,12 @@ Dataclass-based query interface.
 How tmux commands are executed, and how to swap that out.
 :::
 
+:::{grid-item-card} Asyncio
+:link: libtmux.aio
+:link-type: doc
+Pane output streams and waits for `async` code.
+:::
+
 :::{grid-item-card} Options
 :link: libtmux.options
 :link-type: doc
@@ -187,6 +193,7 @@ Pane <libtmux.pane>
 Client <libtmux.client>
 Common <libtmux.common>
 Engine <libtmux.engines>
+Asyncio <libtmux.aio>
 Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
