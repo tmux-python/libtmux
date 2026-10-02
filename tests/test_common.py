@@ -11,7 +11,7 @@ import typing as t
 import pytest
 
 import libtmux
-from libtmux import exc
+from libtmux import common, exc
 from libtmux._compat import LooseVersion
 from libtmux.common import (
     TMUX_MAX_VERSION,
@@ -27,6 +27,7 @@ from libtmux.common import (
     session_check_name,
     tmux_cmd,
 )
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -762,3 +763,72 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     result = parse_output(line, "list-sessions", tmux_version)
     assert isinstance(result, dict)
     assert "session_id" in result
+
+
+def _debug_argvs(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        str(record.tmux_cmd)
+        for record in caplog.records
+        if record.name == "libtmux.common" and hasattr(record, "tmux_cmd")
+    ]
+
+
+def test_logged_argv_masks_environment_values_by_default(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify an ``environment=`` secret never reaches a log record."""
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        session = server.new_session(
+            session_name="redact_env",
+            environment={"API_KEY": "sekrit-value"},
+        )
+        session.new_window(environment={"OTHER": "sekrit-two"})
+        session.set_environment("THIRD", "sekrit-three")
+
+    argvs = _debug_argvs(caplog)
+    assert any("API_KEY=***" in argv for argv in argvs)
+    assert any("OTHER=***" in argv for argv in argvs)
+    assert any("THIRD" in argv for argv in argvs)
+    assert not any("sekrit" in argv for argv in argvs)
+    assert "sekrit" not in caplog.text
+
+
+def test_set_argv_redactor_masks_send_keys_and_resets(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify a custom redactor applies, and ``None`` restores the default."""
+    pane = server.new_session(session_name="redact_keys").active_pane
+    assert pane is not None
+
+    common.set_argv_redactor(
+        lambda argv: common.redact_send_keys(common.redact_env_values(argv)),
+    )
+    try:
+        with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+            pane.send_keys("echo typed-secret")
+        assert not any("typed-secret" in a for a in _debug_argvs(caplog))
+    finally:
+        common.set_argv_redactor(None)
+
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        pane.send_keys("echo typed-visible")
+    assert any("typed-visible" in a for a in _debug_argvs(caplog))
+
+
+def test_redaction_does_not_change_the_argv_tmux_receives(server: Server) -> None:
+    """Verify the pane still gets the real environment value."""
+    session = server.new_session(
+        session_name="redact_real",
+        environment={"API_KEY": "sekrit-value"},
+    )
+    pane = session.active_pane
+    assert pane is not None
+    pane.send_keys("echo $API_KEY")
+
+    def printed() -> bool:
+        return "sekrit-value" in "\n".join(pane.capture_pane())
+
+    assert retry_until(printed)
