@@ -129,6 +129,77 @@ for the flags alone:
 `copy_mode_cmd=...`; calling it with no flag raises `ValueError` to
 prevent silent no-ops.
 
+### Type text or paste it
+
+{meth}`~libtmux.Pane.send_keys` types: tmux reads the string as key presses, so
+it suits commands and short text. {meth}`~libtmux.Pane.paste_text` pastes:
+tmux hands the whole string to the program in the pane as one block, so it
+suits large text and multi-line blocks. Pick by what you are sending, not by
+how it looks.
+
+Text that starts with `-` or ends in `;` is still text for `send_keys`; neither
+is read as a flag or a command separator:
+
+```python
+>>> from libtmux.test.retry import retry_until
+
+>>> pane = window.split(shell='cat')
+
+>>> pane.send_keys('- item;', literal=True)
+
+>>> retry_until(lambda: '- item;' in pane.capture_pane(), raises=True)
+True
+```
+
+tmux refuses a command above 16 KiB, and `send_keys` raises tmux's refusal
+instead of dropping the text. Nothing reaches the pane, and no Enter follows:
+
+```python
+>>> from libtmux import exc
+
+>>> block = 'a line of text\n' * 1500
+
+>>> len(block) > 16 * 1024
+True
+
+>>> try:
+...     pane.send_keys(block, literal=True)
+... except exc.LibTmuxException as error:
+...     print(error)
+send-keys: ...
+```
+
+`paste_text` has no such limit. It sends the text as it is, newlines and control
+characters included, and does not press Enter; call `pane.enter()` when the
+text should run:
+
+```python
+>>> from libtmux.test.retry import retry_until
+
+>>> pane = window.split(shell='cat')
+
+>>> block = 'a line of text\n' * 1500
+
+>>> pane.paste_text(block + 'last line\n')
+
+>>> retry_until(lambda: 'last line' in pane.capture_pane(), raises=True)
+True
+```
+
+| | `send_keys` | `paste_text` |
+| --- | --- | --- |
+| tmux reads the text as | key presses | data |
+| Size limit | 16 KiB | none |
+| Enter | pressed unless `enter=False` | never pressed |
+| Receiving program sees | typed keys | one paste (bracketed, when it asked) |
+| Reach for it | commands, short text, key names such as `C-c` | large text, multi-line blocks, text you do not control |
+
+This is tmux's own split: `send-keys` for keys, a paste buffer for text.
+`paste_text` runs the buffer steps for you. It loads the text into a uniquely
+named buffer over standard input, so no temporary file is written and the text
+stays out of the command line, pastes it, and deletes the buffer, also when
+the paste fails.
+
 ## Capturing output
 
 {meth}`~libtmux.Pane.capture_pane` reads the pane's screen back to you as a list
