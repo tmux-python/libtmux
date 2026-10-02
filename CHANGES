@@ -584,6 +584,18 @@ and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
 share one connection. A `colors=` value other than `256` or `88` raises
 {exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
 
+#### `Server(tmux_bin=...)` rejects values that are not a path
+
+`tmux_bin` is annotated `str | Path`, but the constructor ran `str()` on
+whatever it received, so `Server(tmux_bin=["docker", "exec", "c", "tmux"])`
+built a server whose binary was the text of the list and failed on the first
+command with {exc}`~libtmux.exc.TmuxCommandNotFound`. `Server()` and
+{meth}`Server.owned() <libtmux.Server.owned>` now raise `TypeError` at
+construction for anything that is not a `str` or an `os.PathLike[str]`. To run
+tmux in a container or over ssh, pass `Server(engine=ExecEngine.docker(...))`
+instead; see {class}`~libtmux.engines.exec.ExecEngine`. The annotation widens from `Path` to `os.PathLike[str]`; every value that
+worked before still works.
+
 #### `active_pane` is typed `Pane`, not `Pane | None`
 
 `Window.active_pane` and `Session.active_pane` returned `Pane | None`, so every
