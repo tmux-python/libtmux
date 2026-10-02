@@ -75,6 +75,12 @@ tmux previously read them as `send-keys` flags and delivered nothing.
 separator and delivered `echo A` without it. A `;` inside the text was
 unaffected.
 
+#### `Server.set_buffer()` stores data that starts with `-` or ends in `;`
+
+{meth}`Server.set_buffer() <libtmux.Server.set_buffer>` ends tmux's option
+parsing before the data and escapes a final `;`. `-x` previously raised
+`unknown flag`, and `echo A;` stored `echo A`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
