@@ -154,6 +154,54 @@ running. The report then adds the `kill-server` command that stops it:
 $ pytest --libtmux-keep-failed
 ```
 
+(deterministic_shell)=
+
+## A deterministic shell
+
+By default a test's panes run your login shell, so the prompt, `TERM`, and
+environment come from the machine: a themed prompt changes every line the test
+captures. Mark a test, class, or module with `deterministic_shell` to start the
+{fixture}`session` fixture's shell through
+{func}`~libtmux.test.shell.deterministic_shell_command` instead: bash with no
+startup files, an empty environment apart from `PATH`, `TERM=xterm-256color`,
+and the prompt `$ `. Unmarked tests keep the default shell.
+
+```python
+>>> source = """
+... import pytest
+...
+... @pytest.mark.deterministic_shell
+... def test_clean_shell(session):
+...     pane = session.active_pane
+...     command = pane.cmd("display-message", "-p", "#{pane_start_command}")
+...     assert "env -i" in "".join(command.stdout)
+... """
+>>> import subprocess, sys  # doctest: +HIDE
+>>> test_dir = request.getfixturevalue("tmp_path")  # doctest: +HIDE
+>>> _ = (test_dir / "test_shell.py").write_text(source)  # doctest: +HIDE
+>>> run = subprocess.run(  # doctest: +HIDE
+...     [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+...     cwd=test_dir,
+...     capture_output=True,
+...     text=True,
+... )
+>>> run.returncode, run.stdout.splitlines()[-1].split(" in ")[0]  # doctest: +HIDE
+(0, '1 passed')
+```
+
+The marker takes the keyword arguments of the function (`ps1`, `term`,
+`inherit`). It applies only to the `session` fixture, and an explicit
+`window_command` from {fixture}`session_params` wins. Outside pytest, or for
+sessions you create yourself, pass the command to `window_command`:
+
+```python
+>>> from libtmux.test.shell import deterministic_shell_command
+>>> clean = server.new_session(
+...     session_name="clean",
+...     window_command=deterministic_shell_command(ps1="> "),
+... )
+```
+
 [pytest]: https://docs.pytest.org/en/stable/
 [pytest-tmux]: https://pytest-tmux.readthedocs.io/
 [tmuxp]: https://tmuxp.git-pull.com/
