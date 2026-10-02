@@ -78,6 +78,12 @@ diff. See {ref}`screen_assertions`.
 
 ### Documentation
 
+#### Testing terminal apps with libtmux
+
+A new topic page, {ref}`testing-terminal-apps`, shows the three pytest helpers
+together: the deterministic shell, retrying screen assertions, and the attach
+command printed for a failed test.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and

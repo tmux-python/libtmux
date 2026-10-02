@@ -37,6 +37,13 @@ Query and filter collections by attributes.
 Send keys, capture output, and interact with panes.
 :::
 
+:::{grid-item-card} Testing Terminal Apps
+:link: testing_terminal_apps
+:link-type: doc
+Assert on a terminal app's screen with pytest: a fixed shell, retrying
+assertions, and an attach command on failure.
+:::
+
 :::{grid-item-card} Floating Panes
 :link: floating_panes
 :link-type: doc
@@ -92,6 +99,7 @@ traversal
 self_location
 filtering
 pane_interaction
+testing_terminal_apps
 floating_panes
 workspace_setup
 automation_patterns
