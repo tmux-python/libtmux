@@ -677,7 +677,7 @@ def test_request_timeout_kills_and_reaps_the_client(
     assert elapsed < 2.5
     assert excinfo.value.timeout == 0.3
     assert excinfo.value.cmd[-2:] == ["run-shell", "sleep 3"]
-    assert not isinstance(excinfo.value, exc.LibTmuxException)
+    assert isinstance(excinfo.value, exc.LibTmuxException)
     (client,) = RecordingPopen.instances
     assert client.returncode == -signal.SIGKILL
     with pytest.raises(ChildProcessError):

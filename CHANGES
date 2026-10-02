@@ -102,7 +102,8 @@ and {class}`~libtmux.Pane` take two keyword-only arguments.
 
 `timeout` is seconds, `None` by default, meaning wait as long as tmux takes. On
 expiry the engine raises {exc}`~libtmux.exc.TmuxTimeout`, which carries `cmd` and
-`timeout` and is not a {exc}`~libtmux.exc.LibTmuxException`. The subprocess
+`timeout` and is a {exc}`~libtmux.exc.LibTmuxException`, which the lenient
+listings do not catch. The subprocess
 engine kills and reaps the tmux client; the control-mode engine abandons the
 reply and keeps its connection.
 
