@@ -19,6 +19,7 @@ from libtmux._internal.env import resolve_socket_path
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
+from libtmux.test.screen import ScreenMatcher, screen_diff
 from libtmux.test.shell import deterministic_shell_command
 
 if t.TYPE_CHECKING:
@@ -116,6 +117,28 @@ def pytest_configure(config: pytest.Config) -> None:
         "deterministic_shell(**kwargs): start the session fixture's shell "
         "through libtmux.test.shell.deterministic_shell_command(**kwargs)",
     )
+
+
+def pytest_assertrepr_compare(op: str, left: object, right: object) -> list[str] | None:
+    """Explain a failed comparison against :func:`~libtmux.test.screen.eventually`."""
+    matcher, other = (left, right) if isinstance(left, ScreenMatcher) else (right, left)
+    if not isinstance(matcher, ScreenMatcher):
+        return None
+    what = "screen" if matcher.row is None else f"row {matcher.row}"
+    waited = f"within {matcher.timeout:g}s"
+    if op == "==" and isinstance(other, str):
+        return [
+            f"{what} did not equal expected {waited}",
+            *screen_diff(other, matcher.value).splitlines(),
+        ]
+    if op == "!=" and isinstance(other, str):
+        return [f"{what} still equals the unwanted text {waited}", *other.splitlines()]
+    if op == "in" and isinstance(left, str):
+        return [
+            f"{left!r} not found in {what} {waited}",
+            *matcher.value.splitlines(),
+        ]
+    return None
 
 
 def _reap_test_server(socket_name: str | None) -> None:
