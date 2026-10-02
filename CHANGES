@@ -379,6 +379,17 @@ server-wide limit drops. A negative value raises `ValueError`. See
 
 ### Documentation
 
+### None
+
+#### Replacing wrapper code
+
+{doc}`/topics/wrapper_recipes` shows the built-in calls that replace helpers
+scripts keep rewriting: `start_directory=`, `environment=`, and `window_shell=`
+instead of typing `cd` and `source` into a pane, `windows.get()` and
+`panes.filter()` instead of a hand-kept name map, and
+{meth}`Pane.from_env() <libtmux.Pane.from_env>` instead of assuming one
+session. Every example runs as a doctest.
+
 #### Automation patterns waits for tmux instead of guessing (#734)
 
 The examples on {ref}`automation-patterns` waited for a command to finish by
@@ -392,6 +403,7 @@ moment the command is done. Checks compare whole captured lines rather than
 searching the joined capture, because {meth}`~libtmux.Pane.capture_pane`
 returns the command tmux echoed onto the pane -- a substring search matches
 that echo and is already true before the shell has run.
+
 
 #### Cleaner `from_env` examples (#719)
 
