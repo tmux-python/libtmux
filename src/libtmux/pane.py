@@ -11,6 +11,8 @@ import dataclasses
 import logging
 import pathlib
 import re
+import shutil
+import subprocess
 import time
 import typing as t
 import uuid
@@ -28,6 +30,7 @@ from libtmux.capture import (
 )
 from libtmux.common import (
     _escape_trailing_semicolon,
+    _release_waiter,
     get_version_str,
     has_gte_version,
     raise_if_stderr,
@@ -40,6 +43,7 @@ from libtmux.constants import (
     PaneDirection,
     ResizeAdjustmentDirection,
 )
+from libtmux.engines.subprocess import _kill_and_reap
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
 from libtmux.neo import PANE_LABEL_OPTION, Obj, fetch_obj
@@ -102,6 +106,14 @@ class PaneExit(t.NamedTuple):
 
 _WAIT_POLL_START = 0.01
 _WAIT_POLL_CAP = 0.1
+
+#: Seconds an event waiter blocks before the pane's state is read again. tmux
+#: sends no event when a pane is killed, so this bounds how long a closed pane
+#: goes unnoticed.
+_WAIT_EVENT_BACKSTOP = 0.5
+
+#: Seconds to let a ``wait-for -E`` client show up in the server's waiter list.
+_WAIT_EVENT_REGISTER = 2.0
 
 
 _HEX_TOKEN_RE = re.compile(r"(?:0[xX])?([0-9a-fA-F]{1,2}|(?:[0-9a-fA-F]{2})+)")
@@ -1569,10 +1581,17 @@ class Pane(
 
         Notes
         -----
-        The wait polls the pane's state with a short, growing interval rather
-        than waiting on a ``pane-died`` hook: a hook never fires for a pane that
-        is killed, so a ``timeout=None`` wait would block forever, and it
-        replaces any hook the pane already has.
+        Before tmux 3.8 the wait polls the pane's state with a short, growing
+        interval rather than waiting on a ``pane-died`` hook: a hook never
+        fires for a pane that is killed, so a ``timeout=None`` wait would block
+        forever, and it replaces any hook the pane already has.
+
+        From tmux 3.8 the wait blocks on the ``pane-died`` event with
+        ``wait-for -E``, which sets no hook and wakes as the process exits. tmux
+        sends no event for a killed pane either, so the pane's state is also
+        read every half second; a closed pane raises
+        :exc:`~libtmux.exc.PaneNotFound` within that time. A wait that cannot
+        set up the event falls back to polling.
 
         .. versionadded:: 0.63
 
@@ -1613,6 +1632,10 @@ class Pane(
         if proc.stderr:
             raise self._lost()
         try:
+            if has_gte_version("3.8", tmux_bin=self.server.tmux_bin):
+                exit_ = self._wait_event(deadline, timeout)
+                if exit_ is not None:
+                    return exit_
             interval = _WAIT_POLL_START
             while True:
                 exit_ = self._read_exit()
@@ -1628,6 +1651,73 @@ class Pane(
                 self.cmd("set-option", "-p", "remain-on-exit", previous[0])
             else:
                 self.cmd("set-option", "-p", "-u", "remain-on-exit")
+
+    def _wait_event(
+        self,
+        deadline: float | None,
+        timeout: float | None,
+    ) -> PaneExit | None:
+        """Wait on tmux 3.8's ``pane-died`` event; *None* means poll instead.
+
+        ``wait-for -E`` wakes the moment tmux reports the pane dead, so the
+        wait costs one client process and a state read per
+        :data:`_WAIT_EVENT_BACKSTOP`, not a state read every
+        :data:`_WAIT_POLL_CAP`. tmux does not remember an event, so the client
+        is confirmed in the server's waiter list *before* the state is read:
+        a death after that read wakes the client, a death before it is read.
+
+        Returns *None* without waiting when the client cannot be set up or
+        woke without the pane being dead, and the caller polls.
+        """
+        server = self.server
+        resolved = server.tmux_bin or shutil.which("tmux")
+        if not resolved:
+            return None
+        base = [resolved, *server._server_flags(), "wait-for", "-E"]
+        waiter = subprocess.Popen(
+            [*base, "-F", f"#{{==:#{{pane}},{self.pane_id}}}", "pane-died"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="backslashreplace",
+            env=server._tmux_env(),
+        )
+        name = f"client-{waiter.pid}"
+        try:
+            registered = time.monotonic() + _WAIT_EVENT_REGISTER
+            while name not in server.cmd("wait-for", "-E", "-l", "pane-died").stdout:
+                if waiter.poll() is not None or time.monotonic() >= registered:
+                    return None
+                time.sleep(0.001)
+            while True:
+                exit_ = self._read_exit()
+                if exit_ is not None:
+                    return exit_
+                remaining = (
+                    _WAIT_EVENT_BACKSTOP
+                    if deadline is None
+                    else min(_WAIT_EVENT_BACKSTOP, deadline - time.monotonic())
+                )
+                if remaining <= 0:
+                    msg = f"pane {self.pane_id} still running after {timeout}s"
+                    raise exc.WaitTimeout(msg)
+                try:
+                    waiter.wait(timeout=remaining)
+                except subprocess.TimeoutExpired:
+                    continue
+                # Woken: the pane is dead, or the server went away.
+                return self._read_exit()
+        finally:
+            if waiter.poll() is None:
+                _release_waiter(
+                    waiter,
+                    [*base, "-w", name, "pane-died"],
+                    env=server._tmux_env(),
+                )
+            else:
+                _kill_and_reap(waiter)
 
     def _lost(self) -> exc.LibTmuxException:
         """Return the exception for a pane tmux can no longer find."""
