@@ -45,6 +45,36 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Session names can match exactly with `exact=True`
+
+{meth}`Server.kill_session() <libtmux.Server.kill_session>`,
+{meth}`Server.switch_client() <libtmux.Server.switch_client>`, and
+{meth}`Server.attach_session() <libtmux.Server.attach_session>` take an
+`exact` keyword, like {meth}`Server.has_session() <libtmux.Server.has_session>`.
+tmux resolves a bare session name by exact match, then by prefix, then as an
+`fnmatch(3)` pattern, so `kill_session("foo")` kills `foobar` when no `foo`
+exists.
+
+`exact=True` matches the name exactly. `exact=False` keeps tmux's matching and
+does not warn. The default, `exact=None`, still matches like tmux but emits a
+{class}`FutureWarning` when a name has no exact match and tmux resolves it by
+prefix or pattern. A name that matches exactly, a session id such as `$1`,
+and a name tmux rejects anyway never warn. A later release will make
+`exact=True` the default.
+
+```python
+# Before: kills "foobar" when "foo" does not exist
+server.kill_session("foo")
+
+# After: raises LibTmuxException unless "foo" exists
+server.kill_session("foo", exact=True)
+
+# Keep prefix or pattern matching, without the warning
+server.kill_session("build-*", exact=False)
+```
+
 ### Fixes
 
 #### `kill_window()` and `select_window()` match window names exactly

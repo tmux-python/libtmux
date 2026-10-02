@@ -497,14 +497,53 @@ class Server(
             raise exc.LibTmuxException(proc.stderr)
         logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
 
-    def kill_session(self, target_session: str | int) -> Server:
+    def _session_target(
+        self,
+        target_session: str | int,
+        exact: bool | None,
+    ) -> str | int:
+        """Return the tmux target for a session name, honouring ``exact``.
+
+        ``exact=True`` always sends ``=name``; ``exact=False`` sends the bare
+        name and keeps tmux's exact, prefix, then ``fnmatch(3)`` resolution.
+        ``exact=None`` behaves like ``False`` and warns only when the bare name
+        has no exact match but tmux would still resolve it.
+        """
+        if isinstance(target_session, int) or target_session.startswith(("$", "=")):
+            return target_session
+        if exact:
+            return f"={target_session}"
+        if exact is False:
+            return target_session
+        if self.has_session(target_session, exact=True):
+            return f"={target_session}"
+        if self.has_session(target_session, exact=False):
+            warnings.warn(
+                f"session target {target_session!r} matches by prefix or "
+                "pattern; a future release matches names exactly. Pass "
+                "exact=True to opt in now, or exact=False to keep it.",
+                FutureWarning,
+                stacklevel=3,
+            )
+            return target_session
+        return f"={target_session}"
+
+    def kill_session(
+        self,
+        target_session: str | int,
+        exact: bool | None = None,
+    ) -> Server:
         """Kill tmux session.
 
         Parameters
         ----------
-        target_session : str, optional
-            target_session: str. note this accepts ``fnmatch(3)``. 'asdf' will
-            kill 'asdfasd'.
+        target_session : str or int
+            Session name or id such as ``$1``.
+        exact : bool, optional
+            ``True`` matches the name exactly. ``False`` keeps tmux's exact,
+            prefix, then ``fnmatch(3)`` match. ``None`` (default) acts like
+            ``False``, and warns with :class:`FutureWarning` when only a prefix
+            or pattern matches.
 
         Returns
         -------
@@ -514,7 +553,10 @@ class Server(
         ------
         :exc:`exc.BadSessionName`
         """
-        proc = self.cmd("kill-session", target=target_session)
+        proc = self.cmd(
+            "kill-session",
+            target=self._session_target(target_session, exact),
+        )
 
         raise_if_stderr(proc, "kill-session")
 
@@ -2179,13 +2221,18 @@ class Server(
 
         return proc.stdout
 
-    def switch_client(self, target_session: str) -> None:
+    def switch_client(self, target_session: str, exact: bool | None = None) -> None:
         """Switch tmux client.
 
         Parameters
         ----------
         target_session : str
-            name of the session. fnmatch(3) works.
+            name of the session.
+        exact : bool, optional
+            ``True`` matches the name exactly. ``False`` keeps tmux's exact,
+            prefix, then ``fnmatch(3)`` match. ``None`` (default) acts like
+            ``False``, and warns with :class:`FutureWarning` when only a prefix
+            or pattern matches.
 
         Raises
         ------
@@ -2193,24 +2240,39 @@ class Server(
         """
         session_check_name(target_session)
 
-        proc = self.cmd("switch-client", target=target_session)
+        proc = self.cmd(
+            "switch-client",
+            target=self._session_target(target_session, exact),
+        )
 
         raise_if_stderr(proc, "switch-client")
 
-    def attach_session(self, target_session: str | None = None) -> None:
+    def attach_session(
+        self,
+        target_session: str | None = None,
+        exact: bool | None = None,
+    ) -> None:
         """Attach tmux session.
 
         Parameters
         ----------
         target_session : str
-            name of the session. fnmatch(3) works.
+            name of the session.
+        exact : bool, optional
+            ``True`` matches the name exactly. ``False`` keeps tmux's exact,
+            prefix, then ``fnmatch(3)`` match. ``None`` (default) acts like
+            ``False``, and warns with :class:`FutureWarning` when only a prefix
+            or pattern matches.
 
         Raises
         ------
         :exc:`exc.BadSessionName`
         """
         session_check_name(target_session)
-        proc = self.cmd("attach-session", target=target_session)
+        target: str | int | None = target_session
+        if target_session is not None:
+            target = self._session_target(target_session, exact)
+        proc = self.cmd("attach-session", target=target)
 
         raise_if_stderr(proc, "attach-session")
 
