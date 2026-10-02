@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### `new_session(x=, y=)` sizes the first window on tmux 3.2a
+
+tmux 3.2a ignores `new-session -x` and `-y` for a detached session, so
+{meth}`Server.new_session() <libtmux.Server.new_session>` returned an 80x23
+window whatever size was requested. On tmux older than 3.3 it now resizes the
+first window to the requested width and height after creating the session.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

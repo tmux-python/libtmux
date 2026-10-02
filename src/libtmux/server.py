@@ -19,7 +19,13 @@ from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    get_version,
+    has_gte_version,
+    has_lt_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -2258,6 +2264,9 @@ class Server(
         y : int | str, optional
             Force the specified height instead of the tmux default for a
             detached session
+
+            tmux 3.2a ignores ``-x`` and ``-y`` for a detached session; libtmux
+            resizes the first window afterwards so the size applies there too.
         detach_others : bool, optional
             Detach other clients from the session (``-D`` flag).
 
@@ -2386,6 +2395,18 @@ class Server(
         session_data = parse_output(session_stdout, "list-sessions", tmux_version)
 
         session = Session(server=self, **session_data)
+
+        if (
+            not attach
+            and (x is not None or y is not None)
+            and has_lt_version("3.3", tmux_bin=self.tmux_bin)
+        ):
+            # tmux < 3.3 ignores ``new-session -x/-y`` for a detached session
+            # and uses 80x23, so size the first window afterwards.
+            session.active_window.resize(
+                width=int(x) if x is not None and x != "-" else None,
+                height=int(y) if y is not None and y != "-" else None,
+            )
 
         info_extra: dict[str, str] = {
             "tmux_subcommand": "new-session",
