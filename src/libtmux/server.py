@@ -1411,8 +1411,8 @@ class Server(
         ------
         :exc:`~libtmux.exc.TmuxTimeout`
             When *timeout* elapses before the channel is signalled. The wait
-            is withdrawn by signalling *channel*, so the next signal on it is
-            not lost.
+            is withdrawn through tmux rather than by killing the client, so
+            the next signal on the channel is not lost.
         :exc:`~libtmux.exc.TmuxServerGone`
             When the wait ended because the tmux server exited.
         :exc:`ValueError`
@@ -1420,9 +1420,11 @@ class Server(
 
         Notes
         -----
-        The timeout signals *channel* to release the waiter, which also wakes
-        any other process waiting on it. Do not share a channel between
-        waiters.
+        Before tmux 3.8 the timeout signals *channel* to release the waiter,
+        which also wakes any other process waiting on it, so do not share a
+        channel between waiters there. From tmux 3.8 the waiter is released
+        by name (``wait-for -w``), and other waiters on the channel keep
+        waiting.
 
         A wait that returns is not proof the work ran when the work could
         have died with the server; :exc:`~libtmux.exc.TmuxServerGone` covers
@@ -1486,7 +1488,7 @@ class Server(
 
         The client is a :class:`subprocess.Popen` of this method's own, not a
         :class:`~libtmux.common.tmux_cmd`, because expiry must release it by
-        signalling the channel (see :func:`~libtmux.common._release_waiter`).
+        releasing it through tmux (see :func:`~libtmux.common._release_waiter`).
         """
         resolved = self.tmux_bin or shutil.which("tmux")
         if not resolved:
@@ -1496,6 +1498,7 @@ class Server(
         wait_argv = [resolved, *flags, "wait-for", channel]
         waiter = subprocess.Popen(
             wait_argv,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -1507,11 +1510,25 @@ class Server(
             _, stderr = waiter.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             if waiter.poll() is None:
-                _release_waiter(
-                    waiter,
-                    [resolved, *flags, "wait-for", "-S", channel],
-                    env=self._tmux_env(),
-                )
+                signal_argv = [resolved, *flags, "wait-for", "-S", channel]
+                if has_gte_version("3.8", tmux_bin=self.tmux_bin):
+                    # tmux 3.8 names each waiting client, so release this
+                    # waiter alone instead of waking everyone on the channel.
+                    _release_waiter(
+                        waiter,
+                        [
+                            resolved,
+                            *flags,
+                            "wait-for",
+                            "-w",
+                            f"client-{waiter.pid}",
+                            channel,
+                        ],
+                        then_argv=signal_argv,
+                        env=self._tmux_env(),
+                    )
+                else:
+                    _release_waiter(waiter, signal_argv, env=self._tmux_env())
                 # A server that died mid-wait released the waiter on its own.
                 if not self.is_alive():
                     raise exc.TmuxServerGone(channel) from None

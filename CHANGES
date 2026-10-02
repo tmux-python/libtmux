@@ -368,11 +368,69 @@ and ends one of three ways: a signal returns `None`, the clock raises
 as if the channel had been signalled, so a wake alone could not tell them apart;
 `wait_for()` now asks the server again after any wake.
 
-An expired wait is released by signalling its channel before the client is reaped.
-Killing the client alone leaves a ghost waiter on tmux 3.2a through 3.8-rc that
-swallows the next signal on the channel. The signal wakes every waiter on the
-channel, so a channel should have one waiter. `timeout` combined with `lock`,
-`unlock` or `set_flag` raises `ValueError`.
+An expired wait is released through tmux before the client is reaped. Killing
+the client alone leaves a ghost waiter on tmux 3.2a through the first 3.8
+release candidate that swallows the next signal on the channel. Before tmux 3.8
+the release is a signal, which wakes every waiter on the channel, so a channel
+should have one waiter. From tmux 3.8 the expired waiter is released by name with
+`wait-for -w`, and other waiters on the channel keep waiting. `timeout` combined
+with `lock`, `unlock` or `set_flag` raises `ValueError`.
+
+### Breaking changes
+
+#### `raise_if_dead()` no longer echoes tmux's error (#739)
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` previously let
+tmux write its message straight to the terminal. It now captures that text onto
+the raised {exc}`subprocess.CalledProcessError`. The exception type is
+unchanged.
+
+#### `tmux_cmd.process` is a deprecated property (#739)
+
+{attr}`~libtmux.common.tmux_cmd.process` was a plain attribute holding the
+{class}`subprocess.Popen` that ran the command; it is now a read-only property
+that emits {exc}`DeprecationWarning`. Under the default engine it still returns
+the process. Assigning to it no longer works, and reading it after a command ran
+through an engine that forks no process raises
+{exc}`~libtmux.exc.LibTmuxException` rather than returning `None`. Read
+`returncode`, `stdout` and `stderr` instead; every engine fills them in.
+
+#### Scoping a `Server` no longer kills it (#724)
+
+Leaving a `with` block used to kill any live {class}`~libtmux.Server`, so
+`with Server() as server:` around no work at all destroyed the default tmux
+daemon and every session in it. A server is a handle on a socket rather than a
+connection: the same handle addresses a daemon whether or not your process
+started it, so scoping one to a block is not grounds to destroy it.
+
+Teardown is now something you ask for, with the new
+{attr}`~libtmux.Server.kill_on_exit`. {class}`~libtmux.Session`,
+{class}`~libtmux.Window` and {class}`~libtmux.Pane` are unchanged — those you
+get by creating them. See {ref}`context_managers`.
+
+```python
+# Before: killed whatever daemon was on that socket
+with Server(socket_name="my-work") as server:
+    pass
+
+# After: nothing is killed unless you say so
+with Server(socket_name="my-work", kill_on_exit=True) as server:
+    pass
+```
+
+For a server that exists only for the block, use the new
+{meth}`Server.owned() <libtmux.Server.owned>` below.
+
+#### `DeprecatedError` no longer subclasses `LibTmuxException`
+
+{exc}`~libtmux.exc.DeprecatedError`, raised by every removed API, now derives
+from {class}`Exception` instead of {exc}`~libtmux.exc.LibTmuxException`.
+Downstream code with `except LibTmuxException` fallbacks no longer swallows a
+call to a removed method such as `Session.attached_window`; the error names the
+replacement instead. Code that catches `DeprecatedError` itself is unaffected.
+See {ref}`migration` for the full removed-API table.
+
+### Fixes
 
 #### `Pane.wait()` returns how a pane's process ended
 
@@ -474,62 +532,6 @@ creates the session, and `attach=True` raises `ValueError`; from tmux 3.7 it is
 never touched, because tmux 3.7 trims the history of existing panes when the
 server-wide limit drops. A negative value raises `ValueError`. See
 {ref}`workspace-setup` for a recipe.
-
-### Breaking changes
-
-#### `raise_if_dead()` no longer echoes tmux's error (#739)
-
-{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` previously let
-tmux write its message straight to the terminal. It now captures that text onto
-the raised {exc}`subprocess.CalledProcessError`. The exception type is
-unchanged.
-
-#### `tmux_cmd.process` is a deprecated property (#739)
-
-{attr}`~libtmux.common.tmux_cmd.process` was a plain attribute holding the
-{class}`subprocess.Popen` that ran the command; it is now a read-only property
-that emits {exc}`DeprecationWarning`. Under the default engine it still returns
-the process. Assigning to it no longer works, and reading it after a command ran
-through an engine that forks no process raises
-{exc}`~libtmux.exc.LibTmuxException` rather than returning `None`. Read
-`returncode`, `stdout` and `stderr` instead; every engine fills them in.
-
-#### Scoping a `Server` no longer kills it (#724)
-
-Leaving a `with` block used to kill any live {class}`~libtmux.Server`, so
-`with Server() as server:` around no work at all destroyed the default tmux
-daemon and every session in it. A server is a handle on a socket rather than a
-connection: the same handle addresses a daemon whether or not your process
-started it, so scoping one to a block is not grounds to destroy it.
-
-Teardown is now something you ask for, with the new
-{attr}`~libtmux.Server.kill_on_exit`. {class}`~libtmux.Session`,
-{class}`~libtmux.Window` and {class}`~libtmux.Pane` are unchanged — those you
-get by creating them. See {ref}`context_managers`.
-
-```python
-# Before: killed whatever daemon was on that socket
-with Server(socket_name="my-work") as server:
-    pass
-
-# After: nothing is killed unless you say so
-with Server(socket_name="my-work", kill_on_exit=True) as server:
-    pass
-```
-
-For a server that exists only for the block, use the new
-{meth}`Server.owned() <libtmux.Server.owned>` below.
-
-#### `DeprecatedError` no longer subclasses `LibTmuxException`
-
-{exc}`~libtmux.exc.DeprecatedError`, raised by every removed API, now derives
-from {class}`Exception` instead of {exc}`~libtmux.exc.LibTmuxException`.
-Downstream code with `except LibTmuxException` fallbacks no longer swallows a
-call to a removed method such as `Session.attached_window`; the error names the
-replacement instead. Code that catches `DeprecatedError` itself is unaffected.
-See {ref}`migration` for the full removed-API table.
-
-### Fixes
 
 #### Listing queries honor `config_file` and `colors` (#739)
 

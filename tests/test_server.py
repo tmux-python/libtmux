@@ -7,6 +7,7 @@ import functools
 import logging
 import os
 import pathlib
+import pty
 import shutil
 import signal
 import socket
@@ -2747,6 +2748,91 @@ def test_wait_for_timeout_leaves_no_ghost_waiter(server: Server) -> None:
     start = time.monotonic()
     server.wait_for(channel, timeout=5)
     assert time.monotonic() - start < 2
+
+
+needs_tmux_3_8 = pytest.mark.skipif(
+    not common.has_gte_version("3.8"),
+    reason="wait-for -w (release one named waiter) needs tmux 3.8",
+)
+
+
+def _waiters(server: Server, channel: str) -> list[str]:
+    """Return the names of the clients waiting on *channel*."""
+    return server.cmd("wait-for", "-l", channel).stdout
+
+
+@needs_tmux_3_8
+def test_wait_for_timeout_spares_other_waiters(server: Server) -> None:
+    """A timed-out wait leaves another waiter on the same channel waiting.
+
+    Before tmux 3.8 the release is a signal, which wakes every waiter on the
+    channel. ``wait-for -w`` names the one client to release.
+    """
+    server.new_session(session_name="wait_spare")
+    channel = "libtmux_wait_spare"
+    outcome: list[object] = []
+
+    def long_wait() -> None:
+        try:
+            server.wait_for(channel, timeout=30)
+        except exc.LibTmuxException as err:
+            outcome.append(err)
+        else:
+            outcome.append(None)
+
+    sibling = threading.Thread(target=long_wait)
+    sibling.start()
+    try:
+        assert retry_until(lambda: len(_waiters(server, channel)) == 1)
+
+        with pytest.raises(exc.TmuxTimeout):
+            server.wait_for(channel, timeout=0.3)
+
+        assert len(_waiters(server, channel)) == 1
+        assert outcome == [], "the sibling waiter was woken by the other's timeout"
+    finally:
+        server.wait_for(channel, set_flag=True)
+        sibling.join(timeout=10)
+
+    assert outcome == [None]
+
+
+@needs_tmux_3_8
+def test_wait_for_timeout_with_a_tty_stdin_is_released_by_name(
+    server: Server,
+) -> None:
+    """A caller whose stdin is a terminal still gets a prompt targeted release.
+
+    tmux names a waiting client after its tty when stdin is one, not
+    ``client-<pid>``, so a release by that name would miss it and fall through
+    to the five-second grace. The waiter takes ``/dev/null`` for stdin.
+    """
+    server.new_session(session_name="wait_tty")
+    code = (
+        "import sys, time\n"
+        "from libtmux import Server, exc\n"
+        f"server = Server(socket_name={server.socket_name!r})\n"
+        "start = time.monotonic()\n"
+        "try:\n"
+        "    server.wait_for('libtmux_wait_tty', timeout=0.3)\n"
+        "except exc.TmuxTimeout:\n"
+        "    print(f'{time.monotonic() - start:.2f}')\n"
+    )
+    master, slave = pty.openpty()
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            stdin=slave,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+    finally:
+        os.close(master)
+        os.close(slave)
+
+    assert float(result.stdout) < 3
 
 
 def test_wait_for_reports_a_server_that_died_mid_wait(TestServer: type[Server]) -> None:
