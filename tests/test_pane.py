@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import shlex
 import shutil
 import threading
 import typing as t
@@ -36,6 +37,291 @@ def test_send_keys(session: Session) -> None:
 
     pane.send_keys("c-a", literal=False)
     assert "c-a" not in pane_contents, "should not print to pane"
+
+
+def _bytes_received(
+    session: Session,
+    tmp_path: pathlib.Path,
+    send: t.Callable[[Pane], None],
+    *,
+    stty: str = "",
+) -> str:
+    """Run ``send`` against a pane whose process writes its stdin to a file.
+
+    The pane runs ``cat`` and marks ``done`` once it sees EOF, so the file
+    holds exactly the bytes tmux delivered, free of echo, wrapping, and
+    prompt noise. ``stty`` holds terminal settings to apply first, such as
+    ``-icrnl`` to see a carriage return instead of the line feed it becomes.
+    """
+    out = tmp_path / "received"
+    done = tmp_path / "done"
+    window = session.new_window(
+        window_shell=(
+            f"stty {stty}; cat > {shlex.quote(str(out))}; : > {shlex.quote(str(done))}"
+        ),
+    )
+    pane = window.active_pane
+    assert pane is not None
+    send(pane)
+    pane.send_keys("C-d", enter=False)  # EOF: cat flushes and exits
+
+    retry_until(done.exists, 2, raises=True)
+    return out.read_text()
+
+
+class SendKeysDashFixture(t.NamedTuple):
+    """A text that begins with ``-`` and must reach the pane verbatim."""
+
+    test_id: str
+    text: str
+
+
+SEND_KEYS_DASH_FIXTURES: list[SendKeysDashFixture] = [
+    SendKeysDashFixture("negative_number", "-1"),
+    SendKeysDashFixture("long_option", "--help"),
+    SendKeysDashFixture("markdown_bullet", "- item"),
+    SendKeysDashFixture("literal_flag", "-l"),
+    SendKeysDashFixture("target_flag", "-t %0"),
+]
+
+
+@pytest.mark.parametrize("literal", [False, True])
+@pytest.mark.parametrize(
+    list(SendKeysDashFixture._fields),
+    SEND_KEYS_DASH_FIXTURES,
+    ids=[test.test_id for test in SEND_KEYS_DASH_FIXTURES],
+)
+def test_send_keys_leading_dash_is_text(
+    session: Session,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    text: str,
+    literal: bool,
+) -> None:
+    """Pane.send_keys() delivers text that starts with ``-`` instead of flags."""
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(text, literal=literal),
+    )
+    assert received == text + "\n"
+
+
+class SendKeysSemicolonFixture(t.NamedTuple):
+    """A text that ends in or contains ``;`` and must reach the pane verbatim."""
+
+    test_id: str
+    text: str
+
+
+SEND_KEYS_SEMICOLON_FIXTURES: list[SendKeysSemicolonFixture] = [
+    SendKeysSemicolonFixture("trailing", "echo A;"),
+    SendKeysSemicolonFixture("only", ";"),
+    SendKeysSemicolonFixture("doubled", "a;;"),
+    SendKeysSemicolonFixture("backslash_before", "echo A\\;"),
+    SendKeysSemicolonFixture("interior", "echo D;echo E"),
+]
+
+
+@pytest.mark.parametrize("literal", [False, True])
+@pytest.mark.parametrize(
+    list(SendKeysSemicolonFixture._fields),
+    SEND_KEYS_SEMICOLON_FIXTURES,
+    ids=[test.test_id for test in SEND_KEYS_SEMICOLON_FIXTURES],
+)
+def test_send_keys_trailing_semicolon_is_text(
+    session: Session,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    text: str,
+    literal: bool,
+) -> None:
+    """Pane.send_keys() delivers ``;`` instead of ending the tmux command."""
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(text, literal=literal),
+    )
+    assert received == text + "\n"
+
+
+class SendKeysHexFixture(t.NamedTuple):
+    """A hex payload and the bytes it must deliver."""
+
+    test_id: str
+    hex_text: str
+    expected: str
+
+
+SEND_KEYS_HEX_FIXTURES: list[SendKeysHexFixture] = [
+    SendKeysHexFixture("one_byte", "41", "A"),
+    SendKeysHexFixture("packed_pairs", "48656c6c6f", "Hello"),
+    SendKeysHexFixture("escape_sequence", "1b5b32", "\x1b[2"),
+    SendKeysHexFixture("space_separated", "1b 5b 32", "\x1b[2"),
+    SendKeysHexFixture("prefixed", "0x1b 0x5b", "\x1b["),
+    SendKeysHexFixture("mixed_case_prefix", "0X48 69", "Hi"),
+]
+
+
+@pytest.mark.parametrize(
+    list(SendKeysHexFixture._fields),
+    SEND_KEYS_HEX_FIXTURES,
+    ids=[test.test_id for test in SEND_KEYS_HEX_FIXTURES],
+)
+def test_send_keys_hex_keys_multibyte(
+    session: Session,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    hex_text: str,
+    expected: str,
+) -> None:
+    """Pane.send_keys(hex_keys=True) sends every byte of a multi-byte payload."""
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(hex_text, hex_keys=True),
+    )
+    assert received == expected + "\n"
+
+
+@pytest.mark.parametrize("hex_text", ["1b5", "zz", "0x", "1b5g"])
+def test_send_keys_hex_keys_rejects_malformed(
+    session: Session,
+    hex_text: str,
+) -> None:
+    """Pane.send_keys(hex_keys=True) raises on a payload tmux would drop."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="hex"):
+        pane.send_keys(hex_text, hex_keys=True)
+
+
+def _lines(count: int, width: int, prefix: str = "") -> str:
+    """Return ``count`` newline-terminated lines of ``width`` bytes each.
+
+    The terminal reads a line at a time and truncates a line over 4,095 bytes,
+    so a big payload has to be many short lines.
+    """
+    line = (prefix + "A" * width)[: width - 1] + "\n"
+    return line * count
+
+
+def test_send_keys_payload_near_the_limit_is_delivered(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Pane.send_keys() delivers a payload close to tmux's message limit."""
+    text = _lines(160, 100)  # 16,000 bytes
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(text, literal=True, enter=False),
+    )
+    assert received == text
+
+
+@pytest.mark.parametrize(
+    "size",
+    [16_345, 20_000, 100_000],
+    ids=["failed_to_send", "command_too_long", "far_over"],
+)
+def test_send_keys_raises_when_tmux_refuses_oversize_text(
+    session: Session,
+    tmp_path: pathlib.Path,
+    size: int,
+) -> None:
+    """Pane.send_keys() raises tmux's refusal and sends neither text nor Enter.
+
+    tmux rejects a command above its 16 KiB message size with "failed to send
+    command" or "command too long", depending on the size. The test reads
+    nothing about the limit: it sends sizes on both sides and expects
+    whatever tmux reports to surface.
+    """
+
+    def send(pane: Pane) -> None:
+        with pytest.raises(exc.LibTmuxException) as excinfo:
+            pane.send_keys("A" * size, literal=True)
+        assert excinfo.value.subcommand == "send-keys"
+
+    assert _bytes_received(session, tmp_path, send) == ""
+
+
+def _paste_buffers(session: Session) -> list[str]:
+    """Return the names of buffers ``Pane.paste_text()`` created."""
+    return [
+        name
+        for name in session.server.list_buffers(format_string="#{buffer_name}")
+        if name.startswith("libtmux_paste_")
+    ]
+
+
+def test_paste_text_delivers_large_payload_verbatim(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Pane.paste_text() delivers text far over the send-keys limit, byte for byte.
+
+    The payload carries a leading ``-``, a tab, ESC, non-ASCII, and a final
+    ``;``: each one is mangled by a different tmux code path.
+    """
+    text = _lines(400, 100, prefix="-\t\x1b\u00e9;") + "end;\n"
+    assert len(text.encode()) > 40_000
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.paste_text(text),
+        stty="-icrnl",
+    )
+    assert received == text
+    assert not _paste_buffers(session)
+
+
+def test_paste_text_sends_the_text_on_stdin_not_in_argv(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pane.paste_text() loads its buffer from stdin.
+
+    ``Server.cmd`` is wrapped to record its calls, because the point is how the
+    text travels: a payload in argv would hit tmux's size limit, and a temp file
+    would not be readable by a tmux running elsewhere.
+    """
+    server = session.server
+    calls: list[tuple[tuple[t.Any, ...], str | bytes | None]] = []
+    real_cmd = server.cmd
+
+    def spy(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        calls.append(((cmd, *args), kwargs.get("input")))
+        return real_cmd(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(server, "cmd", spy)
+    pane = session.new_window(window_shell="cat >/dev/null").active_pane
+    assert pane is not None
+    text = "payload " * 5_000
+
+    pane.paste_text(text)
+
+    [(argv, sent)] = [call for call in calls if call[0][0] == "load-buffer"]
+    assert argv[-1] == "-"
+    assert text not in argv
+    assert sent == text
+
+
+def test_paste_text_empty_sends_nothing(session: Session) -> None:
+    """Pane.paste_text("") returns without creating a buffer or raising."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.paste_text("")
+    assert not _paste_buffers(session)
+
+
+def test_paste_text_leaves_no_buffer_when_paste_fails(session: Session) -> None:
+    """Pane.paste_text() deletes its buffer when tmux refuses the paste."""
+    pane = session.new_window().split()
+    pane.kill()
+    with pytest.raises(exc.LibTmuxException):
+        pane.paste_text("text")
+    assert not _paste_buffers(session)
 
 
 def test_set_height(session: Session) -> None:

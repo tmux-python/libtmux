@@ -444,6 +444,27 @@ def _decode_text(data: bytes) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _escape_trailing_semicolon(text: str) -> str:
+    r"""Return ``text`` so tmux keeps a trailing ``;`` as data.
+
+    tmux ends a command at an argument that ends in ``;`` and drops the
+    character. A backslash before the ``;`` keeps it, so a text that already
+    ends in ``\;`` gains a second backslash.
+
+    Examples
+    --------
+    >>> _escape_trailing_semicolon("echo A;")
+    'echo A\\;'
+    >>> _escape_trailing_semicolon("echo A\\;")
+    'echo A\\\\;'
+    >>> _escape_trailing_semicolon("a;b")
+    'a;b'
+    """
+    if text.endswith(";"):
+        return f"{text[:-1]}\\;"
+    return text
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 

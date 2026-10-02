@@ -190,6 +190,55 @@ Commands that accept `-` as a path read it there, for example
 Standard input is not part of tmux's 16 KiB command size limit, so a payload of
 any size loads. Without `input`, the call runs as before.
 
+### Fixes
+
+#### `Pane.send_keys()` sends text that starts with `-`
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` ends tmux's option parsing
+before the text, so `-1`, `--help`, and `- item` reach the pane as text.
+tmux previously read them as `send-keys` flags and delivered nothing.
+
+#### `Pane.send_keys()` sends text that ends in `;`
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` escapes a final `;` so
+`echo A;` reaches the pane whole. tmux previously read the `;` as a command
+separator and delivered `echo A` without it. A `;` inside the text was
+unaffected.
+
+#### `Server.set_buffer()` stores data that starts with `-` or ends in `;`
+
+{meth}`Server.set_buffer() <libtmux.Server.set_buffer>` ends tmux's option
+parsing before the data and escapes a final `;`. `-x` previously raised
+`unknown flag`, and `echo A;` stored `echo A`.
+
+#### `Pane.send_keys(hex_keys=True)` sends multi-byte payloads
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` splits a hex `cmd` into one
+argument per byte, as `send-keys -H` requires, and accepts `1b5b32`,
+`1b 5b 32`, and `0x1b 0x5b`. Only a single byte was delivered before; longer
+payloads vanished without an error. Malformed hex raises {exc}`ValueError`.
+
+#### `Pane.send_keys()` raises when tmux refuses the text
+
+tmux rejects a `send-keys` command above about 16 KiB with `command too long`
+or `failed to send command`. {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
+previously ignored that reply, so the text vanished and the Enter that followed
+still went to the pane. It now raises {exc}`~libtmux.exc.LibTmuxException` with
+tmux's message, sends no Enter, and so also surfaces any other error tmux
+reports for the text, such as a pane that no longer exists. Send large text
+with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
+
+### None
+
+#### Paste text of any size with `Pane.paste_text()`
+
+{meth}`Pane.paste_text() <libtmux.Pane.paste_text>` pastes text into a pane
+through a throwaway paste buffer loaded from standard input. It has no size
+limit, never reads the text as key names or flags, keeps line feeds and control
+characters intact, and leaves no temporary file or buffer behind. It does not
+send Enter. Use it where {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
+would exceed tmux's 16 KiB command limit.
+
 ### None
 
 #### Bounded tmux commands

@@ -1431,6 +1431,41 @@ BUFFER_CASES: list[BufferCase] = [
         append=True,
         expected_content="first_second",
     ),
+    BufferCase(
+        test_id="leading_dash",
+        data="-x",
+        buffer_name=None,
+        append=None,
+        expected_content="-x",
+    ),
+    BufferCase(
+        test_id="double_dash",
+        data="--",
+        buffer_name="dashes",
+        append=None,
+        expected_content="--",
+    ),
+    BufferCase(
+        test_id="markdown_bullet",
+        data="- item",
+        buffer_name=None,
+        append=None,
+        expected_content="- item",
+    ),
+    BufferCase(
+        test_id="trailing_semicolon",
+        data="echo A;",
+        buffer_name=None,
+        append=None,
+        expected_content="echo A;",
+    ),
+    BufferCase(
+        test_id="backslash_semicolon",
+        data="echo A\\;",
+        buffer_name=None,
+        append=None,
+        expected_content="echo A\\;",
+    ),
 ]
 
 

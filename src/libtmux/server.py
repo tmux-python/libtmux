@@ -21,6 +21,7 @@ from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import (
+    _escape_trailing_semicolon,
     get_version,
     has_gte_version,
     has_lt_version,
@@ -2072,6 +2073,12 @@ class Server(
         >>> server.set_buffer('hello')
         >>> server.show_buffer()
         'hello'
+
+        Data that starts with ``-`` or ends in ``;`` is stored as text:
+
+        >>> server.set_buffer('-x;')
+        >>> server.show_buffer()
+        '-x;'
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -2081,7 +2088,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (data,)
+        tmux_args += ("--", _escape_trailing_semicolon(data))
 
         proc = self.cmd("set-buffer", *tmux_args)
 

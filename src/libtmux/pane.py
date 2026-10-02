@@ -10,13 +10,21 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import re
 import time
 import typing as t
+import uuid
 import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    _escape_trailing_semicolon,
+    get_version_str,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -76,6 +84,34 @@ class PaneExit(t.NamedTuple):
 
 _WAIT_POLL_START = 0.01
 _WAIT_POLL_CAP = 0.1
+
+
+_HEX_TOKEN_RE = re.compile(r"(?:0[xX])?([0-9a-fA-F]{1,2}|(?:[0-9a-fA-F]{2})+)")
+
+
+def _hex_key_args(text: str) -> tuple[str, ...]:
+    """Split hex text into the one-byte arguments ``send-keys -H`` takes.
+
+    Examples
+    --------
+    >>> _hex_key_args("1b5b32")
+    ('1b', '5b', '32')
+    >>> _hex_key_args("0x1b 0x5b")
+    ('1b', '5b')
+    >>> _hex_key_args("1b5")
+    Traceback (most recent call last):
+    ...
+    ValueError: invalid hex bytes: '1b5'
+    """
+    args: list[str] = []
+    for token in text.split() or [text]:
+        match = _HEX_TOKEN_RE.fullmatch(token)
+        if match is None:
+            msg = f"invalid hex bytes: {token!r}"
+            raise ValueError(msg)
+        digits = match.group(1)
+        args += [digits[i : i + 2] for i in range(0, len(digits), 2)]
+    return tuple(args)
 
 
 @dataclasses.dataclass()
@@ -812,7 +848,10 @@ class Pane(
 
             .. versionadded:: 0.56
         hex_keys : bool, optional
-            Send keys as hex values (``-H`` flag).
+            Send keys as hex values (``-H`` flag). ``cmd`` is one or more
+            bytes in hex, packed (``1b5b32``), space-separated (``1b 5b 32``),
+            or ``0x``-prefixed. tmux takes one byte per argument; libtmux
+            splits ``cmd`` into one argument per byte.
 
             .. versionadded:: 0.56
         target_client : str, optional
@@ -828,7 +867,13 @@ class Pane(
         ------
         ValueError
             If ``cmd`` is ``None`` and no flag-only path is selected
-            (``reset``, ``repeat``, or ``copy_mode_cmd``).
+            (``reset``, ``repeat``, or ``copy_mode_cmd``), or ``hex_keys`` is
+            set and ``cmd`` is not valid hex.
+        :exc:`~libtmux.exc.LibTmuxException`
+            If tmux rejects the text. tmux refuses a command above its 16 KiB
+            message size (``command too long`` or ``failed to send command``);
+            nothing is sent and no Enter follows. Send large text with
+            :meth:`paste_text`.
 
         Examples
         --------
@@ -903,7 +948,15 @@ class Pane(
             self.cmd("send-keys", *tmux_args)
             return
         else:
-            self.cmd("send-keys", *tmux_args, prefix + cmd)
+            keys: tuple[str, ...]
+            if hex_keys:
+                keys = _hex_key_args(cmd)
+                if prefix:
+                    keys = ("20", *keys)
+            else:
+                keys = (_escape_trailing_semicolon(prefix + cmd),)
+            proc = self.cmd("send-keys", *tmux_args, "--", *keys)
+            raise_if_stderr(proc, "send-keys")
 
         if enter and copy_mode_cmd is None:
             self.enter()
@@ -2118,6 +2171,60 @@ class Pane(
         proc = self.cmd("paste-buffer", *tmux_args)
 
         raise_if_stderr(proc, "paste-buffer")
+
+    def paste_text(self, text: str, *, bracket: bool = True) -> None:
+        r"""Paste text of any size into the pane via a throwaway paste buffer.
+
+        Unlike :meth:`send_keys`, ``text`` is not subject to tmux's command
+        size limit (16 KiB) and is never read as key names or flags. Line
+        feeds stay line feeds, and control characters such as ESC arrive as
+        bytes. No Enter is sent.
+
+        The text travels on the standard input of ``$ tmux load-buffer``, so
+        it reaches a uniquely named buffer without a temporary file; ``$ tmux
+        paste-buffer -d -r`` then pastes and deletes it. The buffer is deleted
+        when the paste fails too. An empty ``text`` sends nothing.
+
+        Parameters
+        ----------
+        text : str
+            Text to paste, encoded as UTF-8.
+        bracket : bool, optional
+            Wrap the paste in bracketed-paste markers (``-p`` flag), default
+            True. tmux adds them only when the program in the pane asked for
+            bracketed paste.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux refuses to load or paste the buffer.
+
+        Examples
+        --------
+        >>> pane = window.split(shell='cat')
+        >>> pane.paste_text('- first line\nsecond line;\n')
+        >>> from libtmux.test.retry import retry_until
+        >>> retry_until(lambda: '- first line' in pane.capture_pane(), raises=True)
+        True
+        """
+        if not text:
+            return
+
+        buffer_name = f"libtmux_paste_{uuid.uuid4().hex}"
+        proc = self.server.cmd("load-buffer", "-b", buffer_name, "-", input=text)
+        raise_if_stderr(proc, "load-buffer")
+
+        try:
+            self.paste_buffer(
+                buffer_name=buffer_name,
+                delete_after=True,
+                linefeed_separator=True,
+                bracket=bracket,
+                no_vis=has_gte_version("3.7", tmux_bin=self.server.tmux_bin) or None,
+            )
+        except exc.LibTmuxException:
+            self.server.delete_buffer(buffer_name=buffer_name)
+            raise
 
     def pipe(
         self,
