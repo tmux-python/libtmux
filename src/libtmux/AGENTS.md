@@ -34,6 +34,15 @@ manager) rather than changing the default contract of an existing
 accessor or hard-coding raise-on-tmux-error into a new one.
 Empty-on-tmux-error stays the default; raise is opt-in.
 
+Lenient means "tmux unreachable or said no", not "any `LibTmuxException`".
+The accessors catch the closed tuple `neo._LENIENT_LIST_ERRORS`
+(`TmuxCommandFailed`, `TmuxCommandNotFound`, `SocketPathTooLong`,
+`VersionTooLow`), so a `TmuxTimeout`, `WaitTimeout` or `TmuxServerGone`
+propagates instead of reading as an empty server, wherever a class sits in
+the tree. Never widen a lenient `except` to `LibTmuxException`. A new
+exception that means "tmux was unreachable" joins that tuple; anything else
+stays loud. The tree is documented in `docs/topics/exceptions.md`.
+
 The opt-in is `Server.fetch_sessions()`, `fetch_windows()` and
 `fetch_panes()`: separate methods that raise `exc.ListCommandFailed`, so
 the lenient property contract is untouched and the choice is visible at

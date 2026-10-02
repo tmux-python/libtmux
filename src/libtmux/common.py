@@ -243,7 +243,7 @@ class EnvironmentMixin:
 
 
 def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
-    """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
+    """Raise :exc:`TmuxCommandFailed` tagged with the tmux subcommand on stderr.
 
     Centralizes the ``if proc.stderr: raise exc.LibTmuxException(proc.stderr)``
     pattern scattered across the wrappers. Tags the exception with the
@@ -261,8 +261,9 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
 
     Raises
     ------
-    :exc:`LibTmuxException`
-        When ``proc.stderr`` is non-empty.
+    :exc:`TmuxCommandFailed`
+        When ``proc.stderr`` is non-empty. A :exc:`LibTmuxException`, which
+        this raised before 0.63.
 
     Examples
     --------
@@ -274,7 +275,7 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     .. versionadded:: 0.57
     """
     if proc.stderr:
-        raise exc.LibTmuxException(
+        raise exc.TmuxCommandFailed(
             "\n".join(proc.stderr),
             subcommand=subcommand,
         )
@@ -875,7 +876,7 @@ def _no_version_flag_fallback() -> str:
         f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
         " does not meet the minimum tmux version requirement."
     )
-    raise exc.LibTmuxException(msg)
+    raise exc.VersionTooLow(msg)
 
 
 def _query_version(tmux_bin: str | None = None) -> str:

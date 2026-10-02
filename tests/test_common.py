@@ -713,9 +713,10 @@ def test_raise_if_stderr_raises_with_subcommand_tag(
     proc = session.server.cmd("list-clients", "-t", "$nonexistent_session_id_for_test")
     assert proc.stderr  # sanity check the fixture
 
-    with pytest.raises(exc.LibTmuxException) as excinfo:
+    with pytest.raises(exc.TmuxCommandFailed) as excinfo:
         raise_if_stderr(proc, "list-clients")
 
+    assert isinstance(excinfo.value, exc.LibTmuxException)
     assert excinfo.value.subcommand == "list-clients"
     assert str(excinfo.value).startswith("list-clients:")
 

@@ -92,6 +92,12 @@ A private tmux server for scripts and tests, always cleaned up.
 Get and set tmux options and hooks.
 :::
 
+:::{grid-item-card} Exceptions
+:link: exceptions
+:link-type: doc
+The exception tree, which timeout is which, and what to catch.
+:::
+
 :::{grid-item-card} Clients
 :link: clients
 :link-type: doc
@@ -127,5 +133,6 @@ context_managers
 throwaway_server
 options_and_hooks
 clients
+exceptions
 format-tokens
 ```

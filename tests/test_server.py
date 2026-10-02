@@ -825,8 +825,14 @@ def test_with_server_is_alive(server: Server) -> None:
 
 def test_raise_if_dead_no_server_raises(server: Server) -> None:
     """Verify ``Server.raise_if_dead`` raises if tmux server is dead."""
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(exc.TmuxServerNotRunning) as excinfo:
         server.raise_if_dead()
+
+    # Still what 0.62 raised, so existing handlers keep working.
+    assert isinstance(excinfo.value, subprocess.CalledProcessError)
+    assert isinstance(excinfo.value, exc.TmuxServerGone)
+    assert isinstance(excinfo.value, exc.LibTmuxException)
+    assert excinfo.value.returncode != 0
 
 
 def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
@@ -2069,7 +2075,7 @@ def test_server_clients_returns_empty_on_tmux_error(
     :attr:`Server.sessions`. Callers needing a connectivity check should
     use :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
     """
-    sentinel = exc.LibTmuxException("simulated list-clients failure")
+    sentinel = exc.TmuxCommandFailed("simulated list-clients failure")
 
     def _boom(**_: object) -> list[dict[str, str]]:
         raise sentinel
@@ -2110,7 +2116,7 @@ def test_server_sessions_returns_empty_on_tmux_error(
     to distinguish "no sessions" from "tmux unreachable" should use
     :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
     """
-    sentinel = exc.LibTmuxException("simulated list-sessions failure")
+    sentinel = exc.TmuxCommandFailed("simulated list-sessions failure")
 
     def _boom(**_: object) -> list[dict[str, str]]:
         raise sentinel
@@ -2131,7 +2137,7 @@ def test_server_sessions_permission_error_returns_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Connection errors are absorbed into the empty-list contract too."""
-    sentinel = exc.LibTmuxException(
+    sentinel = exc.TmuxCommandFailed(
         "error connecting to /root/libtmux-review.sock (Permission denied)"
     )
 

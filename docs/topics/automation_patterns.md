@@ -479,10 +479,11 @@ On expiry libtmux kills and reaps the tmux client it started, then raises
 have run, and whatever it started in the pane or the server keeps running.
 Treat the call as "outcome unknown" and read the state back before retrying.
 
-{exc}`~libtmux.exc.TmuxTimeout` is not a {exc}`~libtmux.exc.LibTmuxException`.
-`except LibTmuxException` does not catch it, and the list accessors
-({attr}`Server.sessions <libtmux.Server.sessions>`) cannot turn a server that
-stopped answering into an empty list.
+{exc}`~libtmux.exc.TmuxTimeout` is a {exc}`~libtmux.exc.LibTmuxException`, so
+`except TmuxError` and `except LibTmuxException` both catch it. The list
+accessors ({attr}`Server.sessions <libtmux.Server.sessions>`) catch only command
+failures, so they cannot turn a server that stopped answering into an empty list.
+See {ref}`exceptions`.
 
 The bound belongs to the call, not to the server object. The same server can
 carry a patient call for a build and an impatient one for a health check, and no

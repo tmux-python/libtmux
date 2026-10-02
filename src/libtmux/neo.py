@@ -1046,6 +1046,18 @@ def parse_output(
     return {k: v for k, v in formatter.items() if v or k == PANE_LABEL_FIELD}
 
 
+#: What a lenient list accessor reads as "nothing to list": tmux answered with
+#: an error (or unparseable rows), could not be run, or cannot be addressed.
+#: Deliberately a closed list rather than ``LibTmuxException``: a timeout or
+#: any later subclass of it must propagate, not look like an empty server.
+_LENIENT_LIST_ERRORS: tuple[type[exc.LibTmuxException], ...] = (
+    exc.TmuxCommandFailed,
+    exc.TmuxCommandNotFound,
+    exc.SocketPathTooLong,
+    exc.VersionTooLow,
+)
+
+
 def _split_records(stdout: list[str], field_count: int) -> list[str]:
     """Regroup ``-F`` output into one string per object.
 
@@ -1084,7 +1096,7 @@ def _split_records(stdout: list[str], field_count: int) -> list[str]:
             f"{field_count} fields per record. A format value probably "
             f"contains the field separator ({FORMAT_SEPARATOR!r})."
         )
-        raise exc.LibTmuxException(msg)
+        raise exc.TmuxCommandFailed(msg)
 
     records: list[str] = []
     for start in range(0, len(values), field_count):
@@ -1143,7 +1155,7 @@ def fetch_objs(
 
     Raises
     ------
-    :exc:`~libtmux.exc.LibTmuxException`
+    :exc:`~libtmux.exc.TmuxCommandFailed`
         If the tmux command writes to stderr.
 
     Examples
