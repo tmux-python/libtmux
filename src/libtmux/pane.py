@@ -12,6 +12,7 @@ import logging
 import pathlib
 import re
 import typing as t
+import uuid
 import warnings
 
 from libtmux import exc
@@ -816,7 +817,8 @@ class Pane(
         :exc:`~libtmux.exc.LibTmuxException`
             If tmux rejects the text. tmux refuses a command above its 16 KiB
             message size (``command too long`` or ``failed to send command``);
-            nothing is sent and no Enter follows.
+            nothing is sent and no Enter follows. Send large text with
+            :meth:`paste_text`.
 
         Examples
         --------
@@ -1982,6 +1984,60 @@ class Pane(
         proc = self.cmd("paste-buffer", *tmux_args)
 
         raise_if_stderr(proc, "paste-buffer")
+
+    def paste_text(self, text: str, *, bracket: bool = True) -> None:
+        r"""Paste text of any size into the pane via a throwaway paste buffer.
+
+        Unlike :meth:`send_keys`, ``text`` is not subject to tmux's command
+        size limit (16 KiB) and is never read as key names or flags. Line
+        feeds stay line feeds, and control characters such as ESC arrive as
+        bytes. No Enter is sent.
+
+        The text travels on the standard input of ``$ tmux load-buffer``, so
+        it reaches a uniquely named buffer without a temporary file; ``$ tmux
+        paste-buffer -d -r`` then pastes and deletes it. The buffer is deleted
+        when the paste fails too. An empty ``text`` sends nothing.
+
+        Parameters
+        ----------
+        text : str
+            Text to paste, encoded as UTF-8.
+        bracket : bool, optional
+            Wrap the paste in bracketed-paste markers (``-p`` flag), default
+            True. tmux adds them only when the program in the pane asked for
+            bracketed paste.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux refuses to load or paste the buffer.
+
+        Examples
+        --------
+        >>> pane = window.split(shell='cat')
+        >>> pane.paste_text('- first line\nsecond line;\n')
+        >>> from libtmux.test.retry import retry_until
+        >>> retry_until(lambda: '- first line' in pane.capture_pane(), raises=True)
+        True
+        """
+        if not text:
+            return
+
+        buffer_name = f"libtmux_paste_{uuid.uuid4().hex}"
+        proc = self.server.cmd("load-buffer", "-b", buffer_name, "-", input=text)
+        raise_if_stderr(proc, "load-buffer")
+
+        try:
+            self.paste_buffer(
+                buffer_name=buffer_name,
+                delete_after=True,
+                linefeed_separator=True,
+                bracket=bracket,
+                no_vis=has_gte_version("3.7", tmux_bin=self.server.tmux_bin) or None,
+            )
+        except exc.LibTmuxException:
+            self.server.delete_buffer(buffer_name=buffer_name)
+            raise
 
     def pipe(
         self,

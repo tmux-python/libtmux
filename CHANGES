@@ -60,6 +60,15 @@ Commands that accept `-` as a path read it there, for example
 Standard input is not part of tmux's 16 KiB command size limit, so a payload of
 any size loads. Without `input`, the call runs as before.
 
+#### Paste text of any size with `Pane.paste_text()`
+
+{meth}`Pane.paste_text() <libtmux.Pane.paste_text>` pastes text into a pane
+through a throwaway paste buffer loaded from standard input. It has no size
+limit, never reads the text as key names or flags, keeps line feeds and control
+characters intact, and leaves no temporary file or buffer behind. It does not
+send Enter. Use it where {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
+would exceed tmux's 16 KiB command limit.
+
 ### Fixes
 
 #### `Pane.send_keys()` sends text that starts with `-`
@@ -95,7 +104,8 @@ or `failed to send command`. {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
 previously ignored that reply, so the text vanished and the Enter that followed
 still went to the pane. It now raises {exc}`~libtmux.exc.LibTmuxException` with
 tmux's message, sends no Enter, and so also surfaces any other error tmux
-reports for the text, such as a pane that no longer exists.
+reports for the text, such as a pane that no longer exists. Send large text
+with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
 
 ### Documentation
 

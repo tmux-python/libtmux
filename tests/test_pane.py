@@ -193,13 +193,14 @@ def test_send_keys_hex_keys_rejects_malformed(
         pane.send_keys(hex_text, hex_keys=True)
 
 
-def _lines(count: int, width: int) -> str:
+def _lines(count: int, width: int, prefix: str = "") -> str:
     """Return ``count`` newline-terminated lines of ``width`` bytes each.
 
     The terminal reads a line at a time and truncates a line over 4,095 bytes,
     so a big payload has to be many short lines.
     """
-    return ("A" * (width - 1) + "\n") * count
+    line = (prefix + "A" * width)[: width - 1] + "\n"
+    return line * count
 
 
 def test_send_keys_payload_near_the_limit_is_delivered(
@@ -240,6 +241,84 @@ def test_send_keys_raises_when_tmux_refuses_oversize_text(
         assert excinfo.value.subcommand == "send-keys"
 
     assert _bytes_received(session, tmp_path, send) == ""
+
+
+def _paste_buffers(session: Session) -> list[str]:
+    """Return the names of buffers ``Pane.paste_text()`` created."""
+    return [
+        name
+        for name in session.server.list_buffers(format_string="#{buffer_name}")
+        if name.startswith("libtmux_paste_")
+    ]
+
+
+def test_paste_text_delivers_large_payload_verbatim(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Pane.paste_text() delivers text far over the send-keys limit, byte for byte.
+
+    The payload carries a leading ``-``, a tab, ESC, non-ASCII, and a final
+    ``;``: each one is mangled by a different tmux code path.
+    """
+    text = _lines(400, 100, prefix="-\t\x1b\u00e9;") + "end;\n"
+    assert len(text.encode()) > 40_000
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.paste_text(text),
+        stty="-icrnl",
+    )
+    assert received == text
+    assert not _paste_buffers(session)
+
+
+def test_paste_text_sends_the_text_on_stdin_not_in_argv(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pane.paste_text() loads its buffer from stdin.
+
+    ``Server.cmd`` is wrapped to record its calls, because the point is how the
+    text travels: a payload in argv would hit tmux's size limit, and a temp file
+    would not be readable by a tmux running elsewhere.
+    """
+    server = session.server
+    calls: list[tuple[tuple[t.Any, ...], str | bytes | None]] = []
+    real_cmd = server.cmd
+
+    def spy(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        calls.append(((cmd, *args), kwargs.get("input")))
+        return real_cmd(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(server, "cmd", spy)
+    pane = session.new_window(window_shell="cat >/dev/null").active_pane
+    assert pane is not None
+    text = "payload " * 5_000
+
+    pane.paste_text(text)
+
+    [(argv, sent)] = [call for call in calls if call[0][0] == "load-buffer"]
+    assert argv[-1] == "-"
+    assert text not in argv
+    assert sent == text
+
+
+def test_paste_text_empty_sends_nothing(session: Session) -> None:
+    """Pane.paste_text("") returns without creating a buffer or raising."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.paste_text("")
+    assert not _paste_buffers(session)
+
+
+def test_paste_text_leaves_no_buffer_when_paste_fails(session: Session) -> None:
+    """Pane.paste_text() deletes its buffer when tmux refuses the paste."""
+    pane = session.new_window().split()
+    pane.kill()
+    with pytest.raises(exc.LibTmuxException):
+        pane.paste_text("text")
+    assert not _paste_buffers(session)
 
 
 def test_set_height(session: Session) -> None:
