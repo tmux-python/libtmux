@@ -61,6 +61,21 @@ carries the `cmd` and the `timeout`. The default, `None`, waits as before.
 the lenient list accessors do not read a hung server as an empty one. Only the
 client dies; work the command started keeps running.
 
+#### Bounded, distinguishable `Server.wait_for()`
+
+{meth}`Server.wait_for() <libtmux.Server.wait_for>` takes a `timeout` in seconds
+and ends one of three ways: a signal returns `None`, the clock raises
+{exc}`~libtmux.exc.TmuxTimeout`, and a tmux server that exited raises the new
+{exc}`~libtmux.exc.TmuxServerGone`. tmux releases waiters at server exit exactly
+as if the channel had been signalled, so a wake alone could not tell them apart;
+`wait_for()` now asks the server again after any wake.
+
+An expired wait is released by signalling its channel before the client is reaped.
+Killing the client alone leaves a ghost waiter on tmux 3.2a through 3.8-rc that
+swallows the next signal on the channel. The signal wakes every waiter on the
+channel, so a channel should have one waiter. `timeout` combined with `lock`,
+`unlock` or `set_flag` raises `ValueError`.
+
 ### Documentation
 
 #### Automation patterns waits for tmux instead of guessing (#734)

@@ -410,6 +410,37 @@ class TmuxTimeout(Exception):
         super().__init__(f"tmux command timed out after {timeout}s: {shlex.join(cmd)}")
 
 
+class TmuxServerGone(LibTmuxException):
+    """The tmux server was not running when a wait ended.
+
+    Raised by :meth:`Server.wait_for() <libtmux.Server.wait_for>` when the
+    server it was waiting on is gone. tmux releases every waiter when its
+    server exits, exactly as if the channel had been signalled, so a wake
+    alone cannot tell "the work finished" from "the server died". libtmux
+    asks the server again after the wake and raises this when nobody answers.
+
+    A channel signalled in the instant before the server exited is reported
+    the same way: the server went away, whatever it had been told.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> str(exc.TmuxServerGone("build-done"))
+    'tmux server is gone; channel build-done was released by its exit'
+
+    >>> isinstance(exc.TmuxServerGone("build-done"), exc.LibTmuxException)
+    True
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(self, channel: str) -> None:
+        self.channel = channel
+        super().__init__(
+            f"tmux server is gone; channel {channel} was released by its exit",
+        )
+
+
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 
