@@ -177,7 +177,8 @@ raised.
 - {meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` raises
   {exc}`~libtmux.exc.TmuxServerNotRunning`, a
   {exc}`~libtmux.exc.TmuxServerGone` that is still a
-  {class}`subprocess.CalledProcessError`.
+  {class}`subprocess.CalledProcessError`. Its message ends with tmux's own
+  diagnostic, so it still names the socket that did not answer.
 - The lenient list accessors ({attr}`Server.sessions <libtmux.Server.sessions>`,
   {attr}`Server.clients <libtmux.Server.clients>`,
   {attr}`Window.linked_sessions <libtmux.Window.linked_sessions>`) now catch
