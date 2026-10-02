@@ -1156,3 +1156,44 @@ def test_redaction_does_not_change_the_argv_tmux_receives(server: Server) -> Non
         return "sekrit-value" in "\n".join(pane.capture_pane())
 
     assert retry_until(printed)
+
+
+def test_timeout_log_and_message_redact_environment_values(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A timed-out command does not leak ``-e NAME=value`` into logs or the error.
+
+    The timeout path logs and raises the argv itself, so it has to go
+    through the same redactor as the DEBUG dispatch log.
+    """
+
+    class FakePopen:
+        returncode = None
+        stdout = None
+        stderr = None
+
+        def __init__(self, cmd: list[str], **kwargs: t.Any) -> None:
+            self.cmd = cmd
+
+        def communicate(self, *args: t.Any, timeout: float | None = None) -> t.Any:
+            raise subprocess.TimeoutExpired(self.cmd, timeout or 0)
+
+        def kill(self) -> None:
+            pass
+
+        def wait(self) -> int:
+            return -9
+
+    monkeypatch.setattr("libtmux.common.subprocess.Popen", FakePopen)
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="libtmux.common"),
+        pytest.raises(exc.TmuxTimeout) as excinfo,
+    ):
+        tmux_cmd("new-window", "-e", "TOKEN=hunter2", tmux_bin="tmux", timeout=1)
+
+    assert "hunter2" not in str(excinfo.value)
+    assert "hunter2" not in caplog.text
+    assert "TOKEN=***" in str(excinfo.value)
+    assert excinfo.value.cmd[-1] == "TOKEN=hunter2"

@@ -449,6 +449,7 @@ class Server(
         ... except exc.TmuxTimeout:
         ...     print('gave up')
         gave up
+
         Load a buffer from standard input, then read it back:
 
         >>> server.cmd(

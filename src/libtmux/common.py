@@ -703,6 +703,7 @@ class tmux_cmd:
     ... except exc.TmuxTimeout as e:
     ...     (e.timeout, e.cmd[-2:])
     (0.25, ['run-shell', 'sleep 5'])
+
     Send data on the client's standard input with ``input``. Commands that
     take ``-`` as a path, such as ``load-buffer``, read it from there:
 
@@ -808,7 +809,7 @@ class tmux_cmd:
             logger.error(  # noqa: TRY400
                 "tmux command timed out",
                 extra={
-                    "tmux_cmd": shlex.join(cmd),
+                    "tmux_cmd": _loggable_cmd(cmd),
                     "tmux_timeout": e.timeout,
                 },
             )

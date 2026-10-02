@@ -7,7 +7,6 @@ libtmux.exc
 
 from __future__ import annotations
 
-import shlex
 import typing as t
 
 if t.TYPE_CHECKING:
@@ -458,7 +457,12 @@ class TmuxTimeout(Exception):
     def __init__(self, cmd: list[str], timeout: float) -> None:
         self.cmd = cmd
         self.timeout = timeout
-        super().__init__(f"tmux command timed out after {timeout}s: {shlex.join(cmd)}")
+        # Local import: libtmux.common imports this module.
+        from libtmux.common import _loggable_cmd
+
+        super().__init__(
+            f"tmux command timed out after {timeout}s: {_loggable_cmd(cmd)}"
+        )
 
 
 class TmuxServerGone(LibTmuxException):
