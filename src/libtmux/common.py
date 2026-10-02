@@ -478,6 +478,8 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     If using OpenBSD's base system tmux, the version will have ``-openbsd``
     appended to the latest version, e.g. ``2.4-openbsd``.
 
+    A release candidate reads as its release: ``3.8-rc3`` returns ``3.8``.
+
     Parameters
     ----------
     tmux_bin : str, optional
@@ -510,6 +512,9 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     if version == "master":
         return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 
+    # A release candidate (``3.8-rc``, ``3.8-rc3``) reads as its release; the
+    # candidate number must not survive the letter strip as a minor digit.
+    version = re.sub(r"-rc\d*$", "", version)
     version = re.sub(r"[a-z-]", "", version)
 
     return LooseVersion(version)

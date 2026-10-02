@@ -72,6 +72,12 @@ newlines in any position. A value that carries the separator itself no
 longer corrupts the parse silently — it is reported as output that
 could not be parsed.
 
+#### A numbered release candidate no longer reads as a later version
+
+{func}`~libtmux.common.get_version` returns `3.8` for `tmux 3.8-rc3`. It
+returned `3.83`, so a numbered candidate passed `has_gte_version("3.9")`.
+`3.8-rc`, `3.8-rc1` and `3.8-rc2` read as `3.8` the same way.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
