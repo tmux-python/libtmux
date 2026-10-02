@@ -67,6 +67,22 @@ def test_set_width(session: Session) -> None:
     pane1.reset()
 
 
+def _wait_for_contents(pane: Pane, expected: str) -> str:
+    """Return the pane's text once it equals *expected*, else its last text.
+
+    A new pane's shell prints its prompt, and a sent command prints its echo
+    and output, some time after tmux returns. Polling on the expected state
+    returns as soon as it holds, so a loaded machine slows the test without
+    changing what it asserts.
+    """
+
+    def contents() -> str:
+        return "\n".join(pane.capture_pane())
+
+    retry_until(lambda: contents() == expected, raises=False)
+    return contents()
+
+
 def test_capture_pane(session: Session) -> None:
     """Verify Pane.capture_pane()."""
     env = shutil.which("env")
@@ -79,17 +95,16 @@ def test_capture_pane(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
+    assert _wait_for_contents(pane, "$") == "$"
     pane.send_keys(
         r'printf "\n%s\n" "Hello World !"',
         literal=True,
         suppress_history=False,
     )
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
+    expected = r'$ printf "\n%s\n" "Hello World !"{}'.format(
         "\n\nHello World !\n$",
     )
+    assert _wait_for_contents(pane, expected) == expected
 
 
 def test_capture_pane_start(session: Session) -> None:
@@ -104,11 +119,10 @@ def test_capture_pane_start(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
+    assert _wait_for_contents(pane, "$") == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == '$ printf "%s"\n$'
+    expected = '$ printf "%s"\n$'
+    assert _wait_for_contents(pane, expected) == expected
     pane.send_keys("clear -x", literal=True, suppress_history=False)
 
     def wait_until_pane_cleared() -> bool:
@@ -149,11 +163,10 @@ def test_capture_pane_end(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
+    assert _wait_for_contents(pane, "$") == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == '$ printf "%s"\n$'
+    expected = '$ printf "%s"\n$'
+    assert _wait_for_contents(pane, expected) == expected
     pane_contents = "\n".join(pane.capture_pane(end=0))
     assert pane_contents == '$ printf "%s"'
     pane_contents = "\n".join(pane.capture_pane(end="-"))

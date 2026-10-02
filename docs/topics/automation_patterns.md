@@ -177,9 +177,17 @@ True
 ### Capturing output between markers
 
 Sometimes you don't want the whole scrollback — you want just the lines a command
-produced. Bracket the interesting output with a marker you control, then return
-everything that follows it. This is how you pull a command's result out of a shared
-pane without dragging along the prompt and prior history.
+produced. Bracket the interesting output with a start and an end marker you
+control, wait for the end marker, then return the lines between them. This is how
+you pull a command's result out of a shared pane without dragging along the prompt
+and prior history.
+
+Two details keep the wait honest. Wait for the *end* marker: it is the last thing
+the command prints, so everything before it has already arrived. And keep each
+marker out of the command line you type: the shell echoes what you type, so a
+marker that appears literally in the command matches your own input before the
+command has run. Splitting the marker in the command (`"ST""ART"`) makes the shell
+join it only when it prints.
 
 ```python
 >>> import time
@@ -187,32 +195,22 @@ pane without dragging along the prompt and prior history.
 >>> capture_window = session.new_window(window_name='capture', attach=False)
 >>> capture_pane = capture_window.active_pane
 
->>> def capture_after_marker(pane, marker, timeout=5.0):
-...     """Capture output after a marker appears."""
-...     start_time = time.time()
-...     while time.time() - start_time < timeout:
+>>> def capture_between_markers(pane, start, end, timeout=5.0):
+...     """Capture output between two markers once the end marker appears."""
+...     deadline = time.time() + timeout
+...     while time.time() < deadline:
 ...         lines = pane.capture_pane()
-...         output = '\\n'.join(lines)
-...         if marker in output:
-...             # Return all lines after the marker
-...             found = False
-...             result = []
-...             for line in lines:
-...                 if marker in line:
-...                     found = True
-...                     continue
-...                 if found:
-...                     result.append(line)
-...             return result
+...         if any(end in line for line in lines):
+...             begin = max(i for i, line in enumerate(lines) if start in line)
+...             finish = max(i for i, line in enumerate(lines) if end in line)
+...             return lines[begin + 1:finish]
 ...         time.sleep(0.1)
 ...     return None
 
 >>> # Test marker capture
->>> capture_pane.send_keys('echo "MARKER"; echo "captured data"')
->>> time.sleep(0.3)
->>> result = capture_after_marker(capture_pane, 'MARKER', timeout=2.0)
->>> any('captured' in line for line in (result or []))
-True
+>>> capture_pane.send_keys('printf "%s\\n" "ST""ART" "captured data" "EN""D"')
+>>> capture_between_markers(capture_pane, 'START', 'END', timeout=5.0)
+['captured data']
 
 >>> # Clean up
 >>> capture_window.kill()
