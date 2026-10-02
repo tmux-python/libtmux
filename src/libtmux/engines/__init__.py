@@ -51,6 +51,7 @@ from libtmux.engines.base import (
 )
 from libtmux.engines.connection import ServerConnection
 from libtmux.engines.control.sync import ControlModeEngine
+from libtmux.engines.exec import ExecEngine
 from libtmux.engines.instrumentation import (
     CountingSink,
     InstrumentedEngine,
@@ -65,6 +66,7 @@ __all__ = (
     "CommandSeparator",
     "ControlModeEngine",
     "CountingSink",
+    "ExecEngine",
     "InstrumentedEngine",
     "ServerConnection",
     "Sink",

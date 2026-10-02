@@ -63,6 +63,13 @@ single place either is computed.
    :members:
 ```
 
+## Other hosts
+
+```{eval-rst}
+.. automodule:: libtmux.engines.exec
+   :members:
+```
+
 ## Observing an engine
 
 {class}`~libtmux.engines.instrumentation.InstrumentedEngine` wraps an engine and

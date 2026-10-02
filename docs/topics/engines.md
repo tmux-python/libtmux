@@ -362,6 +362,50 @@ loaded development machine (load average 10), milliseconds:
 The two control processes are the `list-sessions` probe that picks the session
 and the client itself. Connecting costs about 3 to 6 ms once.
 
+## Tmux in a container or on another host
+
+{class}`~libtmux.engines.exec.ExecEngine` puts a transport command in front of
+tmux, so the same {class}`~libtmux.Server` API drives a tmux server inside a
+container, a pod, or on a host you can `ssh` to. Only tmux has to be installed
+on the far side; libtmux does not.
+
+```python
+>>> from libtmux.engines import CommandRequest, ExecEngine
+>>> engine = ExecEngine.docker("build-7f3a", user="ci")
+>>> engine.command_line(CommandRequest.from_args("list-sessions"))
+('docker', 'exec', '-i', '-u', 'ci', 'build-7f3a', 'tmux', 'list-sessions')
+>>> ExecEngine.kubectl("web-0", namespace="prod").command_line(
+...     CommandRequest.from_args("list-sessions")
+... )[-3:]
+('--', 'tmux', 'list-sessions')
+```
+
+Pass it to a server as usual, and the server's socket flags go to the far side:
+
+```python
+remote = Server(socket_name="ci", engine=ExecEngine.docker("build-7f3a"))
+remote.cmd("list-sessions")
+```
+
+The constructors are `docker`, `kubectl` and `ssh`, named after the transports
+Ansible and testinfra use. For anything else, give the prefix directly:
+`ExecEngine(("nsenter", "-t", "1234", "-m"))`.
+
+Quoting is the one thing to get right. `docker exec` and `kubectl exec` hand the
+argv to the program untouched. `ssh` joins its arguments with spaces and a shell
+on the far side splits them again, so a value such as `it's` or `a b` arrives
+damaged; `ExecEngine.ssh` sets `shell=True`, which joins tmux and its arguments
+into one shell-quoted word. Set `shell=True` yourself for any transport that
+behaves like `ssh`, such as `su -c`. Across a space-joining transport, 10 of 12
+awkward test values were corrupted without it and none with it.
+
+- The transport never gets `-t`: a pty rewrites newlines. The constructors pass
+  `-i`, which a request's `input` needs.
+- A request's `timeout` kills the local transport process. The remote tmux
+  command may still complete.
+- A tmux-side failure is data, as with every engine. A transport program that
+  is not installed raises {exc}`~libtmux.exc.EngineError`.
+
 ## What an engine does not change
 
 An engine chooses *how* a command runs, not what libtmux does with the answer.

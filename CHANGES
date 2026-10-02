@@ -101,6 +101,17 @@ failure stays data on the result; `raise_for_status()` turns it into
 `stderr`. {meth}`Server.cmd() <libtmux.Server.cmd>` still returns a
 {class}`~libtmux.common.tmux_cmd` and is unchanged.
 
+#### Tmux in a container or on another host (#739)
+
+{class}`~libtmux.engines.exec.ExecEngine` runs tmux through a transport command.
+`ExecEngine.docker("box")`, `ExecEngine.kubectl("pod")` and
+`ExecEngine.ssh("host")` build the prefix; `Server(engine=...)` then drives a
+tmux server in a container, a pod or on another host with the usual API, and
+only tmux has to be installed there. `ssh` and other transports that re-parse
+their arguments need `shell=True`, which `ExecEngine.ssh` sets; across a
+space-joining transport 10 of 12 awkward values were damaged without it. A
+missing transport program raises {exc}`~libtmux.exc.EngineError`.
+
 #### `timeout` and `input` on commands (#739)
 
 {class}`~libtmux.engines.base.CommandRequest`,
