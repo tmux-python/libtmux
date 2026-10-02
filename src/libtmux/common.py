@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import functools
 import inspect
@@ -14,6 +15,7 @@ import logging
 import re
 import subprocess
 import sys
+import threading
 import typing as t
 import warnings
 
@@ -549,6 +551,70 @@ def _escape_trailing_semicolon(text: str) -> str:
     if text.endswith(";"):
         return f"{text[:-1]}\\;"
     return text
+
+
+_LIVE_WAITERS: dict[int, tuple[subprocess.Popen[str], list[str]]] = {}
+_LIVE_WAITERS_GUARD = threading.Lock()
+_EXITING = threading.Event()
+
+
+@contextlib.contextmanager
+def _tracked_waiter(
+    waiter: subprocess.Popen[str],
+    release_argv: list[str],
+) -> t.Iterator[None]:
+    """Record a ``wait-for`` client for as long as it may be blocked.
+
+    A normal exit, a timeout and an exception all release the waiter on their
+    own path. What none of them reaches is the interpreter ending while a
+    thread is still blocked on one, so the :mod:`atexit` hook below releases
+    whatever is recorded here.
+
+    Examples
+    --------
+    >>> from libtmux.common import _LIVE_WAITERS, _tracked_waiter
+    >>> process = subprocess.Popen(
+    ...     [sys.executable, '-c', 'pass'],
+    ...     stdout=subprocess.PIPE,
+    ...     stderr=subprocess.PIPE,
+    ...     text=True,
+    ... )
+    >>> with _tracked_waiter(process, ['true']):
+    ...     process.pid in _LIVE_WAITERS
+    True
+
+    >>> process.pid in _LIVE_WAITERS
+    False
+    >>> _ = process.communicate()
+    """
+    with _LIVE_WAITERS_GUARD:
+        _LIVE_WAITERS[waiter.pid] = (waiter, release_argv)
+    try:
+        if _EXITING.is_set():
+            # A thread that outlived the hook below started this one late.
+            _release_waiter(waiter, release_argv, grace=1.0)
+        yield
+    finally:
+        with _LIVE_WAITERS_GUARD:
+            _LIVE_WAITERS.pop(waiter.pid, None)
+
+
+@atexit.register
+def _release_live_waiters() -> None:
+    """Release every ``wait-for`` client still blocked when the interpreter exits.
+
+    Without this a thread that was blocked on :meth:`Server.wait_for` when the
+    process ended leaves its tmux client behind, waiting on a channel nobody
+    may ever signal. A thread that is still running starts its next waiter
+    released at once, so one wait cannot be replaced by another.
+    """
+    _EXITING.set()
+    with _LIVE_WAITERS_GUARD:
+        live = list(_LIVE_WAITERS.values())
+        _LIVE_WAITERS.clear()
+    for waiter, release_argv in live:
+        if waiter.poll() is None:
+            _release_waiter(waiter, release_argv, grace=1.0)
 
 
 class tmux_cmd:

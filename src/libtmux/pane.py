@@ -56,7 +56,7 @@ if t.TYPE_CHECKING:
     import types
 
     from libtmux._internal.types import StrPath
-    from libtmux.run import PaneRunResult
+    from libtmux.run import PaneRunCancel, PaneRunResult
 
     from .server import Server
     from .session import Session
@@ -1290,6 +1290,7 @@ class Pane(
         command: str,
         *,
         timeout: float = 120.0,
+        cancel: PaneRunCancel | None = None,
     ) -> PaneRunResult:
         """Run a shell command in the pane; return its exit status and output.
 
@@ -1307,6 +1308,8 @@ class Pane(
         timeout : float
             Seconds to wait for the command to finish. Defaults to 120.
             Every call is bounded; pass a larger number for a long command.
+        cancel : :class:`~libtmux.run.PaneRunCancel`, optional
+            Lets another thread end the call early. See *Notes*.
 
         Returns
         -------
@@ -1324,6 +1327,9 @@ class Pane(
             at a shell prompt, or its shell cannot reach this tmux server, as
             in ``ssh`` and ``docker exec`` panes. The typed line stays in
             that pane.
+        :exc:`~libtmux.exc.PaneRunCancelled`
+            When *cancel* is cancelled before the call returns. The command
+            keeps running in the pane.
         :exc:`~libtmux.exc.TmuxServerGone`
             When the tmux server exits.
         :exc:`~libtmux.exc.PaneNotFound`
@@ -1349,6 +1355,24 @@ class Pane(
         While the call waits, it installs ``pane-exited`` and ``pane-died``
         hooks (global, at an array index of their own, filtered to this pane)
         and removes them on every path out.
+
+        Abandoning a call. A call that raises, including on
+        :exc:`KeyboardInterrupt` or :exc:`SystemExit`, kills its waiter
+        before the exception leaves, and :mod:`atexit` releases the waiters
+        of threads still blocked when the interpreter ends. A thread cannot
+        be interrupted from outside, though: cancelling the :mod:`asyncio`
+        task around :func:`asyncio.to_thread` leaves the thread, its waiter
+        and the pane's lock in place until the command ends or *timeout*
+        expires. Pass a :class:`~libtmux.run.PaneRunCancel` as *cancel* and
+        call its ``cancel()`` instead. Whichever way a call ends early, the
+        command keeps running in the pane, and a ``@libtmux_run_*`` pane
+        option appears when it finishes. Send ``C-c`` to stop the command.
+
+        Calls on one pane are serialized by a process-local lock, so threads
+        may share a pane; the time spent waiting counts against *timeout*, and
+        a call that never gets the lock raises :exc:`~libtmux.exc.PaneRunTimeout`
+        with ``started`` False and types nothing. The lock does not cover other
+        processes, or :meth:`send_keys` called while a run is in flight.
 
         Output is what the terminal drew, so cursor-addressed output arrives
         as rendered and trailing blanks are dropped.
@@ -1376,7 +1400,7 @@ class Pane(
         ['before']
         >>> pane.send_keys('C-c', enter=False)
         """
-        return _run(self, command, timeout=timeout)
+        return _run(self, command, timeout=timeout, cancel=cancel)
 
     @t.overload
     def display_message(
