@@ -60,6 +60,14 @@ Commands that accept `-` as a path read it there, for example
 Standard input is not part of tmux's 16 KiB command size limit, so a payload of
 any size loads. Without `input`, the call runs as before.
 
+### Fixes
+
+#### `Pane.send_keys()` sends text that starts with `-`
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` ends tmux's option parsing
+before the text, so `-1`, `--help`, and `- item` reach the pane as text.
+tmux previously read them as `send-keys` flags and delivered nothing.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

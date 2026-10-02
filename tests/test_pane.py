@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import shlex
 import shutil
 import typing as t
 
@@ -33,6 +34,70 @@ def test_send_keys(session: Session) -> None:
 
     pane.send_keys("c-a", literal=False)
     assert "c-a" not in pane_contents, "should not print to pane"
+
+
+def _bytes_received(
+    session: Session,
+    tmp_path: pathlib.Path,
+    send: t.Callable[[Pane], None],
+) -> str:
+    """Run ``send`` against a pane whose process writes its stdin to a file.
+
+    The pane runs ``cat``, so the file holds exactly the bytes tmux delivered,
+    free of echo, wrapping, and prompt noise.
+    """
+    out = tmp_path / "received"
+    window = session.new_window(
+        window_shell=f"cat > {shlex.quote(str(out))}",
+    )
+    pane = window.active_pane
+    assert pane is not None
+    send(pane)
+    pane.send_keys("C-d", enter=False)  # EOF: cat flushes and exits
+
+    def received() -> bool:
+        return out.exists() and out.read_text().endswith("\n")
+
+    retry_until(received, 2, raises=True)
+    return out.read_text()
+
+
+class SendKeysDashFixture(t.NamedTuple):
+    """A text that begins with ``-`` and must reach the pane verbatim."""
+
+    test_id: str
+    text: str
+
+
+SEND_KEYS_DASH_FIXTURES: list[SendKeysDashFixture] = [
+    SendKeysDashFixture("negative_number", "-1"),
+    SendKeysDashFixture("long_option", "--help"),
+    SendKeysDashFixture("markdown_bullet", "- item"),
+    SendKeysDashFixture("literal_flag", "-l"),
+    SendKeysDashFixture("target_flag", "-t %0"),
+]
+
+
+@pytest.mark.parametrize("literal", [False, True])
+@pytest.mark.parametrize(
+    list(SendKeysDashFixture._fields),
+    SEND_KEYS_DASH_FIXTURES,
+    ids=[test.test_id for test in SEND_KEYS_DASH_FIXTURES],
+)
+def test_send_keys_leading_dash_is_text(
+    session: Session,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    text: str,
+    literal: bool,
+) -> None:
+    """Pane.send_keys() delivers text that starts with ``-`` instead of flags."""
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(text, literal=literal),
+    )
+    assert received == text + "\n"
 
 
 def test_set_height(session: Session) -> None:
