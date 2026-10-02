@@ -50,8 +50,10 @@ It guesses at three things `Pane.run()` knows:
 | Which lines are its own | Diff two captures; the echoed command is in the text | `stdout`, between per-call markers        |
 | A hung command          | Loops forever unless you wrote a bound               | `timeout` raises, carrying the output so far |
 
-The cost is an extra tmux round trip or two per call: about 25 ms for `true` on
-a loaded machine, against 3 ms for a single tmux command.
+The cost is eight tmux invocations per call, two of them made by the pane's shell:
+about 20 to 35 ms for `true` on a loaded machine (median of 50 calls on tmux 3.2a
+and 3.8-rc), against 3 ms for a single tmux command. Setup and teardown commands
+travel as one `;`-chained invocation each.
 
 ## Bound the wait
 

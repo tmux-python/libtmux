@@ -14,6 +14,7 @@ import pytest
 
 from libtmux import exc, run as run_module
 from libtmux.pane import Pane
+from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -70,6 +71,8 @@ RUN_FIXTURES: list[RunFixture] = [
     RunFixture("stderr_included", "echo oops >&2; false", 1, ["oops"]),
     RunFixture("compound", "echo a; echo b; sh -c 'exit 3'", 3, ["a", "b"]),
     RunFixture("single_quote", 'echo "it\'s"', 0, ["it's"]),
+    RunFixture("trailing_semicolon", "echo a;", 0, ["a"]),
+    RunFixture("quoted_semicolon", "echo ';' ';'", 0, ["; ;"]),
 ]
 
 
@@ -498,3 +501,32 @@ def test_run_drive_lock_leaves_no_entry_behind(pane: Pane) -> None:
         pane.run("sleep 30", timeout=0.3)
     assert not [k for k in run_module._DRIVE_LOCKS if k[2] == pane_id]
     pane.send_keys("C-c", enter=False)
+
+
+def test_run_costs_at_most_eight_tmux_calls(
+    server: Server,
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """One call is eight tmux invocations, in the pane and out of it.
+
+    Setup and teardown commands travel as one ``;``-chained invocation each,
+    so a change that unchains them (it was sixteen calls) turns this red. The
+    count comes from a wrapper binary that logs every exec, which sees the
+    calls the pane's shell makes as well as the library's.
+    """
+    real = shutil.which("tmux")
+    assert real is not None
+    log = tmp_path / "execs"
+    wrapper = tmp_path / "tmux"
+    wrapper.write_text(f'#!/bin/sh\necho x >> {log}\nexec {real} "$@"\n')
+    wrapper.chmod(0o755)
+    counted = Server(socket_name=server.socket_name, tmux_bin=str(wrapper))
+    counted_session = counted.sessions.get(session_id=session.session_id)
+    assert counted_session is not None
+    pane = counted_session.active_window.active_pane
+    assert pane is not None
+    pane.run("true", timeout=10)  # first call may do one-time work
+    log.write_text("")
+    pane.run("true", timeout=10)
+    assert len(log.read_text().split()) <= 8

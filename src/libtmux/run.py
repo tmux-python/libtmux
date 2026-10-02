@@ -127,7 +127,7 @@ def _build_line(
     ... )
     >>> line.startswith(" printf '\\n%s%s\\n' LTRUN_B_ T; tmux wait-for -S s; ")
     True
-    >>> line.endswith("tmux wait-for -S d")
+    >>> "\\; wait-for -S d" in line
     True
     >>> "eval \"$_lt_c\"" in line
     True
@@ -137,10 +137,11 @@ def _build_line(
         f"_lt_c={shlex.quote(command)}; trap : INT; "
         'if [ -n "$ZSH_VERSION" ]; then eval "$_lt_c"; '
         'else command eval "$_lt_c"; fi; '
-        f'{tmux} set-option -p -t {pane_id} {option} "$?"; trap - INT; '
-        f"unset _lt_c; printf '%s%s\\n' {_END} {token}; "
+        "_lt_s=$?; trap - INT; unset _lt_c; "
+        f"printf '%s%s\\n' {_END} {token}; "
         '[ -n "$BASH_VERSION" ] && history -d $HISTCMD 2>/dev/null; '
-        f"{tmux} wait-for -S {done}"
+        f'{tmux} set-option -p -t {pane_id} {option} "$_lt_s" \\; wait-for -S {done}; '
+        "unset _lt_s"
     )
 
 
@@ -272,23 +273,43 @@ def _install_gone_hooks(server: Server, pane_id: str, done: str, index: int) -> 
     The hooks are server-wide and filter on ``#{hook_pane}``, because a hook set
     on the pane or its window dies with them before it can fire on tmux 3.2a
     through 3.7c. Each sits at its own array *index*, so a hook the caller
-    already has is untouched.
+    already has is untouched. Both are set by one chained tmux invocation.
     """
     action = f"if-shell -F '#{{==:#{{hook_pane}},{pane_id}}}' 'wait-for -S {done}'"
-    for name in _GONE_HOOKS:
-        proc = server.cmd("set-hook", "-g", f"{name}[{index}]", action)
-        if proc.stderr:
-            logger.warning(
-                "could not install %s hook; a closed pane is reported at timeout",
-                name,
-                extra={"tmux_stderr": proc.stderr},
-            )
+    proc = server.cmd(
+        *_chain(("set-hook", "-g", f"{n}[{index}]", action) for n in _GONE_HOOKS)
+    )
+    if proc.stderr:
+        logger.warning(
+            "could not install pane hooks; a closed pane is reported at timeout",
+            extra={"tmux_stderr": proc.stderr},
+        )
 
 
 def _remove_gone_hooks(server: Server, index: int) -> None:
-    """Remove the hooks :func:`_install_gone_hooks` set."""
-    for name in _GONE_HOOKS:
-        server.cmd("set-hook", "-ug", f"{name}[{index}]")
+    """Remove the hooks :func:`_install_gone_hooks` set, in one invocation."""
+    server.cmd(*_chain(("set-hook", "-ug", f"{n}[{index}]") for n in _GONE_HOOKS))
+
+
+def _chain(commands: t.Iterable[tuple[str, ...]]) -> list[str]:
+    """Join tmux commands into one argv, separated by the ``;`` argument.
+
+    tmux reads an argument that *ends* in ``;`` as a separator, so only a
+    lone ``;`` is added here and no command text is touched. Text that may
+    itself end in ``;`` would be split, so it must be escaped before it is
+    passed in; the lines :func:`_build_line` types never end that way.
+
+    Examples
+    --------
+    >>> _chain([("a", "-x"), ("b",)])
+    ['a', '-x', ';', 'b']
+    """
+    argv: list[str] = []
+    for command in commands:
+        if argv:
+            argv.append(";")
+        argv.extend(command)
+    return argv
 
 
 def _run(
@@ -326,41 +347,57 @@ def _run_locked(
     index = 7000 + int(token[:5], 16) % 90000
     _install_gone_hooks(server, pane_id, done, index)
     try:
-        pane.send_keys(
-            _build_line(
-                command,
-                tmux=shlex.join(_tmux_prefix(server)),
-                pane_id=pane_id,
-                token=token,
-                started=started,
-                done=done,
-                option=option,
-            ),
-            literal=True,
+        line = _build_line(
+            command,
+            tmux=shlex.join(_tmux_prefix(server)),
+            pane_id=pane_id,
+            token=token,
+            started=started,
+            done=done,
+            option=option,
+        )
+        server.cmd(
+            *_chain(
+                [
+                    ("send-keys", "-t", pane_id, "-l", line),
+                    ("send-keys", "-t", pane_id, "Enter"),
+                ]
+            )
         )
 
         failure: exc.TmuxTimeout | None = None
         did_start = True
         try:
-            server.wait_for(started, timeout=_START_TIMEOUT)
+            server._wait_for_signal(started, _START_TIMEOUT, verify=False)
         except exc.TmuxTimeout as err:
             failure, did_start = err, False
         else:
             try:
-                server.wait_for(done, timeout=max(deadline - time.monotonic(), 0.001))
+                server._wait_for_signal(
+                    done, max(deadline - time.monotonic(), 0.001), verify=False
+                )
             except exc.TmuxTimeout as err:
                 failure = err
 
-        try:
-            status = pane.cmd("show-options", "-pqv", option)
-            lines = pane.capture_pane(start="-", join_wrapped=True)
-        finally:
-            pane.cmd("set-option", "-pu", option)
+        sep = f"LTRUN_S_{token}"
+        proc = server.cmd(
+            *_chain(
+                [
+                    ("show-options", "-t", pane_id, "-pqv", option),
+                    ("display-message", "-p", sep),
+                    ("capture-pane", "-t", pane_id, "-p", "-S", "-", "-J"),
+                    ("set-option", "-t", pane_id, "-pu", option),
+                ]
+            )
+        )
+        split = proc.stdout.index(sep) if sep in proc.stdout else 0
+        status = proc.stdout[:split]
+        lines = proc.stdout[split + 1 :] if sep in proc.stdout else []
     finally:
         _remove_gone_hooks(server, index)
 
     output, ended, truncated = _extract(lines, token)
-    if not status.stdout or not ended:
+    if not status or not ended:
         if not _pane_alive(pane):
             raise _lost(pane)
         if failure is not None:
@@ -374,7 +411,7 @@ def _run_locked(
         raise _lost(pane)
     return PaneRunResult(
         args=command,
-        returncode=int(status.stdout[0]),
+        returncode=int(status[0]),
         stdout=output,
         truncated=truncated,
     )

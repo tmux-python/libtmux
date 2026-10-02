@@ -756,12 +756,24 @@ class Server(
 
         raise_if_stderr(proc, "wait-for")
 
-    def _wait_for_signal(self, channel: str, timeout: float | None) -> None:
+    def _wait_for_signal(
+        self,
+        channel: str,
+        timeout: float | None,
+        *,
+        verify: bool = True,
+    ) -> None:
         """Block on *channel*, telling a signal from a timeout or a dead server.
 
         The client is a :class:`subprocess.Popen` of this method's own, not a
         :class:`~libtmux.common.tmux_cmd`, because expiry must release it by
         signalling the channel (see :func:`~libtmux.common._release_waiter`).
+
+        A wake proves nothing when the server exited, because tmux releases
+        every waiter then. *verify* asks the server again after a clean wake;
+        a caller that reads the work's own result next, as
+        :meth:`Pane.run() <libtmux.Pane.run>` does, passes ``False`` and saves
+        one tmux call per wait.
         """
         resolved = self.tmux_bin or shutil.which("tmux")
         if not resolved:
@@ -805,7 +817,7 @@ class Server(
             raise exc.LibTmuxException(stderr.strip(), subcommand="wait-for")
 
         # tmux releases every waiter when its server exits, as if signalled.
-        if not self.is_alive():
+        if verify and not self.is_alive():
             raise exc.TmuxServerGone(channel)
 
     def bind_key(
