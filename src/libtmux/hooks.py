@@ -101,7 +101,7 @@ class HooksMixin(CmdMixin):
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
                 )
-            else:
+            elif flag:  # Session scope has no flag
                 flags += (flag,)
 
         cmd = self.cmd(
@@ -180,7 +180,7 @@ class HooksMixin(CmdMixin):
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
                 )
-            else:
+            elif flag:  # Session scope has no flag
                 flags += (flag,)
 
         cmd = self.cmd(
@@ -233,7 +233,7 @@ class HooksMixin(CmdMixin):
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
                 )
-            else:
+            elif flag:  # Session scope has no flag
                 flags += (flag,)
 
         cmd = self.cmd(
@@ -298,7 +298,7 @@ class HooksMixin(CmdMixin):
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
                 )
-            else:
+            elif flag:  # Session scope has no flag
                 flags += (flag,)
 
         cmd = self.cmd("show-hooks", *flags)
@@ -356,7 +356,7 @@ class HooksMixin(CmdMixin):
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
                 )
-            else:
+            elif flag:  # Session scope has no flag
                 flags += (flag,)
 
         flags += (hook,)

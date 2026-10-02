@@ -73,6 +73,17 @@ Both now emit a {class}`FutureWarning` naming the ignored keywords; a future
 release will raise {class}`TypeError`. Pass environment variables with
 `new_session(environment=...)`.
 
+#### Hook helpers accept `scope=OptionScope.Session`
+
+{meth}`set_hook() <libtmux.hooks.HooksMixin.set_hook>`,
+{meth}`unset_hook() <libtmux.hooks.HooksMixin.unset_hook>`,
+{meth}`run_hook() <libtmux.hooks.HooksMixin.run_hook>`, and
+{meth}`show_hooks() <libtmux.hooks.HooksMixin.show_hooks>` sent tmux an empty
+argument when called with `scope=OptionScope.Session`. tmux rejected it with
+`too many arguments`, or `show_hooks` returned `{}` for a session that had a
+hook and `run_hook` silently ran nothing. The session scope now sends no flag,
+as the option helpers already do.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
