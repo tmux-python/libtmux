@@ -410,6 +410,84 @@ class TmuxTimeout(Exception):
         super().__init__(f"tmux command timed out after {timeout}s: {shlex.join(cmd)}")
 
 
+class PaneRunTimeout(TmuxTimeout):
+    """:meth:`Pane.run() <libtmux.Pane.run>` outlived its ``timeout``.
+
+    A :exc:`TmuxTimeout`, so one ``except TmuxTimeout`` covers every bounded
+    wait in libtmux. It is a subclass, not the bare class, because the caller
+    needs two facts the base cannot carry: the output the command had
+    printed (an agent must see where a hung command stopped) and whether the
+    pane's shell ever started the command.
+
+    The command is not interrupted; it keeps running in the pane.
+
+    Parameters
+    ----------
+    command : str
+        The command that was sent.
+    timeout : float
+        The bound that expired, in seconds.
+    stdout : list of str
+        Lines the command had printed when the bound expired.
+    cmd : list[str]
+        The tmux ``wait-for`` command line that expired.
+    started : bool
+        False when the pane's shell never acknowledged the line.
+
+    Attributes
+    ----------
+    command : str
+        The command that was sent.
+    stdout : list of str
+        Lines the command had printed when the bound expired.
+    started : bool
+        False when the pane's shell never acknowledged the line: the pane is
+        not at a shell prompt, or its shell cannot reach this tmux server
+        (``ssh``, ``docker exec``), so it can never report back.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.PaneRunTimeout(
+    ...     "sleep 30", 1.0, ["partial"], cmd=["tmux", "wait-for", "c"]
+    ... )
+    >>> str(err)
+    'pane command timed out after 1.0s: sleep 30'
+
+    >>> err.stdout, err.started
+    (['partial'], True)
+
+    >>> isinstance(err, exc.TmuxTimeout)
+    True
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(
+        self,
+        command: str,
+        timeout: float,
+        stdout: list[str],
+        *,
+        cmd: list[str],
+        started: bool = True,
+    ) -> None:
+        self.cmd = cmd
+        self.timeout = timeout
+        self.command = command
+        self.stdout = stdout
+        self.started = started
+        if started:
+            msg = f"pane command timed out after {timeout}s: {command}"
+        else:
+            msg = (
+                f"pane did not start the command within {timeout}s: it is not "
+                "at a shell prompt, or its shell cannot reach this tmux server "
+                f"(ssh, docker exec): {command}"
+            )
+        Exception.__init__(self, msg)
+
+
 class TmuxServerGone(LibTmuxException):
     """The tmux server was not running when a wait ended.
 

@@ -89,6 +89,34 @@ tmux discards a pane's status when it closes the pane, so `wait` sets the pane's
 option. tmux 3.2a does not report the terminating signal; a process ended by a
 signal returns `PaneExit(status=None, signal=None)` there.
 
+#### `Pane.run()` runs a command and returns its exit status and output
+
+{meth}`Pane.run() <libtmux.Pane.run>` types a shell command into a pane, waits
+for it through {meth}`Server.wait_for() <libtmux.Server.wait_for>`, and returns a
+{class}`~libtmux.run.PaneRunResult` with `returncode` and the command's `stdout`
+lines, without echoed command text or screen polling. See
+{ref}`run-a-command`.
+
+```python
+result = pane.run("make test", timeout=60)
+result.returncode, result.stdout
+```
+
+Every call is bounded: `timeout` defaults to 120 seconds, and expiry raises
+{exc}`~libtmux.exc.PaneRunTimeout`, a {exc}`~libtmux.exc.TmuxTimeout` that carries
+the output so far. A shell that never acknowledges the line within five seconds,
+as in `ssh` and `docker exec` panes, raises it with `started=False` instead of
+waiting out `timeout`.
+
+The command runs through `eval`, so a syntax error or an unterminated quote is a
+nonzero `returncode`, and `C-c` ends it with status 130; neither leaves the call
+waiting. The typed line starts with a space and, in bash, removes its own history
+entry. bash, zsh and sh are tested.
+
+A command that closes its pane raises {exc}`~libtmux.exc.PaneNotFound` at once: the call
+installs `pane-exited` and `pane-died` hooks, filtered to the pane, for its duration and
+removes them on every path out. A pane killed from outside is reported at `timeout`.
+
 ### Documentation
 
 #### Automation patterns waits for tmux instead of guessing (#734)

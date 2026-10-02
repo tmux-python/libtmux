@@ -55,6 +55,12 @@ Create sessions, windows, and panes programmatically.
 Common patterns for scripting and automation.
 :::
 
+:::{grid-item-card} Run a Command
+:link: run_a_command
+:link-type: doc
+Run a shell command in a pane and get its exit status and output.
+:::
+
 :::{grid-item-card} Context Managers
 :link: context_managers
 :link-type: doc
@@ -95,6 +101,7 @@ pane_interaction
 floating_panes
 workspace_setup
 automation_patterns
+run_a_command
 context_managers
 options_and_hooks
 clients

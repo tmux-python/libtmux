@@ -108,6 +108,12 @@ tmux option get/set.
 tmux hook management.
 :::
 
+:::{grid-item-card} Run
+:link: libtmux.run
+:link-type: doc
+Result of running a command in a pane.
+:::
+
 :::{grid-item-card} Constants
 :link: libtmux.constants
 :link-type: doc
@@ -176,6 +182,7 @@ Common <libtmux.common>
 Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
+Run <libtmux.run>
 Constants <libtmux.constants>
 Exceptions <libtmux.exc>
 ```
