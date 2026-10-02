@@ -179,6 +179,33 @@ short `/tmp/<random>` — when you need a socket path of your own, or point
 ...     monkeypatch.setenv("HOME", str(user_path))
 ```
 
+(attach_to_failed_test)=
+
+## Attaching to a failed test
+
+When a test that uses {fixture}`server` or {fixture}`session` fails, the
+failure report gains a `libtmux` section with the command that attaches to
+that test's private tmux server. Passing tests print nothing.
+
+```text
+----------------------------------- libtmux ------------------------------------
+Attach to the tmux server this test used:
+  tmux -S /tmp/tmux-1000/libtmux_test8abtrukf attach -t libtmux_7afb0whg ';' resize-window -x 80 -y 24
+```
+
+The command names the socket by path, so it works from any shell. The trailing
+`resize-window` restores the window to the size the test saw, which attaching
+from a larger terminal would otherwise change.
+
+By default the fixture finalizer kills the server as soon as the test ends, so
+the command only works while pytest is still running, for example under a
+debugger. Pass `--libtmux-keep-failed` to leave the server of each failed test
+running. The report then adds the `kill-server` command that stops it:
+
+```console
+$ pytest --libtmux-keep-failed
+```
+
 [pytest]: https://docs.pytest.org/en/stable/
 [pytest-tmux]: https://pytest-tmux.readthedocs.io/
 [tmuxp]: https://tmuxp.git-pull.com/
