@@ -22,7 +22,7 @@ def test_removed_api_escapes_broad_libtmux_handler(server: Server) -> None:
     fell_back = False
     with pytest.raises(exc.DeprecatedError, match=r"Server\.find_where\(\)"):
         try:
-            server.find_where({"session_name": "x"})
+            server.find_where({"session_name": "x"})  # type: ignore[attr-defined]
         except exc.LibTmuxException:
             fell_back = True
     assert not fell_back

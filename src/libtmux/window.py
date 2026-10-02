@@ -16,6 +16,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
+from libtmux._surface import SurfaceMixin
 from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -29,7 +30,7 @@ from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict
+from .common import WindowOptionDict
 from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
@@ -38,7 +39,7 @@ if t.TYPE_CHECKING:
 
     from libtmux._internal.types import StrPath
 
-    from .common import PaneDict, WindowOptionDict
+    from .common import WindowOptionDict
     from .server import Server
     from .session import Session
 
@@ -53,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass()
 class Window(
+    SurfaceMixin,
     Obj,
     OptionsMixin,
     HooksMixin,
@@ -1871,85 +1873,6 @@ class Window(
     #
     # Legacy: Redundant stuff we want to remove
     #
-    def split_window(
-        self,
-        target: int | str | None = None,
-        start_directory: StrPath | None = None,
-        attach: bool = False,
-        vertical: bool = True,
-        shell: str | None = None,
-        size: str | int | None = None,
-        percent: int | None = None,  # deprecated
-        environment: dict[str, str] | None = None,
-    ) -> Pane:
-        """Split window and return the created :class:`Pane`.
-
-        Notes
-        -----
-        .. deprecated:: 0.33.0
-
-           Deprecated in favor of :meth:`.split()`.
-
-        .. versionchanged:: 0.28.0
-
-           ``attach`` default changed from ``True`` to ``False``.
-
-        .. deprecated:: 0.28.0
-
-           ``percent=25`` deprecated in favor of ``size="25%"``.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.split_window()",
-            replacement="Window.split()",
-            version="0.33.0",
-        )
-
-    @property
-    def attached_pane(self) -> Pane | None:
-        """Return attached :class:`Pane`.
-
-        Notes
-        -----
-        .. deprecated:: 0.31
-
-           Deprecated in favor of :meth:`.active_pane`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.attached_pane",
-            replacement="Window.active_pane",
-            version="0.31.0",
-        )
-
-    def select_window(self) -> Window:
-        """Select window.
-
-        Notes
-        -----
-        .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.select()`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.select_window()",
-            replacement="Window.select()",
-            version="0.30.0",
-        )
-
-    def kill_window(self) -> None:
-        """Kill the current :class:`Window` object. ``$ tmux kill-window``.
-
-        Notes
-        -----
-        .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.kill()`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.kill_window()",
-            replacement="Window.kill()",
-            version="0.30.0",
-        )
-
     def set_window_option(
         self,
         option: str,
@@ -2011,21 +1934,6 @@ class Window(
             global_=g,
         )
 
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
-        """Return key-based lookup. Deprecated by attributes.
-
-        .. deprecated:: 0.17
-
-           Deprecated by attribute lookup.e.g. ``window['window_name']`` is now
-           accessed via ``window.window_name``.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.get()",
-            replacement="direct attribute access (e.g., window.window_name)",
-            version="0.17.0",
-        )
-
     def __getitem__(self, key: str) -> t.Any:
         """Return item lookup by key. Deprecated in favor of attributes.
 
@@ -2038,106 +1946,6 @@ class Window(
         raise exc.DeprecatedError(
             deprecated="Window[key] lookup",
             replacement="direct attribute access (e.g., window.window_name)",
-            version="0.17.0",
-        )
-
-    def get_by_id(self, pane_id: str) -> Pane | None:
-        """Return pane by id. Deprecated in favor of :meth:`.panes.get()`.
-
-        .. deprecated:: 0.16
-
-           Deprecated by :meth:`.panes.get()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.get_by_id()",
-            replacement="Window.panes.get(pane_id=..., default=None)",
-            version="0.16.0",
-        )
-
-    def where(self, kwargs: dict[str, t.Any]) -> list[Pane]:
-        """Filter through panes, return list of :class:`Pane`.
-
-        .. deprecated:: 0.17
-
-           Deprecated by :meth:`.panes.filter()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.where()",
-            replacement="Window.panes.filter()",
-            version="0.17.0",
-        )
-
-    def find_where(self, kwargs: dict[str, t.Any]) -> Pane | None:
-        """Filter through panes, return first :class:`Pane`.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :meth:`.panes.get()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.find_where()",
-            replacement="Window.panes.get(default=None, **kwargs)",
-            version="0.17.0",
-        )
-
-    def _list_panes(self) -> list[PaneDict]:
-        """Return list of panes (deprecated in favor of :meth:`.panes`).
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.panes`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window._list_panes()",
-            replacement="Window.panes property",
-            version="0.17.0",
-        )
-
-    @property
-    def _panes(self) -> list[PaneDict]:
-        """Property / alias to return :meth:`~._list_panes`.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.panes`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window._panes",
-            replacement="Window.panes property",
-            version="0.17.0",
-        )
-
-    def list_panes(self) -> list[Pane]:
-        """Return list of :class:`Pane` for the window.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.panes`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.list_panes()",
-            replacement="Window.panes property",
-            version="0.17.0",
-        )
-
-    @property
-    def children(self) -> QueryList[Pane]:
-        """Was used by TmuxRelationalObject (but that's longer used in this class).
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.panes`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Window.children",
-            replacement="Window.panes property",
             version="0.17.0",
         )
 

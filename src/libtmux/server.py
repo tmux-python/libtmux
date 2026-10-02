@@ -30,6 +30,7 @@ from libtmux._internal.env import (
     socket_path_from_env,
 )
 from libtmux._internal.query_list import QueryList
+from libtmux._surface import SurfaceMixin
 from libtmux.client import Client
 from libtmux.common import (
     _escape_trailing_semicolon,
@@ -52,7 +53,6 @@ from libtmux.window import Window
 from .common import (
     EnvironmentMixin,
     PaneDict,
-    SessionDict,
     WindowDict,
     _release_waiter,
     session_check_name,
@@ -207,6 +207,7 @@ def _fetch_strict(
 
 
 class Server(
+    SurfaceMixin,
     EnvironmentMixin,
     OptionsMixin,
     HooksMixin,
@@ -3906,193 +3907,3 @@ class Server(
         if self.socket_path is not None:
             return f"{self.__class__.__name__}(socket_path={self.socket_path})"
         return f"{self.__class__.__name__}(socket_path={resolve_ambient_socket_path()})"
-
-    #
-    # Legacy: Redundant stuff we want to remove
-    #
-    def kill_server(self) -> None:
-        """Kill tmux server.
-
-        Notes
-        -----
-        .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.kill()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server.kill_server()",
-            replacement="Server.kill()",
-            version="0.30.0",
-        )
-
-    def _list_panes(self) -> list[PaneDict]:
-        """Return list of panes in :py:obj:`dict` form.
-
-        Retrieved from ``$ tmux(1) list-panes`` stdout.
-
-        The :py:obj:`list` is derived from ``stdout`` in
-        :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
-
-        .. deprecated:: 0.17
-
-           Deprecated in favor of :attr:`.panes`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server._list_panes()",
-            replacement="Server.panes property",
-            version="0.17.0",
-        )
-
-    def _update_panes(self) -> Server:
-        """Update internal pane data and return ``self`` for chainability.
-
-        .. deprecated:: 0.17
-
-           Deprecated in favor of :attr:`.panes` and returning ``self``.
-
-        Returns
-        -------
-        :class:`Server`
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server._update_panes()",
-            replacement="Server.panes property",
-            version="0.17.0",
-        )
-
-    def get_by_id(self, session_id: str) -> Session | None:
-        """Return session by id. Deprecated in favor of :meth:`.sessions.get()`.
-
-        .. deprecated:: 0.16
-
-           Deprecated by :meth:`.sessions.get()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server.get_by_id()",
-            replacement="Server.sessions.get(session_id=..., default=None)",
-            version="0.16.0",
-        )
-
-    def where(self, kwargs: dict[str, t.Any]) -> list[Session]:
-        """Filter through sessions, return list of :class:`Session`.
-
-        .. deprecated:: 0.17
-
-           Deprecated by :meth:`.session.filter()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server.where()",
-            replacement="Server.sessions.filter()",
-            version="0.17.0",
-        )
-
-    def find_where(self, kwargs: dict[str, t.Any]) -> Session | None:
-        """Filter through sessions, return first :class:`Session`.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :meth:`.sessions.get()`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server.find_where()",
-            replacement="Server.sessions.get(default=None, **kwargs)",
-            version="0.17.0",
-        )
-
-    def _list_windows(self) -> list[WindowDict]:
-        """Return list of windows in :py:obj:`dict` form.
-
-        Retrieved from ``$ tmux(1) list-windows`` stdout.
-
-        The :py:obj:`list` is derived from ``stdout`` in
-        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.windows`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server._list_windows()",
-            replacement="Server.windows property",
-            version="0.17.0",
-        )
-
-    def _update_windows(self) -> Server:
-        """Update internal window data and return ``self`` for chainability.
-
-        .. deprecated:: 0.17
-
-           Deprecated in favor of :attr:`.windows` and returning ``self``.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server._update_windows()",
-            replacement="Server.windows property",
-            version="0.17.0",
-        )
-
-    @property
-    def _sessions(self) -> list[SessionDict]:
-        """Property / alias to return :meth:`~._list_sessions`.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.sessions`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server._sessions",
-            replacement="Server.sessions property",
-            version="0.17.0",
-        )
-
-    def _list_sessions(self) -> list[SessionDict]:
-        """Return list of session object dictionaries.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.sessions`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server._list_sessions()",
-            replacement="Server.sessions property",
-            version="0.17.0",
-        )
-
-    def list_sessions(self) -> list[Session]:
-        """Return list of :class:`Session` from the ``tmux(1)`` session.
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.sessions`.
-
-        Returns
-        -------
-        list of :class:`Session`
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server.list_sessions()",
-            replacement="Server.sessions property",
-            version="0.17.0",
-        )
-
-    @property
-    def children(self) -> QueryList[Session]:
-        """Was used by TmuxRelationalObject (but that's longer used in this class).
-
-        .. deprecated:: 0.17
-
-           Slated to be removed in favor of :attr:`.sessions`.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Server.children",
-            replacement="Server.sessions property",
-            version="0.17.0",
-        )

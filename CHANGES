@@ -298,6 +298,25 @@ call to a removed method such as `Session.attached_window`; the error names the
 replacement instead. Code that catches `DeprecatedError` itself is unaffected.
 See {ref}`migration` for the full removed-API table.
 
+#### Removed APIs and out-of-scope format fields leave `dir()` and completion
+
+The 40 removed methods and properties on `Server`, `Session`, `Window` and
+`Pane` (`kill_server()`, `attached_window`, `find_where()`, `children`, ...) are
+no longer defined on the classes. Reading one still raises
+{exc}`~libtmux.exc.DeprecatedError` with the same message, but it no longer
+appears in `dir()`, IDE completion or the API reference, and type checkers
+report it as an unknown attribute. `Pane.get()`, `Window.get()` and
+`Session.get()` are among them.
+
+`dir()` on a `Session`, `Window` or `Pane` lists the format fields that object
+owns plus its parents' id, name and index. The other tmux format fields stay
+readable as attributes, only unlisted. Public names per object go from 84, 230,
+238 and 252 (`Server`, `Session`, `Window`, `Pane`) to 78, 68, 86 and 145.
+
+Before, `hasattr(session, "attached_window")` raised nothing and a call raised;
+now the read itself raises `DeprecatedError`, and `Session.attached_window` as a
+class attribute is an `AttributeError`. See {ref}`removed-names-leave-the-classes`.
+
 ### Fixes
 
 #### `Pane.wait()` returns how a pane's process ended

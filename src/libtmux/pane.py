@@ -20,6 +20,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
+from libtmux._surface import SurfaceMixin
 from libtmux.capture import (
     CaptureCursor,
     CaptureSince,
@@ -171,6 +172,7 @@ def _check_layout(layout: str) -> None:
 
 @dataclasses.dataclass()
 class Pane(
+    SurfaceMixin,
     Obj,
     OptionsMixin,
     HooksMixin,
@@ -1925,21 +1927,6 @@ class Pane(
 
         return self
 
-    def select_pane(self) -> Pane:
-        """Select pane.
-
-        Notes
-        -----
-        .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.select()`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Pane.select_pane()",
-            replacement="Pane.select()",
-            version="0.30.0",
-        )
-
     def split(
         self,
         /,
@@ -3679,59 +3666,6 @@ class Pane(
     #
     # Legacy: Redundant stuff we want to remove
     #
-    def split_window(
-        self,
-        target: int | str | None = None,
-        attach: bool = False,
-        start_directory: StrPath | None = None,
-        vertical: bool = True,
-        shell: str | None = None,
-        size: str | int | None = None,
-        percent: int | None = None,  # deprecated
-        environment: dict[str, str] | None = None,
-    ) -> Pane:  # New Pane, not self
-        """Split window at pane and return newly created :class:`Pane`.
-
-        Parameters
-        ----------
-        attach : bool, optional
-            Attach / select pane after creation.
-        start_directory : str or PathLike, optional
-            specifies the working directory in which the new pane is created.
-        vertical : bool, optional
-            split vertically
-        percent: int, optional
-            percentage to occupy with respect to current pane
-        environment: dict, optional
-            Environmental variables for new pane. Passthrough to ``-e``.
-
-        Notes
-        -----
-        .. deprecated:: 0.33
-
-           Deprecated in favor of :meth:`.split`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Pane.split_window()",
-            replacement="Pane.split()",
-            version="0.33.0",
-        )
-
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
-        """Return key-based lookup. Deprecated by attributes.
-
-        .. deprecated:: 0.17
-
-           Deprecated by attribute lookup, e.g. ``pane['window_name']`` is now
-           accessed via ``pane.window_name``.
-
-        """
-        raise exc.DeprecatedError(
-            deprecated="Pane.get()",
-            replacement="direct attribute access (e.g., pane.pane_id)",
-            version="0.17.0",
-        )
-
     def __getitem__(self, key: str) -> t.Any:
         """Return item lookup by key. Deprecated in favor of attributes.
 
@@ -3745,31 +3679,4 @@ class Pane(
             deprecated="Pane[key] lookup",
             replacement="direct attribute access (e.g., pane.pane_id)",
             version="0.17.0",
-        )
-
-    def resize_pane(
-        self,
-        # Adjustments
-        adjustment_direction: ResizeAdjustmentDirection | None = None,
-        adjustment: int | None = None,
-        # Manual
-        height: str | int | None = None,
-        width: str | int | None = None,
-        # Zoom
-        zoom: bool | None = None,
-        # Mouse
-        mouse: bool | None = None,
-        # Optional flags
-        trim_below: bool | None = None,
-    ) -> Pane:
-        """Resize pane, deprecated by :meth:`Pane.resize`.
-
-        .. deprecated:: 0.28
-
-           Deprecated by :meth:`Pane.resize`.
-        """
-        raise exc.DeprecatedError(
-            deprecated="Pane.resize_pane()",
-            replacement="Pane.resize()",
-            version="0.28.0",
         )

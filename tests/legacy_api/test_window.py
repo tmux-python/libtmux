@@ -22,7 +22,7 @@ def test_split_window_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.split_window\(\) was deprecated"
     ):
-        window.split_window()
+        window.split_window()  # type: ignore[attr-defined]
 
 
 def test_attached_pane_raises_deprecated_error(session: Session) -> None:
@@ -32,7 +32,7 @@ def test_attached_pane_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.attached_pane was deprecated"
     ):
-        _ = window.attached_pane
+        _ = window.attached_pane  # type: ignore[attr-defined]
 
 
 def test_select_window_raises_deprecated_error(session: Session) -> None:
@@ -42,7 +42,7 @@ def test_select_window_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.select_window\(\) was deprecated"
     ):
-        window.select_window()
+        window.select_window()  # type: ignore[attr-defined]
 
 
 def test_kill_window_raises_deprecated_error(session: Session) -> None:
@@ -54,7 +54,7 @@ def test_kill_window_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.kill_window\(\) was deprecated"
     ):
-        window.kill_window()
+        window.kill_window()  # type: ignore[attr-defined]
 
 
 def test_set_window_option_emits_deprecation_warning(session: Session) -> None:
@@ -92,7 +92,7 @@ def test_window_get_raises_deprecated_error(session: Session) -> None:
     window = session.active_window
 
     with pytest.raises(exc.DeprecatedError, match=r"Window\.get\(\) was deprecated"):
-        window.get("window_id")
+        window.get("window_id")  # type: ignore[attr-defined]
 
 
 def test_window_getitem_raises_deprecated_error(session: Session) -> None:
@@ -112,7 +112,7 @@ def test_window_get_by_id_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.get_by_id\(\) was deprecated"
     ):
-        window.get_by_id("%0")
+        window.get_by_id("%0")  # type: ignore[attr-defined]
 
 
 def test_window_where_raises_deprecated_error(session: Session) -> None:
@@ -120,7 +120,7 @@ def test_window_where_raises_deprecated_error(session: Session) -> None:
     window = session.active_window
 
     with pytest.raises(exc.DeprecatedError, match=r"Window\.where\(\) was deprecated"):
-        window.where({"pane_id": "%0"})
+        window.where({"pane_id": "%0"})  # type: ignore[attr-defined]
 
 
 def test_window_find_where_raises_deprecated_error(session: Session) -> None:
@@ -130,7 +130,7 @@ def test_window_find_where_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.find_where\(\) was deprecated"
     ):
-        window.find_where({"pane_id": "%0"})
+        window.find_where({"pane_id": "%0"})  # type: ignore[attr-defined]
 
 
 def test_window_list_panes_raises_deprecated_error(session: Session) -> None:
@@ -140,7 +140,7 @@ def test_window_list_panes_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\.list_panes\(\) was deprecated"
     ):
-        window.list_panes()
+        window.list_panes()  # type: ignore[attr-defined]
 
 
 def test_window_children_raises_deprecated_error(session: Session) -> None:
@@ -148,7 +148,7 @@ def test_window_children_raises_deprecated_error(session: Session) -> None:
     window = session.active_window
 
     with pytest.raises(exc.DeprecatedError, match=r"Window\.children was deprecated"):
-        _ = window.children
+        _ = window.children  # type: ignore[attr-defined]
 
 
 def test_window__panes_raises_deprecated_error(session: Session) -> None:
@@ -156,7 +156,7 @@ def test_window__panes_raises_deprecated_error(session: Session) -> None:
     window = session.active_window
 
     with pytest.raises(exc.DeprecatedError, match=r"Window\._panes was deprecated"):
-        _ = window._panes
+        _ = window._panes  # type: ignore[attr-defined]
 
 
 def test_window__list_panes_raises_deprecated_error(session: Session) -> None:
@@ -166,4 +166,4 @@ def test_window__list_panes_raises_deprecated_error(session: Session) -> None:
     with pytest.raises(
         exc.DeprecatedError, match=r"Window\._list_panes\(\) was deprecated"
     ):
-        window._list_panes()
+        window._list_panes()  # type: ignore[attr-defined]
