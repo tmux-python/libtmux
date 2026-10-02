@@ -19,6 +19,7 @@ from libtmux._internal.env import resolve_socket_path
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
+from libtmux.test.shell import deterministic_shell_command
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -106,6 +107,15 @@ def _teardown_server(item: pytest.Item, socket_name: str | None) -> None:
     if keep and item.stash.get(_FAILED_KEY, False):
         return
     _reap_test_server(socket_name)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the ``deterministic_shell`` marker."""
+    config.addinivalue_line(
+        "markers",
+        "deterministic_shell(**kwargs): start the session fixture's shell "
+        "through libtmux.test.shell.deterministic_shell_command(**kwargs)",
+    )
 
 
 def _reap_test_server(socket_name: str | None) -> None:
@@ -340,6 +350,13 @@ def session(
 
         >>> result.assert_outcomes(passed=1)
     """
+    marker = request.node.get_closest_marker("deterministic_shell")
+    if marker is not None and "window_command" not in session_params:
+        session_params = {
+            **session_params,
+            "window_command": deterministic_shell_command(**marker.kwargs),
+        }
+
     session_name = "tmuxp"
 
     if not server.has_session(session_name):
