@@ -47,6 +47,15 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### Replacing wrapper code
+
+{doc}`/topics/wrapper_recipes` shows the built-in calls that replace helpers
+scripts keep rewriting: `start_directory=`, `environment=`, and `window_shell=`
+instead of typing `cd` and `source` into a pane, `windows.get()` and
+`panes.filter()` instead of a hand-kept name map, and
+{meth}`Pane.from_env() <libtmux.Pane.from_env>` instead of assuming one
+session. Every example runs as a doctest.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
