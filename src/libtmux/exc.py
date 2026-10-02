@@ -62,10 +62,23 @@ class LibTmuxException(Exception):
         return f"{self.subcommand}: {base}"
 
 
-class DeprecatedError(LibTmuxException):
-    """Raised when a deprecated function, method, or parameter is used.
+class DeprecatedError(Exception):
+    """Raised when a removed function, method, or parameter is used.
 
     This exception provides clear guidance on what to use instead.
+
+    It deliberately does not subclass :class:`LibTmuxException`. It reports a
+    caller bug (code written against an API that no longer exists), not a tmux
+    failure, so a broad ``except LibTmuxException`` fallback must not swallow
+    it.
+
+    Examples
+    --------
+    >>> from libtmux.exc import DeprecatedError, LibTmuxException
+    >>> issubclass(DeprecatedError, LibTmuxException)
+    False
+    >>> str(DeprecatedError(deprecated="A.old()", replacement="A.new()", version="1.0"))
+    'A.old() was deprecated in 1.0 and has been removed. Use A.new() instead.'
 
     Parameters
     ----------
