@@ -453,6 +453,40 @@ True
 >>> timeout_window.kill()
 ```
 
+### Bounding a tmux command
+
+The helper above bounds a wait you wrote yourself. Most tmux commands return at
+once, so most calls need no bound. The few that block, such as a foreground
+`run-shell` or a `wait-for` nobody signals, hold your script for as long as tmux
+takes. Pass `timeout` to {meth}`Server.cmd() <libtmux.Server.cmd>` (or the
+`cmd()` on a {class}`~libtmux.Session`, {class}`~libtmux.Window` or
+{class}`~libtmux.Pane`) to cap one call. The default, `None`, waits as long as
+tmux takes.
+
+```python
+>>> from libtmux import exc
+
+>>> try:
+...     session.server.cmd('run-shell', 'sleep 5', timeout=0.25)
+... except exc.TmuxTimeout as e:
+...     print(f'gave up after {e.timeout}s')
+gave up after 0.25s
+```
+
+On expiry libtmux kills and reaps the tmux client it started, then raises
+{exc}`~libtmux.exc.TmuxTimeout`. Only the client dies: the command may already
+have run, and whatever it started in the pane or the server keeps running.
+Treat the call as "outcome unknown" and read the state back before retrying.
+
+{exc}`~libtmux.exc.TmuxTimeout` is not a {exc}`~libtmux.exc.LibTmuxException`.
+`except LibTmuxException` does not catch it, and the list accessors
+({attr}`Server.sessions <libtmux.Server.sessions>`) cannot turn a server that
+stopped answering into an empty list.
+
+The bound belongs to the call, not to the server object. The same server can
+carry a patient call for a build and an impatient one for a health check, and no
+single number would be right for both `display-message` and `attach-session`.
+
 ### Retry pattern
 
 For flaky work that succeeds on a later attempt, wait for each attempt to finish and

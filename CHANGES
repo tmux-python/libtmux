@@ -45,6 +45,22 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Bounded tmux commands
+
+{meth}`Server.cmd() <libtmux.Server.cmd>`,
+{meth}`Session.cmd() <libtmux.Session.cmd>`,
+{meth}`Window.cmd() <libtmux.Window.cmd>`,
+{meth}`Pane.cmd() <libtmux.Pane.cmd>` and {class}`~libtmux.common.tmux_cmd`
+take a keyword-only `timeout` in seconds. A command that outlives it has its tmux
+client killed and reaped, then raises {exc}`~libtmux.exc.TmuxTimeout`, which
+carries the `cmd` and the `timeout`. The default, `None`, waits as before.
+
+{exc}`~libtmux.exc.TmuxTimeout` is not a {exc}`~libtmux.exc.LibTmuxException`, so
+the lenient list accessors do not read a hung server as an empty one. Only the
+client dies; work the command started keeps running.
+
 ### Documentation
 
 #### Automation patterns waits for tmux instead of guessing (#734)

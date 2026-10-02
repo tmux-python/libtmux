@@ -13,7 +13,7 @@ import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import exc, neo
 from libtmux._internal.control_mode import ControlMode
 from libtmux.server import Server
 
@@ -1765,3 +1765,56 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_cmd_timeout_threads_through_the_object_hierarchy(session: Session) -> None:
+    """Every ``cmd()`` in the hierarchy honors ``timeout``.
+
+    A foreground ``run-shell`` blocks the tmux client until the shell command
+    finishes, and unlike ``wait-for`` it accepts the ``-t`` target that
+    :meth:`Session.cmd`, :meth:`Window.cmd`, and :meth:`Pane.cmd` bind
+    automatically.
+    """
+    window = session.new_window(window_name="cmd_timeout")
+    pane = window.active_pane
+    assert pane is not None
+
+    for obj in (session.server, session, window, pane):
+        start = time.monotonic()
+        with pytest.raises(exc.TmuxTimeout):
+            obj.cmd("run-shell", "sleep 10", timeout=0.5)
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 30, f"{type(obj).__name__}.cmd(timeout=) did not bound"
+
+
+def test_cmd_without_timeout_still_returns(session: Session) -> None:
+    """Commands that finish on their own are untouched by the new parameter."""
+    proc = session.server.cmd("display-message", "-p", "ok")
+
+    assert proc.stdout == ["ok"]
+    assert proc.returncode == 0
+
+
+def test_timeout_is_not_swallowed_by_lenient_listings(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A timeout reaching a list accessor raises instead of reading as empty.
+
+    ``Server.sessions`` and ``Server.clients`` answer an empty list when
+    tmux fails, because a daemon that has not started has nothing to list. A
+    daemon that stopped answering is not empty, and a caller told so goes on
+    to create a session on a server that already has them. Today no listing
+    carries a timeout, so the failure is injected where one would arise.
+    """
+
+    def hang(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        raise exc.TmuxTimeout(cmd=["tmux", "list-sessions"], timeout=1.0)
+
+    monkeypatch.setattr(neo, "tmux_cmd", hang)
+
+    with pytest.raises(exc.TmuxTimeout):
+        server.sessions  # noqa: B018
+    with pytest.raises(exc.TmuxTimeout):
+        server.clients  # noqa: B018
