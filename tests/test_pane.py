@@ -100,6 +100,44 @@ def test_send_keys_leading_dash_is_text(
     assert received == text + "\n"
 
 
+class SendKeysSemicolonFixture(t.NamedTuple):
+    """A text that ends in or contains ``;`` and must reach the pane verbatim."""
+
+    test_id: str
+    text: str
+
+
+SEND_KEYS_SEMICOLON_FIXTURES: list[SendKeysSemicolonFixture] = [
+    SendKeysSemicolonFixture("trailing", "echo A;"),
+    SendKeysSemicolonFixture("only", ";"),
+    SendKeysSemicolonFixture("doubled", "a;;"),
+    SendKeysSemicolonFixture("backslash_before", "echo A\\;"),
+    SendKeysSemicolonFixture("interior", "echo D;echo E"),
+]
+
+
+@pytest.mark.parametrize("literal", [False, True])
+@pytest.mark.parametrize(
+    list(SendKeysSemicolonFixture._fields),
+    SEND_KEYS_SEMICOLON_FIXTURES,
+    ids=[test.test_id for test in SEND_KEYS_SEMICOLON_FIXTURES],
+)
+def test_send_keys_trailing_semicolon_is_text(
+    session: Session,
+    tmp_path: pathlib.Path,
+    test_id: str,
+    text: str,
+    literal: bool,
+) -> None:
+    """Pane.send_keys() delivers ``;`` instead of ending the tmux command."""
+    received = _bytes_received(
+        session,
+        tmp_path,
+        lambda pane: pane.send_keys(text, literal=literal),
+    )
+    assert received == text + "\n"
+
+
 def test_set_height(session: Session) -> None:
     """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")

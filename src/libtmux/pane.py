@@ -15,7 +15,13 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    _escape_trailing_semicolon,
+    get_version_str,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -848,7 +854,9 @@ class Pane(
             self.cmd("send-keys", *tmux_args)
             return
         else:
-            self.cmd("send-keys", *tmux_args, "--", prefix + cmd)
+            self.cmd(
+                "send-keys", *tmux_args, "--", _escape_trailing_semicolon(prefix + cmd)
+            )
 
         if enter and copy_mode_cmd is None:
             self.enter()

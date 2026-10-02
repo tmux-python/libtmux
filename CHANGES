@@ -68,6 +68,13 @@ any size loads. Without `input`, the call runs as before.
 before the text, so `-1`, `--help`, and `- item` reach the pane as text.
 tmux previously read them as `send-keys` flags and delivered nothing.
 
+#### `Pane.send_keys()` sends text that ends in `;`
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` escapes a final `;` so
+`echo A;` reaches the pane whole. tmux previously read the `;` as a command
+separator and delivered `echo A` without it. A `;` inside the text was
+unaffected.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
