@@ -160,7 +160,8 @@ Assert on `caplog.records` attributes, not string matching on
 - Unguarded logging in hot loops (guard with `isEnabledFor()`).
 - Catch-log-reraise without adding new context.
 - `print()` for diagnostics.
-- Logging secret env var values (log key names only).
+- Logging secret env var values (log key names only). Build any logged
+  tmux argv with `common._loggable_cmd()`, which applies the redactor.
 - Non-scalar ad-hoc objects in `extra`.
 - Requiring custom `extra` fields in format strings without safe
   defaults (missing keys raise `KeyError`).

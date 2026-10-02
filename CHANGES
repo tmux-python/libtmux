@@ -213,6 +213,19 @@ with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
 
 ### None
 
+#### Secrets masked in logged tmux commands
+
+libtmux logs each tmux command line at `DEBUG`, which put values passed through
+`environment=` into any handler that listened. They are now masked by default
+(`TOKEN=***`), along with the value of
+{meth}`Session.set_environment() <libtmux.Session.set_environment>`; the
+command tmux receives is unchanged. {func}`libtmux.common.set_argv_redactor`
+replaces the masking, and {func}`~libtmux.common.redact_send_keys` hides the
+text of {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` as well. Typed text
+is logged unless you opt in, since it is what most people debug from.
+
+### None
+
 #### Splits that keep a layout and fan out to N panes
 
 {meth}`Window.split() <libtmux.Window.split>` and
@@ -226,8 +239,6 @@ the whole server on one.
 
 {meth}`Window.split_many() <libtmux.Window.split_many>` adds N panes in one
 call and keeps the layout applied between splits.
-
-### None
 
 #### Stable pane labels
 
