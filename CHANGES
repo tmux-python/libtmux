@@ -45,6 +45,18 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Failed tests print how to attach to their tmux server
+
+A test that fails while using the {fixture}`server` or {fixture}`session`
+fixture now reports the `tmux attach` command for its private server, so you
+can look at the screen the test saw. Passing tests print nothing.
+
+`--libtmux-keep-failed` leaves the server of a failed test running instead of
+killing it at teardown; the report then names the `kill-server` command that
+stops it. See {ref}`attach_to_failed_test`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

@@ -8,6 +8,7 @@ import getpass
 import logging
 import os
 import pathlib
+import shlex
 import typing as t
 
 import pytest
@@ -23,6 +24,93 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 USING_ZSH = "zsh" in os.getenv("SHELL", "")
+
+_SERVERS_KEY = pytest.StashKey["list[Server]"]()
+_FAILED_KEY = pytest.StashKey[bool]()
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the ``--libtmux-keep-failed`` option."""
+    group = parser.getgroup("libtmux")
+    group.addoption(
+        "--libtmux-keep-failed",
+        action="store_true",
+        default=False,
+        help=(
+            "Leave the tmux server of a failed test running, so the attach "
+            "command in the failure report keeps working. Kill it with the "
+            "kill-server command the report prints."
+        ),
+    )
+
+
+def _track_server(item: pytest.Item, server: Server) -> None:
+    """Remember ``server`` so a failure report can name how to attach to it."""
+    item.stash.setdefault(_SERVERS_KEY, []).append(server)
+
+
+def _socket_file(socket_name: str) -> pathlib.Path:
+    """Return the path tmux uses for the socket named ``socket_name``."""
+    tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
+    return tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name
+
+
+def _attach_report(item: pytest.Item, *, keep: bool) -> str | None:
+    """Return the attach commands for the live servers of ``item``.
+
+    Returns ``None`` when no tracked server is still running, since there is
+    nothing to attach to.
+    """
+    blocks: list[str] = []
+    session = getattr(item, "funcargs", {}).get("session")
+    for srv in item.stash.get(_SERVERS_KEY, []):
+        if not srv.is_alive():
+            continue
+        socket_path = srv.cmd("display-message", "-p", "#{socket_path}").stdout
+        path = socket_path[0] if socket_path else None
+        if not path and srv.socket_name:
+            path = str(_socket_file(srv.socket_name))
+        if not path:
+            continue
+        tmux = srv.tmux_bin or "tmux"
+        attach = [tmux, "-S", path, "attach"]
+        if session is not None and session.server is srv:
+            win = session.active_window
+            attach += ["-t", session.session_name or ""]
+            attach += [";", "resize-window"]
+            attach += ["-x", str(win.window_width), "-y", str(win.window_height)]
+        lines = ["Attach to the tmux server this test used:", f"  {shlex.join(attach)}"]
+        if keep:
+            kill = shlex.join([tmux, "-S", path, "kill-server"])
+            lines.append("The server stays running (--libtmux-keep-failed). Stop it:")
+            lines.append(f"  {kill}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) if blocks else None
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item,
+    call: pytest.CallInfo[None],
+) -> t.Generator[None, t.Any, None]:
+    """Add the attach command of the test's tmux servers to a failure report."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when not in {"setup", "call"} or not report.failed:
+        return
+    item.stash[_FAILED_KEY] = True
+    keep = bool(item.config.getoption("libtmux_keep_failed"))
+    text = _attach_report(item, keep=keep)
+    if text:
+        report.sections.append(("libtmux", text))
+
+
+def _teardown_server(item: pytest.Item, socket_name: str | None) -> None:
+    """Reap ``socket_name``, unless ``--libtmux-keep-failed`` keeps it."""
+    keep = item.config.getoption("libtmux_keep_failed")
+    if keep and item.stash.get(_FAILED_KEY, False):
+        return
+    _reap_test_server(socket_name)
 
 
 def _reap_test_server(socket_name: str | None) -> None:
@@ -53,10 +141,8 @@ def _reap_test_server(socket_name: str | None) -> None:
     # the Server class only derives the path when neither ``socket_name``
     # nor ``socket_path`` was supplied. Recompute the location tmux uses
     # so we can unlink the file regardless of daemon state.
-    tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
-    socket_path = tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name
     with contextlib.suppress(OSError):
-        socket_path.unlink(missing_ok=True)
+        _socket_file(socket_name).unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")
@@ -173,9 +259,10 @@ def server(
         >>> result.assert_outcomes(passed=1)
     """
     server = Server(socket_name=f"libtmux_test{next(namer)}")
+    _track_server(request.node, server)
 
     def fin() -> None:
-        _reap_test_server(server.socket_name)
+        _teardown_server(request.node, server.socket_name)
 
     request.addfinalizer(fin)
 
@@ -347,6 +434,7 @@ def TestServer(
     def on_init(server: Server) -> None:
         """Track created servers for cleanup."""
         created_sockets.append(server.socket_name or "default")
+        _track_server(request.node, server)
 
     def socket_name_factory() -> str:
         """Generate unique socket names."""
@@ -355,7 +443,7 @@ def TestServer(
     def fin() -> None:
         """Kill all servers created with these sockets and unlink their sockets."""
         for socket_name in created_sockets:
-            _reap_test_server(socket_name)
+            _teardown_server(request.node, socket_name)
 
     request.addfinalizer(fin)
 

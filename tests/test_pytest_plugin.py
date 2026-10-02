@@ -221,3 +221,74 @@ def test_reap_test_server_tolerates_none() -> None:
     other nullable paths in the API.
     """
     _reap_test_server(None)
+
+
+FAILING_TEST = textwrap.dedent(
+    """
+    def test_fails(session):
+        assert session.session_name is None
+    """,
+)
+
+
+def test_failure_report_names_attach_command(pytester: pytest.Pytester) -> None:
+    """A failing test with tmux fixtures reports how to attach to its server."""
+    pytester.makepyfile(FAILING_TEST)
+
+    result = pytester.runpytest()
+
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines(["*Attach to the tmux server this test used:*"])
+    attach = next(
+        line.strip()
+        for line in result.stdout.lines
+        if line.strip().startswith("tmux -S ")
+    )
+    assert " attach -t libtmux_" in attach
+    assert "resize-window -x" in attach
+
+
+def test_passing_test_reports_nothing(pytester: pytest.Pytester) -> None:
+    """A passing test leaves no attach command in the output."""
+    pytester.makepyfile("def test_ok(session):\n    assert session.session_name\n")
+
+    result = pytester.runpytest("-rA")
+
+    result.assert_outcomes(passed=1)
+    assert "tmux -S" not in result.stdout.str()
+
+
+def test_keep_failed_leaves_server_running(pytester: pytest.Pytester) -> None:
+    """``--libtmux-keep-failed`` keeps a failed test's server until killed."""
+    pytester.makepyfile(FAILING_TEST)
+
+    result = pytester.runpytest("--libtmux-keep-failed")
+
+    result.assert_outcomes(failed=1)
+    kill = next(
+        line.strip()
+        for line in result.stdout.lines
+        if line.strip().endswith(" kill-server")
+    )
+    socket_path = pathlib.Path(kill.split()[2])
+    server = Server(socket_path=socket_path)
+    try:
+        assert server.is_alive()
+    finally:
+        server.kill()
+    assert not server.is_alive()
+
+
+def test_default_reaps_failed_server(pytester: pytest.Pytester) -> None:
+    """Without the flag, a failed test's server is reaped at teardown."""
+    pytester.makepyfile(FAILING_TEST)
+
+    result = pytester.runpytest()
+
+    attach = next(
+        line.strip()
+        for line in result.stdout.lines
+        if line.strip().startswith("tmux -S ")
+    )
+    server = Server(socket_path=pathlib.Path(attach.split()[2]))
+    assert not server.is_alive()
