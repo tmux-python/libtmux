@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import logging
+import os
 import pathlib
+import pty
 import shutil
+import struct
+import subprocess
+import termios
 import typing as t
 
 import pytest
@@ -17,6 +24,7 @@ from libtmux.test.retry import retry_until
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
     from libtmux.pane import Pane
+    from libtmux.server import Server
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -1010,6 +1018,60 @@ def test_display_panes(
         pane.display_panes()
 
 
+class PopupClient(t.NamedTuple):
+    """A tmux client attached through a pseudo-terminal."""
+
+    client_name: str
+
+
+@pytest.fixture
+def popup_client(
+    server: Server,
+    session: Session,
+) -> t.Iterator[PopupClient]:
+    """Attach a pty-backed client to *session*.
+
+    ``display-popup`` needs a terminal client: tmux 3.8 refuses popups for
+    control-mode clients, which the ``control_mode`` fixture spawns.
+    """
+    tmux_bin = server.tmux_bin or "tmux"
+    socket_args = (
+        ["-L", str(server.socket_name)]
+        if server.socket_name is not None
+        else ["-S", str(server.socket_path)]
+    )
+    master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+    proc = subprocess.Popen(
+        [tmux_bin, *socket_args, "attach-session", "-t", str(session.session_id)],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        env={**os.environ, "TERM": "xterm-256color"},
+    )
+    os.close(slave)
+    try:
+
+        def registered() -> bool:
+            out = server.cmd("list-clients", "-F", "#{client_pid} #{client_name}")
+            return any(line.startswith(f"{proc.pid} ") for line in out.stdout)
+
+        retry_until(registered, 3, raises=True)
+        name = next(
+            line.partition(" ")[2]
+            for line in server.cmd(
+                "list-clients", "-F", "#{client_pid} #{client_name}"
+            ).stdout
+            if line.startswith(f"{proc.pid} ")
+        )
+        yield PopupClient(client_name=name)
+    finally:
+        proc.kill()
+        proc.wait()
+        with contextlib.suppress(OSError):
+            os.close(master)
+
+
 class DisplayPopupCase(t.NamedTuple):
     """Test case for display_popup() flag variations."""
 
@@ -1091,7 +1153,7 @@ def test_display_popup_flags(
     test_id: str,
     kwargs: dict[str, t.Any],
     min_tmux_version: str | None,
-    control_mode: t.Callable[..., t.Any],
+    popup_client: PopupClient,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1110,14 +1172,13 @@ def test_display_popup_flags(
 
     call_kwargs = {"command": f"touch {marker}", "close_on_exit": True, **kwargs}
 
-    with control_mode():
-        pane.display_popup(**call_kwargs)
+    pane.display_popup(**call_kwargs)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
 
 def test_display_popup_close_on_success(
-    control_mode: t.Callable[..., t.Any],
+    popup_client: PopupClient,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1126,8 +1187,7 @@ def test_display_popup_close_on_success(
     pane = session.active_window.active_pane
     assert pane is not None
 
-    with control_mode():
-        pane.display_popup(command=f"touch {marker}", close_on_success=True)
+    pane.display_popup(command=f"touch {marker}", close_on_success=True)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
@@ -1141,7 +1201,7 @@ def test_display_popup_mutual_exclusion(session: Session) -> None:
 
 
 def test_display_popup_close_existing(
-    control_mode: t.Callable[..., t.Any],
+    popup_client: PopupClient,
     session: Session,
 ) -> None:
     """Test Pane.display_popup(close_existing=True) returns cleanly.
@@ -1152,31 +1212,28 @@ def test_display_popup_close_existing(
     pane = session.active_window.active_pane
     assert pane is not None
 
-    with control_mode():
-        pane.display_popup(close_existing=True)
+    pane.display_popup(close_existing=True)
 
 
 def test_display_popup_target_client(
-    control_mode: t.Callable[..., t.Any],
+    popup_client: PopupClient,
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
     """Test Pane.display_popup(target_client=...) emits ``-c <client>``.
 
     ``-c`` has been on ``display-popup`` since tmux 3.2a, so no version
-    guard is needed. The popup itself is invisible without a TTY-backed
-    client; this is a smoke test for the flag-passing path.
+    guard is needed.
     """
     pane = session.active_window.active_pane
     assert pane is not None
     marker = tmp_path / "popup_target_client.marker"
 
-    with control_mode() as ctl:
-        pane.display_popup(
-            command=f"touch {marker}",
-            close_on_exit=True,
-            target_client=ctl.client_name,
-        )
+    pane.display_popup(
+        command=f"touch {marker}",
+        close_on_exit=True,
+        target_client=popup_client.client_name,
+    )
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
@@ -1812,8 +1869,10 @@ def test_new_pane_floating(session: Session) -> None:
     if has_gte_version("3.7"):
         floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
         assert floating.pane_floating_flag == "1"
-        assert floating.pane_width == "80"
-        assert floating.pane_height == "15"
+        # tmux 3.8 counts the border in the requested size
+        border = 2 if has_gte_version("3.8") else 0
+        assert floating.pane_width == str(80 - border)
+        assert floating.pane_height == str(15 - border)
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             pane.new_pane(width=40, height=10)

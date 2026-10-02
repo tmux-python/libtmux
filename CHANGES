@@ -45,6 +45,24 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Bug fixes
+
+#### Release candidates parse as their release
+
+{func}`~libtmux.common.get_version` returns `3.8` for `tmux 3.8-rc3`. It
+previously returned `3.83`, because stripping the letters and dash left the
+candidate number behind.
+
+### What's new
+
+#### tmux 3.8 hooks in `Hooks`
+
+{class}`~libtmux._internal.constants.Hooks` parses the hooks tmux 3.8 adds:
+`after-swap-window`, `client-created`, `client-closed`, `marked-pane-changed`,
+`session-added-to-group`, and `session-removed-from-group`. Before this,
+{meth}`Hooks.from_stdout() <libtmux._internal.constants.Hooks.from_stdout>`
+raised `TypeError` on a tmux 3.8 server's `show-hooks` output. tmux 3.8
+removes `after-queue`; the field stays for older servers.
 ### Breaking changes
 
 #### `raise_if_dead()` no longer echoes tmux's error (#739)
