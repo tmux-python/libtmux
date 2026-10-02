@@ -11,8 +11,31 @@ libtmux's public API mirrors tmux's object hierarchy:
 
 ## What do you want to do?
 
+See {ref}`which-call` for each task's return value, exceptions, and tmux
+mechanism.
+
 ::::{grid} 1 2 2 2
 :gutter: 2
+
+:::{grid-item-card} Run a command and get its output?
+:link: libtmux.run
+:link-type: doc
+Use {meth}`pane.run() <libtmux.Pane.run>`; it returns a
+{class}`~libtmux.run.PaneRunResult`.
+:::
+
+:::{grid-item-card} Wait for text or for output to settle?
+:link: libtmux.capture
+:link-type: doc
+Use {meth}`pane.wait_for_text() <libtmux.Pane.wait_for_text>` and
+{meth}`pane.wait_for_idle() <libtmux.Pane.wait_for_idle>`.
+:::
+
+:::{grid-item-card} Get a private tmux server?
+:link: libtmux.server
+:link-type: doc
+Use {meth}`Server.owned() <libtmux.Server.owned>`; it cleans up after itself.
+:::
 
 :::{grid-item-card} Find a session, window, or pane?
 :link: libtmux.server
@@ -24,8 +47,8 @@ Use {meth}`server.sessions.get() <libtmux._internal.query_list.QueryList.get>`,
 :::{grid-item-card} Send commands or keys to a terminal?
 :link: libtmux.pane
 :link-type: doc
-Use {meth}`pane.send_keys() <libtmux.Pane.send_keys>` and
-{meth}`pane.enter() <libtmux.Pane.enter>`.
+Use {meth}`pane.send_keys() <libtmux.Pane.send_keys>` for keys and
+{meth}`pane.paste_text() <libtmux.Pane.paste_text>` for large or multi-line text.
 :::
 
 :::{grid-item-card} Capture output from a pane?

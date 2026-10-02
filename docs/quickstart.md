@@ -8,6 +8,9 @@ sessions using python code.
 In this example, we will launch a tmux session and control the windows
 from inside a live tmux session.
 
+In a hurry? {ref}`Run a command and get its output <quickstart-run>`, or find
+the call for your task in {ref}`which-call`.
+
 (requirements)=
 
 ## Requirements
@@ -170,6 +173,26 @@ equivalent to `$ tmux -L mysocket`.
 `server` is now a living object bound to the tmux server's
 {class}`~libtmux.Session`, {class}`~libtmux.Window`, and
 {class}`~libtmux.Pane` objects.
+
+(quickstart-run)=
+
+## Run a command and get its output
+
+{meth}`Pane.run() <libtmux.Pane.run>` types a command into a pane, waits for it
+to finish, and returns its exit status and output. A nonzero status is a
+result, not an exception.
+
+```python
+>>> pane = session.active_pane
+>>> result = pane.run('echo hello; sh -c "exit 3"', timeout=30)
+>>> result.returncode
+3
+>>> result.stdout
+['hello']
+```
+
+`timeout` bounds the wait and raises {exc}`~libtmux.exc.PaneRunTimeout`. See
+{ref}`run-a-command` for what a call tolerates and what it cannot do.
 
 ## Raw, contextual commands
 
@@ -432,14 +455,54 @@ Pane(%1 Window(@1 ...:..., Session($1 ...)))
 .. todo:: have a ``.kill()`` and ``.select()`` proxy for Server, Session, Window and Pane objects.
 ```
 
-## Sending commands to tmux panes remotely
+## Send commands and read the output
+
+Pick the call by what you need back:
+
+| You want | Call |
+| -------- | ---- |
+| The command's exit status and output | {meth}`Pane.run() <libtmux.Pane.run>` |
+| Text a running program prints | {meth}`Pane.wait_for_text() <libtmux.Pane.wait_for_text>` |
+| To type something and walk away | {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` |
+
+See {ref}`which-call` for the rest.
+
+### Run a command
 
 As long as you have the object, or are iterating through a list of them, you can
-use {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`.
+call {meth}`Pane.run() <libtmux.Pane.run>`.
 
 ```python
 >>> window = session.new_window(attach=False, window_name="test")
 >>> pane = window.split(attach=False)
+>>> pane.run('echo hey', timeout=30).stdout
+['hey']
+```
+
+### Wait for output
+
+{meth}`Pane.wait_for_text() <libtmux.Pane.wait_for_text>` blocks until text
+appears in output written after an anchor. Anchor the pattern to the whole row
+(`^...$`) so the echo of the command you typed, which shares the row with the
+prompt, cannot match. Take the anchor with
+{meth}`Pane.capture_since() <libtmux.Pane.capture_since>` before you send.
+
+```python
+>>> start = pane.capture_since().cursor
+>>> pane.send_keys('echo deploy_ok')
+>>> pane.wait_for_text(r'^deploy_ok$', regex=True, since=start, timeout=5).match.string
+'deploy_ok'
+```
+
+Nothing sleeps and nothing scrapes `capture_pane()`. If the text never arrives,
+{exc}`~libtmux.exc.WaitTimeout` is raised after `timeout` seconds.
+
+### Type without running
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` types text as if from the
+keyboard and returns at once. Use it to start a program or answer its prompt.
+
+```python
 >>> pane.send_keys('echo hey', enter=False)
 ```
 
@@ -515,7 +578,7 @@ background. :)
 
 :::{seealso}
 
-If you want to dig deeper, check out {ref}`API`, the code for
+{ref}`which-call` maps each task to its API. If you want to dig deeper, check out {ref}`API`, the code for
 and our [test suite] (see {ref}`development`.)
 
 :::
