@@ -87,6 +87,13 @@ used to be retried by tmux as a session name, so
 names no longer match by prefix either: `kill_window("foo")` leaves `foobar`
 alone. Ids (`@1`) and indexes are unchanged.
 
+#### `new_session(kill_session=True)` kills the exact session
+
+{meth}`Server.new_session() <libtmux.Server.new_session>` with
+`kill_session=True` sent the bare name to tmux, which could match a session by
+prefix. It now targets the name exactly, so `new_session("foo",
+kill_session=True)` cannot kill `foobar`.
+
 #### `clear_env` removes `TMUX` and `TMUX_PANE`
 
 The pytest plugin's `clear_env` fixture kept every variable whose name contains

@@ -2382,7 +2382,7 @@ class Server(
 
             if self.has_session(session_name):
                 if kill_session:
-                    proc = self.cmd("kill-session", target=session_name)
+                    proc = self.cmd("kill-session", target=f"={session_name}")
                     raise_if_stderr(proc, "kill-session")
                     logger.info(
                         "existing session killed",

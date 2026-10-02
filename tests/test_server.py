@@ -1903,3 +1903,21 @@ def test_client_session_prefix_match_warns(server: Server, method: str) -> None:
         pytest.raises(exc.LibTmuxException),
     ):
         getattr(server, method)("foo")
+
+
+def test_new_session_kill_session_matches_name_exactly(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``new_session(kill_session=True)`` never kills a prefix-matching session.
+
+    ``has_session`` is stubbed to report the name as taken, which is what a
+    session ending between the check and the kill looks like; the kill must
+    then fail rather than take out ``foobar``.
+    """
+    server.new_session(session_name="foobar")
+    monkeypatch.setattr(server, "has_session", lambda *a, **k: True)
+
+    with pytest.raises(exc.LibTmuxException):
+        server.new_session(session_name="foo", kill_session=True)
+    assert server.cmd("has-session", target="=foobar").returncode == 0
