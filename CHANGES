@@ -63,10 +63,14 @@ across a process or wire boundary.
 Naive screen-diffing goes wrong in ways tmux makes easy to hit, and a cursor
 accounts for each: output that scrolled past the visible region between reads,
 `clear-history` and `history-limit` trims renumbering the grid under a stored
-offset, and a respawned pane reusing its `pane_id` while running a different
-program. Where the anchored rows are genuinely gone, the result reports
-`lines_missed` and falls back to the visible screen rather than returning a
-delta that quietly omits them. Where continuing would mean reading another
+offset, a width change reflowing wrapped rows, and a respawned pane reusing its
+`pane_id` while running a different program. Where the anchored rows are
+genuinely gone, the result reports `lines_missed` and falls back to the visible
+screen rather than returning a delta that quietly omits them. A flood that
+scrolls the anchor out of a full scrollback is one of those cases: on tmux 3.8
+and later the anchor is proven from tmux's own `history_collected` and
+`history_generation` counters, and on older builds it is re-found only by a
+unique, non-blank match of the rows above it. Where continuing would mean reading another
 process's output, it raises {exc}`~libtmux.exc.PaneLifecycleChanged` or
 {exc}`~libtmux.exc.InvalidCaptureCursor` — both under a shared
 {exc}`~libtmux.exc.CaptureCursorError` base.

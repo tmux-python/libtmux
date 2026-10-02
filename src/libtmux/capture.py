@@ -10,8 +10,19 @@ a respawned pane keeps its ``pane_id`` while running a different process.
 A :class:`CaptureCursor` anchors a position against all three. When the anchor
 provably survives, the delta is exact; when it provably does not, the read
 degrades to the current visible screen and says so through
-:attr:`CaptureSince.lines_missed`. It never returns a silently incomplete
-delta.
+:attr:`CaptureSince.lines_missed`.
+
+How the anchor is proven depends on the tmux build. From tmux 3.8, tmux
+counts the rows it has trimmed (``history_collected``) and how often history
+was cleared (``history_generation``), so the anchor's row moves by exactly
+that count and a flood that scrolled it away cannot be mistaken for
+progress. Older builds expose no counter, so a cursor also carries a
+fingerprint of the rows *above* its anchor row, and a read that cannot rely
+on row offsets (history is at ``history-limit``, where tmux trims) accepts
+only a unique, non-blank match of that fingerprint. Without a counter,
+output that repeats the fingerprint's rows verbatim after the original rows
+were trimmed away is indistinguishable from the original; every other
+ambiguity reports ``lines_missed``.
 
 This module is deliberately split, at the ``TMUX I/O BOUNDARY`` comment
 partway down. Above it everything is pure: it decides what a read *means*
@@ -42,9 +53,14 @@ logger = logging.getLogger(__name__)
 
 #: Serialized-cursor prefix. Versioned so the wire format can change without
 #: a decoder silently misreading an older payload as a newer one.
-CURSOR_PREFIX = "capture-since-v1:"
+CURSOR_PREFIX = "capture-since-v2:"
 
-_CURSOR_VERSION = 1
+_CURSOR_VERSION = 2
+
+#: Rows above the anchor kept as its content fingerprint on tmux builds that
+#: expose no trim counter. More rows make an accidental repeat less likely
+#: but cost a longer cursor; eight covers a typical command-plus-output block.
+_FINGERPRINT_ROWS = 8
 
 #: How many times a read re-samples pane state before giving up on getting an
 #: untorn snapshot and reporting :attr:`CaptureSince.lines_missed`.
@@ -104,8 +120,21 @@ class CaptureCursor:
         Content hash of the anchor row, or ``None`` when the cursor sat
         below the visible region.
     below_hashes : tuple[str, ...]
-        Content hashes of the rows beneath the anchor, used to re-locate
-        the anchor when tmux may have renumbered the grid.
+        Content hashes of the rows beneath the anchor, used to drop rows
+        the cursor already reported.
+    above_hashes : tuple[str, ...]
+        Content hashes of up to eight complete rows above the anchor, used
+        to re-locate the anchor by content when tmux exposes no trim
+        counter and may have renumbered the grid.
+    pane_width : int | None
+        Columns when the cursor was taken. A different width reflows the
+        grid, which renumbers rows under the stored offset.
+    history_collected : int | None
+        tmux's count of rows trimmed from scrollback (tmux 3.8 and later;
+        ``None`` on older builds).
+    history_generation : int | None
+        tmux's count of history clears (tmux 3.8 and later; ``None`` on
+        older builds).
 
     Examples
     --------
@@ -123,13 +152,17 @@ class CaptureCursor:
     anchor_abs: int
     anchor_hash: str | None
     below_hashes: tuple[str, ...]
+    above_hashes: tuple[str, ...] = ()
+    pane_width: int | None = None
+    history_collected: int | None = None
+    history_generation: int | None = None
 
     def __str__(self) -> str:
         """Serialize to an opaque, round-trippable string.
 
         Examples
         --------
-        >>> str(pane.capture_since().cursor).startswith('capture-since-v1:')
+        >>> str(pane.capture_since().cursor).startswith('capture-since-v2:')
         True
         """
         payload: dict[str, t.Any] = {
@@ -141,6 +174,10 @@ class CaptureCursor:
             "anchor_abs": self.anchor_abs,
             "anchor_hash": self.anchor_hash,
             "below_hashes": list(self.below_hashes),
+            "above_hashes": list(self.above_hashes),
+            "pane_width": self.pane_width,
+            "history_collected": self.history_collected,
+            "history_generation": self.history_generation,
         }
         raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
         encoded = base64.urlsafe_b64encode(raw).decode().rstrip("=")
@@ -194,11 +231,8 @@ unsupported cursor format
         anchor_hash = payload.get("anchor_hash")
         if anchor_hash is not None and not isinstance(anchor_hash, str):
             _raise_invalid_cursor("missing or invalid anchor_hash")
-        below_hashes = payload.get("below_hashes")
-        if not isinstance(below_hashes, list) or not all(
-            isinstance(item, str) for item in below_hashes
-        ):
-            _raise_invalid_cursor("missing or invalid below_hashes")
+        below_hashes = _cursor_hashes(payload, "below_hashes")
+        above_hashes = _cursor_hashes(payload, "above_hashes")
 
         return cls(
             pane_id=_cursor_str(payload, "pane_id"),
@@ -207,7 +241,11 @@ unsupported cursor format
             pane_height=_cursor_int(payload, "pane_height"),
             anchor_abs=_cursor_int(payload, "anchor_abs"),
             anchor_hash=anchor_hash,
-            below_hashes=tuple(below_hashes),
+            below_hashes=below_hashes,
+            above_hashes=above_hashes,
+            pane_width=_cursor_optional_int(payload, "pane_width"),
+            history_collected=_cursor_optional_int(payload, "history_collected"),
+            history_generation=_cursor_optional_int(payload, "history_generation"),
         )
 
 
@@ -238,6 +276,13 @@ class _PaneState(t.NamedTuple):
         below the anchor" stops carrying delta meaning -- but
         ``capture-pane -S`` still returns real main-screen scrollback, so
         the anchor itself stays arithmetically valid.
+    pane_width : int | None
+        Columns. A change reflows the grid.
+    history_collected : int | None
+        Rows tmux has trimmed from scrollback, or ``None`` when the build
+        has no such counter (before tmux 3.8).
+    history_generation : int | None
+        Times history was cleared, or ``None`` before tmux 3.8.
     """
 
     history_size: int
@@ -246,6 +291,9 @@ class _PaneState(t.NamedTuple):
     pane_pid: str
     pane_dead: bool
     alternate_on: bool = False
+    pane_width: int | None = None
+    history_collected: int | None = None
+    history_generation: int | None = None
 
 
 #: tmux format read by :func:`_read_pane_state`. A fixed literal -- no
@@ -254,7 +302,7 @@ class _PaneState(t.NamedTuple):
 #: silently corrupts the surrounding fields.
 PANE_STATE_FORMAT = (
     "#{history_size}|#{cursor_y}|#{pane_height}|#{pane_pid}|#{pane_dead}"
-    "|#{alternate_on}"
+    "|#{alternate_on}|#{pane_width}|#{history_collected}|#{history_generation}"
 )
 
 #: ``history-limit`` read, split out because it never changes between reads.
@@ -316,6 +364,45 @@ missing or invalid anchor_abs
     return value
 
 
+def _cursor_optional_int(payload: t.Mapping[str, t.Any], key: str) -> int | None:
+    """Read a non-negative integer that a cursor may carry as ``None``.
+
+    Examples
+    --------
+    >>> _cursor_optional_int({'history_collected': None}, 'history_collected')
+
+    >>> _cursor_optional_int({'history_collected': 4}, 'history_collected')
+    4
+
+    >>> _cursor_optional_int({}, 'history_collected')
+    Traceback (most recent call last):
+    libtmux.exc.InvalidCaptureCursor: invalid capture_since cursor: \
+missing or invalid history_collected
+    """
+    if key in payload and payload[key] is None:
+        return None
+    return _cursor_int(payload, key)
+
+
+def _cursor_hashes(payload: t.Mapping[str, t.Any], key: str) -> tuple[str, ...]:
+    """Read a list of row hashes from a cursor payload.
+
+    Examples
+    --------
+    >>> _cursor_hashes({'above_hashes': ['a', 'b']}, 'above_hashes')
+    ('a', 'b')
+
+    >>> _cursor_hashes({'above_hashes': [1]}, 'above_hashes')
+    Traceback (most recent call last):
+    libtmux.exc.InvalidCaptureCursor: invalid capture_since cursor: \
+missing or invalid above_hashes
+    """
+    value = payload.get(key)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        _raise_invalid_cursor(f"missing or invalid {key}")
+    return tuple(value)
+
+
 def _line_hash(line: str) -> str:
     """Return a stable content hash for a tmux row.
 
@@ -339,13 +426,15 @@ def _parse_pane_state(raw: str) -> _PaneState:
     field containing ``|`` cannot shift the parse. tmux builds that do not
     know ``alternate_on`` emit the literal format text instead of a value,
     so anything but ``"1"`` is treated as off -- this read sits on a poll
-    path and must degrade rather than raise.
+    path and must degrade rather than raise. A format variable the build
+    does not know expands to nothing, which reads as a missing counter.
 
     Examples
     --------
     >>> _parse_pane_state('100|5|24|4242|0|0')
     _PaneState(history_size=100, cursor_y=5, pane_height=24, pane_pid='4242', \
-pane_dead=False, alternate_on=False)
+pane_dead=False, alternate_on=False, pane_width=None, history_collected=None, \
+history_generation=None)
 
     A build without ``alternate_on`` still parses:
 
@@ -353,22 +442,114 @@ pane_dead=False, alternate_on=False)
     True
     >>> _parse_pane_state('0|0|24|4242|1|#{alternate_on}').alternate_on
     False
+
+    tmux 3.8 adds the trim counters; older builds leave them empty:
+
+    >>> _parse_pane_state('7|0|24|4242|0|0|80|5|2')
+    _PaneState(history_size=7, cursor_y=0, pane_height=24, pane_pid='4242', \
+pane_dead=False, alternate_on=False, pane_width=80, history_collected=5, \
+history_generation=2)
+    >>> _parse_pane_state('7|0|24|4242|0|0|80||').history_collected is None
+    True
     """
-    parts = raw.split("|", 5)
+    parts = raw.split("|", 8)
     history_size, cursor_y, pane_height, pane_pid, pane_dead = parts[:5]
-    alternate = parts[5] if len(parts) > 5 else "0"
+    extra = [*parts[5:], *([""] * (4 - len(parts[5:])))]
     return _PaneState(
         history_size=int(history_size),
         cursor_y=int(cursor_y),
         pane_height=int(pane_height),
         pane_pid=pane_pid,
         pane_dead=pane_dead == "1",
-        alternate_on=alternate == "1",
+        alternate_on=extra[0] == "1",
+        pane_width=_optional_count(extra[1]),
+        history_collected=_optional_count(extra[2]),
+        history_generation=_optional_count(extra[3]),
     )
 
 
-def _cursor_anchor_lost(cursor: CaptureCursor, state: _PaneState) -> bool:
+def _optional_count(raw: str) -> int | None:
+    """Parse a counter tmux may not provide.
+
+    Examples
+    --------
+    >>> _optional_count('12')
+    12
+
+    >>> _optional_count('') is None
+    True
+
+    >>> _optional_count('#{history_added}') is None
+    True
+    """
+    return int(raw) if raw.isdigit() else None
+
+
+def _has_trim_counters(cursor: CaptureCursor, state: _PaneState) -> bool:
+    """Whether both sides carry tmux's trim counters (tmux 3.8 and later).
+
+    Examples
+    --------
+    >>> _has_trim_counters(
+    ...     CaptureCursor('%1', '1', 0, 24, 0, None, (), (), 80, 0, 0),
+    ...     _PaneState(0, 0, 24, '1', False, False, 80, 0, 0),
+    ... )
+    True
+
+    >>> _has_trim_counters(
+    ...     CaptureCursor('%1', '1', 0, 24, 0, None, ()),
+    ...     _PaneState(0, 0, 24, '1', False),
+    ... )
+    False
+    """
+    return (
+        cursor.history_collected is not None
+        and cursor.history_generation is not None
+        and state.history_collected is not None
+        and state.history_generation is not None
+    )
+
+
+def _anchor_shift(cursor: CaptureCursor, state: _PaneState) -> int:
+    """Rows tmux trimmed from the top of the grid since the cursor was taken.
+
+    Zero on builds without counters, where the offset arithmetic is only
+    used while far from ``history-limit`` and nothing has been trimmed.
+
+    Examples
+    --------
+    >>> _anchor_shift(
+    ...     CaptureCursor('%1', '1', 90, 24, 100, None, (), (), 80, 10, 0),
+    ...     _PaneState(95, 5, 24, '1', False, False, 80, 17, 0),
+    ... )
+    7
+    """
+    if not _has_trim_counters(cursor, state):
+        return 0
+    assert cursor.history_collected is not None
+    assert state.history_collected is not None
+    return state.history_collected - cursor.history_collected
+
+
+def _cursor_anchor_lost(
+    cursor: CaptureCursor,
+    state: _PaneState,
+    *,
+    content_search: bool = False,
+) -> bool:
     """Whether sampled state proves tmux destroyed the cursor's anchor.
+
+    With tmux's trim counters the proof is exact: a different history
+    generation means ``clear-history`` ran, and an anchor row that
+    :func:`_anchor_shift` pushed above the top of the grid was trimmed away.
+    A different width reflowed the grid, so offsets no longer name the same
+    rows on any build. Without counters the heuristics below apply.
+
+    ``content_search`` says the caller will locate the anchor by content
+    because history sits at ``history-limit``. tmux trims there in batches,
+    so a shrunken ``history_size`` and an anchor past the end of the grid are
+    what a *surviving* anchor looks like, and only the search can tell. A
+    wiped history still destroys the anchor.
 
     ``anchor_abs`` below ``history_size`` is *not* loss -- the anchor
     scrolled into retained scrollback, where ``capture-pane -S`` still
@@ -393,6 +574,8 @@ def _cursor_anchor_lost(cursor: CaptureCursor, state: _PaneState) -> bool:
         The anchor being checked.
     state : _PaneState
         A current snapshot of the same pane.
+    content_search : bool
+        Whether the caller re-locates the anchor by content.
 
     Returns
     -------
@@ -436,13 +619,67 @@ def _cursor_anchor_lost(cursor: CaptureCursor, state: _PaneState) -> bool:
     >>> trimmed = CaptureCursor('%1', '1', 100, 24, 50, None, ())
     >>> _cursor_anchor_lost(trimmed, _PaneState(60, 5, 24, '1', False))
     True
+
+    A width change reflows the grid:
+
+    >>> wide = CaptureCursor('%1', '1', 10, 24, 12, None, (), (), 80)
+    >>> _cursor_anchor_lost(wide, _PaneState(10, 2, 24, '1', False, False, 100))
+    True
+
+    With counters, a full history that kept trimming past the anchor is lost
+    even though ``history_size`` never moved:
+
+    >>> full = CaptureCursor('%1', '1', 100, 24, 110, None, (), (), 80, 0, 0)
+    >>> _cursor_anchor_lost(
+    ...     full, _PaneState(100, 23, 24, '1', False, False, 80, 50, 0)
+    ... )
+    False
+    >>> _cursor_anchor_lost(
+    ...     full, _PaneState(100, 23, 24, '1', False, False, 80, 5000, 0)
+    ... )
+    True
+
+    and a history clear is lost whatever the offsets say:
+
+    >>> _cursor_anchor_lost(
+    ...     full, _PaneState(100, 23, 24, '1', False, False, 80, 0, 1)
+    ... )
+    True
+
+    Without counters, a batch trim at the limit shrinks history and leaves the
+    anchor's old row past the end; the content search decides that case:
+
+    >>> batch = CaptureCursor('%1', '1', 100, 24, 123, None, ())
+    >>> _cursor_anchor_lost(batch, _PaneState(92, 23, 24, '1', False))
+    True
+    >>> _cursor_anchor_lost(
+    ...     batch, _PaneState(92, 23, 24, '1', False), content_search=True
+    ... )
+    False
+    >>> _cursor_anchor_lost(
+    ...     batch, _PaneState(0, 0, 24, '1', False), content_search=True
+    ... )
+    True
     """
-    bottom_abs = state.history_size + state.pane_height - 1
-    if cursor.anchor_abs > bottom_abs:
+    if (
+        cursor.pane_width is not None
+        and state.pane_width is not None
+        and cursor.pane_width != state.pane_width
+    ):
         return True
+    bottom_abs = state.history_size + state.pane_height - 1
+    if _has_trim_counters(cursor, state):
+        if cursor.history_generation != state.history_generation:
+            return True
+        row = cursor.anchor_abs - _anchor_shift(cursor, state)
+        return row < 0 or row > bottom_abs
     # A complete history wipe (``clear-history``) always destroys the anchor
     # regardless of pane height -- the grid is reset to zero.
     if state.history_size == 0 and cursor.history_size > 0:
+        return True
+    if content_search:
+        return False
+    if cursor.anchor_abs > bottom_abs:
         return True
     return state.history_size < cursor.history_size and (
         state.pane_height <= cursor.pane_height
@@ -493,7 +730,18 @@ def _history_limit_trim_risk(
 
     >>> _history_limit_trim_risk(cursor, state, 0)
     True
+
+    Counters make the offsets exact at any history size, so there is no
+    risk to hedge against:
+
+    >>> counted = CaptureCursor('%1', '1', 10, 24, 20, None, (), (), 80, 0, 0)
+    >>> _history_limit_trim_risk(
+    ...     counted, _PaneState(10, 5, 24, '1', False, False, 80, 0, 0), 10
+    ... )
+    False
     """
+    if _has_trim_counters(cursor, state):
+        return False
     if history_limit <= 0:
         return True
     trim_batch = max(history_limit // 10, 1)
@@ -502,35 +750,47 @@ def _history_limit_trim_risk(
 
 
 def _find_unique_cursor_match(rows: list[str], cursor: CaptureCursor) -> int | None:
-    """Locate the cursor's anchor in ``rows`` by content fingerprint.
+    """Locate the cursor's anchor row in ``rows`` by content fingerprint.
 
-    Used when :func:`_history_limit_trim_risk` says offsets cannot be
-    trusted. Matches the anchor row *and* the rows recorded beneath it, so
-    a repeated single line (a bare shell prompt, say) does not anchor to
-    the wrong place.
+    Used when tmux exposes no trim counter and
+    :func:`_history_limit_trim_risk` says offsets cannot be trusted. Matches
+    the rows recorded *above* the anchor, which are complete lines. The
+    anchor row itself is not part of the fingerprint: it is the row a user
+    is typing on, and it changes without anything having been lost.
+
+    A fingerprint that is empty or entirely blank identifies nothing, and
+    one that occurs more than once identifies nowhere, so both are refused
+    rather than guessed. A blank prompt re-found at the bottom of the screen
+    after a flood is the failure this guards against.
 
     Parameters
     ----------
     rows : list[str]
-        Captured rows to search, oldest first.
+        Captured rows to search, oldest first. ``capture-pane`` drops
+        trailing blank rows, so the anchor may sit just past the end.
     cursor : CaptureCursor
         The anchor to locate.
 
     Returns
     -------
     int | None
-        Index of the anchor row, or ``None`` when the fingerprint is
-        absent or appears more than once -- either way the anchor cannot
-        be proven, and the caller must report a missed read.
+        Index of the anchor row, or ``None`` when the fingerprint is absent,
+        ambiguous, or blank -- in every case the anchor cannot be proven, and
+        the caller must report a missed read.
 
     Examples
     --------
     >>> rows = ['alpha', 'beta', 'gamma']
     >>> cursor = CaptureCursor(
-    ...     '%1', '1', 0, 24, 0, _line_hash('beta'), (_line_hash('gamma'),)
+    ...     '%1', '1', 0, 24, 0, None, (), (_line_hash('alpha'), _line_hash('beta'))
     ... )
     >>> _find_unique_cursor_match(rows, cursor)
-    1
+    2
+
+    The anchor may be a blank row past the end of the captured rows:
+
+    >>> _find_unique_cursor_match(['alpha', 'beta'], cursor)
+    2
 
     An absent fingerprint does not match:
 
@@ -539,22 +799,28 @@ def _find_unique_cursor_match(rows: list[str], cursor: CaptureCursor) -> int | N
 
     An ambiguous fingerprint is refused rather than guessed:
 
-    >>> ambiguous = CaptureCursor('%1', '1', 0, 24, 0, _line_hash('alpha'), ())
-    >>> _find_unique_cursor_match(['alpha', 'beta', 'alpha'], ambiguous) is None
+    >>> repeat = CaptureCursor(
+    ...     '%1', '1', 0, 24, 0, None, (), (_line_hash('alpha'),)
+    ... )
+    >>> _find_unique_cursor_match(['alpha', 'beta', 'alpha'], repeat) is None
     True
 
-    A cursor with no anchor row has nothing to match on:
+    So is a fingerprint of blank rows, which any empty region matches:
+
+    >>> blank = CaptureCursor('%1', '1', 0, 24, 0, None, (), (_line_hash(''),))
+    >>> _find_unique_cursor_match(['alpha', '', 'beta'], blank) is None
+    True
+
+    A cursor with nothing above its anchor has nothing to match on:
 
     >>> _find_unique_cursor_match(rows, CaptureCursor(
     ...     '%1', '1', 0, 24, 0, None, ()
     ... )) is None
     True
     """
-    if cursor.anchor_hash is None:
-        return None
-
-    fingerprint = (cursor.anchor_hash, *cursor.below_hashes)
-    if len(rows) < len(fingerprint):
+    above = cursor.above_hashes
+    blank = _line_hash("")
+    if all(digest == blank for digest in above):
         return None
 
     # Hash each row once. Windows overlap, so hashing per-window would
@@ -564,12 +830,12 @@ def _find_unique_cursor_match(rows: list[str], cursor: CaptureCursor) -> int | N
     hashes = [_line_hash(line) for line in rows]
 
     match_index: int | None = None
-    for index in range(len(hashes) - len(fingerprint) + 1):
-        if tuple(hashes[index : index + len(fingerprint)]) != fingerprint:
+    for end in range(len(above), len(hashes) + 1):
+        if tuple(hashes[end - len(above) : end]) != above:
             continue
         if match_index is not None:
             return None
-        match_index = index
+        match_index = end
     return match_index
 
 
@@ -637,10 +903,26 @@ def _drop_previously_seen_rows(
     return output
 
 
+def _above_row_count(state: _PaneState) -> int:
+    """Rows above the anchor that go into the fingerprint.
+
+    Examples
+    --------
+    >>> _above_row_count(_PaneState(100, 5, 24, '42', False))
+    8
+
+    A pane with little above the cursor fingerprints what there is:
+
+    >>> _above_row_count(_PaneState(0, 3, 24, '42', False))
+    3
+    """
+    return min(_FINGERPRINT_ROWS, state.history_size + state.cursor_y)
+
+
 def _build_cursor(
     pane_id: str,
     state: _PaneState,
-    cursor_rows: list[str],
+    context_rows: list[str] | None,
 ) -> CaptureCursor:
     """Build the cursor describing where a completed read stopped.
 
@@ -650,8 +932,11 @@ def _build_cursor(
         Pane the read came from.
     state : _PaneState
         The snapshot the read settled on.
-    cursor_rows : list[str]
-        Rows from the cursor row through the visible bottom.
+    context_rows : list[str] | None
+        Rows from :func:`_above_row_count` rows above the cursor row through
+        the visible bottom, or ``None`` when the cursor sits below the
+        visible region. ``capture-pane`` drops trailing blank rows, so the
+        list may be short; missing rows are blank.
 
     Returns
     -------
@@ -659,24 +944,44 @@ def _build_cursor(
 
     Examples
     --------
-    >>> _build_cursor('%1', _PaneState(100, 5, 24, '42', False), ['a', 'b'])
-    CaptureCursor(pane_id='%1', pane_pid='42', history_size=100, \
-pane_height=24, anchor_abs=105, anchor_hash='...', below_hashes=('...',))
+    >>> _build_cursor('%1', _PaneState(0, 1, 24, '42', False), ['a', 'b', 'c'])
+    CaptureCursor(pane_id='%1', pane_pid='42', history_size=0, pane_height=24, \
+anchor_abs=1, anchor_hash='...', below_hashes=('...',), above_hashes=('...',), \
+pane_width=None, history_collected=None, history_generation=None)
+
+    A blank anchor row the capture dropped still fingerprints as blank:
+
+    >>> cursor = _build_cursor('%1', _PaneState(0, 1, 24, '42', False), ['a'])
+    >>> cursor.anchor_hash == _line_hash('')
+    True
 
     A cursor below the visible region has no rows to fingerprint:
 
-    >>> _build_cursor('%1', _PaneState(0, 0, 24, '42', False), []).anchor_hash \
+    >>> _build_cursor('%1', _PaneState(0, 0, 24, '42', False), None).anchor_hash \
 is None
     True
     """
+    anchor_hash: str | None = None
+    above: tuple[str, ...] = ()
+    below: tuple[str, ...] = ()
+    if context_rows is not None:
+        above_count = _above_row_count(state)
+        padded = [*context_rows, *([""] * (above_count + 1 - len(context_rows)))]
+        above = tuple(_line_hash(line) for line in padded[:above_count])
+        anchor_hash = _line_hash(padded[above_count])
+        below = tuple(_line_hash(line) for line in padded[above_count + 1 :])
     return CaptureCursor(
         pane_id=pane_id,
         pane_pid=state.pane_pid,
         history_size=state.history_size,
         pane_height=state.pane_height,
         anchor_abs=state.history_size + state.cursor_y,
-        anchor_hash=_line_hash(cursor_rows[0]) if cursor_rows else None,
-        below_hashes=tuple(_line_hash(line) for line in cursor_rows[1:]),
+        anchor_hash=anchor_hash,
+        below_hashes=below,
+        above_hashes=above,
+        pane_width=state.pane_width,
+        history_collected=state.history_collected,
+        history_generation=state.history_generation,
     )
 
 
@@ -729,9 +1034,10 @@ class _PaneRead(t.NamedTuple):
     ----------
     state : _PaneState
         The snapshot the read settled on.
-    cursor_rows : list[str]
-        Rows from the cursor row through the visible bottom, used to
-        fingerprint the next cursor.
+    cursor_rows : list[str] | None
+        Rows from a few above the cursor row through the visible bottom,
+        used to fingerprint the next cursor; ``None`` when the cursor sits
+        below the visible region.
     lines : list[str]
         Rows to return to the caller.
     lines_missed : bool
@@ -740,7 +1046,7 @@ class _PaneRead(t.NamedTuple):
     """
 
     state: _PaneState
-    cursor_rows: list[str]
+    cursor_rows: list[str] | None
     lines: list[str]
     lines_missed: bool
 
@@ -807,22 +1113,26 @@ def _capture_rows(
     return list(proc.stdout)
 
 
-def _capture_cursor_rows(pane: Pane, state: _PaneState) -> list[str]:
-    """Capture from the cursor row through the visible bottom.
+def _capture_cursor_rows(pane: Pane, state: _PaneState) -> list[str] | None:
+    """Capture the rows a new cursor fingerprints.
+
+    Reads from :func:`_above_row_count` rows above the cursor row through the
+    visible bottom, which may reach into scrollback.
 
     Examples
     --------
-    >>> isinstance(_capture_cursor_rows(pane, _read_pane_state(pane)), list)
+    >>> rows = _capture_cursor_rows(pane, _read_pane_state(pane))
+    >>> isinstance(rows, list)
     True
 
     A cursor below the visible region has no rows:
 
-    >>> _capture_cursor_rows(pane, _PaneState(0, 99, 24, '1', False))
-    []
+    >>> _capture_cursor_rows(pane, _PaneState(0, 99, 24, '1', False)) is None
+    True
     """
     if state.cursor_y >= state.pane_height:
-        return []
-    return _capture_rows(pane, start=state.cursor_y, end=None)
+        return None
+    return _capture_rows(pane, start=state.cursor_y - _above_row_count(state))
 
 
 def _read_stable_visible(
@@ -867,7 +1177,7 @@ def _read_stable_visible(
     """
     before = _read_pane_state(pane)
     lines: list[str] = []
-    cursor_rows: list[str] = []
+    cursor_rows: list[str] | None = []
     for _attempt in range(_STABLE_READ_ATTEMPTS):
         before = _read_pane_state(pane)
         if baseline_pid is None:
@@ -938,11 +1248,16 @@ def _read_delta(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
     for _attempt in range(_STABLE_READ_ATTEMPTS):
         before = _read_pane_state(pane)
         _raise_if_lifecycle_changed(pane.pane_id, before, cursor.pane_pid)
-        if _cursor_anchor_lost(cursor, before):
+        trim_risk = _history_limit_trim_risk(cursor, before, history_limit)
+        if _cursor_anchor_lost(cursor, before, content_search=trim_risk):
             return _missed_read(pane, cursor)
 
-        trim_risk = _history_limit_trim_risk(cursor, before, history_limit)
-        start = cursor.anchor_abs - before.history_size
+        # With trim counters the anchor's row is its old row less the rows
+        # tmux trimmed since; without them nothing is assumed trimmed here,
+        # because ``trim_risk`` routes every read near ``history-limit`` to
+        # the content search below.
+        start = cursor.anchor_abs - _anchor_shift(cursor, before)
+        start -= before.history_size
         if trim_risk:
             rows = _capture_rows(pane, start="-", end=None)
         else:
