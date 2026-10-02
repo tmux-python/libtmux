@@ -19,7 +19,13 @@ from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    get_version,
+    has_gte_version,
+    has_lt_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import _split_records, fetch_objs, get_output_format, parse_output
@@ -2212,6 +2218,7 @@ class Server(
         detach_others: bool | None = None,
         no_size: bool | None = None,
         client_flags: str | None = None,
+        history_limit: int | None = None,
         **kwargs: t.Any,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
@@ -2258,6 +2265,9 @@ class Server(
         y : int | str, optional
             Force the specified height instead of the tmux default for a
             detached session
+
+            tmux 3.2a ignores ``-x`` and ``-y`` for a detached session; libtmux
+            resizes the first window afterwards so the size applies there too.
         detach_others : bool, optional
             Detach other clients from the session (``-D`` flag).
 
@@ -2271,6 +2281,18 @@ class Server(
             ``read-only``. Requires tmux 3.2+.
 
             .. versionadded:: 0.56
+        history_limit : int, optional
+            Scrollback lines for the session's panes, including its first.
+
+            tmux before 3.7 reads ``history-limit`` when a pane is created, so
+            setting it after :meth:`new_session` misses the first pane. There
+            libtmux raises the server-wide value, creates the session, and
+            puts the value back in one tmux command list, so no other client
+            sees it; ``attach=True`` is refused because the list would not end
+            until the client detached. From tmux 3.7 the server applies a
+            session's value to its existing panes, and libtmux never touches
+            the server-wide one. Either way the limit is stored on the new
+            session, and other sessions keep theirs.
 
         Returns
         -------
@@ -2279,6 +2301,9 @@ class Server(
         Raises
         ------
         :exc:`exc.BadSessionName`
+        :exc:`ValueError`
+            If ``history_limit`` is negative, or ``attach`` is set on tmux
+            before 3.7.
 
         Examples
         --------
@@ -2296,7 +2321,25 @@ class Server(
 
         >>> server.new_session(session_name='my session')
         Session($4 my session)
+
+        Give the first pane a larger scrollback:
+
+        >>> big = server.new_session(session_name='scrollback', history_limit=50000)
+        >>> big.active_pane.display_message('#{history_limit}', get_text=True)
+        ['50000']
         """
+        if history_limit is not None and history_limit < 0:
+            msg = f"history_limit must be >= 0, got {history_limit}"
+            raise ValueError(msg)
+
+        if (
+            history_limit is not None
+            and attach
+            and has_lt_version("3.7", tmux_bin=self.tmux_bin)
+        ):
+            msg = "history_limit with attach=True needs tmux 3.7 or newer"
+            raise ValueError(msg)
+
         if session_name is not None:
             session_check_name(session_name)
 
@@ -2373,11 +2416,52 @@ class Server(
             if window_command:
                 tmux_args += (window_command,)
 
-            proc = self.cmd("new-session", *tmux_args)
+            previous_limit: str | None = None
+            try:
+                if history_limit is not None and has_lt_version(
+                    "3.7",
+                    tmux_bin=self.tmux_bin,
+                ):
+                    # tmux < 3.7 reads history-limit once, when a pane is
+                    # created, and only the server-wide value is settable
+                    # before the session exists. Read it (after the server
+                    # has loaded its config), then raise it, create the
+                    # session, and put it back in a single command list:
+                    # tmux runs that list without serving other clients, so
+                    # none of them sees the temporary value.
+                    probe = self.cmd(
+                        "start-server",
+                        ";",
+                        "show-options",
+                        "-gv",
+                        "history-limit",
+                    )
+                    raise_if_stderr(probe, "show-options")
+                    previous_limit = probe.stdout[0]
+                    proc = self.cmd(
+                        "set-option",
+                        "-g",
+                        "history-limit",
+                        str(history_limit),
+                        ";",
+                        "new-session",
+                        *tmux_args,
+                        ";",
+                        "set-option",
+                        "-g",
+                        "history-limit",
+                        previous_limit,
+                    )
+                else:
+                    proc = self.cmd("new-session", *tmux_args)
 
-            raise_if_stderr(proc, "new-session")
-
-            session_stdout = _split_records(proc.stdout, len(_fields))[0]
+                raise_if_stderr(proc, "new-session")
+                session_stdout = _split_records(proc.stdout, len(_fields))[0]
+            except BaseException:
+                # A failed command aborts the rest of the list, so the
+                # restore inside it may not have run.
+                self._restore_history_limit(previous_limit)
+                raise
 
         finally:
             if env:
@@ -2387,6 +2471,21 @@ class Server(
 
         session = Session(server=self, **session_data)
 
+        if history_limit is not None:
+            session.set_option("history-limit", history_limit)
+
+        if (
+            not attach
+            and (x is not None or y is not None)
+            and has_lt_version("3.3", tmux_bin=self.tmux_bin)
+        ):
+            # tmux < 3.3 ignores ``new-session -x/-y`` for a detached session
+            # and uses 80x23, so size the first window afterwards.
+            session.active_window.resize(
+                width=int(x) if x is not None and x != "-" else None,
+                height=int(y) if y is not None and y != "-" else None,
+            )
+
         info_extra: dict[str, str] = {
             "tmux_subcommand": "new-session",
         }
@@ -2395,6 +2494,13 @@ class Server(
         logger.info("session created", extra=info_extra)
 
         return session
+
+    def _restore_history_limit(self, previous: str | None) -> None:
+        """Put back the server-wide ``history-limit`` ``new_session`` replaced."""
+        if previous is None:
+            return
+        proc = self.cmd("set-option", "-g", "history-limit", previous)
+        raise_if_stderr(proc, "set-option")
 
     #
     # Relations

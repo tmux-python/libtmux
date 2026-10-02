@@ -45,7 +45,29 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Set scrollback before the first pane with `new_session(history_limit=)`
+
+{meth}`Server.new_session() <libtmux.Server.new_session>` takes `history_limit`,
+the scrollback for the new session's panes. The first pane gets it on every
+tmux version; before tmux 3.7 a `set_option()` call after `new_session()` only
+reached panes created later. The limit is stored on the new session, so the
+server-wide value and other sessions keep theirs. Before tmux 3.7 the
+server-wide value is raised and restored inside the one tmux command that
+creates the session, and `attach=True` raises `ValueError`; from tmux 3.7 it is
+never touched, because tmux 3.7 trims the history of existing panes when the
+server-wide limit drops. A negative value raises `ValueError`. See
+{ref}`workspace-setup` for a recipe.
+
 ### Fixes
+
+#### `new_session(x=, y=)` sizes the first window on tmux 3.2a
+
+tmux 3.2a ignores `new-session -x` and `-y` for a detached session, so
+{meth}`Server.new_session() <libtmux.Server.new_session>` returned an 80x23
+window whatever size was requested. On tmux older than 3.3 it now resizes the
+first window to the requested width and height after creating the session.
 
 #### A newline in a format value no longer breaks every object listing (#752)
 
@@ -97,6 +119,7 @@ as `_`. {class}`~libtmux.common.tmux_cmd` now runs every command as
 Commands that run an interactive client, such as `attach-session`, keep
 detecting the terminal's encoding themselves and do not get `-u`.
 `LIBTMUX_TMUX_FORMAT_SEPARATOR` and the default separator are unchanged.
+
 
 ### Documentation
 

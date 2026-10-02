@@ -15,10 +15,14 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
+from libtmux.common import has_gte_version
+from libtmux.constants import OptionScope
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.pane import Pane
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -227,7 +231,6 @@ def test_new_session_shell_env(server: Server) -> None:
     assert pane_start_command.replace('"', "") == cmd
 
 
-@pytest.mark.skipif(True, reason="tmux 3.2 returns wrong width - test needs rework")
 def test_new_session_width_height(server: Server) -> None:
     """Verify ``Server.new_session`` creates valid session running w/ dimensions."""
     cmd = "/usr/bin/env PS1='$ ' sh"
@@ -241,6 +244,150 @@ def test_new_session_width_height(server: Server) -> None:
     pane = window.panes[0]
     assert pane.display_message("#{window_width}", get_text=True)[0] == "32"
     assert pane.display_message("#{window_height}", get_text=True)[0] == "32"
+
+
+def _pane_history_limit(pane: Pane | None) -> str:
+    assert pane is not None
+    return pane.display_message("#{history_limit}", get_text=True)[0]
+
+
+def test_new_session_history_limit_first_pane(server: Server) -> None:
+    """``history_limit`` reaches the first pane of a session on a new server."""
+    assert not server.is_alive()
+
+    session = server.new_session("scrollback", history_limit=50000)
+
+    assert _pane_history_limit(session.active_pane) == "50000"
+    assert session.show_option("history-limit") == 50000
+
+
+def test_new_session_history_limit_scoped_to_session(server: Server) -> None:
+    """``history_limit`` leaves server-wide and other sessions' settings alone."""
+    other = server.new_session("other")
+    server.set_option("history-limit", 3000, global_=True, scope=OptionScope.Session)
+
+    session = server.new_session("scrollback", history_limit=50000)
+    window = session.new_window()
+
+    assert (
+        server.show_option("history-limit", global_=True, scope=OptionScope.Session)
+        == 3000
+    )
+    assert other.show_option("history-limit", include_inherited=True) == 3000
+    assert _pane_history_limit(window.active_pane) == "50000"
+
+
+def test_new_session_history_limit_restored_on_failure(server: Server) -> None:
+    """A failed ``new-session`` does not leave the temporary limit behind."""
+    server.new_session("other")
+    server.set_option("history-limit", 3000, global_=True, scope=OptionScope.Session)
+
+    with pytest.raises(exc.LibTmuxException):
+        server.new_session("scrollback", history_limit=50000, x="not-a-number")  # type: ignore[arg-type]
+
+    assert (
+        server.show_option("history-limit", global_=True, scope=OptionScope.Session)
+        == 3000
+    )
+
+
+def test_new_session_history_limit_keeps_other_sessions_history(
+    server: Server,
+) -> None:
+    """A low ``history_limit`` does not trim scrollback in other sessions.
+
+    tmux 3.7 applies a changed server-wide ``history-limit`` to live panes,
+    so lowering it, even for one command, would delete their history.
+    """
+    other = server.new_session("other")
+    server.set_option("history-limit", 5000, global_=True, scope=OptionScope.Session)
+    window = other.new_window(window_shell="sh -c 'seq 1 3000; exec sleep 60'")
+    history_pane = window.active_pane
+    assert history_pane is not None
+
+    def _history_size() -> int:
+        return int(history_pane.display_message("#{history_size}", get_text=True)[0])
+
+    assert retry_until(lambda: _history_size() > 2000, raises=False)
+    before = _history_size()
+
+    server.new_session("scrollback", history_limit=100)
+
+    assert _history_size() == before
+
+
+@pytest.mark.skipif(
+    has_gte_version("3.7"),
+    reason="tmux 3.7 and newer take the session-scoped path with no global write",
+)
+def test_new_session_history_limit_restores_global_in_same_command(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Before tmux 3.7 the global limit is put back by the creating command list.
+
+    A mock-free check cannot see the gap between two tmux processes, so this
+    records the argv libtmux sends (``Server.cmd`` is wrapped, not replaced).
+    """
+    server.new_session("other")
+    server.set_option("history-limit", 3000, global_=True, scope=OptionScope.Session)
+    calls: list[tuple[str, ...]] = []
+    real_cmd = server.cmd
+
+    def spy(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        calls.append((cmd, *map(str, args)))
+        return real_cmd(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(server, "cmd", spy)
+
+    server.new_session("scrollback", history_limit=50000)
+
+    (chain,) = (c for c in calls if "new-session" in c)
+    assert chain[:4] == ("set-option", "-g", "history-limit", "50000")
+    assert chain[-4:] == ("set-option", "-g", "history-limit", "3000")
+
+
+@pytest.mark.skipif(
+    has_gte_version("3.7"),
+    reason="only tmux before 3.7 needs the temporary server-wide value",
+)
+def test_new_session_history_limit_attach_needs_tmux_3_7(server: Server) -> None:
+    """``attach=True`` would hold the temporary limit until the client left."""
+    with pytest.raises(ValueError, match=r"3\.7"):
+        server.new_session("scrollback", history_limit=50000, attach=True)
+
+    assert not server.is_alive()
+
+
+@pytest.mark.skipif(
+    not has_gte_version("3.7"),
+    reason="tmux before 3.7 needs the temporary server-wide value",
+)
+def test_new_session_history_limit_never_writes_global(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """From tmux 3.7 only the new session's own option is written."""
+    calls: list[tuple[str, ...]] = []
+    real_cmd = server.cmd
+
+    def spy(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        calls.append((cmd, *map(str, args)))
+        return real_cmd(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(server, "cmd", spy)
+
+    server.new_session("scrollback", history_limit=50000)
+
+    assert not [c for c in calls if "history-limit" in c and "-g" in c]
+
+
+def test_new_session_history_limit_rejects_negative(server: Server) -> None:
+    """A negative ``history_limit`` is rejected before tmux runs."""
+    with pytest.raises(ValueError, match="history_limit"):
+        server.new_session("scrollback", history_limit=-1)
+
+    assert not server.is_alive()
 
 
 def test_new_session_environmental_variables(
