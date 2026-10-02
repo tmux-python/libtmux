@@ -84,6 +84,19 @@ argument when called with `scope=OptionScope.Session`. tmux rejected it with
 hook and `run_hook` silently ran nothing. The session scope now sends no flag,
 as the option helpers already do.
 
+#### `Window.select_layout` checks its layout argument
+
+{meth}`Window.select_layout() <libtmux.Window.select_layout>` appended its
+argument to the tmux command unchecked. `select_layout("-o")` ran tmux's undo
+flag and returned without error, and on tmux 3.3 and 3.3a a layout tmux could
+not parse killed the server and every session on its socket. The argument is
+now sent after `--` and checked first: it must be a layout preset, an
+unambiguous abbreviation such as `"tile"`, or a layout string such as
+{attr}`~libtmux.Window.window_layout` returns. Anything else raises
+{class}`ValueError`, as does an explicit empty string (pass `None` to omit the
+layout); a mirrored preset below tmux 3.5 raises
+{exc}`~libtmux.exc.VersionTooLow`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
