@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.14']
-        tmux-version: ['3.2a', '3.3a', '3.4', '3.5', '3.6', '3.7a', '3.7b', 'master']
+        tmux-version: ['3.2a', '3.3a', '3.4', '3.5', '3.6', '3.7a', '3.7b', '3.7c', '3.8-rc3', 'master']
     steps:
       - uses: actions/checkout@v7
 
@@ -81,6 +81,9 @@ jobs:
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
           tmux -V
+          if [ "${{ matrix.tmux-version }}" != "master" ]; then
+            tmux -V | grep -F -- "${{ matrix.tmux-version }}"
+          fi
           uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
         env:
           COV_CORE_SOURCE: .

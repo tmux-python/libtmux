@@ -47,6 +47,15 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
+#### tmux 3.8 hooks in `Hooks`
+
+{class}`~libtmux._internal.constants.Hooks` parses the hooks tmux 3.8 adds:
+`after-swap-window`, `client-created`, `client-closed`, `marked-pane-changed`,
+`session-added-to-group`, and `session-removed-from-group`. Before this,
+{meth}`Hooks.from_stdout() <libtmux._internal.constants.Hooks.from_stdout>`
+raised `TypeError` on a tmux 3.8 server's `show-hooks` output. tmux 3.8
+removes `after-queue`; the field stays for older servers.
+
 #### `Server.owned()` runs a throwaway tmux server
 
 {meth}`Server.owned() <libtmux.Server.owned>` is a context manager that runs a
@@ -88,202 +97,6 @@ A bare {class}`~libtmux.Server` inside a tmux pane is left alone. tmux prefers
 `$TMUX` over `$TMUX_TMPDIR` when no socket is named, so a script running
 inside tmux is measured against the socket it will actually use rather than a
 directory tmux never consults.
-
-### Breaking changes
-
-#### Scoping a `Server` no longer kills it (#724)
-
-Leaving a `with` block used to kill any live {class}`~libtmux.Server`, so
-`with Server() as server:` around no work at all destroyed the default tmux
-daemon and every session in it. A server is a handle on a socket rather than a
-connection: the same handle addresses a daemon whether or not your process
-started it, so scoping one to a block is not grounds to destroy it.
-
-Teardown is now something you ask for, with the new
-{attr}`~libtmux.Server.kill_on_exit`. {class}`~libtmux.Session`,
-{class}`~libtmux.Window` and {class}`~libtmux.Pane` are unchanged — those you
-get by creating them. See {ref}`context_managers`.
-
-```python
-# Before: killed whatever daemon was on that socket
-with Server(socket_name="my-work") as server:
-    pass
-
-# After: nothing is killed unless you say so
-with Server(socket_name="my-work", kill_on_exit=True) as server:
-    pass
-```
-
-For a server that exists only for the block, use the new
-{meth}`Server.owned() <libtmux.Server.owned>` below.
-
-#### `DeprecatedError` no longer subclasses `LibTmuxException`
-
-{exc}`~libtmux.exc.DeprecatedError`, raised by every removed API, now derives
-from {class}`Exception` instead of {exc}`~libtmux.exc.LibTmuxException`.
-Downstream code with `except LibTmuxException` fallbacks no longer swallows a
-call to a removed method such as `Session.attached_window`; the error names the
-replacement instead. Code that catches `DeprecatedError` itself is unaffected.
-See {ref}`migration` for the full removed-API table.
-
-### Fixes
-
-- {class}`~libtmux.Server` now reprs the socket a bare tmux client would use —
-  `$TMUX` inside a pane, otherwise the path resolved from `$TMUX_TMPDIR` —
-  instead of a hard-coded `/tmp/tmux-<euid>/default` (#727)
-
-#### `kill_window()` and `select_window()` match window names exactly
-
-{meth}`Session.kill_window() <libtmux.Session.kill_window>` and
-{meth}`Session.select_window() <libtmux.Session.select_window>` now target
-`$session_id:=name`. A bare window name that matched no window in the session
-used to be retried by tmux as a session name, so
-`other.kill_window("victim")` destroyed the whole session `victim`. Window
-names no longer match by prefix either: `kill_window("foo")` leaves `foobar`
-alone. Ids (`@1`) and indexes are unchanged.
-
-#### `new_session(kill_session=True)` kills the exact session
-
-{meth}`Server.new_session() <libtmux.Server.new_session>` with
-`kill_session=True` sent the bare name to tmux, which could match a session by
-prefix. It now targets the name exactly, so `new_session("foo",
-kill_session=True)` cannot kill `foobar`.
-
-#### `clear_env` removes `TMUX` and `TMUX_PANE`
-
-The pytest plugin's `clear_env` fixture kept every variable whose name contains
-`tmux` or `pane`, including `TMUX` and `TMUX_PANE`. A test run from inside tmux
-that built a bare {class}`~libtmux.Server` therefore followed `$TMUX` to the
-outer session. `clear_env` now removes both.
-
-#### Unknown keywords to `Server` and `Server.new_session` warn
-
-{class}`~libtmux.Server` and {meth}`Server.new_session() <libtmux.Server.new_session>`
-accepted any keyword argument and ignored it, so `Server(environment=...)`
-set nothing and `Server(socket_nam="x")` fell back to the default tmux server.
-Both now emit a {class}`FutureWarning` naming the ignored keywords; a future
-release will raise {class}`TypeError`. Pass environment variables with
-`new_session(environment=...)`.
-
-#### Hook helpers accept `scope=OptionScope.Session`
-
-{meth}`set_hook() <libtmux.hooks.HooksMixin.set_hook>`,
-{meth}`unset_hook() <libtmux.hooks.HooksMixin.unset_hook>`,
-{meth}`run_hook() <libtmux.hooks.HooksMixin.run_hook>`, and
-{meth}`show_hooks() <libtmux.hooks.HooksMixin.show_hooks>` sent tmux an empty
-argument when called with `scope=OptionScope.Session`. tmux rejected it with
-`too many arguments`, or `show_hooks` returned `{}` for a session that had a
-hook and `run_hook` silently ran nothing. The session scope now sends no flag,
-as the option helpers already do.
-
-#### `Window.select_layout` checks its layout argument
-
-{meth}`Window.select_layout() <libtmux.Window.select_layout>` appended its
-argument to the tmux command unchecked. `select_layout("-o")` ran tmux's undo
-flag and returned without error, and on tmux 3.3 and 3.3a a layout tmux could
-not parse killed the server and every session on its socket. The argument is
-now sent after `--` and checked first: it must be a layout preset, an
-unambiguous abbreviation such as `"tile"`, or a layout string such as
-{attr}`~libtmux.Window.window_layout` returns. Anything else raises
-{class}`ValueError`, as does an explicit empty string (pass `None` to omit the
-layout); a mirrored preset below tmux 3.5 raises
-{exc}`~libtmux.exc.VersionTooLow`.
-
-#### `new_session(x=, y=)` sizes the first window on tmux 3.2a
-
-tmux 3.2a ignores `new-session -x` and `-y` for a detached session, so
-{meth}`Server.new_session() <libtmux.Server.new_session>` returned an 80x23
-window whatever size was requested. On tmux older than 3.3 it now resizes the
-first window to the requested width and height after creating the session.
-
-#### A newline in a format value no longer breaks every object listing (#752)
-
-A pane whose `pane_current_path` contained a newline — a directory whose
-name has one — made `Server.panes` and `Server.windows` raise
-`ValueError: zip() argument 2 is shorter than argument 1` for the
-*entire* server, healthy panes included. `fetch_objs` iterated stdout
-one line per object, so a value containing a newline split its record
-across two lines and each fragment reached `parse_output` with too few
-values for its strict `zip`.
-
-Because every pane row carries `pane_current_path`, and every
-pane-targeting lookup enumerates panes, one directory took out
-resolution for all of them. Which calls broke also depended on which
-pane happened to be active, since session and window rows resolve
-`pane_*` against the active pane — so the same server appeared to work
-or fail as the user switched panes.
-
-Records are now regrouped on the field separator instead of on
-newlines. The `-F` template terminates every field with a separator, so
-a record holds exactly as many separators as it has fields and a
-newline is never one of them; a value may now contain any number of
-newlines in any position. A value that carries the separator itself no
-longer corrupts the parse silently — it is reported as output that
-could not be parsed.
-
-#### `Server.new_session()` survives a newline in a format value
-
-`Server.new_session()` raised `ValueError: zip() argument 2 is shorter than
-argument 1` after tmux had created the session when its pane directory
-(`start_directory`) or window name contained a newline. It read only the
-first output line of `new-session -P -F`. It now regroups that output on
-the field separator, as the listings do.
-
-#### A numbered release candidate no longer reads as a later version
-
-{func}`~libtmux.common.get_version` returns `3.8` for `tmux 3.8-rc3`. It
-returned `3.83`, so a numbered candidate passed `has_gte_version("3.9")`.
-`3.8-rc`, `3.8-rc1` and `3.8-rc2` read as `3.8` the same way.
-
-#### tmux output survives a non-UTF-8 locale
-
-Under `LC_ALL=C`, `LC_ALL=POSIX` or any locale whose name lacks `UTF-8`,
-tmux rewrote every non-ASCII character in its output to `_`.
-`Server.new_session()` and the object listings failed because tmux rewrote
-the field separator, and non-ASCII window names and pane titles read back
-as `_`. {class}`~libtmux.common.tmux_cmd` now runs every command as
-`tmux -u`, so output is unchanged whatever locale the environment sets.
-Commands that run an interactive client, such as `attach-session`, keep
-detecting the terminal's encoding themselves and do not get `-u`.
-`LIBTMUX_TMUX_FORMAT_SEPARATOR` and the default separator are unchanged.
-
-#### `Pane.send_keys()` sends text that starts with `-`
-
-{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` ends tmux's option parsing
-before the text, so `-1`, `--help`, and `- item` reach the pane as text.
-tmux previously read them as `send-keys` flags and delivered nothing.
-
-#### `Pane.send_keys()` sends text that ends in `;`
-
-{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` escapes a final `;` so
-`echo A;` reaches the pane whole. tmux previously read the `;` as a command
-separator and delivered `echo A` without it. A `;` inside the text was
-unaffected.
-
-#### `Server.set_buffer()` stores data that starts with `-` or ends in `;`
-
-{meth}`Server.set_buffer() <libtmux.Server.set_buffer>` ends tmux's option
-parsing before the data and escapes a final `;`. `-x` previously raised
-`unknown flag`, and `echo A;` stored `echo A`.
-
-#### `Pane.send_keys(hex_keys=True)` sends multi-byte payloads
-
-{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` splits a hex `cmd` into one
-argument per byte, as `send-keys -H` requires, and accepts `1b5b32`,
-`1b 5b 32`, and `0x1b 0x5b`. Only a single byte was delivered before; longer
-payloads vanished without an error. Malformed hex raises {exc}`ValueError`.
-
-#### `Pane.send_keys()` raises when tmux refuses the text
-
-tmux rejects a `send-keys` command above about 16 KiB with `command too long`
-or `failed to send command`. {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
-previously ignored that reply, so the text vanished and the Enter that followed
-still went to the pane. It now raises {exc}`~libtmux.exc.LibTmuxException` with
-tmux's message, sends no Enter, and so also surfaces any other error tmux
-reports for the text, such as a pane that no longer exists. Send large text
-with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
-
-### None
 
 #### Secrets masked in logged tmux commands
 
@@ -446,10 +259,197 @@ never touched, because tmux 3.7 trims the history of existing panes when the
 server-wide limit drops. A negative value raises `ValueError`. See
 {ref}`workspace-setup` for a recipe.
 
+### Breaking changes
+
+#### Scoping a `Server` no longer kills it (#724)
+
+Leaving a `with` block used to kill any live {class}`~libtmux.Server`, so
+`with Server() as server:` around no work at all destroyed the default tmux
+daemon and every session in it. A server is a handle on a socket rather than a
+connection: the same handle addresses a daemon whether or not your process
+started it, so scoping one to a block is not grounds to destroy it.
+
+Teardown is now something you ask for, with the new
+{attr}`~libtmux.Server.kill_on_exit`. {class}`~libtmux.Session`,
+{class}`~libtmux.Window` and {class}`~libtmux.Pane` are unchanged — those you
+get by creating them. See {ref}`context_managers`.
+
+```python
+# Before: killed whatever daemon was on that socket
+with Server(socket_name="my-work") as server:
+    pass
+
+# After: nothing is killed unless you say so
+with Server(socket_name="my-work", kill_on_exit=True) as server:
+    pass
+```
+
+For a server that exists only for the block, use the new
+{meth}`Server.owned() <libtmux.Server.owned>` below.
+
+#### `DeprecatedError` no longer subclasses `LibTmuxException`
+
+{exc}`~libtmux.exc.DeprecatedError`, raised by every removed API, now derives
+from {class}`Exception` instead of {exc}`~libtmux.exc.LibTmuxException`.
+Downstream code with `except LibTmuxException` fallbacks no longer swallows a
+call to a removed method such as `Session.attached_window`; the error names the
+replacement instead. Code that catches `DeprecatedError` itself is unaffected.
+See {ref}`migration` for the full removed-API table.
+
+### Fixes
+
+#### `kill_window()` and `select_window()` match window names exactly
+
+{meth}`Session.kill_window() <libtmux.Session.kill_window>` and
+{meth}`Session.select_window() <libtmux.Session.select_window>` now target
+`$session_id:=name`. A bare window name that matched no window in the session
+used to be retried by tmux as a session name, so
+`other.kill_window("victim")` destroyed the whole session `victim`. Window
+names no longer match by prefix either: `kill_window("foo")` leaves `foobar`
+alone. Ids (`@1`) and indexes are unchanged.
+
+#### `new_session(kill_session=True)` kills the exact session
+
+{meth}`Server.new_session() <libtmux.Server.new_session>` with
+`kill_session=True` sent the bare name to tmux, which could match a session by
+prefix. It now targets the name exactly, so `new_session("foo",
+kill_session=True)` cannot kill `foobar`.
+
+#### `clear_env` removes `TMUX` and `TMUX_PANE`
+
+The pytest plugin's `clear_env` fixture kept every variable whose name contains
+`tmux` or `pane`, including `TMUX` and `TMUX_PANE`. A test run from inside tmux
+that built a bare {class}`~libtmux.Server` therefore followed `$TMUX` to the
+outer session. `clear_env` now removes both.
+
+#### Unknown keywords to `Server` and `Server.new_session` warn
+
+{class}`~libtmux.Server` and {meth}`Server.new_session() <libtmux.Server.new_session>`
+accepted any keyword argument and ignored it, so `Server(environment=...)`
+set nothing and `Server(socket_nam="x")` fell back to the default tmux server.
+Both now emit a {class}`FutureWarning` naming the ignored keywords; a future
+release will raise {class}`TypeError`. Pass environment variables with
+`new_session(environment=...)`.
+
+#### Hook helpers accept `scope=OptionScope.Session`
+
+{meth}`set_hook() <libtmux.hooks.HooksMixin.set_hook>`,
+{meth}`unset_hook() <libtmux.hooks.HooksMixin.unset_hook>`,
+{meth}`run_hook() <libtmux.hooks.HooksMixin.run_hook>`, and
+{meth}`show_hooks() <libtmux.hooks.HooksMixin.show_hooks>` sent tmux an empty
+argument when called with `scope=OptionScope.Session`. tmux rejected it with
+`too many arguments`, or `show_hooks` returned `{}` for a session that had a
+hook and `run_hook` silently ran nothing. The session scope now sends no flag,
+as the option helpers already do.
+
+#### `Window.select_layout` checks its layout argument
+
+{meth}`Window.select_layout() <libtmux.Window.select_layout>` appended its
+argument to the tmux command unchecked. `select_layout("-o")` ran tmux's undo
+flag and returned without error, and on tmux 3.3 and 3.3a a layout tmux could
+not parse killed the server and every session on its socket. The argument is
+now sent after `--` and checked first: it must be a layout preset, an
+unambiguous abbreviation such as `"tile"`, or a layout string such as
+{attr}`~libtmux.Window.window_layout` returns. Anything else raises
+{class}`ValueError`, as does an explicit empty string (pass `None` to omit the
+layout); a mirrored preset below tmux 3.5 raises
+{exc}`~libtmux.exc.VersionTooLow`.
+
+#### `new_session(x=, y=)` sizes the first window on tmux 3.2a
+
+tmux 3.2a ignores `new-session -x` and `-y` for a detached session, so
+{meth}`Server.new_session() <libtmux.Server.new_session>` returned an 80x23
+window whatever size was requested. On tmux older than 3.3 it now resizes the
+first window to the requested width and height after creating the session.
+
+#### A newline in a format value no longer breaks every object listing (#752)
+
+A pane whose `pane_current_path` contained a newline — a directory whose
+name has one — made `Server.panes` and `Server.windows` raise
+`ValueError: zip() argument 2 is shorter than argument 1` for the
+*entire* server, healthy panes included. `fetch_objs` iterated stdout
+one line per object, so a value containing a newline split its record
+across two lines and each fragment reached `parse_output` with too few
+values for its strict `zip`.
+
+Because every pane row carries `pane_current_path`, and every
+pane-targeting lookup enumerates panes, one directory took out
+resolution for all of them. Which calls broke also depended on which
+pane happened to be active, since session and window rows resolve
+`pane_*` against the active pane — so the same server appeared to work
+or fail as the user switched panes.
+
+Records are now regrouped on the field separator instead of on
+newlines. The `-F` template terminates every field with a separator, so
+a record holds exactly as many separators as it has fields and a
+newline is never one of them; a value may now contain any number of
+newlines in any position. A value that carries the separator itself no
+longer corrupts the parse silently — it is reported as output that
+could not be parsed.
+
+#### `Server.new_session()` survives a newline in a format value
+
+`Server.new_session()` raised `ValueError: zip() argument 2 is shorter than
+argument 1` after tmux had created the session when its pane directory
+(`start_directory`) or window name contained a newline. It read only the
+first output line of `new-session -P -F`. It now regroups that output on
+the field separator, as the listings do.
+
+#### A numbered release candidate no longer reads as a later version
+
+{func}`~libtmux.common.get_version` returns `3.8` for `tmux 3.8-rc3`. It
+returned `3.83`, so a numbered candidate passed `has_gte_version("3.9")`.
+`3.8-rc`, `3.8-rc1` and `3.8-rc2` read as `3.8` the same way.
+
+#### tmux output survives a non-UTF-8 locale
+
+Under `LC_ALL=C`, `LC_ALL=POSIX` or any locale whose name lacks `UTF-8`,
+tmux rewrote every non-ASCII character in its output to `_`.
+`Server.new_session()` and the object listings failed because tmux rewrote
+the field separator, and non-ASCII window names and pane titles read back
+as `_`. {class}`~libtmux.common.tmux_cmd` now runs every command as
+`tmux -u`, so output is unchanged whatever locale the environment sets.
+Commands that run an interactive client, such as `attach-session`, keep
+detecting the terminal's encoding themselves and do not get `-u`.
+`LIBTMUX_TMUX_FORMAT_SEPARATOR` and the default separator are unchanged.
+
+#### `Pane.send_keys()` sends text that starts with `-`
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` ends tmux's option parsing
+before the text, so `-1`, `--help`, and `- item` reach the pane as text.
+tmux previously read them as `send-keys` flags and delivered nothing.
+
+#### `Pane.send_keys()` sends text that ends in `;`
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` escapes a final `;` so
+`echo A;` reaches the pane whole. tmux previously read the `;` as a command
+separator and delivered `echo A` without it. A `;` inside the text was
+unaffected.
+
+#### `Server.set_buffer()` stores data that starts with `-` or ends in `;`
+
+{meth}`Server.set_buffer() <libtmux.Server.set_buffer>` ends tmux's option
+parsing before the data and escapes a final `;`. `-x` previously raised
+`unknown flag`, and `echo A;` stored `echo A`.
+
+#### `Pane.send_keys(hex_keys=True)` sends multi-byte payloads
+
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` splits a hex `cmd` into one
+argument per byte, as `send-keys -H` requires, and accepts `1b5b32`,
+`1b 5b 32`, and `0x1b 0x5b`. Only a single byte was delivered before; longer
+payloads vanished without an error. Malformed hex raises {exc}`ValueError`.
+
+#### `Pane.send_keys()` raises when tmux refuses the text
+
+tmux rejects a `send-keys` command above about 16 KiB with `command too long`
+or `failed to send command`. {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`
+previously ignored that reply, so the text vanished and the Enter that followed
+still went to the pane. It now raises {exc}`~libtmux.exc.LibTmuxException` with
+tmux's message, sends no Enter, and so also surfaces any other error tmux
+reports for the text, such as a pane that no longer exists. Send large text
+with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
 
 ### Documentation
-
-### None
 
 #### Replacing wrapper code
 
@@ -473,7 +473,6 @@ moment the command is done. Checks compare whole captured lines rather than
 searching the joined capture, because {meth}`~libtmux.Pane.capture_pane`
 returns the command tmux echoed onto the pane -- a substring search matches
 that echo and is already true before the shell has run.
-
 
 #### Cleaner `from_env` examples (#719)
 
@@ -514,6 +513,24 @@ flake8-blind-except, and flake8-bandit checks now apply; the tmux output
 parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
+
+#### tmux 3.7c joins the tested versions (#746)
+
+CI exercises tmux 3.7c. The point release needs no library change:
+{func}`~libtmux.common.get_version` strips the point-release suffix, so the
+existing `3.7` feature gates already accept it, and the tmux 3.7
+{meth}`~libtmux.Pane.break_pane` workaround keys on the raw `"3.7"` string
+through {func}`~libtmux.common.get_version_str`.
+
+One tmux-side behavior change is worth knowing: on 3.7c, creating a floating
+pane with {meth}`~libtmux.Pane.new_pane` in a zoomed window unzooms the
+window, where tmux 3.7 through 3.7b left it zoomed.
+
+#### tmux 3.8-rc3 joins the tested versions
+
+CI builds the `3.8-rc3` tag, the 3.8 release candidate, next to the tmux 3.7
+point releases, and fails a cell whose `tmux -V` does not report the version
+the matrix names. Release candidates build from a tag like any release.
 
 ## libtmux 0.62.0 (2026-07-12)
 

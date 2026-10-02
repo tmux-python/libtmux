@@ -317,6 +317,7 @@ class HookTestCase(t.NamedTuple):
     hook: str  # tmux hook name (hyphenated)
     min_version: str = "3.0"  # Minimum tmux version required
     xfail_reason: str | None = None  # Mark as expected failure with reason
+    max_version: str | None = None  # First tmux version without the hook
 
 
 # --- Alert Hooks ---
@@ -335,6 +336,8 @@ CLIENT_HOOKS: list[HookTestCase] = [
     HookTestCase("client_focus_out", "client-focus-out", "3.3"),
     HookTestCase("client_resized", "client-resized"),
     HookTestCase("client_session_changed", "client-session-changed"),
+    HookTestCase("client_created", "client-created", "3.8"),
+    HookTestCase("client_closed", "client-closed", "3.8"),
 ]
 
 # --- Session Hooks ---
@@ -342,6 +345,8 @@ SESSION_HOOKS: list[HookTestCase] = [
     HookTestCase("session_created", "session-created"),
     HookTestCase("session_closed", "session-closed"),
     HookTestCase("session_renamed", "session-renamed"),
+    HookTestCase("session_added_to_group", "session-added-to-group", "3.8"),
+    HookTestCase("session_removed_from_group", "session-removed-from-group", "3.8"),
 ]
 
 # --- Window Hooks ---
@@ -361,6 +366,7 @@ PANE_HOOKS: list[HookTestCase] = [
     HookTestCase("pane_focus_out", "pane-focus-out"),
     HookTestCase("pane_mode_changed", "pane-mode-changed"),
     HookTestCase("pane_set_clipboard", "pane-set-clipboard"),
+    HookTestCase("marked_pane_changed", "marked-pane-changed", "3.8"),
 ]
 
 # --- After-* Hooks ---
@@ -383,7 +389,7 @@ AFTER_HOOKS: list[HookTestCase] = [
     HookTestCase("after_new_window", "after-new-window"),
     HookTestCase("after_paste_buffer", "after-paste-buffer"),
     HookTestCase("after_pipe_pane", "after-pipe-pane"),
-    HookTestCase("after_queue", "after-queue"),
+    HookTestCase("after_queue", "after-queue", max_version="3.8"),
     HookTestCase("after_refresh_client", "after-refresh-client"),
     HookTestCase("after_rename_session", "after-rename-session"),
     HookTestCase("after_rename_window", "after-rename-window"),
@@ -402,6 +408,7 @@ AFTER_HOOKS: list[HookTestCase] = [
     HookTestCase("after_show_messages", "after-show-messages"),
     HookTestCase("after_show_options", "after-show-options"),
     HookTestCase("after_split_window", "after-split-window"),
+    HookTestCase("after_swap_window", "after-swap-window", "3.8"),
     HookTestCase("after_unbind_key", "after-unbind-key"),
 ]
 
@@ -444,6 +451,8 @@ def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> N
     """
     if not has_gte_version(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
+    if test_case.max_version and has_gte_version(test_case.max_version):
+        pytest.skip(f"Removed in tmux {test_case.max_version}")
 
     session = server.new_session(session_name="test_hook_cycle")
     window = session.active_window
