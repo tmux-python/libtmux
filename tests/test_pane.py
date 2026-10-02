@@ -24,12 +24,12 @@ from libtmux import exc, pane as pane_module
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.pane import PaneExit
+from libtmux.server import Server
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
     from libtmux.pane import Pane
-    from libtmux.server import Server
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -2650,3 +2650,36 @@ def test_pane_wait_confirms_the_event_waiter_before_it_reads_state(
     start = time.monotonic()
     assert pane.wait(timeout=8) == PaneExit(status=5, signal=None)
     assert time.monotonic() - start < 5, "the death was found by the deadline read"
+
+
+@needs_tmux_3_8
+def test_pane_wait_event_client_runs_in_the_owned_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Pane.wait`` forks its own event client; it must keep the TMUX scrub.
+
+    ``Server.owned()`` promises no ``$TMUX`` reaches any client it starts, and
+    the event client is spawned outside the engine seam.
+    """
+    monkeypatch.setenv("TMUX", "/tmp/not-a-socket,1,0")
+    seen: list[dict[str, str] | None] = []
+    real_popen = subprocess.Popen
+
+    def spy_popen(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[t.Any]:
+        if "-E" in args[0]:
+            seen.append(kwargs.get("env"))
+        return real_popen(*args, **kwargs)
+
+    with Server.owned() as owned:
+        owned.new_session(session_name="evt")
+        pane = owned.sessions[0].active_window.split(
+            attach=False, shell="read go; exit 0"
+        )
+        monkeypatch.setattr(subprocess, "Popen", spy_popen)
+        with pytest.raises(exc.WaitTimeout):
+            pane.wait(timeout=0.3)
+
+    assert seen
+    for env in seen:
+        assert env is not None
+        assert "TMUX" not in env
