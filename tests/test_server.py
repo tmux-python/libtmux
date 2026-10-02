@@ -3054,3 +3054,54 @@ def test_owned_wait_for_clients_never_see_tmux_env(
         assert env is not None, "a tmux client inherited the ambient environment"
         assert "TMUX" not in env
         assert "TMUX_PANE" not in env
+
+
+def test_owned_server_commands_never_see_tmux_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every command through the engine seam runs without ``$TMUX``.
+
+    The seam is the one place a tmux client is forked, so the owned server's
+    environment scrub has to ride on its connection rather than on any one
+    caller.
+    """
+    monkeypatch.setenv("TMUX", "/tmp/not-a-socket,1,0")
+    monkeypatch.setenv("TMUX_PANE", "%99")
+    seen: list[dict[str, str] | None] = []
+    real_popen = subprocess.Popen
+
+    def spy_popen(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[t.Any]:
+        # ``tmux -V`` never contacts a server, so it is not a spawn to guard.
+        if "-V" not in args[0]:
+            seen.append(kwargs.get("env"))
+        return real_popen(*args, **kwargs)
+
+    with Server.owned() as owned:
+        monkeypatch.setattr(subprocess, "Popen", spy_popen)
+        owned.new_session(session_name="seam")
+        assert owned.sessions
+        assert owned.cmd("display-message", "-p", "x", input=b"y").stdout == ["x"]
+
+    assert seen
+    for env in seen:
+        assert env is not None, "a tmux client inherited the ambient environment"
+        assert "TMUX" not in env
+        assert "TMUX_PANE" not in env
+
+
+def test_server_connection_is_measured_on_every_dispatch(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cached connection still rejects a socket path that stopped fitting.
+
+    The engine seam caches a server's connection; the socket-length check
+    reads ``$TMUX_TMPDIR`` at dispatch, so it must not be cached with it.
+    """
+    myserver = Server(socket_name="seam_measure")
+    myserver.cmd("list-sessions")  # builds and caches the connection
+
+    _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+
+    with pytest.raises(exc.SocketPathTooLong):
+        myserver.cmd("list-sessions")
