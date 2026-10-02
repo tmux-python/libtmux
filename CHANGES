@@ -166,6 +166,16 @@ detecting the terminal's encoding themselves and do not get `-u`.
 
 ### None
 
+#### `Server.ensure_session()` gets or creates a session by exact name
+
+{meth}`Server.ensure_session() <libtmux.Server.ensure_session>` returns the
+session with the given name, creating it only when absent, so setup code can
+run repeatedly without catching {exc}`~libtmux.exc.TmuxSessionExists`. The
+name is matched exactly, never as a prefix. When the session already exists it
+is returned unchanged and the creation options are ignored.
+
+### None
+
 #### Session names can match exactly with `exact=True`
 
 {meth}`Server.kill_session() <libtmux.Server.kill_session>`,
