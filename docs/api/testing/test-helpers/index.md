@@ -27,6 +27,11 @@ Randomized name generators.
 :link-type: doc
 Retry logic for async/tmux operations.
 :::
+:::{grid-item-card} Shell
+:link: shell
+:link-type: doc
+Deterministic shell for screen assertions.
+:::
 :::{grid-item-card} Temporary
 :link: temporary
 :link-type: doc
@@ -43,5 +48,6 @@ constants
 environment
 random
 retry
+shell
 temporary
 ```

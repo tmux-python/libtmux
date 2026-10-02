@@ -45,6 +45,18 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Deterministic shell for screen tests
+
+{func}`~libtmux.test.shell.deterministic_shell_command` returns a command that
+starts bash with an empty environment, no startup files, `PS1='$ '`, and
+`TERM=xterm-256color`, so a pane's screen does not depend on the machine's
+prompt theme. Pass it as `window_command` anywhere a shell command is accepted,
+or mark a test `@pytest.mark.deterministic_shell` to apply it to the
+{fixture}`session` fixture. Without the marker the default shell is unchanged.
+See {ref}`deterministic_shell`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

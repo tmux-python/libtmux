@@ -221,3 +221,38 @@ def test_reap_test_server_tolerates_none() -> None:
     other nullable paths in the API.
     """
     _reap_test_server(None)
+
+
+SHELL_TEST = textwrap.dedent(
+    """
+    import pytest
+
+    def start_command(session):
+        pane = session.active_pane
+        out = pane.cmd("display-message", "-p", "#{pane_start_command}").stdout
+        return "".join(out)
+
+    @pytest.mark.deterministic_shell(ps1="> ")
+    def test_marked(session):
+        command = start_command(session)
+        assert "env -i " in command
+        assert "PS1=> " in command
+
+    def test_default(session):
+        assert start_command(session) == ""
+
+    @pytest.mark.deterministic_shell
+    @pytest.mark.parametrize("session_params", [{"window_command": "cat"}])
+    def test_session_params_win(session):
+        assert start_command(session) == "cat"
+    """,
+)
+
+
+def test_deterministic_shell_marker(pytester: pytest.Pytester) -> None:
+    """The marker cleans the ``session`` shell; unmarked tests keep the default."""
+    pytester.makepyfile(SHELL_TEST)
+
+    result = pytester.runpytest()
+
+    result.assert_outcomes(passed=3)
