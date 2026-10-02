@@ -406,8 +406,8 @@ def test_a_failed_capture_raises_instead_of_reading_as_empty(
     assert pane is not None
     real_cmd = type(pane).cmd
 
-    def failing_capture(self: Pane, *args: str) -> t.Any:
-        proc = real_cmd(self, *args)
+    def failing_capture(self: Pane, *args: str, **kwargs: t.Any) -> t.Any:
+        proc = real_cmd(self, *args, **kwargs)
         if args and args[0] == "capture-pane":
             proc.stderr = ["no such pane"]
             proc.stdout = []
@@ -459,7 +459,7 @@ def never_settles(pane: Pane, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         capture,
         "_read_pane_state",
-        lambda _pane: steady._replace(cursor_y=next(samples) % 5),
+        lambda _pane, **_kwargs: steady._replace(cursor_y=next(samples) % 5),
     )
 
 

@@ -482,6 +482,10 @@ logic:
 True
 ```
 
+This helper also matches the echo of its own command, so it returns before
+`echo` has run. {meth}`~libtmux.Pane.wait_for_text` anchors the search after
+the command instead; see {ref}`recipe-wait-for-text`.
+
 ## Querying pane state
 
 {meth}`~libtmux.Pane.display_message` asks tmux to evaluate a format string
@@ -690,6 +694,83 @@ True
 >>> check_for_errors(pane)
 False
 ```
+
+(recipe-read-incrementally)=
+
+### Recipe: read new output incrementally
+
+Resume from the cursor each call returned, and keep every row you were handed.
+Check `lines_missed` once at the end: if it was ever set, some output scrolled
+out of tmux's history before you read it.
+
+```python
+>>> from libtmux.test.retry import retry_until
+
+>>> state = {'cursor': pane.capture_since().cursor, 'lines': [], 'missed': False}
+
+>>> def read_new():
+...     update = pane.capture_since(state['cursor'])
+...     state['cursor'] = update.cursor
+...     state['lines'] += update.lines
+...     state['missed'] |= update.lines_missed
+...     return 'step_3' in state['lines']
+
+>>> pane.send_keys('for i in 1 2 3; do echo step_$i; done')
+>>> retry_until(read_new, 3)
+True
+
+>>> [line for line in state['lines'] if line in {'step_1', 'step_2', 'step_3'}]
+['step_1', 'step_2', 'step_3']
+
+>>> state['missed']
+False
+```
+
+(recipe-wait-for-text)=
+
+### Recipe: wait for text without matching your own command
+
+The shell echoes what you type, so a wait for text that is in your command
+finds the command. {meth}`~libtmux.Pane.wait_for_text` searches only rows
+written after an anchor, and skips the row the cursor was on, which is where
+the echo lands. Let the prompt settle, take the anchor, then send:
+
+```python
+>>> settled = pane.wait_for_idle(quiet=0.2, timeout=5)
+>>> start = pane.capture_since().cursor
+
+>>> pane.send_keys('echo deploy_ok')
+>>> hit = pane.wait_for_text('deploy_ok', since=start, timeout=5)
+>>> hit.match.string
+'deploy_ok'
+```
+
+The match is the output row. Waiting for the same text without the anchor
+would have returned the typed command line.
+
+When the wait must not depend on where the anchor fell, build the command so
+its echo cannot contain what it prints, or anchor the pattern to the whole row:
+
+```python
+>>> settled = pane.wait_for_idle(quiet=0.2, timeout=5)
+>>> start = pane.capture_since().cursor
+>>> pane.send_keys("printf '%s%s\\n' build_ finished")
+>>> pane.wait_for_text('build_finished', since=start, timeout=5).match.string
+'build_finished'
+
+>>> settled = pane.wait_for_idle(quiet=0.2, timeout=5)
+>>> start = pane.capture_since().cursor
+>>> pane.send_keys('echo all_tests_pass')
+>>> pane.wait_for_text(
+...     r'^all_tests_pass$', regex=True, since=start, timeout=5
+... ).match.string
+'all_tests_pass'
+```
+
+`wait_for_text` raises {exc}`~libtmux.exc.WaitTimeout` when the text never
+arrives, and the result's `lines_missed` is set if a flood destroyed the anchor
+before the match was found. {meth}`~libtmux.Pane.wait_for_idle` is the wait to
+use when there is no text to look for.
 
 :::{seealso}
 - {ref}`api` for the full API reference
