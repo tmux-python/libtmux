@@ -287,4 +287,5 @@ testpaths = [
 ]
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
+  "slow: runs a nested mypy; belongs in the outer loop",
 ]

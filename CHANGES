@@ -584,6 +584,16 @@ and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
 share one connection. A `colors=` value other than `256` or `88` raises
 {exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
 
+#### `QueryList.get()` is typed to match what it does
+
+`get()` without `default` returns the object or raises
+{exc}`~libtmux.exc.ObjectDoesNotExist`; it never returns `None`. Its annotation
+said `T | None`, so `mypy --strict` asked for a `None` check that could not
+fire and missed the exception that could. `get()` is now overloaded: without
+`default` it returns `T`, and with `default=X` it returns `T | X`. Runtime
+behavior is unchanged. A caller that already passes `default=None` keeps the
+same type, and one that asserted the result is not `None` keeps working.
+
 #### `kill_window()` and `select_window()` match window names exactly
 
 {meth}`Session.kill_window() <libtmux.Session.kill_window>` and

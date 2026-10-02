@@ -34,6 +34,7 @@ if t.TYPE_CHECKING:
 
 
 T = t.TypeVar("T")
+D = t.TypeVar("D")
 
 no_arg = object()
 
@@ -549,12 +550,36 @@ class QueryList(list[T], t.Generic[T]):
 
         return self.__class__(k for k in self if filter_(k))
 
+    @t.overload
     def get(
         self,
         matcher: Callable[[T], bool] | T | None = None,
-        default: t.Any | None = no_arg,
+        *,
+        default: D,
         **kwargs: t.Any,
-    ) -> T | None:
+    ) -> T | D: ...
+
+    @t.overload
+    def get(
+        self,
+        matcher: Callable[[T], bool] | T | None,
+        default: D,
+        **kwargs: t.Any,
+    ) -> T | D: ...
+
+    @t.overload
+    def get(
+        self,
+        matcher: Callable[[T], bool] | T | None = None,
+        **kwargs: t.Any,
+    ) -> T: ...
+
+    def get(
+        self,
+        matcher: Callable[[T], bool] | T | None = None,
+        default: object = no_arg,
+        **kwargs: t.Any,
+    ) -> object:
         """Retrieve exactly one object.
 
         Parameters
