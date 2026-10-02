@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import typing as t
@@ -38,6 +39,7 @@ from .common import (
     PaneDict,
     SessionDict,
     WindowDict,
+    _release_waiter,
     session_check_name,
 )
 from .options import OptionsMixin
@@ -379,6 +381,24 @@ class Server(
     #
     # Command
     #
+    def _server_flags(self) -> list[str]:
+        """Return the tmux client flags that select this server, in argv order."""
+        flags: list[str] = []
+        if self.socket_name:
+            flags.insert(0, f"-L{self.socket_name}")
+        if self.socket_path:
+            flags.insert(0, f"-S{self.socket_path}")
+        if self.config_file:
+            flags.insert(0, f"-f{self.config_file}")
+        if self.colors:
+            if self.colors == 256:
+                flags.insert(0, "-2")
+            elif self.colors == 88:
+                flags.insert(0, "-8")
+            else:
+                raise exc.UnknownColorOption
+        return flags
+
     def cmd(
         self,
         cmd: str,
@@ -457,22 +477,7 @@ class Server(
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [cmd]
-        cmd_args: list[str | int] = []
-        if self.socket_name:
-            svr_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            svr_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            svr_args.insert(0, f"-f{self.config_file}")
-        if self.colors:
-            if self.colors == 256:
-                svr_args.insert(0, "-2")
-            elif self.colors == 88:
-                svr_args.insert(0, "-8")
-            else:
-                raise exc.UnknownColorOption
-
+        svr_args: list[str | int] = [*self._server_flags(), cmd]
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
         return tmux_cmd(
@@ -738,25 +743,77 @@ class Server(
         lock: bool | None = None,
         unlock: bool | None = None,
         set_flag: bool | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Wait for, signal, or lock a channel via ``$ tmux wait-for``.
+
+        A plain wait blocks until another process signals *channel* with
+        ``tmux wait-for -S`` (or :meth:`wait_for` with ``set_flag=True``) and
+        returns *None*. It ends three ways: signalled, timed out, or the
+        server went away.
 
         Parameters
         ----------
         channel : str
-            Channel name.
+            Channel name. Use a fresh name for each rendezvous.
         lock : bool, optional
             Lock the channel (``-L`` flag).
         unlock : bool, optional
             Unlock the channel (``-U`` flag).
         set_flag : bool, optional
             Set the channel flag and wake waiters (``-S`` flag).
+        timeout : float, optional
+            Seconds to wait for the signal. *None* (the default) waits
+            indefinitely. Only a plain wait takes a *timeout*.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxTimeout`
+            When *timeout* elapses before the channel is signalled. The wait
+            is withdrawn by signalling *channel*, so the next signal on it is
+            not lost.
+        :exc:`~libtmux.exc.TmuxServerGone`
+            When the wait ended because the tmux server exited.
+        :exc:`ValueError`
+            When *timeout* is combined with *lock*, *unlock* or *set_flag*.
+
+        Notes
+        -----
+        The timeout signals *channel* to release the waiter, which also wakes
+        any other process waiting on it. Do not share a channel between
+        waiters.
+
+        A wait that returns is not proof the work ran when the work could
+        have died with the server; :exc:`~libtmux.exc.TmuxServerGone` covers
+        that case. For the work's own result, have the command report its
+        exit status.
+
+        .. versionchanged:: 0.63
+
+           Added ``timeout``. A wait that ends because the server exited
+           raises :exc:`~libtmux.exc.TmuxServerGone` instead of returning.
 
         Examples
         --------
         >>> server.new_session(session_name='wait_test')
         Session(...)
         >>> server.wait_for('test_channel', set_flag=True)
+
+        Wait on a pane that signals when its work is done:
+
+        >>> channel = 'build-done'
+        >>> pane.send_keys(f'make; tmux wait-for -S {channel}')
+        >>> server.wait_for(channel, timeout=60)
+
+        A channel nobody signals costs *timeout* seconds instead of the rest
+        of the process's life:
+
+        >>> from libtmux import exc
+        >>> try:
+        ...     server.wait_for('nobody-signals-me', timeout=0.25)
+        ... except exc.TmuxTimeout:
+        ...     print('gave up waiting')
+        gave up waiting
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -769,11 +826,71 @@ class Server(
         if set_flag:
             tmux_args += ("-S",)
 
+        if not tmux_args:
+            self._wait_for_signal(channel, timeout)
+            return
+
+        if timeout is not None:
+            msg = "timeout applies to a plain wait, not to lock, unlock or set_flag"
+            raise ValueError(msg)
+
         tmux_args += (channel,)
 
         proc = self.cmd("wait-for", *tmux_args)
 
         raise_if_stderr(proc, "wait-for")
+
+    def _wait_for_signal(self, channel: str, timeout: float | None) -> None:
+        """Block on *channel*, telling a signal from a timeout or a dead server.
+
+        The client is a :class:`subprocess.Popen` of this method's own, not a
+        :class:`~libtmux.common.tmux_cmd`, because expiry must release it by
+        signalling the channel (see :func:`~libtmux.common._release_waiter`).
+        """
+        resolved = self.tmux_bin or shutil.which("tmux")
+        if not resolved:
+            raise exc.TmuxCommandNotFound
+
+        flags = self._server_flags()
+        wait_argv = [resolved, *flags, "wait-for", channel]
+        waiter = subprocess.Popen(
+            wait_argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="backslashreplace",
+        )
+        try:
+            _, stderr = waiter.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            if waiter.poll() is None:
+                _release_waiter(
+                    waiter,
+                    [resolved, *flags, "wait-for", "-S", channel],
+                )
+                # A server that died mid-wait released the waiter on its own.
+                if not self.is_alive():
+                    raise exc.TmuxServerGone(channel) from None
+                logger.error(  # noqa: TRY400
+                    "tmux wait-for timed out",
+                    extra={"tmux_cmd": shlex.join(wait_argv)},
+                )
+                raise exc.TmuxTimeout(
+                    cmd=wait_argv,
+                    timeout=t.cast("float", timeout),
+                ) from None
+            # The signal landed as the clock ran out; fall through as signalled.
+            _, stderr = waiter.communicate()
+
+        if waiter.returncode != 0 or stderr:
+            if not self.is_alive():
+                raise exc.TmuxServerGone(channel)
+            raise exc.LibTmuxException(stderr.strip(), subcommand="wait-for")
+
+        # tmux releases every waiter when its server exits, as if signalled.
+        if not self.is_alive():
+            raise exc.TmuxServerGone(channel)
 
     def bind_key(
         self,

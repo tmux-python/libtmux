@@ -126,8 +126,9 @@ block on that channel with {meth}`~libtmux.Server.wait_for`. tmux remembers a si
 sent before the waiter starts, so this has no lost-wakeup race. It also avoids
 confusing the shell's echoed command with the command's output.
 
-{meth}`~libtmux.Server.wait_for` has no timeout. Make sure every expected exit path
-reaches `tmux wait-for -S` so a failed command cannot leave your script blocked.
+{meth}`~libtmux.Server.wait_for` waits indefinitely unless you give it a `timeout`.
+Either make sure every expected exit path reaches `tmux wait-for -S`, or bound the
+wait ({ref}`bounded-wait`), so a failed command cannot leave your script blocked.
 Channels are server-wide, so give each in-flight command a distinct channel name.
 
 ```python
@@ -486,6 +487,61 @@ stopped answering into an empty list.
 The bound belongs to the call, not to the server object. The same server can
 carry a patient call for a build and an impatient one for a health check, and no
 single number would be right for both `display-message` and `attach-session`.
+
+(bounded-wait)=
+
+### Bounding a wait
+
+Pass `timeout` to {meth}`~libtmux.Server.wait_for` and the wait ends one of three
+ways. A signal returns `None`. The clock raises
+{exc}`~libtmux.exc.TmuxTimeout`. A tmux server that exits raises
+{exc}`~libtmux.exc.TmuxServerGone`.
+
+```python
+>>> signal_window = session.new_window(window_name='signal-demo', attach=False)
+>>> signal_pane = signal_window.active_pane
+
+>>> channel = 'demo-work-done'
+>>> signal_pane.send_keys(f'echo "working"; tmux wait-for -S {channel}')
+>>> session.server.wait_for(channel, timeout=60)
+
+>>> signal_window.kill()
+```
+
+Nothing signals `never-arrives`, so the wait ends on the clock rather than on the
+work:
+
+```python
+>>> from libtmux import exc
+
+>>> try:
+...     session.server.wait_for('never-arrives', timeout=0.25)
+... except exc.TmuxTimeout as e:
+...     print(f'gave up after {e.timeout}s')
+gave up after 0.25s
+```
+
+Three properties of tmux's rendezvous shape the API.
+
+**A timed-out wait is released, not abandoned.** tmux only *remembers* a signal
+when nothing is waiting on the channel, and a waiter that is killed stays queued,
+so the next signal would be spent waking it. On expiry libtmux signals the channel
+first, so tmux dequeues the live waiter itself, and kills the client only when the
+server does not answer. The signal wakes every waiter on the channel, so do not
+share one channel between waiters. A fresh name per rendezvous, from a build id or
+a UUID, is also the way to avoid a stale remembered signal.
+
+**A returning wait can mean the server died.** tmux releases every waiter when the
+server exits, exactly as if the channel had been signalled. After a wake libtmux
+asks the server again and raises {exc}`~libtmux.exc.TmuxServerGone` when nobody
+answers. A server that exits right after the signal is reported the same way.
+
+**A wake is not the work's result.** When it matters whether the work succeeded,
+have the command report its own exit status, for example into a pane option, and
+read it back.
+
+`timeout` applies to a plain wait. Combining it with `lock`, `unlock` or
+`set_flag` raises {exc}`ValueError`.
 
 ### Retry pattern
 

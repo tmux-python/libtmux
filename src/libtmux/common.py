@@ -369,6 +369,69 @@ def _kill_and_reap(process: subprocess.Popen[str]) -> None:
             stream.close()
 
 
+_RELEASE_GRACE = 5.0
+"""Seconds to let tmux answer the release signal and the waiter exit."""
+
+
+def _release_waiter(
+    waiter: subprocess.Popen[str],
+    release_argv: list[str],
+    grace: float = _RELEASE_GRACE,
+) -> bool:
+    """End a timed-out ``wait-for`` client without leaving a ghost waiter.
+
+    tmux has no timeout for ``wait-for``, and a waiter that is killed stays
+    queued on its channel: tmux only remembers a signal while nobody waits,
+    so the next signal is spent on the dead waiter. Signalling the channel
+    while the waiter is still alive makes tmux dequeue it itself, so the
+    signal is spent on exactly that waiter and the channel is clean again.
+
+    The client is killed only when the server does not answer, the one case
+    where nothing can be left behind but the server's own state.
+
+    Parameters
+    ----------
+    waiter : :class:`subprocess.Popen`
+        The ``wait-for`` client that outlived its timeout.
+    release_argv : list[str]
+        Full command line that signals the waiter's channel.
+    grace : float, optional
+        Seconds to give the signal and the waiter's exit, each.
+
+    Returns
+    -------
+    bool
+        *True* when the waiter exited after the signal, *False* when it had
+        to be killed.
+
+    Examples
+    --------
+    >>> from libtmux.common import _release_waiter
+    >>> waiter = subprocess.Popen(
+    ...     [sys.executable, '-c', 'import time; time.sleep(300)'],
+    ...     stdout=subprocess.PIPE,
+    ...     stderr=subprocess.PIPE,
+    ...     text=True,
+    ... )
+    >>> _release_waiter(waiter, [sys.executable, '-c', 'pass'], grace=0.25)
+    False
+    >>> waiter.returncode
+    -9
+    """
+    try:
+        subprocess.run(
+            release_argv,
+            capture_output=True,
+            timeout=grace,
+            check=False,
+        )
+        waiter.communicate(timeout=grace)
+    except (subprocess.TimeoutExpired, OSError):
+        _kill_and_reap(waiter)
+        return False
+    return True
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 

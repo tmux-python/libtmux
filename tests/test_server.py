@@ -8,13 +8,14 @@ import os
 import pathlib
 import shutil
 import subprocess
+import threading
 import time
 import typing as t
 import warnings
 
 import pytest
 
-from libtmux import exc, neo
+from libtmux import common, exc, neo, server as server_module
 from libtmux._internal.control_mode import ControlMode
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
@@ -2214,3 +2215,120 @@ def test_timeout_is_not_swallowed_by_lenient_listings(
         server.sessions  # noqa: B018
     with pytest.raises(exc.TmuxTimeout):
         server.clients  # noqa: B018
+
+
+def test_wait_for_returns_when_signalled(session: Session) -> None:
+    """A bounded wait that is signalled in time returns instead of raising."""
+    pane = session.new_window(window_name="wait_signalled").active_pane
+    assert pane is not None
+
+    pane.send_keys("tmux wait-for -S libtmux_wait_signalled")
+
+    session.server.wait_for("libtmux_wait_signalled", timeout=60)
+
+
+def test_wait_for_timeout_releases_the_waiter_and_reports_it(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Expiry wakes the waiter with a signal instead of killing it.
+
+    A waiter exits 0 when tmux wakes it; ``-SIGKILL`` means it was killed,
+    which on every tmux from 3.2a to 3.8-rc leaves a ghost waiter behind.
+    """
+    spawned: list[subprocess.Popen[t.Any]] = []
+    real_popen = subprocess.Popen
+
+    def record_popen(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[t.Any]:
+        process = real_popen(*args, **kwargs)
+        spawned.append(process)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", record_popen)
+    server.new_session(session_name="wait_timeout")
+
+    with pytest.raises(exc.TmuxTimeout) as excinfo:
+        server.wait_for("libtmux_wait_timeout", timeout=0.3)
+
+    assert excinfo.value.timeout == 0.3
+    assert excinfo.value.cmd[-2:] == ["wait-for", "libtmux_wait_timeout"]
+    waiter = next(
+        p
+        for p in spawned
+        if list(p.args)[-2:] == ["wait-for", "libtmux_wait_timeout"]  # type: ignore[arg-type]
+    )
+    assert waiter.returncode == 0, "waiter was killed instead of released"
+
+
+def test_wait_for_timeout_leaves_no_ghost_waiter(server: Server) -> None:
+    """The signal after a timed-out wait is remembered, not spent on a ghost.
+
+    ``wait-for`` remembers one signal only while nobody waits on the channel.
+    A killed waiter stays queued, so the signal below would be consumed by it
+    and the second wait would block until its own timeout.
+    """
+    server.new_session(session_name="wait_ghost")
+    channel = "libtmux_wait_ghost"
+
+    with pytest.raises(exc.TmuxTimeout):
+        server.wait_for(channel, timeout=0.3)
+
+    server.wait_for(channel, set_flag=True)
+
+    start = time.monotonic()
+    server.wait_for(channel, timeout=5)
+    assert time.monotonic() - start < 2
+
+
+def test_wait_for_reports_a_server_that_died_mid_wait(TestServer: type[Server]) -> None:
+    """Tmux wakes waiters on server exit as if signalled; libtmux says so."""
+    doomed = TestServer()
+    doomed.new_session(session_name="wait_doomed")
+
+    killer = threading.Timer(0.3, doomed.kill)
+    killer.start()
+    try:
+        with pytest.raises(exc.TmuxServerGone) as excinfo:
+            doomed.wait_for("libtmux_wait_doomed", timeout=30)
+    finally:
+        killer.join()
+
+    assert excinfo.value.channel == "libtmux_wait_doomed"
+
+
+def test_wait_for_reports_a_server_that_was_never_there(
+    TestServer: type[Server],
+) -> None:
+    """A wait on a server that is not running is not a timeout."""
+    absent = TestServer()
+
+    with pytest.raises(exc.TmuxServerGone):
+        absent.wait_for("libtmux_wait_absent", timeout=5)
+
+
+def test_wait_for_timeout_applies_to_a_plain_wait_only(server: Server) -> None:
+    """Lock, unlock and set_flag never wait on a signal, so a bound is a mistake."""
+    server.new_session(session_name="wait_flags")
+
+    for flags in ({"lock": True}, {"unlock": True}, {"set_flag": True}):
+        with pytest.raises(ValueError, match="plain wait"):
+            server.wait_for("libtmux_wait_flags", timeout=1, **flags)
+
+
+def test_wait_for_expiry_that_races_server_exit_reports_the_server(
+    TestServer: type[Server],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server that exits as the clock runs out is not reported as a timeout."""
+    doomed = TestServer()
+    doomed.new_session(session_name="wait_race")
+    real_release = common._release_waiter
+
+    def kill_then_release(*args: t.Any, **kwargs: t.Any) -> bool:
+        doomed.kill()
+        return real_release(*args, **kwargs)
+
+    monkeypatch.setattr(server_module, "_release_waiter", kill_then_release)
+
+    with pytest.raises(exc.TmuxServerGone):
+        doomed.wait_for("libtmux_wait_race", timeout=0.2)
