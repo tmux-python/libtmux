@@ -449,6 +449,13 @@ tmux's message, sends no Enter, and so also surfaces any other error tmux
 reports for the text, such as a pane that no longer exists. Send large text
 with {meth}`Pane.paste_text() <libtmux.Pane.paste_text>`.
 
+#### `retry_until` measures its timeout on the monotonic clock
+
+{func}`libtmux.test.retry.retry_until` now times its wait with
+`time.monotonic()`. It previously read `time.time()`, so a system clock step
+backwards (NTP, a VM or WSL resume) could stretch the wait indefinitely, and a
+step forwards ended it early.
+
 ### Documentation
 
 #### Replacing wrapper code

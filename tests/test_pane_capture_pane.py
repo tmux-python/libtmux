@@ -351,9 +351,11 @@ def test_capture_pane_flags(
 
     retry_until(prompt_ready, 2, raises=True)
 
-    # Send command with a unique marker to detect completion
+    # Send command with a unique marker to detect completion. The shell echoes
+    # what is typed, so the typed command must not contain the marker: the
+    # adjacent quotes make the shell join it only when `echo` prints it.
     marker = f"__DONE_{test_id}__"
-    full_command = f'{command}; echo "{marker}"'
+    full_command = f'{command}; echo "__DONE_""{test_id}__"'
     pane.send_keys(full_command, literal=False, suppress_history=False)
 
     # Wait for marker to appear
