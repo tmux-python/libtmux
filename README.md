@@ -333,6 +333,19 @@ def test_my_tmux_tool(session):
 
 **[The Tao of tmux][tao]** — deep-dive book on tmux fundamentals
 
+## Attribution
+
+Please use the following BibTeX template to cite libtmux in scientific discourse:
+
+```bibtex
+@misc{libtmux,
+   author = {Tony Narlock},
+   year = {2016},
+   note = {https://libtmux.git-pull.com},
+   title = {libtmux: python wrapper for tmux}
+}
+```
+
 ## Contributing & support
 
 Contributions are welcome. Please open an issue or PR if you find a bug or want to improve the API or docs. If libtmux helps you ship, consider sponsoring development via [support].
