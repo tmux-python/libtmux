@@ -1,0 +1,11 @@
+width = 80
+markdown = ["**/*.md", "MIGRATION", "CHANGES"]
+doc_comments = ["src/**/*.py"]
+allow_ceiling = 1
+shared_digest = "872d3f4cb1eb2b5cd9c5b7adc9cd140a153e4bbed3cb5bd0b7400a905e6dae4d"
+checker_digest = "1b520b621b3a3d6a0dda3d5a2f56df8efa0d0b333031048fe162eea63415eedd"
+
+[[allow]]
+path = ".github/WRITING.md"
+line = """>>> Window.from_window_id(window_id=session.cmd('new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)"""
+reason = "the Bad example in the port block; it shows the width problem the Good example fixes"
