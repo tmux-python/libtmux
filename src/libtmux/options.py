@@ -455,8 +455,9 @@ def explode_complex(
     ... terminal-features[0] xterm*:clipboard:ccolour:cstyle:focus
     ... terminal-features[5] screen*:title
     ... ''')))) == {
-    ... "terminal-features": {"xterm*": ["clipboard", "ccolour", "cstyle", "focus"],
-    ... "screen*": ["title"]}}
+    ... "terminal-features": {
+    ...     "xterm*": ["clipboard", "ccolour", "cstyle", "focus"],
+    ...     "screen*": ["title"]}}
     True
 
     >>> explode_complex(explode_arrays(parse_options_to_dict(io.StringIO(r'''
@@ -469,13 +470,20 @@ def explode_complex(
     ... "server-info": "show-messages -JT"}}
     True
 
-    >>> explode_complex(explode_arrays({"terminal-features": {0: "xterm*:clipboard:ccolour:cstyle:focus",
-    ... 1: "screen*:title"}}))
+    >>> features = {
+    ...     0: "xterm*:clipboard:ccolour:cstyle:focus",
+    ...     1: "screen*:title",
+    ... }
+    >>> explode_complex(explode_arrays({"terminal-features": features}))
     {'terminal-features': {0: 'xterm*:clipboard:ccolour:cstyle:focus', 1: 'screen*:title'}}
 
-    >>> explode_complex(explode_arrays({"terminal-features": {0: "xterm*:clipboard:ccolour:cstyle:focus",
-    ... 8: "screen*:title"}})) == SparseArray({'terminal-features': {0:
-    ... 'xterm*:clipboard:ccolour:cstyle:focus', 8: 'screen*:title'}})
+    >>> sparse = {
+    ...     0: "xterm*:clipboard:ccolour:cstyle:focus",
+    ...     8: "screen*:title",
+    ... }
+    >>> explode_complex(explode_arrays({"terminal-features": sparse})) == (
+    ...     SparseArray({'terminal-features': sparse})
+    ... )
     True
 
     >>> explode_complex(explode_arrays(parse_options_to_dict(io.StringIO(r'''
@@ -496,13 +504,19 @@ def explode_complex(
     ... 100: "\\e[test"}}
     True
 
-    >>> explode_complex(explode_arrays(parse_options_to_dict(io.StringIO(r'''
-    ... status-format[0] "#[align=left range=left #{E:status-left-style}]#[push-default]#{T;=/#{status-left-length}:status-left}#[pop-default]#[norange default]#[list=on align=#{status-justify}]#[list=left-marker]<#[list=right-marker]>#[list=on]#{W:#[range=window|#{window_index} #{E:window-status-style}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-format}#[pop-default]#[norange default]#{?window_end_flag,,#{window-status-separator}},#[range=window|#{window_index} list=focus #{?#{!=:#{E:window-status-current-style},default},#{E:window-status-current-style},#{E:window-status-style}}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-current-format}#[pop-default]#[norange list=on default]#{?window_end_flag,,#{window-status-separator}}}#[nolist align=right range=right #{E:status-right-style}]#[push-default]#{T;=/#{status-right-length}:status-right}#[pop-default]#[norange default]"
-    ... status-format[1] "#[align=centre]#{P:#{?pane_active,#[reverse],}#{pane_index}[#{pane_width}x#{pane_height}]#[default] }"
-    ... ''')))) == {
-    ... "status-format": {0: "#[align=left range=left #{E:status-left-style}]#[push-default]#{T;=/#{status-left-length}:status-left}#[pop-default]#[norange default]#[list=on align=#{status-justify}]#[list=left-marker]<#[list=right-marker]>#[list=on]#{W:#[range=window|#{window_index} #{E:window-status-style}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-format}#[pop-default]#[norange default]#{?window_end_flag,,#{window-status-separator}},#[range=window|#{window_index} list=focus #{?#{!=:#{E:window-status-current-style},default},#{E:window-status-current-style},#{E:window-status-style}}#{?#{&&:#{window_last_flag},#{!=:#{E:window-status-last-style},default}}, #{E:window-status-last-style},}#{?#{&&:#{window_bell_flag},#{!=:#{E:window-status-bell-style},default}}, #{E:window-status-bell-style},#{?#{&&:#{||:#{window_activity_flag},#{window_silence_flag}},#{!=:#{E:window-status-activity-style},default}}, #{E:window-status-activity-style},}}]#[push-default]#{T:window-status-current-format}#[pop-default]#[norange list=on default]#{?window_end_flag,,#{window-status-separator}}}#[nolist align=right range=right #{E:status-right-style}]#[push-default]#{T;=/#{status-right-length}:status-right}#[pop-default]#[norange default]",
-    ... 1: "#[align=centre]#{P:#{?pane_active,#[reverse],}#{pane_index}[#{pane_width}x#{pane_height}]#[default] }",
-    ... }}
+    >>> left = (
+    ...     "#[align=left range=left #{E:status-left-style}]"
+    ...     "#[push-default]#{T;=/#{status-left-length}:status-left}"
+    ...     "#[pop-default]#[norange default]"
+    ... )
+    >>> centre = (
+    ...     "#[align=centre]#{P:#{?pane_active,#[reverse],}"
+    ...     "#{pane_index}[#{pane_width}x#{pane_height}]#[default] }"
+    ... )
+    >>> text = f'status-format[0] "{left}"\nstatus-format[1] "{centre}"\n'
+    >>> explode_complex(explode_arrays(parse_options_to_dict(
+    ...     io.StringIO(text)
+    ... ))) == {"status-format": {0: left, 1: centre}}
     True
     """
     options: dict[str, t.Any] = {}
@@ -1092,10 +1106,11 @@ class OptionsMixin(CmdMixin):
         >>> MyServer()._show_option_raw('exit-unattached', global_=True).stdout
         ['exit-unattached off']
 
-        >>> isinstance(MyServer()._show_option_raw('exit-unattached', global_=True).stdout, list)
+        >>> raw = MyServer()._show_option_raw('exit-unattached', global_=True)
+        >>> isinstance(raw.stdout, list)
         True
 
-        >>> isinstance(MyServer()._show_option_raw('exit-unattached', global_=True).stdout[0], str)
+        >>> isinstance(raw.stdout[0], str)
         True
         """
         if scope is DEFAULT_OPTION_SCOPE:
