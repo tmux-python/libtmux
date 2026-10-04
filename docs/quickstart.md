@@ -77,7 +77,8 @@ via trunk (can break easily):
 - [pip]\:
 
   ```console
-  $ pip install --user -e git+https://github.com/tmux-python/libtmux.git#egg=libtmux
+  $ pip install --user -e \
+      'git+https://github.com/tmux-python/libtmux.git#egg=libtmux'
   ```
 
 - [pipx]\:
@@ -92,7 +93,8 @@ via trunk (can break easily):
 - [uv]\:
 
   ```console
-  $ uv tool install libtmux --from git+https://github.com/tmux-python/libtmux.git
+  $ uv tool install libtmux \
+      --from git+https://github.com/tmux-python/libtmux.git
   ```
 
 [pip]: https://pip.pypa.io/en/stable/
@@ -190,7 +192,8 @@ and as shown later, you'd use
 {meth}`Session.new_window() <libtmux.Session.new_window>`):
 
 ```python
->>> Window.from_window_id(window_id=session.cmd('new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+>>> new_window_id = session.cmd('new-window', '-P', '-F#{window_id}').stdout[0]
+>>> Window.from_window_id(window_id=new_window_id, server=session.server)
 Window(@2 2:..., Session($1 libtmux_...))
 ```
 
@@ -205,7 +208,8 @@ Raw output directly to a {class}`~libtmux.Pane` (in practice, you'd use
 {meth}`Window.split() <libtmux.Window.split>`):
 
 ```python
->>> Pane.from_pane_id(pane_id=window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
+>>> new_pane_id = window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+>>> Pane.from_pane_id(pane_id=new_pane_id, server=window.server)
 Pane(%... Window(@1 1:..., Session($1 libtmux_...)))
 ```
 
@@ -429,7 +433,8 @@ Pane(%1 Window(@1 ...:..., Session($1 ...)))
 ```
 
 ```{eval-rst}
-.. todo:: have a ``.kill()`` and ``.select()`` proxy for Server, Session, Window and Pane objects.
+.. todo:: have a ``.kill()`` and ``.select()`` proxy for Server, Session,
+   Window and Pane objects.
 ```
 
 ## Sending commands to tmux panes remotely
