@@ -337,7 +337,8 @@ class Session(
         --------
         >>> _ = session.new_window(window_name='gap7s_target')
         >>> _ = session.new_window(window_name='other_window')
-        >>> matches = session.search_windows(filter='#{m:gap7s_*,#{window_name}}')
+        >>> pattern = '#{m:gap7s_*,#{window_name}}'
+        >>> matches = session.search_windows(filter=pattern)
         >>> [w.window_name for w in matches]
         ['gap7s_target']
         """
@@ -431,8 +432,8 @@ class Session(
 
         From raw output to an enriched `Window` object:
 
-        >>> Window.from_window_id(window_id=session.cmd(
-        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        >>> new_id = session.cmd('new-window', '-P', '-F#{window_id}').stdout[0]
+        >>> Window.from_window_id(window_id=new_id, server=session.server)
         Window(@... ...:..., Session($1 libtmux_...))
 
         Parameters
