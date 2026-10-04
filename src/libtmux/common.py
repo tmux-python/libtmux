@@ -287,7 +287,8 @@ class tmux_cmd:
     --------
     Create a new session, check for error:
 
-    >>> proc = tmux_cmd(f'-L{server.socket_name}', 'new-session', '-d', '-P', '-F#S')
+    >>> socket_flag = f'-L{server.socket_name}'
+    >>> proc = tmux_cmd(socket_flag, 'new-session', '-d', '-P', '-F#S')
     >>> if proc.stderr:
     ...     raise exc.LibTmuxException(
     ...         'Command: %s returned error: %s' % (proc.cmd, proc.stderr)
