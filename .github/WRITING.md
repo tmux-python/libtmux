@@ -252,6 +252,91 @@ available for a case that ever needs an explicitly marked block, rather
 than a plain prompted fence. This section is where any additional
 executed-block format is documented when one is adopted.
 
+<!-- shared:examples -->
+
+An example is code written for a reader: a program under `examples/`, code in
+a doc comment or docstring, and every fenced block in a README or docs page.
+Shell blocks also follow [Code blocks](#code-blocks).
+
+The text between the shared markers is the same in every libtmux port.
+Change it in all of them together.
+
+### Width
+
+- **Examples stay within 80 columns.** They render in fixed-width boxes that
+  scroll sideways, and 80 columns fits a libtmux.org code block in a
+  laptop-width window. Comments inside examples wrap at 80 too.
+- **The width check enforces it.** It reads the tracked files that
+  `.github/example-width.toml` names and fails on a wider line. It measures
+  the whole source line, so code in a doc comment counts its indent and
+  comment marker. It skips output (a fence tagged `text`, and what a
+  `console` block prints), hidden setup lines, and a line that is only a URL;
+  an untagged fence counts as code.
+- **A line that must stay wider is listed there with its reason.** An entry
+  that no longer matches a line fails the check, so no stale entry stays.
+- **The formatter's width is the hard limit for all other source.** Example
+  directories set their formatter to 80 where the formatter takes a width.
+
+### Reaching 80
+
+- **Change the code, not the line breaks.** A formatter rejoins any line that
+  fits its width. Name a sub-expression, use a short example name, hide setup
+  the reader does not need, or print less.
+- **Break at the outermost level when a break is still needed:** after an
+  opening parenthesis with one argument per line, one call per line in a
+  chain, one field per line in a literal.
+- **Put a comment on its own line above the code it explains.** Never trail
+  one after code in an example, unless the repository's example runner reads
+  it there, as with an assertion marker.
+- **Break a long string at a word boundary,** never inside a tmux format
+  (`#{...}`) or an escape sequence; the joined text stays the same.
+- **Continue a long command in a `console` block the way its shell does:**
+  `\` after a `$ ` prompt, a backtick after `PS> `, one flag per continuation
+  line.
+
+### What never breaks
+
+- **Output a test compares.** Wrapping it changes what the test expects.
+- **A block copied from a source file.** Fix the width in the source and run
+  the sync command; never edit the copy.
+- **Marker lines and URLs,** which tools and readers take whole.
+
+<!-- /shared:examples -->
+
+### In this repository
+
+- **Hard limit:** `ruff format` and ruff's E501 (on through
+  `extend-select`) at ruff's default 88, because `[tool.ruff]` in
+  `pyproject.toml` sets no `line-length`; both read `.py` files only. The
+  width check, `python3 scripts/check_example_width.py`
+  (`just check-example-width`), holds examples to 80.
+- **Not formatted:** doctests in `.py` doc comments, fenced code in
+  Markdown pages and `docs/*.md` doctests. `ruff format` leaves docstring
+  code alone and E501 stops at 88, so break these lines to the example
+  width by hand. `just format-markdown` runs Prettier, which leaves Python
+  fences alone and, with `proseWrap` unset, does not wrap prose.
+- **Runs, compiles, exempt:** the doctest rules above decide what runs.
+  An `[[allow]]` entry in `.github/example-width.toml` exempts a line from
+  the width check, which also skips a line `# doctest: +HIDE` hides from
+  the rendered page.
+- **Compared output and copied blocks:** expected output is never
+  wrapped; `ELLIPSIS` is global, so trim a long repr with `...`. No
+  example is copied from another file here, so there is no sync command;
+  edit the docstring or page itself.
+
+Bad, over 80:
+
+```python
+>>> Window.from_window_id(window_id=session.cmd('new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+```
+
+Good, naming the sub-expression:
+
+```python
+>>> new_window_id = session.cmd('new-window', '-P', '-F#{window_id}').stdout[0]
+>>> Window.from_window_id(window_id=new_window_id, server=session.server)
+```
+
 ## Documentation pages
 
 Warm the framing, never the facts. Resolution-order lists, value
