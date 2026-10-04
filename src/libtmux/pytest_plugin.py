@@ -155,13 +155,14 @@ def server(
     ...     assert isinstance(server, Server)
     ...     session = server.new_session('my session')
     ...     assert len(server.sessions) == 1
-    ...     assert [session.name.startswith('my') for session in server.sessions]
+    ...     assert [s.name.startswith('my') for s in server.sessions]
 
     .. ::
         >>> locals().keys()
         dict_keys(...)
 
-        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:3])
+        >>> examples = request._pyfuncitem.dtest.examples
+        >>> source = ''.join([e.source for e in examples][:3])
         >>> pytester = request.getfixturevalue('pytester')
 
         >>> pytester.makepyfile(**{'whatever.py': source})
@@ -206,7 +207,8 @@ def session_params() -> dict[str, t.Any]:
         >>> locals().keys()
         dict_keys(...)
 
-        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:4])
+        >>> examples = request._pyfuncitem.dtest.examples
+        >>> source = ''.join([e.source for e in examples][:4])
         >>> pytester = request.getfixturevalue('pytester')
 
         >>> pytester.makepyfile(**{'whatever.py': source})
@@ -240,7 +242,8 @@ def session(
         >>> locals().keys()
         dict_keys(...)
 
-        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:3])
+        >>> examples = request._pyfuncitem.dtest.examples
+        >>> source = ''.join([e.source for e in examples][:3])
         >>> pytester = request.getfixturevalue('pytester')
 
         >>> pytester.makepyfile(**{'whatever.py': source})
