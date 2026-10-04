@@ -95,8 +95,97 @@ class TmuxSessionExists(LibTmuxException):
     """Session does not exist in the server."""
 
 
-class TmuxCommandNotFound(LibTmuxException):
+class EngineError(LibTmuxException):
+    """An engine could not carry a command to tmux.
+
+    The failure of the *transport*, not of the command. A tmux-side failure --
+    a bad target, an unknown option -- is data on a
+    :class:`~libtmux.engines.base.CommandResult` instead, carried in
+    ``returncode`` and ``stderr``.
+
+    Engines raise this so a caller can tell "tmux said no" from "tmux was never
+    reached": a missing binary, a closed connection, a protocol desync. The
+    shipped engines raise :exc:`TmuxCommandNotFound`, which is one of these.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> issubclass(exc.TmuxCommandNotFound, exc.EngineError)
+    True
+    >>> raise exc.EngineError("control connection closed")
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.EngineError: control connection closed
+    """
+
+
+class TmuxCommandNotFound(EngineError):
     """Application binary for tmux not found."""
+
+
+class UnscriptedCommand(LibTmuxException):
+    """A replay engine was asked for a command it never recorded.
+
+    Raised by :class:`~libtmux.engines.record.ReplayEngine` instead of
+    fabricating a result. A fake that answers unknown commands optimistically
+    reports contradictory state -- ``has-session`` succeeding while
+    ``list-sessions`` is empty -- and the contradiction surfaces far from its
+    cause.
+
+    A listing query carries tmux's whole ``-F`` template, which runs to
+    thousands of characters, so long arguments are elided: the point of the
+    message is which command went unanswered, not the template's contents.
+
+    Parameters
+    ----------
+    args : tuple[str, ...]
+        The request argv with no recorded answer.
+    hint : str, optional
+        Extra guidance appended to the message, e.g. the tmux version a tape
+        was recorded against.
+
+    Attributes
+    ----------
+    args_requested : tuple[str, ...]
+        The full, un-elided argv, for a caller that wants to inspect it.
+
+    Examples
+    --------
+    >>> raise UnscriptedCommand(("kill-server",))
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.UnscriptedCommand: no recorded result for 'kill-server'
+
+    A long argument is summarized rather than dumped:
+
+    >>> raise UnscriptedCommand(("list-sessions", "-F" + "#" * 99))
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions <101-char arg>'
+
+    >>> raise UnscriptedCommand(("list-sessions",), hint="tape recorded on 3.7")
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions'
+    (tape recorded on 3.7)
+    """
+
+    #: Arguments longer than this are replaced by a length summary.
+    _MAX_ARG_CHARS = 60
+
+    def __init__(self, args: tuple[str, ...], hint: str | None = None) -> None:
+        self.args_requested = tuple(args)
+        rendered = (
+            " ".join(
+                arg if len(arg) <= self._MAX_ARG_CHARS else f"<{len(arg)}-char arg>"
+                for arg in self.args_requested
+            )
+            or "<empty command>"
+        )
+        message = f"no recorded result for {rendered!r}"
+        if hint:
+            message = f"{message} ({hint})"
+        super().__init__(message)
 
 
 class NotInsideTmux(LibTmuxException):
