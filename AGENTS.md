@@ -28,9 +28,12 @@ what was asked for.
 
 ## Which policy applies
 
-- Documentation, user-facing text, `CHANGES`, release notes, commit
-  messages, docstrings, and source comments:
-  [.github/WRITING.md](.github/WRITING.md)
+- Documentation, user-facing text, `CHANGES`, release notes, commit messages,
+  docstrings, source comments, and any code example (example programs, doctests,
+  Markdown code blocks): [.github/WRITING.md](.github/WRITING.md), and its
+  [Documented examples that
+  run](.github/WRITING.md#documented-examples-that-run) section for code a
+  reader sees
 - Environment, the gates, tests, documentation builds, releases, and
   pull requests: [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md)
 
