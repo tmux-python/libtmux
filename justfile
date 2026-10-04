@@ -97,6 +97,12 @@ watch-ruff:
         just _entr-warn
     fi
 
+# Check that documented examples stay within 80 columns
+[group: 'lint']
+check-example-width:
+    python3 scripts/check_example_width.py --self-test
+    python3 scripts/check_example_width.py
+
 # Run mypy type checker
 [group: 'lint']
 mypy:
