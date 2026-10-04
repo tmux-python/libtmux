@@ -144,6 +144,8 @@ files = [
   "tests",
   "docs/_ext",
 ]
+# scripts/ run on the CI interpreter, not the 3.10 floor (tomllib is 3.11+).
+exclude = ["^scripts/"]
 
 
 [tool.coverage.run]
