@@ -226,7 +226,7 @@ class Window(
 
         Examples
         --------
-        >>> Window.from_window_id(server=window.server, window_id=window.window_id)
+        >>> Window.from_window_id(window.server, window.window_id)
         Window(@1 1:..., Session($1 ...))
         """
         window = fetch_obj(
@@ -331,14 +331,16 @@ class Window(
         A window you just made belongs to the session you made it in:
 
         >>> window = session.new_window(window_name="solo", attach=False)
-        >>> [s.session_name for s in window.linked_sessions] == [session.session_name]
+        >>> names = [s.session_name for s in window.linked_sessions]
+        >>> names == [session.session_name]
         True
 
         Link it into a second session and it belongs to both:
 
         >>> guest = server.new_session(session_name="guest")
         >>> target = f"{guest.session_id}:"
-        >>> _ = server.cmd("link-window", "-d", "-s", window.window_id, "-t", target)
+        >>> source = window.window_id
+        >>> _ = server.cmd("link-window", "-d", "-s", source, "-t", target)
         >>> sorted(s.session_name for s in window.linked_sessions) == sorted(
         ...     [session.session_name, "guest"]
         ... )
@@ -478,8 +480,8 @@ class Window(
 
         Magic, directly to a `Pane`:
 
-        >>> Pane.from_pane_id(pane_id=session.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+        >>> new_id = session.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+        >>> Pane.from_pane_id(pane_id=new_id, server=session.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
         Parameters
@@ -1613,7 +1615,8 @@ class Window(
         >>> window = session.active_window
         >>> new_window = session.new_window()
         >>> session.refresh()
-        >>> active_windows = [w for w in session.windows if w.window_active == '1']
+        >>> windows = session.windows
+        >>> active_windows = [w for w in windows if w.window_active == '1']
 
         >>> new_window.window_active == '1'
         False
