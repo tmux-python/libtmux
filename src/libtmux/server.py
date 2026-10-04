@@ -360,8 +360,8 @@ class Server(
 
         Output of `tmux -L ... new-window -P -F#{window_id}` to a `Window` object:
 
-        >>> Window.from_window_id(window_id=session.cmd(
-        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        >>> new_id = session.cmd('new-window', '-P', '-F#{window_id}').stdout[0]
+        >>> Window.from_window_id(window_id=new_id, server=session.server)
         Window(@4 3:..., Session($1 libtmux_...))
 
         Create a pane from a window:
@@ -371,8 +371,8 @@ class Server(
 
         Output of `tmux -L ... split-window -P -F#{pane_id}` to a `Pane` object:
 
-        >>> Pane.from_pane_id(pane_id=window.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
+        >>> new_id = window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+        >>> Pane.from_pane_id(pane_id=new_id, server=window.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
         Parameters
@@ -1145,8 +1145,10 @@ class Server(
         ...             'set -g @cf_test yes',
         ...             target_client=ctl.client_name,
         ...         )
-        ...         _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, 'y')
-        ...         result = server.cmd('show-options', '-gv', '@cf_test').stdout[0]
+        ...         client = ctl.client_name
+        ...         _ = server.cmd('send-keys', '-K', '-c', client, 'y')
+        ...         show = server.cmd('show-options', '-gv', '@cf_test')
+        ...         result = show.stdout[0]
         ... else:
         ...     result = 'yes'
         >>> result
@@ -1256,13 +1258,15 @@ class Server(
         >>> from libtmux.common import has_gte_version
         >>> if has_gte_version("3.4"):
         ...     with control_mode() as ctl:
+        ...         client = ctl.client_name
         ...         server.command_prompt(
         ...             "set -g @cp_test '%1'",
-        ...             target_client=ctl.client_name,
+        ...             target_client=client,
         ...         )
         ...         for key in ['h', 'i', 'Enter']:
-        ...             _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, key)
-        ...         result = server.cmd('show-options', '-gv', '@cp_test').stdout[0]
+        ...             _ = server.cmd('send-keys', '-K', '-c', client, key)
+        ...         show = server.cmd('show-options', '-gv', '@cp_test')
+        ...         result = show.stdout[0]
         ... else:
         ...     result = 'hi'
         >>> result
@@ -2538,7 +2542,8 @@ class Server(
         Session($... gap7_alpha)
         >>> server.new_session(session_name='other_beta')
         Session($... other_beta)
-        >>> matches = server.search_sessions(filter='#{m:gap7_*,#{session_name}}')
+        >>> pattern = '#{m:gap7_*,#{session_name}}'
+        >>> matches = server.search_sessions(filter=pattern)
         >>> [s.session_name for s in matches]
         ['gap7_alpha']
         """
