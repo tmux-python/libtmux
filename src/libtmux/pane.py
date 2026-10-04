@@ -782,7 +782,7 @@ class Pane(
         >>> pane.capture_pane()
         ['$ echo "Hello world"', 'Hello world', '$']
 
-        >>> print('\n'.join(pane.capture_pane()))  # doctest: +NORMALIZE_WHITESPACE
+        >>> print('\n'.join(pane.capture_pane()))
         $ echo "Hello world"
         Hello world
         $
@@ -1310,7 +1310,8 @@ class Pane(
 
         >>> pane = session.new_window().active_pane
 
-        >>> top_pane = pane.split(direction=PaneDirection.Above, full_window_split=True)
+        >>> above = PaneDirection.Above
+        >>> top_pane = pane.split(direction=above, full_window_split=True)
 
         >>> (top_pane.at_left, top_pane.at_right,
         ...  top_pane.at_top, top_pane.at_bottom)
