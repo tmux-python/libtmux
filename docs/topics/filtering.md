@@ -38,9 +38,10 @@ When you pass a bare keyword like `session_name=...`, the default lookup is
 
 ```python
 >>> # These are equivalent
->>> server.sessions.filter(session_name=session.session_name)  # doctest: +ELLIPSIS
+>>> name = session.session_name
+>>> server.sessions.filter(session_name=name)
 [Session($... ...)]
->>> server.sessions.filter(session_name__exact=session.session_name)  # doctest: +ELLIPSIS
+>>> server.sessions.filter(session_name__exact=name)
 [Session($... ...)]
 ```
 
@@ -153,9 +154,8 @@ edge:
 >>> home = server.new_session(session_name="home")
 >>> shared = home.new_window(window_name="shared", attach=False)
 >>> guest = server.new_session(session_name="guest")
->>> _ = server.cmd(
-...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
-... )
+>>> target = f"{guest.session_id}:"
+>>> _ = server.cmd("link-window", "-d", "-s", shared.window_id, "-t", target)
 
 >>> len(server.windows.filter(window_id=shared.window_id))
 2
@@ -173,9 +173,8 @@ ambiguous, and says so rather than guessing:
 >>> home = server.new_session(session_name="home")
 >>> shared = home.new_window(window_name="shared", attach=False)
 >>> guest = server.new_session(session_name="guest")
->>> _ = server.cmd(
-...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
-... )
+>>> target = f"{guest.session_id}:"
+>>> _ = server.cmd("link-window", "-d", "-s", shared.window_id, "-t", target)
 
 >>> try:
 ...     server.windows.get(window_id=shared.window_id)
@@ -193,9 +192,8 @@ listing each holding session once however many indexes it links the window at:
 >>> home = server.new_session(session_name="home")
 >>> shared = home.new_window(window_name="shared", attach=False)
 >>> guest = server.new_session(session_name="guest")
->>> _ = server.cmd(
-...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
-... )
+>>> target = f"{guest.session_id}:"
+>>> _ = server.cmd("link-window", "-d", "-s", shared.window_id, "-t", target)
 
 >>> sorted(s.session_name for s in shared.linked_sessions)
 ['guest', 'home']
@@ -215,11 +213,11 @@ so they are the right tool for a lookup by id:
 >>> home = server.new_session(session_name="home")
 >>> shared = home.new_window(window_name="shared", attach=False)
 >>> guest = server.new_session(session_name="guest")
->>> _ = server.cmd(
-...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
-... )
+>>> target = f"{guest.session_id}:"
+>>> _ = server.cmd("link-window", "-d", "-s", shared.window_id, "-t", target)
 
->>> Window.from_window_id(server, shared.window_id).window_id == shared.window_id
+>>> same = Window.from_window_id(server, shared.window_id)
+>>> same.window_id == shared.window_id
 True
 ```
 
@@ -275,8 +273,9 @@ Reach for the `i`-prefixed variants when the casing of a name shouldn't matter:
 True
 
 >>> # Case-insensitive startswith
->>> session.windows.filter(window_name__istartswith='myapp')  # doctest: +ELLIPSIS
-[Window(@... ...:MyApp-Server, Session($... ...)), Window(@... ...:myapp-worker, Session($... ...))]
+>>> found = session.windows.filter(window_name__istartswith='myapp')
+>>> [window.window_name for window in found]
+['MyApp-Server', 'myapp-worker']
 
 >>> # Clean up
 >>> w1.kill()
@@ -322,8 +321,9 @@ When you already have a set of names in hand, `in` keeps the matches and `nin`
 
 >>> # Filter windows in a list of names
 >>> target_envs = ["dev", "prod"]
->>> session.windows.filter(window_name__in=target_envs)  # doctest: +ELLIPSIS
-[Window(@... ...:dev, Session($... ...)), Window(@... ...:prod, Session($... ...))]
+>>> found = session.windows.filter(window_name__in=target_envs)
+>>> [window.window_name for window in found]
+['dev', 'prod']
 
 >>> # Filter windows NOT in a list
 >>> non_prod = session.windows.filter(window_name__nin=["prod"])
