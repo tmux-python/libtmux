@@ -410,7 +410,7 @@ stalls.
 >>> import shlex
 >>> import time
 
->>> timeout_window = session.new_window(window_name='timeout-demo', attach=False)
+>>> timeout_window = session.new_window('timeout-demo', attach=False)
 >>> timeout_pane = timeout_window.active_pane
 
 >>> timeout_pane.send_keys('tmux wait-for -S timeout-shell-ready')
@@ -660,7 +660,7 @@ it. Tear down what you opened when you're done, so a long-running automation pro
 doesn't accumulate orphaned objects.
 
 ```python
->>> cleanup_window = session.new_window(window_name='cleanup-demo', attach=False)
+>>> cleanup_window = session.new_window('cleanup-demo', attach=False)
 >>> cleanup_window  # doctest: +ELLIPSIS
 Window(@... ...)
 
