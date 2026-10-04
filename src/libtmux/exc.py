@@ -371,6 +371,27 @@ class PaneNotFound(PaneError):
         super().__init__("Pane not found")
 
 
+class CaptureCursorError(LibTmuxException):
+    """Any reason a :class:`~libtmux.capture.CaptureCursor` stopped being usable.
+
+    Catch this to handle every cursor invalidation in one place, rather
+    than enumerating malformed payloads, cross-pane replays, and pane
+    lifecycle changes separately.
+    """
+
+
+class InvalidCaptureCursor(CaptureCursorError, ValueError):
+    """Capture cursor is malformed, unreadable, or from a different pane."""
+
+
+class PaneLifecycleChanged(CaptureCursorError, PaneError):
+    """Pane died or was respawned, so a capture cursor no longer applies.
+
+    The ``pane_id`` outlives the process it pointed at, so continuing
+    would read a different program's output as if it were the original's.
+    """
+
+
 class WindowError(LibTmuxException):
     """Any type of window related error."""
 

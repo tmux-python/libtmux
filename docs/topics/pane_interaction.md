@@ -266,6 +266,89 @@ True
 flags (`start`, `end`, `escape_sequences`, etc.) — tmux ignores them when
 `-P` is set.
 
+(capture-since)=
+
+### Capturing only what is new
+
+{meth}`~libtmux.Pane.capture_pane` answers "what is on screen right now?". When
+you watch a pane over time — tailing a build, following a long-running command —
+the question becomes "what changed since I last looked?", and re-capturing the
+whole screen every tick makes you answer it yourself.
+
+{meth}`~libtmux.Pane.capture_since` answers it directly. It returns the rows
+written since a {class}`~libtmux.capture.CaptureCursor`, plus a fresh cursor to
+resume from:
+
+```python
+>>> from libtmux.test.retry import retry_until
+
+>>> first = pane.capture_since()
+>>> pane.send_keys('echo watching')
+
+>>> retry_until(
+...     lambda: any(
+...         'watching' in line
+...         for line in pane.capture_since(first.cursor).lines
+...     ),
+...     2,
+... )
+True
+```
+
+The cursor is immutable and the call never advances it, so replaying one is
+always safe. Assign the returned cursor to move forward:
+
+```python
+>>> latest = pane.capture_since()
+>>> pane.capture_since(latest.cursor).lines
+[]
+```
+
+#### When output is genuinely gone
+
+tmux keeps a bounded scrollback. If `clear-history` runs, or output floods past
+`history-limit`, the rows a cursor pointed at stop existing. Rather than return
+a delta that quietly omits them, `capture_since` falls back to the current
+visible screen and sets `lines_missed`:
+
+```python
+>>> from libtmux.test.retry import retry_until
+
+>>> pane.send_keys('printf "scroll %s\\n" $(seq 1 60)')
+>>> retry_until(lambda: pane.capture_since().cursor.history_size > 0, 3)
+True
+
+>>> before_clear = pane.capture_since()
+>>> pane.cmd('clear-history')
+<libtmux...>
+
+>>> pane.send_keys('echo after')
+>>> retry_until(
+...     lambda: pane.capture_since(before_clear.cursor).lines_missed is True, 3
+... )
+True
+```
+
+Treat `lines_missed=True` as "some output was lost" — the returned rows are
+still real, they are just not the complete delta.
+
+Two conditions raise instead of degrading, because continuing would mean reading
+a different program's output through a cursor that looks valid:
+{exc}`~libtmux.exc.PaneLifecycleChanged` when the pane died or was respawned,
+and {exc}`~libtmux.exc.InvalidCaptureCursor` when a cursor is replayed against
+another pane. Both derive from {exc}`~libtmux.exc.CaptureCursorError`, so one
+`except` clause covers every way a cursor stops being usable.
+
+Cursors serialize for callers that hand them across a process or wire boundary:
+
+```python
+>>> from libtmux.capture import CaptureCursor
+
+>>> cursor = pane.capture_since().cursor
+>>> CaptureCursor.from_str(str(cursor)) == cursor
+True
+```
+
 ## Waiting for output
 
 tmux runs commands asynchronously: {meth}`~libtmux.Pane.send_keys` returns the
