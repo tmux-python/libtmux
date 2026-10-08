@@ -283,6 +283,17 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
+    Parameters
+    ----------
+    timeout : float, optional
+        Seconds to wait for the client. ``None`` waits indefinitely. Expiry
+        kills and reaps the client, leaving the server and its panes running.
+
+    Raises
+    ------
+    subprocess.TimeoutExpired
+        When the client exceeds ``timeout``.
+
     Examples
     --------
     Create a new session, check for error:
@@ -309,7 +320,12 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -336,8 +352,16 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
+            stdout, stderr = self.process.communicate(timeout=timeout)
             returncode = self.process.returncode
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait()
+            # A descendant may still hold the pipes; draining them could block.
+            for stream in (self.process.stdout, self.process.stderr):
+                if stream is not None:
+                    stream.close()
+            raise
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
