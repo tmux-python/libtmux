@@ -45,6 +45,20 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Discover local tmux servers (#764)
+
+{class}`~libtmux.contrib.lobby.TmuxLobby` searches local socket directories
+and custom paths or glob patterns. Its `servers` attribute returns queryable
+{class}`~libtmux.contrib.lobby.TmuxLobbyServer` results with liveness,
+socket metadata, and access to sessions, windows, and panes. Failed probes
+remain visible with diagnostics. See {ref}`lobby` for search configuration.
+
+{meth}`~libtmux.Server.cmd` and {class}`~libtmux.common.tmux_cmd` accept an
+optional `timeout` in seconds. Expiry raises `subprocess.TimeoutExpired`
+after killing and reaping the client; the server keeps running.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
