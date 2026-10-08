@@ -43,6 +43,9 @@ jobs:
           path: ~/tmux-builds/tmux-${{ matrix.tmux-version }}
           key: tmux-${{ matrix.tmux-version }}
 
+      - name: Refresh system package index
+        run: sudo apt-get update
+
       - name: Build tmux ${{ matrix.tmux-version }}
         if: steps.tmux-build-cache.outputs.cache-hit != 'true'
         run: |
@@ -53,7 +56,7 @@ jobs:
           cd ~/tmux-src/tmux-${{ matrix.tmux-version }}
           git checkout ${{ matrix.tmux-version }}
           sh autogen.sh
-          ./configure --prefix=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }} && make && make install
+          ./configure --prefix="$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}" && make && make install
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           cd ~
           tmux -V
@@ -77,7 +80,7 @@ jobs:
         run: |
           sudo apt install libevent-2.1-7
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
-          ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
+          ls "$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin"
           tmux -V
           uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
         env:
