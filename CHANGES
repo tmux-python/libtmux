@@ -84,7 +84,7 @@ Session, window and pane creation retain the creating daemon's token and object 
 
 Call `.own()` on a server, session, window or pane to accept destruction responsibility. Owners retain the endpoint, daemon token and object ID, refuse replacement daemons, preserve paired body/cleanup failures and permit retry after failed teardown. Adoption reserves the server option `@libtmux_owner_generation`; invalid existing values fail acceptance. Session, window and pane contexts use the same ownership behavior. See {doc}`topics/context_managers` for complete examples.
 
-`resource.own(timeout=...)` bounds acceptance and cleanup, including time spent waiting for another close call. `Server.cmd(timeout=...)` terminates and reaps a timed-out client. A timeout cannot undo a remote operation that the client already dispatched.
+`resource.own(timeout=...)` bounds acceptance and cleanup, including time spent waiting for another close call. `Server.cmd(timeout=...)` terminates and reaps a timed-out client. Output draining and reaping each allow up to 0.1 additional seconds, even when another process holds the client's output pipes. A timeout cannot undo a remote operation that the client already dispatched.
 
 #### Client environment isolation and object cleanup
 
