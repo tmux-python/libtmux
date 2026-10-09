@@ -13,6 +13,7 @@ import pytest
 import libtmux.lifecycle as lifecycle_module
 import libtmux.server as server_module
 from libtmux import Pane, Server, Session, Window, exc
+from libtmux._compat import BaseExceptionGroup
 from libtmux.lifecycle import CreationCleanupError, UnknownCreation
 from libtmux.neo import parse_output
 from libtmux.test.retry import retry_until
@@ -422,3 +423,31 @@ def test_context_acceptance_failure_recovers_known_creation(
             pytest.fail("entered ownership after a failed acceptance query")
     assert caught.value is failure
     assert _ids(server, kind) == before
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt(), SystemExit(3)])
+def test_interruption_without_receipt_retains_error_and_note(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: BaseException,
+) -> None:
+    """Interrupt dispatch before receipt capture to check the Python 3.10 fallback."""
+    server.new_session(session_name="keeper")
+    command = server.cmd
+
+    def interrupted(cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        if kwargs.get("_on_completion") is not None:
+            raise failure
+        return command(cmd, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(server, "cmd", interrupted)
+        with pytest.raises(type(failure)) as caught:
+            server.new_session(session_name="interrupted")
+    assert caught.value is failure
+    assert any(
+        "returned no creation receipt" in note
+        for note in getattr(failure, "__notes__", [])
+    )
+    assert not server.has_session("interrupted")
+    assert server.has_session("keeper")

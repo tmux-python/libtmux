@@ -31,7 +31,7 @@ libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelli
 ## Requirements & support
 
 - tmux: >= 3.2a
-- Python: >= 3.11 (CPython and PyPy)
+- Python: >= 3.10 (CPython and PyPy)
 
 Maintenance-only backports (no new fixes):
 

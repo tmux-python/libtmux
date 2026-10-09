@@ -15,7 +15,8 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     import types
-    from typing import Self
+
+    from typing_extensions import Self
 
     from libtmux.server import Server
     from libtmux.session import Session

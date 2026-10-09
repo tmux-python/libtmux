@@ -33,14 +33,19 @@ from libtmux.neo import Obj, fetch_obj
 from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
+    import sys
     import types
-    from typing import Self
 
     from libtmux._internal.types import StrPath
 
     from .server import Server
     from .session import Session
     from .window import Window
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +119,13 @@ class Pane(
     server: Server
 
     def __enter__(self) -> Self:
-        """Accept destruction responsibility and enter the pane scope."""
+        """Accept destruction responsibility and enter the pane scope.
+
+        Returns
+        -------
+        :class:`Pane`
+            The pane instance
+        """
         previous = getattr(self, "_scope_owner", None)
         if previous is not None and not previous.closed:
             message = "this pane already has an active or failed cleanup scope"
@@ -128,7 +139,17 @@ class Pane(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Destroy the accepted pane identity and retain paired failures."""
+        """Destroy the accepted pane identity and retain paired failures.
+
+        Parameters
+        ----------
+        exc_type : type[BaseException] | None
+            The type of the body exception, or ``None`` on normal exit.
+        exc_value : BaseException | None
+            The body exception, retained if cleanup also raises.
+        exc_tb : types.TracebackType | None
+            The traceback of the body exception, or ``None``.
+        """
         owner = getattr(self, "_scope_owner", None)
         if owner is not None:
             owner.__exit__(exc_type, exc_value, exc_tb)

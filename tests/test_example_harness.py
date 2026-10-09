@@ -12,6 +12,7 @@ import pytest
 
 from libtmux import Server
 from libtmux.pytest_plugin import _reap_test_server
+from libtmux.test.retry import retry_until
 
 
 @pytest.mark.parametrize("selector", ["path", "name"])
@@ -42,12 +43,14 @@ def test_unchanged_session_example(
     read_fd, write_fd = os.pipe()
     os.close(read_fd)
     pid_fd = None
+    pid = None
     try:
         anchor = server.new_session(
             session_name="harness_anchor", window_command="sleep 60"
         )
         pid = int(server.cmd("display-message", "-p", "#{pid}").stdout[0])
-        pid_fd = os.pidfd_open(pid)
+        if hasattr(os, "pidfd_open"):
+            pid_fd = os.pidfd_open(pid)
         command = [sys.executable, str(example)]
         result = subprocess.run(
             command,
@@ -77,6 +80,17 @@ def test_unchanged_session_example(
                 poller = select.poll()
                 poller.register(pid_fd, select.POLLIN)
                 assert any(events & select.POLLIN for _, events in poller.poll(5000))
+            elif pid is not None:
+
+                def process_exited() -> bool:
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        return True
+                    return False
+
+                retry_until(process_exited, seconds=5)
+                assert process_exited()
             result_after = server.cmd("list-sessions")
             assert result_after.returncode != 0
             assert any(

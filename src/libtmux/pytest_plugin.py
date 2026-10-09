@@ -13,6 +13,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._compat import BaseExceptionGroup
 from libtmux._internal.control_mode import ControlMode
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
@@ -357,7 +358,7 @@ def TestServer(
         for server in created_servers:
             try:
                 _reap_test_server(server)
-            except BaseException as error:  # noqa: BLE001
+            except BaseException as error:  # noqa: BLE001, PERF203
                 failures.append(error)
         if failures:
             message = "test server cleanup failed"

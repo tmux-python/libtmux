@@ -4,6 +4,11 @@ import sys
 import types
 import typing as t
 
+if sys.version_info >= (3, 11):
+    from builtins import BaseExceptionGroup as BaseExceptionGroup
+else:
+    from exceptiongroup import BaseExceptionGroup as BaseExceptionGroup
+
 console_encoding = sys.stdout.encoding
 
 
