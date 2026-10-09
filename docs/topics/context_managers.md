@@ -1,138 +1,92 @@
 (context_managers)=
 
-# Context managers
+# Context managers and ownership
 
-When you create tmux objects through libtmux, they normally live until you
-explicitly kill them. A context manager hands that cleanup back to Python: you
-scope an object to a block, and libtmux kills the underlying tmux object the
-moment you leave it — whether you exit cleanly or an exception unwinds the
-stack. The {class}`~libtmux.Server`, {class}`~libtmux.Session`,
-{class}`~libtmux.Window`, and {class}`~libtmux.Pane` classes (all main tmux
-objects) support this.
+Use an owned scope to accept responsibility for destroying a remote tmux resource. Looking up a handle leaves that resource alive. A plain `Server` context also leaves remote state intact; `server.own()` accepts whole-daemon destruction.
 
-Most readers never reach for this. If you're building a long-running
-application, you typically let objects persist and tear them down yourself. The
-context-manager form earns its keep in test fixtures and short-lived scripts,
-where you want a tmux object to exist for exactly one block and then vanish.
+## Ordinary session scope
 
-Open two terminals:
-
-Terminal one: start tmux in a separate terminal:
-
-```console
-$ tmux
-```
-
-Terminal two, `python` or `ptpython` if you have it:
-
-```console
-$ python
-```
-
-Import `libtmux`:
+This program uses your configured tmux endpoint, creates a session and removes that session at scope exit. Other sessions remain. The imports and server constructor are part of the example; a test harness can redirect the unchanged code through environment defaults.
 
 ```python
 >>> import libtmux
+>>> server = libtmux.Server()
+>>> with server.new_session() as session:
+...     print(session.session_id.startswith("$"))
+True
 ```
 
-## Server context manager
+Session, window and pane contexts accept ownership when entered. They retain the endpoint, daemon generation and object ID accepted at that point. Renaming a session or moving a window or pane does not redirect cleanup. A second active context on the same handle raises instead of replacing its unfinished cleanup scope.
 
-You create a temporary server that will be killed when you're done:
+## Taking ownership of an existing object
+
+Call `.own()` on a server, session, window or pane. This example looks up a session after creating it, then takes ownership of the returned handle:
 
 ```python
->>> with Server() as server:
+>>> import libtmux
+>>> server = libtmux.Server()
+>>> created = server.new_session()
+>>> existing = server.sessions.get(session_id=created.session_id)
+>>> assert existing is not None
+>>> owner = existing.own()
+>>> with owner as session:
+...     print(session.session_id == created.session_id)
+True
+>>> print(owner.closed)
+True
+```
+
+`owner.value` gives you the borrowed handle. `owner.identity` records the immutable cleanup target. Editing the handle's ID, parent or server after acceptance does not change that identity. You can call `owner.close()` without using a context; repeating a successful close has no effect.
+
+## Window and pane scopes
+
+Window destruction removes its panes and links from all sessions. Pane destruction removes that pane. These scopes nest inside a session scope so the example removes the hierarchy it created:
+
+```python
+>>> import libtmux
+>>> server = libtmux.Server()
+>>> with server.new_session() as session:
+...     with session.new_window() as window:
+...         with window.split() as pane:
+...             print(pane.pane_id.startswith("%"))
+True
+```
+
+Cleanup runs from the innermost scope outward. tmux may terminate a server itself when its last session disappears; leaving a borrowed `Server` context does not send `kill-server`.
+
+## Whole-server destruction
+
+A server owner destroys the daemon and its sessions, windows and panes. This cleanup demonstration uses a private endpoint because destroying your normal daemon would interrupt its sessions. Explicit isolation belongs in this example's subject; ordinary examples above use normal defaults.
+
+```python
+>>> import pathlib
+>>> import tempfile
+>>> import libtmux
+>>> with tempfile.TemporaryDirectory(prefix="libtmux-owned-server-") as directory:
+...     server = libtmux.Server(
+...         socket_path=pathlib.Path(directory) / "tmux",
+...         config_file="/dev/null",
+...     )
 ...     session = server.new_session()
+...     with server.own() as owned_server:
+...         print(owned_server.is_alive())
 ...     print(server.is_alive())
 True
->>> print(server.is_alive())  # Server is killed after exiting context
 False
 ```
 
-## Session context manager
+On Linux, the owner retains a process descriptor to observe daemon exit. Removing a socket or directory does not establish termination. If the accepted daemon remains alive but its endpoint disappears, cleanup raises and remains retryable. A replacement daemon at the same path raises `StaleTmuxOwner` before destruction.
 
-You create a temporary session that will be killed when you're done:
+## Daemon identity
 
-```python
->>> server = Server()
->>> with server.new_session() as session:
-...     print(session in server.sessions)
-...     window = session.new_window()
-True
->>> print(session in server.sessions)  # Session is killed after exiting context
-False
-```
+Ownership acceptance initializes the reserved server option `@libtmux_owner_generation` if it is absent, then reads that token, PID, start time and object ID through the same tmux connection. The token contains 32 ASCII hexadecimal characters. An existing empty or malformed value fails acceptance without replacing the value. Keep this reserved option unchanged for the daemon's lifetime and do not shadow it on sessions or windows.
 
-## Window context manager
+The destructive command checks the token, PID and start time inside the receiving daemon's command dispatch. The random token distinguishes daemons even if the operating system reuses a PID within tmux's whole-second start-time precision. Changing the token after acceptance makes an existing owner stale; it does not authorize cleanup of another daemon.
 
-You create a temporary window that will be killed when you're done:
+## Cleanup failures and cancellation
 
-```python
->>> server = Server()
->>> session = server.new_session()
->>> with session.new_window() as window:
-...     print(window in session.windows)
-...     pane = window.split()
-True
->>> print(window in session.windows)  # Window is killed after exiting context
-False
-```
+If the body and teardown both fail, `BaseExceptionGroup` retains the body error followed by the cleanup error. This includes `KeyboardInterrupt` and `SystemExit`. `owner.cleanup_error` retains the latest teardown error, and `owner.closed` stays false until cleanup succeeds. Repair the cause and call `owner.close()` to retry. A successful retry clears the retained cleanup error.
 
-## Pane context manager
+`resource.own(timeout=5.0)` bounds acceptance and each cleanup attempt, including time spent waiting for another cleanup call. A command timeout kills and reaps the tmux client process; it cannot undo a remote operation that was already dispatched. The owner remains open for inspection and retry. Garbage collection releases local observation descriptors and does not destroy remote resources. These APIs are synchronous; they do not provide an asynchronous task-cancellation supervisor.
 
-You create a temporary pane that will be killed when you're done:
-
-```python
->>> server = Server()
->>> session = server.new_session()
->>> window = session.new_window()
->>> with window.split() as pane:
-...     print(pane in window.panes)
-...     pane.send_keys('echo "Hello"')
-True
->>> print(pane in window.panes)  # Pane is killed after exiting context
-False
-```
-
-## Nested context managers
-
-For complex setups, you can nest contexts to build a whole tmux hierarchy at
-once and have every layer torn down for you:
-
-```python
->>> with Server() as server:
-...     with server.new_session() as session:
-...         with session.new_window() as window:
-...             with window.split() as pane:
-...                 pane.send_keys('echo "Hello"')
-...                 # Do work with the pane
-...                 # Everything is cleaned up automatically when exiting contexts
-```
-
-This ensures that:
-
-1. The pane is killed when exiting its context
-2. The window is killed when exiting its context
-3. The session is killed when exiting its context
-4. The server is killed when exiting its context
-
-The cleanup happens in reverse order (pane → window → session → server), ensuring proper resource management.
-
-## Benefits
-
-Reaching for a context manager buys you a few things. Resources clean themselves
-up the moment you leave the block, so you never manually call the
-{meth}`~libtmux.Server.kill`, {meth}`~libtmux.Session.kill`,
-{meth}`~libtmux.Window.kill`, or {meth}`~libtmux.Pane.kill` methods and the code
-stays uncluttered. Because cleanup runs on the way out of the block, it fires
-even when an exception unwinds the stack — so you don't leak a stray session or
-pane on the error path. And when you nest contexts, the objects tear down in
-hierarchical order, which keeps tmux's own bookkeeping consistent.
-
-## When to use
-
-Use context managers when you're writing test fixtures, running short-lived
-sessions, or managing several tmux servers that each need to disappear cleanly.
-They also pay off in any script that might raise partway through, or when you're
-spinning up an isolated environment that has to be cleaned up afterward.
-
-[target]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
+The repository's `tests/test_ownership.py` executes adoption for all four resource types, replacement refusal, edited-handle cleanup, a missing socket with a live daemon, paired failures and retry after a hung client. `tests/test_example_harness.py` executes the ordinary example unchanged under both socket environment defaults. Creation recovery, discovery and find-or-create are separate implementation work; this ownership API alone does not establish those guarantees.

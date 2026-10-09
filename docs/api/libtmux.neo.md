@@ -33,8 +33,10 @@ Attach default tmux {class}`~libtmux.Server` to `t`:
 >>> import libtmux
 >>> t = libtmux.Server()
 >>> t
-Server(socket_path=/tmp/tmux-.../default)
+Server(socket_path=...)
 ```
+
+The representation shows the absolute endpoint selected from your arguments or environment. Its location depends on your tmux configuration.
 
 ## Session
 

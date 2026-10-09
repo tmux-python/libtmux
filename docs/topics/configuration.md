@@ -1,58 +1,77 @@
 # Configuration
 
-You configure libtmux through Python: there are no config files, and you
-set everything through method calls on {class}`~libtmux.Server`,
-{class}`~libtmux.Session`, {class}`~libtmux.Window`, and
-{class}`~libtmux.Pane` objects, with sensible defaults. If you're driving
-tmux through the standard object API, you're already configured correctly
-and can stop reading here.
-
-The rest of this page is for the rarer cases. It documents two lower
-layers you can reach for when the defaults aren't enough: the
-environment variables libtmux reads, and the format-string system
-libtmux uses internally to read tmux state.
+{class}`~libtmux.Server` captures one tmux endpoint when you construct it.
+You can use ordinary defaults, pass a socket selector, or configure the same
+program from its launch environment. Commands and cleanup retain that
+endpoint after you change the host environment.
 
 ## Environment variables
 
-You set almost nothing here. The two variables that matter most, tmux
-writes for you and libtmux only reads back, so a normal Python process
-driving tmux has nothing to arrange in this section.
+The first selected value wins:
 
-tmux exports both into every pane it spawns:
+1. An explicit `socket_path` or `socket_name`. Passing both raises `ValueError`.
+2. Nonempty `LIBTMUX_SOCKET_PATH`.
+3. Nonempty `LIBTMUX_SOCKET_NAME`.
+4. Nonempty `TMUX`, parsed as `socket_path,server_pid,session_id`.
+5. The named `default` socket.
 
-| Variable | What tmux puts in it |
-|---|---|
-| `TMUX` | the server that pane belongs to, as `socket_path,server_pid,session_id` |
-| `TMUX_PANE` | the id of the pane itself, e.g. `%1` |
+Empty environment selectors count as absent. An invalid selected value raises
+without trying a lower priority selector. Lower priority values cannot
+invalidate an explicit choice. Paths must be absolute and contain no NUL;
+libtmux preserves spaces and commas. Socket names must be nonempty leaf
+names without `/`, `\`, NUL, `.` or `..`.
 
-Code running *inside* a pane — a script you started in a split, a hook, a
-test harness — reads them back to get a handle on itself, rather than
-searching the server for a pane it already is. That is the `from_env`
-family: {meth}`Server.from_env() <libtmux.Server.from_env>`,
+For a named/default socket, libtmux captures nonempty `TMUX_TMPDIR` or `/tmp`
+and derives `<root>/tmux-<uid>/<name>`. The supplied root must be absolute
+and exist when you issue a command. Libtmux creates the private per-UID
+directory if needed, checks its owner and permissions, and passes the captured
+path to tmux. A missing or removed root raises; an explicit path does not
+create its parent directory. `socket_path` exposes the captured absolute
+path for named sockets too. `socket_name_factory` supplies an explicit name
+when you omit both explicit selectors.
+
+`TMUX` splits from the last two commas so the socket path can contain commas.
+Its PID must be positive ASCII decimal; its session field accepts a
+nonnegative ASCII decimal ID, one optional `$` prefix, or tmux's `-1`
+no-session sentinel. Malformed context raises
+{exc}`~libtmux.exc.NotInsideTmux`. The selected path still requires an
+absolute path. {meth}`Server.from_env() <libtmux.Server.from_env>` reads a
+supplied mapping or the host `TMUX` context; child
 {meth}`Session.from_env() <libtmux.Session.from_env>`,
 {meth}`Window.from_env() <libtmux.Window.from_env>`, and
-{meth}`Pane.from_env() <libtmux.Pane.from_env>`. Outside a pane neither
-variable is set, and all four raise {exc}`~libtmux.exc.NotInsideTmux`.
-You never write them yourself: {ref}`self-location` covers what each call
-does with them, why the session id in `TMUX` goes stale, and the `env`
-mapping you hand `from_env` in tests instead of touching the real
-environment.
+{meth}`Pane.from_env() <libtmux.Pane.from_env>` also resolve `TMUX_PANE`
+against the live server. See {ref}`self-location` for pane context.
 
-tmux reads `TMUX` too — it is how tmux notices you are already inside a
-session and guards against nesting one. {meth}`Server.new_session()
-<libtmux.Server.new_session>` unsets it for the length of that one call
-and restores it afterward, so creating a session from inside a pane works
-without you arranging anything.
+## Client and tmux environments
 
-That leaves the two variables that *are* yours to set, and most people
-set neither. `TMUX_TMPDIR` is tmux's own — the directory it keeps sockets
-in. libtmux never reads it, but the tmux binary it shells out to does, so
-it shapes which server a bare {class}`~libtmux.Server` lands on; pass
-`socket_name` or `socket_path` when you would rather name the server
-outright. `LIBTMUX_TMUX_FORMAT_SEPARATOR` is the one variable libtmux
-itself defines: an advanced override for the separator (default `␞`) it
-uses internally to parse tmux's format output — you'd touch it only if
-that character ever collided with your own data.
+`child_environment` supplies overrides for a copy of the host environment at
+construction. The endpoint resolver reads that copy, then client launches
+receive its immutable snapshot with `TMUX` and `TMUX_PANE` removed. Commands,
+including {meth}`Server.new_session() <libtmux.Server.new_session>`, leave the
+host environment unchanged. `child_environment` cannot redirect an explicit
+socket selector. There is no `LIBTMUX_SOCKET_ENV` variable.
+
+The constructor also resolves `tmux_bin` against the captured `PATH` and working directory. `server.tmux_bin` reports that absolute path, or `None` when a bare executable name was not found. Adding an executable to `PATH` later does not repair an existing handle; construct a new one. The captured path preserves filesystem traversal, including symlinks and `..`; it does not pin the executable's bytes against replacement on disk. Commands, object queries, control clients, health checks and version probes all use this path and the captured environment. Each handle caches its own version probe. The standalone `libtmux.common.get_version()` and `get_version_str()` functions keep their separate process-wide caches.
+
+The `environment=` argument to session, window and pane creation configures
+tmux's environment for those resources. Methods such as
+{meth}`~libtmux.common.EnvironmentMixin.set_environment` change tmux's
+server/session environment. They do not edit a handle's captured client
+environment or restore earlier tmux values on scope exit.
+
+{class}`~libtmux.test.environment.EnvironmentVarGuard` edits process-global
+variables and restores their original value or absence after repeated edits
+and exceptions. Concurrent writers share that host state. Prefer a child
+environment for an external example harness: it leaves the parent's
+environment unchanged and keeps whole-server cleanup outside the ordinary
+program. The repository's `tests/test_example_harness.py` executes
+`examples/session_scope.py` unchanged using both socket selector variables,
+checks session cleanup after success and body failure, then destroys its
+private server. On Linux it checks daemon exit through a retained PID handle
+and checks the endpoint before releasing its temporary root.
+
+`LIBTMUX_TMUX_FORMAT_SEPARATOR` configures the separator (default `␞`) used
+to parse tmux's format output. It has no role in endpoint selection.
 
 ## Format strings
 

@@ -15,8 +15,7 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     import types
-
-    from typing_extensions import Self
+    from typing import Self
 
     from libtmux.server import Server
     from libtmux.session import Session
@@ -60,16 +59,11 @@ class ControlMode:
 
     def __enter__(self) -> Self:
         """Spawn control-mode client and wait for registration."""
+        tmux_bin = self.server._require_tmux_bin()
+        self.server._prepare_socket_directory()
         read_fd, self._write_fd = os.pipe()
 
-        tmux_bin = self.server.tmux_bin or "tmux"
-
-        if self.server.socket_name is not None:
-            socket_args = ["-L", str(self.server.socket_name)]
-        elif self.server.socket_path is not None:
-            socket_args = ["-S", str(self.server.socket_path)]
-        else:
-            socket_args = []
+        socket_args = ["-S", self.server.socket_path]
 
         cmd = [
             tmux_bin,
@@ -89,6 +83,7 @@ class ControlMode:
                     stderr=subprocess.PIPE,
                     text=True,
                     encoding="utf-8",
+                    env=self.server.child_environment,
                 )
             finally:
                 # subprocess owns read_fd now

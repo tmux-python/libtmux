@@ -2,8 +2,8 @@
 
 ## Python
 
-- **Minimum**: Python 3.10
-- **Tested**: Python 3.10, 3.11, 3.12, 3.13
+- **Minimum**: Python 3.11
+- **CI**: Python 3.14
 - **Maximum**: Python < 4.0
 
 ## tmux

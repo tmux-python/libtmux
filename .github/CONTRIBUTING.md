@@ -25,7 +25,7 @@ $ cd libtmux
 $ uv sync --all-extras --dev
 ```
 
-This project uses Python 3.10+, [uv] for dependency management, [ruff]
+This project uses Python 3.11+, [uv] for dependency management, [ruff]
 for linting and formatting, [mypy] for type checking, and [pytest] for
 testing (with [pytest-watcher] for continuous runs).
 
