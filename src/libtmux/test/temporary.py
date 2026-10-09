@@ -8,11 +8,15 @@ import typing as t
 from libtmux.test.random import get_test_session_name, get_test_window_name
 
 if t.TYPE_CHECKING:
+    import sys
     from collections.abc import Generator
 
     from libtmux.server import Server
     from libtmux.session import Session
     from libtmux.window import Window
+
+    if sys.version_info >= (3, 11):
+        pass
 
 
 @contextlib.contextmanager

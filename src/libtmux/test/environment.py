@@ -6,8 +6,13 @@ import os
 import typing as t
 
 if t.TYPE_CHECKING:
+    import sys
     import types
-    from typing import Self
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
 
 
 class EnvironmentVarGuard:

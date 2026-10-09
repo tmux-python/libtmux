@@ -16,12 +16,14 @@ import re
 import secrets
 import select
 import shlex
+import sys
 import threading
 import time
 import typing as t
 import weakref
 
 from libtmux import exc
+from libtmux._compat import BaseExceptionGroup
 from libtmux.common import _run_cleanup
 
 if t.TYPE_CHECKING:
@@ -275,7 +277,10 @@ def _creation(
             )
             if isinstance(failure, Exception):
                 raise UnknownCreation(message) from failure
-            failure.add_note(message)
+            if sys.version_info >= (3, 11):
+                failure.add_note(message)
+            else:
+                failure.__dict__.setdefault("__notes__", []).append(message)
         raise
 
 
