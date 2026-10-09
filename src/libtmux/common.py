@@ -479,6 +479,7 @@ class tmux_cmd:
         """Bound failed-client cleanup even when another process holds its pipes."""
         deadline = None if timeout is None else time.monotonic() + timeout
         failures: list[BaseException] = []
+        partial_output: subprocess.TimeoutExpired | None = None
         try:
             while cancelled is None or not cancelled.is_set():
                 remaining = (
@@ -490,6 +491,7 @@ class tmux_cmd:
                 try:
                     stdout, stderr = self.process.communicate(timeout=interval)
                 except subprocess.TimeoutExpired as failure:
+                    partial_output = failure
                     if cancelled is None or (
                         deadline is not None and time.monotonic() >= deadline
                     ):
@@ -505,25 +507,34 @@ class tmux_cmd:
         except OSError as failure:
             failures.append(failure)
 
-        stdout, stderr = "", ""
+        output: tuple[str, str] | None = None
         try:
-            stdout, stderr = self.process.communicate(timeout=0.1)
+            output = self.process.communicate(timeout=0.1)
         except subprocess.TimeoutExpired as partial:
-            # TimeoutExpired retains bytes even for text-mode Popen streams.
-            stdout = (partial.output or b"").decode("utf-8", "backslashreplace")
-            stderr = (partial.stderr or b"").decode("utf-8", "backslashreplace")
-            stdout = stdout.replace("\r\n", "\n").replace("\r", "\n")
-            stderr = stderr.replace("\r\n", "\n").replace("\r", "\n")
+            partial_output = partial
         except BaseException as failure:  # noqa: BLE001 - retained with initial failure
             failures.append(failure)
         finally:
             for stream in (self.process.stdout, self.process.stderr):
                 if stream is not None:
-                    stream.close()
+                    try:
+                        stream.close()
+                    except BaseException as failure:  # noqa: BLE001 - preserve receipt
+                        failures.append(failure)
         try:
             self.process.wait(timeout=0.1)
         except (OSError, subprocess.TimeoutExpired) as failure:
             failures.append(failure)
+        if output is None:
+            # TimeoutExpired retains bytes even for text-mode Popen streams.
+            raw_stdout = partial_output.output if partial_output is not None else None
+            raw_stderr = partial_output.stderr if partial_output is not None else None
+            stdout = (raw_stdout or b"").decode("utf-8", "backslashreplace")
+            stderr = (raw_stderr or b"").decode("utf-8", "backslashreplace")
+            stdout = stdout.replace("\r\n", "\n").replace("\r", "\n")
+            stderr = stderr.replace("\r\n", "\n").replace("\r", "\n")
+        else:
+            stdout, stderr = output
         if len(failures) > 1:
             message = "client command and cleanup failed"
             return stdout, stderr, BaseExceptionGroup(message, failures)
