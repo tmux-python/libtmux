@@ -16,6 +16,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
+import time
 import typing as t
 
 from . import exc
@@ -411,8 +413,10 @@ class tmux_cmd:
             else:
                 # SIGINT must not consume receipt bytes between read and append.
                 # A worker keeps draining while the main thread handles interruption.
+                cancelled = threading.Event()
+
                 def receive() -> BaseException | None:
-                    stdout, stderr, failure = self._communicate(timeout)
+                    stdout, stderr, failure = self._communicate(timeout, cancelled)
                     self._record_output(stdout, stderr)
                     _on_completion(self)
                     return failure
@@ -422,8 +426,13 @@ class tmux_cmd:
                     try:
                         interrupted = reader.result()
                     except BaseException as failure:  # noqa: BLE001 - re-raised below
-                        self.process.kill()
-                        reader.result()
+                        cancelled.set()
+                        cleanup_error = reader.result()
+                        if cleanup_error is not None:
+                            message = "client interruption and cleanup both failed"
+                            raise BaseExceptionGroup(
+                                message, [failure, cleanup_error]
+                            ) from None
                         interrupted = failure
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
@@ -465,16 +474,60 @@ class tmux_cmd:
             self.stdout = stdout_split
 
     def _communicate(
-        self, timeout: float | None
+        self, timeout: float | None, cancelled: threading.Event | None = None
     ) -> tuple[str, str, BaseException | None]:
-        """Reap a failed client before handing off its partial stdout receipt."""
+        """Bound failed-client cleanup even when another process holds its pipes."""
+        deadline = None if timeout is None else time.monotonic() + timeout
+        failures: list[BaseException] = []
         try:
-            stdout, stderr = self.process.communicate(timeout=timeout)
+            while cancelled is None or not cancelled.is_set():
+                remaining = (
+                    None if deadline is None else max(0.0, deadline - time.monotonic())
+                )
+                interval = remaining
+                if cancelled is not None:
+                    interval = 0.05 if remaining is None else min(0.05, remaining)
+                try:
+                    stdout, stderr = self.process.communicate(timeout=interval)
+                except subprocess.TimeoutExpired as failure:
+                    if cancelled is None or (
+                        deadline is not None and time.monotonic() >= deadline
+                    ):
+                        if timeout is not None:
+                            failure.timeout = timeout
+                        raise
+                else:
+                    return stdout, stderr, None
         except BaseException as failure:  # noqa: BLE001 - returned for caller to raise
+            failures.append(failure)
+        try:
             self.process.kill()
-            stdout, stderr = self.process.communicate()
-            return stdout, stderr, failure
-        return stdout, stderr, None
+        except OSError as failure:
+            failures.append(failure)
+
+        stdout, stderr = "", ""
+        try:
+            stdout, stderr = self.process.communicate(timeout=0.1)
+        except subprocess.TimeoutExpired as partial:
+            # TimeoutExpired retains bytes even for text-mode Popen streams.
+            stdout = (partial.output or b"").decode("utf-8", "backslashreplace")
+            stderr = (partial.stderr or b"").decode("utf-8", "backslashreplace")
+            stdout = stdout.replace("\r\n", "\n").replace("\r", "\n")
+            stderr = stderr.replace("\r\n", "\n").replace("\r", "\n")
+        except BaseException as failure:  # noqa: BLE001 - retained with initial failure
+            failures.append(failure)
+        finally:
+            for stream in (self.process.stdout, self.process.stderr):
+                if stream is not None:
+                    stream.close()
+        try:
+            self.process.wait(timeout=0.1)
+        except (OSError, subprocess.TimeoutExpired) as failure:
+            failures.append(failure)
+        if len(failures) > 1:
+            message = "client command and cleanup failed"
+            return stdout, stderr, BaseExceptionGroup(message, failures)
+        return stdout, stderr, failures[0] if failures else None
 
 
 class _TmuxVersionUnavailable(Exception):

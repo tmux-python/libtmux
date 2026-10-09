@@ -145,6 +145,8 @@ If the body and teardown both fail, `BaseExceptionGroup` retains the body error 
 
 `resource.own(timeout=5.0)` bounds acceptance and each cleanup attempt, including time spent waiting for another cleanup call. A command timeout kills and reaps the tmux client process; it cannot undo a remote operation that was already dispatched. The owner remains open for inspection and retry. Garbage collection releases local observation descriptors and does not destroy remote resources. These APIs are synchronous; they do not provide an asynchronous task-cancellation supervisor.
 
+After timeout or interruption, output draining and client reaping each allow up to 0.1 seconds. If another process keeps the output pipes open, the client closes its readers and retains the bytes already captured. Cleanup targets the launched client process; it does not terminate other processes holding those pipes. Creation receipt capture observes an interruption within its next 0.05-second read interval before starting that cleanup.
+
 ## Creation failures
 
 `Server.new_session()`, `Session.new_window()` and `Pane.split()` retain a creation receipt before decoding the returned object. The receipt contains the endpoint, daemon generation and new object ID. A failed snapshot, parser, context entry or final generation check triggers rollback of that known resource. The same rule applies when tmux returns an ID alongside a nonzero client status. A timeout or Ctrl-C kills and reaps the client, retains readable receipt bytes and attempts that rollback before re-raising the original failure. Rollback uses the original daemon identity and cannot destroy a replacement daemon.

@@ -475,6 +475,8 @@ class Server(
         timeout : float, optional
             Maximum seconds for the client command. A timeout terminates and
             reaps the client process; a dispatched remote effect may be uncertain.
+            Output draining and reaping each allow up to 0.1 additional seconds.
+            Other processes holding the client's output pipes are not terminated.
 
         Returns
         -------
