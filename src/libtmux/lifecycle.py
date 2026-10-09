@@ -7,6 +7,7 @@ of later edits to the borrowed handle.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import dataclasses
 import math
@@ -25,13 +26,37 @@ from libtmux.common import _run_cleanup
 
 if t.TYPE_CHECKING:
     import types
+    from collections.abc import Generator
 
+    from libtmux.common import tmux_cmd
     from libtmux.server import Server
 
 Resource = t.TypeVar("Resource")
 ObjectKind = t.Literal["server", "session", "window", "pane"]
 _GENERATION_OPTION = "@libtmux_owner_generation"
 _TOKEN = re.compile(r"[0-9a-fA-F]{32}\Z")
+
+
+class UnknownCreation(exc.LibTmuxException):
+    """Creation returned no trustworthy receipt; inspect before retrying it."""
+
+
+class CreationCleanupError(exc.LibTmuxException):
+    """A failed creation rollback retains its exact owner for inspection or retry.
+
+    Raised alongside the original operation error in a ``BaseExceptionGroup``.
+    ``__cause__`` retains the cleanup failure. ``owner.identity`` identifies the
+    accepted resource; ``owner.close()`` retries against that same generation.
+
+    Parameters
+    ----------
+    owner : Owned
+        Cleanup responsibility retained from the original creation receipt.
+    """
+
+    def __init__(self, owner: Owned[None]) -> None:
+        self.owner = owner
+        super().__init__("creation rollback failed; inspect or retry error.owner")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -70,6 +95,188 @@ class OwnedIdentity:
             f"#{{==:#{{start_time}},{self.start_time}}}}},"
             f"#{{==:#{{{_GENERATION_OPTION}}},{self.generation_token}}}}}"
         )
+
+
+@dataclasses.dataclass(frozen=True)
+class _CreationReceipt:
+    client: Server
+    identity: OwnedIdentity
+
+
+def _identity_from_fields(
+    client: Server, kind: ObjectKind, fields: list[str]
+) -> OwnedIdentity:
+    """Decode daemon and object identity returned on one creation connection."""
+    prefix = {"session": "$", "window": "@", "pane": "%"}.get(kind)
+    if (
+        len(fields) != 4
+        or not fields[0].isascii()
+        or not fields[0].isdecimal()
+        or int(fields[0]) <= 0
+        or not fields[1].isascii()
+        or not fields[1].isdecimal()
+        or not _TOKEN.fullmatch(fields[2])
+        or (
+            not re.fullmatch(re.escape(prefix) + r"[0-9]+", fields[3])
+            if prefix is not None
+            else bool(fields[3])
+        )
+    ):
+        message = (
+            "tmux returned invalid ownership identity or reserved generation token"
+        )
+        raise exc.LibTmuxException(message)
+    return OwnedIdentity(
+        client.socket_path,
+        int(fields[0]),
+        int(fields[1]),
+        fields[2],
+        kind,
+        fields[3] or None,
+    )
+
+
+def _creation_format(kind: ObjectKind, payload: str) -> str:
+    """Prefix object output with its same-connection creation receipt."""
+    return (
+        f"#{{pid}}\t#{{start_time}}\t#{{{_GENERATION_OPTION}}}\t"
+        f"#{{{kind}_id}}\t{payload}"
+    )
+
+
+def _rollback_creation(receipt: _CreationReceipt, failure: BaseException) -> None:
+    """Recover the recorded creation without accepting a later daemon token."""
+
+    def recover() -> None:
+        owner = Owned._from_receipt(None, receipt)
+        if not owner._process_exited():
+            try:
+                owner.close()
+            except BaseException as cleanup_error:
+                if not isinstance(cleanup_error, Exception):
+                    retry = CreationCleanupError(owner)
+                    retry.__cause__ = cleanup_error
+                    message = "creation rollback was interrupted"
+                    raise BaseExceptionGroup(message, [cleanup_error, retry]) from None
+                raise CreationCleanupError(owner) from cleanup_error
+
+    _run_cleanup(recover, failure)
+
+
+def _require_creation_success(result: tmux_cmd) -> None:
+    """Surface the original client failure after retaining a creation receipt."""
+    if result.returncode or result.stderr:
+        detail = "\n".join(result.stderr)
+        raise exc.LibTmuxException(detail or f"exit status {result.returncode}")
+
+
+def _check_creation_guards(result: tmux_cmd, stale: str, invalid: str) -> None:
+    """Distinguish refusal before dispatch from a missing creation receipt."""
+    detail = "\n".join(result.stderr)
+    if stale in detail:
+        message = "the creation endpoint now names a different tmux daemon"
+        raise exc.StaleTmuxOwner(message)
+    if invalid in detail:
+        message = "tmux returned an invalid reserved generation token before creation"
+        raise exc.LibTmuxException(message)
+
+
+def _verify_identity(client: Server, identity: OwnedIdentity, timeout: float) -> None:
+    """Refuse handoff when a later connection identifies another generation."""
+    accepted = _capture_identity(client, identity.kind, identity.object_id, timeout)
+    if accepted != identity:
+        message = "the daemon generation changed after creation"
+        raise exc.StaleTmuxOwner(message)
+
+
+def _creation_receipt(
+    client: Server, kind: ObjectKind, command: str, result: tmux_cmd
+) -> tuple[_CreationReceipt, str]:
+    """Accept a receipt before classifying the command's exit status."""
+    fields = result.stdout[0].split("\t", 4) if result.stdout else []
+    if len(fields) != 5:
+        detail = "\n".join(result.stderr) or f"exit status {result.returncode}"
+        message = (
+            f"{command} returned no trustworthy creation receipt ({detail}); "
+            "inspect the endpoint before retry"
+        )
+        raise UnknownCreation(message)
+    try:
+        identity = _identity_from_fields(client, kind, fields[:4])
+    except Exception as failure:
+        message = (
+            f"{command} returned no trustworthy creation receipt; "
+            "inspect the endpoint before retry"
+        )
+        raise UnknownCreation(message) from failure
+    return _CreationReceipt(client, identity), fields[4]
+
+
+@contextlib.contextmanager
+def _creation(
+    server: Server,
+    kind: ObjectKind,
+    command: str,
+    arguments: tuple[str | int, ...],
+    *,
+    parent: object | None = None,
+) -> Generator[tuple[tmux_cmd, _CreationReceipt], None, None]:
+    """Keep a creation receipt across materialization and its possible failure."""
+    client = copy.copy(server)
+    operation = shlex.join([command, *(str(arg) for arg in arguments)])
+    stale = "libtmux-creation-stale-" + secrets.token_hex(16)
+    invalid = "libtmux-creation-invalid-generation-" + secrets.token_hex(16)
+    if parent is not None:
+        _, parent_kind, parent_id = _kind_and_id(parent)
+        prior = getattr(parent, "_creation_receipt", None)
+        parent_identity = (
+            prior.identity
+            if isinstance(prior, _CreationReceipt)
+            else _capture_identity(client, parent_kind, parent_id, 5.0)
+        )
+        operation = shlex.join(
+            ["if-shell", "-F", parent_identity._condition, operation, stale]
+        )
+    valid = "#{m/r:^" + "[0-9a-fA-F]" * 32 + "$,#{" + _GENERATION_OPTION + "}}"
+    arguments = (
+        *(("start-server", ";") if kind == "session" else ()),
+        *_generation_setup(),
+        "if-shell",
+        "-F",
+        valid,
+        operation,
+        invalid,
+    )
+    observed: list[tmux_cmd] = []
+    result: tmux_cmd | None = None
+    receipt: _CreationReceipt | None = None
+    try:
+        result = client.cmd(
+            str(arguments[0]),
+            *arguments[1:],
+            timeout=5.0,
+            _on_completion=observed.append,
+        )
+        _check_creation_guards(result, stale, invalid)
+        receipt, result.stdout[0] = _creation_receipt(client, kind, command, result)
+        _require_creation_success(result)
+        yield result, receipt
+        _verify_identity(client, receipt.identity, 5.0)
+    except BaseException as failure:
+        if receipt is None and observed:
+            with contextlib.suppress(UnknownCreation):
+                receipt, _ = _creation_receipt(client, kind, command, observed[0])
+        if receipt is not None:
+            _rollback_creation(receipt, failure)
+        elif result is None:
+            message = (
+                f"{command} returned no creation receipt; "
+                "inspect the endpoint before retry"
+            )
+            if isinstance(failure, Exception):
+                raise UnknownCreation(message) from failure
+            failure.add_note(message)
+        raise
 
 
 def _kind_and_id(resource: object) -> tuple[Server, ObjectKind, str | None]:
@@ -181,10 +388,39 @@ class Owned(t.Generic[Resource]):
             message = "ownership timeout must be positive and finite"
             raise ValueError(message)
         server, kind, object_id = _kind_and_id(value)
+        receipt = getattr(value, "_creation_receipt", None)
+        if isinstance(receipt, _CreationReceipt):
+            identity = _capture_identity(receipt.client, kind, object_id, timeout)
+            if identity != receipt.identity:
+                message = "the endpoint no longer identifies the created tmux resource"
+                raise exc.StaleTmuxOwner(message)
+            self._initialize(value, receipt.client, receipt.identity, timeout)
+            return
+        client = copy.copy(server)
+        identity = _capture_identity(client, kind, object_id, timeout)
+        self._initialize(value, client, identity, timeout)
+
+    @classmethod
+    def _from_receipt(
+        cls, value: Resource, receipt: _CreationReceipt, timeout: float = 5.0
+    ) -> Owned[Resource]:
+        """Use the original creation identity without another acceptance query."""
+        owner = cls.__new__(cls)
+        owner._initialize(value, receipt.client, receipt.identity, timeout)
+        return owner
+
+    def _initialize(
+        self,
+        value: Resource,
+        client: Server,
+        identity: OwnedIdentity,
+        timeout: float,
+    ) -> None:
+        """Retain local state after an adoption or a same-connection receipt."""
         self._value = value
-        self._client = copy.copy(server)
+        self._client = copy.copy(client)
         self._timeout = timeout
-        self._identity = _capture_identity(self._client, kind, object_id, timeout)
+        self._identity = identity
         self._closed = False
         self._cleanup_error: BaseException | None = None
         self._lock = threading.RLock()
