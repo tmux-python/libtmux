@@ -15,7 +15,7 @@ from .__about__ import (
     __version__,
 )
 from .client import Client
-from .lifecycle import Owned, OwnedIdentity
+from .lifecycle import CreationCleanupError, Owned, OwnedIdentity, UnknownCreation
 from .pane import Pane
 from .server import Server
 from .session import Session
@@ -25,11 +25,13 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __all__ = (
     "Client",
+    "CreationCleanupError",
     "Owned",
     "OwnedIdentity",
     "Pane",
     "Server",
     "Session",
+    "UnknownCreation",
     "Window",
     "__author__",
     "__copyright__",

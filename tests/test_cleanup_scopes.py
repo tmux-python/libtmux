@@ -66,7 +66,8 @@ def test_object_scope_preserves_both_failures_and_can_retry(
         return command(cmd, *args, **kwargs)
 
     with monkeypatch.context() as patch:
-        patch.setattr(server, "cmd", denied)
+        assert obj._creation_receipt is not None
+        patch.setattr(obj._creation_receipt.client, "cmd", denied)
         with pytest.raises(BaseExceptionGroup) as caught, obj:
             raise body_error
     assert caught.value.exceptions == (body_error, cleanup_error)
@@ -111,7 +112,8 @@ def test_scope_reports_failed_command_without_disabling_retry(
         return command(cmd, *args, **kwargs)
 
     with monkeypatch.context() as patch:
-        patch.setattr(server, "cmd", denied)
+        assert obj._creation_receipt is not None
+        patch.setattr(obj._creation_receipt.client, "cmd", denied)
         with pytest.raises(exc.LibTmuxException, match=r"denied|exit status 64"), obj:
             pass
     obj.refresh()

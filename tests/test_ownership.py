@@ -6,6 +6,7 @@ import dataclasses
 import os
 import pathlib
 import subprocess
+import sys
 import threading
 import time
 import typing as t
@@ -248,9 +249,10 @@ def test_hung_cleanup_client_is_reaped_and_owner_can_retry(
     wrapper = tmp_path / "tmux-wrapper"
     binary = server._require_tmux_bin()
     wrapper.write_text(
-        "#!/usr/bin/python3\n"
+        f"#!{sys.executable}\n"
         "import os, pathlib, sys, time\n"
-        f"if 'if-shell' in sys.argv and pathlib.Path({str(blocker)!r}).exists():\n"
+        "if any(arg.startswith('kill-') for arg in sys.argv) "
+        f"and pathlib.Path({str(blocker)!r}).exists():\n"
         f"    pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
         "    time.sleep(30)\n"
         f"os.execv({binary!r}, [{binary!r}, *sys.argv[1:]])\n"

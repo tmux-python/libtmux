@@ -131,7 +131,7 @@ class Window(
         if previous is not None and not previous.closed:
             message = "this window already has an active or failed cleanup scope"
             raise RuntimeError(message)
-        self._scope_owner = self.own()
+        self._scope_owner = self._enter_owned()
         return self
 
     def __exit__(

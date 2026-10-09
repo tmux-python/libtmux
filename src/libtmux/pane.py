@@ -28,6 +28,7 @@ from libtmux.constants import (
 )
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
+from libtmux.lifecycle import _creation, _creation_format
 from libtmux.neo import Obj, fetch_obj
 from libtmux.options import OptionsMixin
 
@@ -118,7 +119,7 @@ class Pane(
         if previous is not None and not previous.closed:
             message = "this pane already has an active or failed cleanup scope"
             raise RuntimeError(message)
-        self._scope_owner = self.own()
+        self._scope_owner = self._enter_owned()
         return self
 
     def __exit__(
@@ -1336,7 +1337,7 @@ class Pane(
         if zoom:
             tmux_args += ("-Z",)
 
-        tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
+        tmux_args += ("-P", f"-F{_creation_format('pane', ''.join(tmux_formats))}")
 
         if start_directory:
             start_path = pathlib.Path(start_directory).expanduser()
@@ -1380,38 +1381,35 @@ class Pane(
         if shell:
             tmux_args += (shell,)
 
-        pane_cmd = self.cmd("split-window", *tmux_args, target=target)
-
-        if pane_cmd.stderr:
-            if "pane too small" in pane_cmd.stderr:
-                raise exc.LibTmuxException(pane_cmd.stderr)
-
-            raise exc.LibTmuxException(
-                pane_cmd.stderr,
-                self.__dict__,
-                self.window.panes,
-            )
-
-        pane_output = pane_cmd.stdout[0]
-
-        pane_formatters = dict(
-            zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR), strict=False),
-        )
-
-        pane = self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
-
-        extra: dict[str, str] = {
-            "tmux_subcommand": "split-window",
-            "tmux_pane": str(pane.pane_id),
-        }
-        if self.session.session_name is not None:
-            extra["tmux_session"] = str(self.session.session_name)
-        if self.window.window_name is not None:
-            extra["tmux_window"] = str(self.window.window_name)
+        if target is None:
+            target = self.pane_id
         if target is not None:
-            extra["tmux_target"] = str(target)
+            tmux_args = ("-t", str(target), *tmux_args)
+        with _creation(self.server, "pane", "split-window", tmux_args, parent=self) as (
+            pane_cmd,
+            receipt,
+        ):
+            pane_output = pane_cmd.stdout[0]
+            pane_formatters = dict(
+                zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR), strict=False),
+            )
+            pane = self.from_pane_id(
+                server=self.server, pane_id=pane_formatters["pane_id"]
+            )
+            pane._creation_receipt = receipt
 
-        logger.info("pane created", extra=extra)
+            extra: dict[str, str] = {
+                "tmux_subcommand": "split-window",
+                "tmux_pane": str(pane.pane_id),
+            }
+            if self.session.session_name is not None:
+                extra["tmux_session"] = str(self.session.session_name)
+            if self.window.window_name is not None:
+                extra["tmux_window"] = str(self.window.window_name)
+            if target is not None:
+                extra["tmux_target"] = str(target)
+
+            logger.info("pane created", extra=extra)
 
         return pane
 
