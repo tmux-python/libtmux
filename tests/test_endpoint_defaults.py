@@ -10,6 +10,7 @@ import typing as t
 import pytest
 
 from libtmux import Server, exc
+from libtmux._compat import BaseExceptionGroup
 from libtmux._internal.control_mode import ControlMode
 from libtmux.pytest_plugin import _reap_test_server
 
@@ -296,7 +297,8 @@ def test_scope_preserves_body_and_cleanup_failure(
         return command(cmd, *args, **kwargs)
 
     with monkeypatch.context() as patch:
-        patch.setattr(server, "cmd", failed_cleanup)
+        assert session._creation_receipt is not None
+        patch.setattr(session._creation_receipt.client, "cmd", failed_cleanup)
         with pytest.raises(BaseExceptionGroup) as caught, session:
             raise body_error
     assert caught.value.exceptions == (body_error, cleanup_error)

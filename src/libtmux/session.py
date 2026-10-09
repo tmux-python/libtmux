@@ -32,11 +32,16 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
+    import sys
     import types
-    from typing import Self
 
     from libtmux._internal.types import StrPath
     from libtmux.common import tmux_cmd
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
 
     from .server import Server
 
@@ -113,7 +118,13 @@ class Session(
     server: Server
 
     def __enter__(self) -> Self:
-        """Accept destruction responsibility and enter the session scope."""
+        """Accept destruction responsibility and enter the session scope.
+
+        Returns
+        -------
+        :class:`Session`
+            The session instance
+        """
         previous = getattr(self, "_scope_owner", None)
         if previous is not None and not previous.closed:
             message = "this session already has an active or failed cleanup scope"
@@ -127,7 +138,17 @@ class Session(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Destroy the accepted session identity and retain paired failures."""
+        """Destroy the accepted session identity and retain paired failures.
+
+        Parameters
+        ----------
+        exc_type : type[BaseException] | None
+            The type of the body exception, or ``None`` on normal exit.
+        exc_value : BaseException | None
+            The body exception, retained if cleanup also raises.
+        exc_tb : types.TracebackType | None
+            The traceback of the body exception, or ``None``.
+        """
         owner = getattr(self, "_scope_owner", None)
         if owner is not None:
             owner.__exit__(exc_type, exc_value, exc_tb)

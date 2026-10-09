@@ -53,12 +53,6 @@ A plain `Server` context leaves remote state intact. Use `server.own()` to accep
 
 `Server` captures an absolute tmux executable path from its construction-time `PATH` and working directory. Commands, object queries, control clients, health checks and version probes use that executable and the captured child environment. A missing executable stays unresolved until a new handle is constructed. The read-only `tmux_bin` property reports the captured path or `None`. Version caches belong to each server handle; standalone `get_version()` and `get_version_str()` retain their existing cache behavior.
 
-#### Python 3.11 minimum
-
-Minimum Python 3.11 (was 3.10). Session cleanup uses native
-`BaseExceptionGroup` to retain body and teardown failures, including
-`KeyboardInterrupt` and `SystemExit`.
-
 #### Captured server endpoints
 
 {class}`~libtmux.Server` resolves explicit socket selectors, then
@@ -98,7 +92,7 @@ Call `.own()` on a server, session, window or pane to accept destruction respons
 immutable captured mapping. Client launches omit `TMUX` and `TMUX_PANE`
 without changing the host environment. Session, window and pane scopes target
 object IDs, including after a rename or a move to another parent.
-`BaseExceptionGroup` retains both a body exception and a cleanup exception.
+`BaseExceptionGroup` retains both a body exception and a cleanup exception. Python 3.10 uses the `exceptiongroup` backport; Python 3.11 and later use the built-in exception group.
 A failed cleanup can be retried; a prior successful destruction is harmless.
 `temp_window` uses the window scope's cleanup. Pytest finalizers retain exact
 endpoints and report cleanup failures.

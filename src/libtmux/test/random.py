@@ -10,10 +10,15 @@ from libtmux.test.constants import (
 )
 
 if t.TYPE_CHECKING:  # pragma: no cover
+    import sys  # pragma: no cover
+
     from libtmux.server import Server  # pragma: no cover
     from libtmux.session import Session  # pragma: no cover
 
-    # pragma: no cover
+    if sys.version_info >= (3, 11):  # pragma: no cover
+        pass  # pragma: no cover
+    else:  # pragma: no cover
+        pass  # pragma: no cover
 
 
 class RandomStrSequence:

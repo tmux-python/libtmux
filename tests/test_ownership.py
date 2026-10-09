@@ -14,6 +14,7 @@ import typing as t
 import pytest
 
 from libtmux import Pane, Server, Session, Window, exc
+from libtmux._compat import BaseExceptionGroup
 
 if t.TYPE_CHECKING:
     from libtmux.common import tmux_cmd
