@@ -18,7 +18,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     escape_trailing_separator,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -213,13 +212,12 @@ class Window(
     server: Server
 
     def __enter__(self) -> Self:
-        """Enter the context, returning self.
-
-        Returns
-        -------
-        :class:`Window`
-            The window instance
-        """
+        """Accept destruction responsibility and enter the window scope."""
+        previous = getattr(self, "_scope_owner", None)
+        if previous is not None and not previous.closed:
+            message = "this window already has an active or failed cleanup scope"
+            raise RuntimeError(message)
+        self._scope_owner = self.own()
         return self
 
     def __exit__(
@@ -228,22 +226,10 @@ class Window(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the window if it exists.
-
-        Parameters
-        ----------
-        exc_type : type[BaseException] | None
-            The type of the exception that was raised
-        exc_value : BaseException | None
-            The instance of the exception that was raised
-        exc_tb : types.TracebackType | None
-            The traceback of the exception that was raised
-        """
-        if (
-            self.window_id is not None
-            and len(self.session.windows.filter(window_id=self.window_id)) > 0
-        ):
-            self.kill()
+        """Destroy the accepted window identity and retain paired failures."""
+        owner = getattr(self, "_scope_owner", None)
+        if owner is not None:
+            owner.__exit__(exc_type, exc_value, exc_tb)
 
     def refresh(self) -> None:
         """Refresh window attributes from tmux.
@@ -1420,7 +1406,7 @@ class Window(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(

@@ -59,9 +59,9 @@ class ControlMode:
 
     def __enter__(self) -> Self:
         """Spawn control-mode client and wait for registration."""
+        tmux_bin = self.server._require_tmux_bin()
+        self.server._prepare_socket_directory()
         read_fd, self._write_fd = os.pipe()
-
-        tmux_bin = self.server.tmux_bin or "tmux"
 
         cmd = [
             tmux_bin,
@@ -81,6 +81,7 @@ class ControlMode:
                     stderr=subprocess.PIPE,
                     text=True,
                     encoding="utf-8",
+                    env=self.server.child_environment,
                 )
             finally:
                 # subprocess owns read_fd now

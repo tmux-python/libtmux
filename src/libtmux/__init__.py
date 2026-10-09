@@ -16,6 +16,7 @@ from .__about__ import (
 )
 from .client import Client
 from .formats import Format
+from .lifecycle import Owned, OwnedIdentity
 from .pane import Pane
 from .server import Server
 from .session import Session
@@ -26,6 +27,8 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 __all__ = (
     "Client",
     "Format",
+    "Owned",
+    "OwnedIdentity",
     "Pane",
     "Server",
     "Session",

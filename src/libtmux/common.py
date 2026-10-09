@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import pathlib
 import re
 import shlex
@@ -24,8 +25,11 @@ from .formats import Format, _escape_format
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from typing import Self
 
     from libtmux._internal.types import StrPath
+    from libtmux.lifecycle import Owned
+    from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,28 @@ class CmdMixin:
     """Command mixin for tmux command."""
 
     cmd: CmdProtocol
+
+    def own(self, *, timeout: float = 5.0) -> Owned[Self]:
+        """Accept remote destruction responsibility for this existing object.
+
+        Parameters
+        ----------
+        timeout : float
+            Maximum seconds for acceptance and for each cleanup attempt.
+
+        Returns
+        -------
+        Owned
+            Context manager retaining the endpoint, daemon and object identity.
+        """
+        from libtmux.lifecycle import Owned
+
+        return Owned(self, timeout=timeout)
+
+    def _supports_version(self, minimum: str) -> bool:
+        """Check capabilities with this object's captured tmux client."""
+        server = t.cast("Server", getattr(self, "server", self))
+        return server._version >= LooseVersion(minimum)
 
 
 class EnvironmentMixin:
@@ -475,6 +501,17 @@ def escape_trailing_separator(value: str) -> str:
     return value
 
 
+def _run_cleanup(cleanup: Callable[[], None], body_error: BaseException | None) -> None:
+    """Run teardown and retain a body error if teardown also fails."""
+    try:
+        cleanup()
+    except BaseException as cleanup_error:
+        if body_error is not None:
+            message = "resource body and cleanup both failed"
+            raise BaseExceptionGroup(message, [body_error, cleanup_error]) from None
+        raise
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
@@ -508,8 +545,19 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
-        resolved = tmux_bin or shutil.which("tmux")
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        env: t.Mapping[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        client_env = dict(os.environ if env is None else env)
+        client_env.pop("TMUX", None)
+        client_env.pop("TMUX_PANE", None)
+        resolved = tmux_bin or shutil.which(
+            "tmux", path=client_env.get("PATH", os.defpath)
+        )
         if not resolved:
             raise exc.TmuxCommandNotFound
 
@@ -534,8 +582,14 @@ class tmux_cmd:
                 text=True,
                 encoding="utf-8",
                 errors="backslashreplace",
+                env=client_env,
             )
-            stdout, stderr = self.process.communicate()
+            try:
+                stdout, stderr = self.process.communicate(timeout=timeout)
+            except BaseException:
+                self.process.kill()
+                self.process.communicate()
+                raise
             returncode = self.process.returncode
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
@@ -596,7 +650,11 @@ def _no_version_flag_fallback() -> str:
     raise exc.LibTmuxException(msg)
 
 
-def _query_version(tmux_bin: str | None = None) -> str:
+def _query_version(
+    tmux_bin: str | None = None,
+    *,
+    env: t.Mapping[str, str] | None = None,
+) -> str:
     """Return the raw ``tmux -V`` version token, letter suffix intact.
 
     Runs ``tmux -V`` and extracts the version token (e.g. ``"3.7a"``,
@@ -607,6 +665,8 @@ def _query_version(tmux_bin: str | None = None) -> str:
     ----------
     tmux_bin : str, optional
         Path to tmux binary. If *None*, uses the system tmux.
+    env : Mapping[str, str], optional
+        Captured environment for the version probe.
 
     Returns
     -------
@@ -621,7 +681,11 @@ def _query_version(tmux_bin: str | None = None) -> str:
     :exc:`~libtmux.exc.VersionTooLow`
         tmux reported another error on ``-V``.
     """
-    proc = tmux_cmd("-V", tmux_bin=tmux_bin)
+    proc = (
+        tmux_cmd("-V", tmux_bin=tmux_bin)
+        if env is None
+        else tmux_cmd("-V", tmux_bin=tmux_bin, env=env)
+    )
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
             raise _TmuxVersionUnavailable
@@ -705,7 +769,11 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
         # OpenBSD base tmux lacks ``-V``; skip letter-stripping on the synthetic.
         return LooseVersion(_no_version_flag_fallback())
 
-    # Allow latest tmux HEAD
+    return _parse_version(version)
+
+
+def _parse_version(version: str) -> LooseVersion:
+    """Normalize a raw tmux version for capability comparisons."""
     if version == "master":
         return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 

@@ -16,7 +16,6 @@ import warnings
 from libtmux._internal.query_list import QueryList
 from libtmux.common import (
     escape_trailing_separator,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -204,13 +203,12 @@ class Session(
     server: Server
 
     def __enter__(self) -> Self:
-        """Enter the context, returning self.
-
-        Returns
-        -------
-        :class:`Session`
-            The session instance
-        """
+        """Accept destruction responsibility and enter the session scope."""
+        previous = getattr(self, "_scope_owner", None)
+        if previous is not None and not previous.closed:
+            message = "this session already has an active or failed cleanup scope"
+            raise RuntimeError(message)
+        self._scope_owner = self.own()
         return self
 
     def __exit__(
@@ -219,19 +217,10 @@ class Session(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the session if it exists.
-
-        Parameters
-        ----------
-        exc_type : type[BaseException] | None
-            The type of the exception that was raised
-        exc_value : BaseException | None
-            The instance of the exception that was raised
-        exc_tb : types.TracebackType | None
-            The traceback of the exception that was raised
-        """
-        if self.session_name is not None and self.server.has_session(self.session_name):
-            self.kill()
+        """Destroy the accepted session identity and retain paired failures."""
+        owner = getattr(self, "_scope_owner", None)
+        if owner is not None:
+            owner.__exit__(exc_type, exc_value, exc_tb)
 
     def refresh(self) -> None:
         """Refresh session attributes from tmux.
@@ -810,7 +799,7 @@ class Session(
             flags += ("-C",)
 
         if group:  # Kill all sessions in this session's group (tmux 3.7+)
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.7"):
                 flags += ("-g",)
             else:
                 warnings.warn(

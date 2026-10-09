@@ -45,6 +45,40 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Server context and executable capture
+
+A plain `Server` context leaves remote state intact. Use `server.own()` to accept whole-daemon destruction.
+
+`Server` captures an absolute tmux executable path from its construction-time `PATH` and working directory. Commands, object queries, control clients, health checks and version probes use that executable and the captured child environment. A missing executable stays unresolved until a new handle is constructed. The read-only `tmux_bin` property reports the captured path or `None`. Version caches belong to each server handle; standalone `get_version()` and `get_version_str()` retain their existing cache behavior.
+
+#### Python 3.11 minimum
+
+Minimum Python 3.11 (was 3.10). Session cleanup uses native
+`BaseExceptionGroup` to retain body and teardown failures, including
+`KeyboardInterrupt` and `SystemExit`.
+
+#### Captured server endpoints
+
+{class}`~libtmux.Server` resolves explicit socket selectors, then
+`LIBTMUX_SOCKET_PATH`, `LIBTMUX_SOCKET_NAME`, `TMUX`, and the default socket.
+It retains the absolute endpoint and client environment for its lifetime.
+Explicit paths must be absolute; passing both selectors raises `ValueError`.
+Socket names reject separators, NUL, `.` and `..`. Named/default selectors
+require an absolute `TMUX_TMPDIR` when set, and a missing root raises instead
+of falling back to another endpoint. Create a new handle to select a changed
+environment.
+
+```python
+import pathlib
+import libtmux
+
+# Before
+server = libtmux.Server(socket_path="relative.sock")
+# After
+server = libtmux.Server(socket_path=pathlib.Path("relative.sock").absolute())
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,

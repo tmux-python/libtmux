@@ -21,8 +21,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     escape_trailing_separator,
-    get_version_str,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -217,13 +215,12 @@ class Pane(
     server: Server
 
     def __enter__(self) -> Self:
-        """Enter the context, returning self.
-
-        Returns
-        -------
-        :class:`Pane`
-            The pane instance
-        """
+        """Accept destruction responsibility and enter the pane scope."""
+        previous = getattr(self, "_scope_owner", None)
+        if previous is not None and not previous.closed:
+            message = "this pane already has an active or failed cleanup scope"
+            raise RuntimeError(message)
+        self._scope_owner = self.own()
         return self
 
     def __exit__(
@@ -232,22 +229,10 @@ class Pane(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the pane if it exists.
-
-        Parameters
-        ----------
-        exc_type : type[BaseException] | None
-            The type of the exception that was raised
-        exc_value : BaseException | None
-            The instance of the exception that was raised
-        exc_tb : types.TracebackType | None
-            The traceback of the exception that was raised
-        """
-        if (
-            self.pane_id is not None
-            and len(self.window.panes.filter(pane_id=self.pane_id)) > 0
-        ):
-            self.kill()
+        """Destroy the accepted pane identity and retain paired failures."""
+        owner = getattr(self, "_scope_owner", None)
+        if owner is not None:
+            owner.__exit__(exc_type, exc_value, exc_tb)
 
     def refresh(self) -> None:
         """Refresh pane attributes from tmux.
@@ -743,10 +728,7 @@ class Pane(
         if preserve_trailing:
             cmd.append("-N")
         if trim_trailing:
-            if has_gte_version(
-                capability_since("capture-trim-blank-cells"),
-                tmux_bin=self.server.tmux_bin,
-            ):
+            if self._supports_version(capability_since("capture-trim-blank-cells")):
                 cmd.append("-T")
             else:
                 warnings.warn(
@@ -758,9 +740,7 @@ class Pane(
         if quiet:
             cmd.append("-q")
         if mode_screen:
-            if has_gte_version(
-                capability_since("capture-mode-screen"), tmux_bin=self.server.tmux_bin
-            ):
+            if self._supports_version(capability_since("capture-mode-screen")):
                 cmd.append("-M")
             else:
                 warnings.warn(
@@ -770,9 +750,7 @@ class Pane(
         if pending:
             cmd.append("-P")
         if hyperlinks:
-            if has_gte_version(
-                capability_since("capture-line-flags"), tmux_bin=self.server.tmux_bin
-            ):
+            if self._supports_version(capability_since("capture-line-flags")):
                 cmd.append("-H")
             else:
                 warnings.warn(
@@ -780,9 +758,7 @@ class Pane(
                     stacklevel=2,
                 )
         if line_numbers:
-            if has_gte_version(
-                capability_since("capture-line-flags"), tmux_bin=self.server.tmux_bin
-            ):
+            if self._supports_version(capability_since("capture-line-flags")):
                 cmd.append("-L")
             else:
                 warnings.warn(
@@ -790,9 +766,7 @@ class Pane(
                     stacklevel=2,
                 )
         if line_flags:
-            if has_gte_version(
-                capability_since("capture-line-flags"), tmux_bin=self.server.tmux_bin
-            ):
+            if self._supports_version(capability_since("capture-line-flags")):
                 cmd.append("-F")
             else:
                 warnings.warn(
@@ -927,7 +901,7 @@ class Pane(
             tmux_args += ("-H",)
 
         if key_name:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-K",)
             else:
                 warnings.warn(
@@ -942,7 +916,7 @@ class Pane(
             tmux_args += ("-N", str(repeat))
 
         if target_client is not None:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-c", target_client)
             else:
                 warnings.warn(
@@ -1104,7 +1078,7 @@ class Pane(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1116,7 +1090,7 @@ class Pane(
             tmux_args += ("-N",)
 
         if update_pane:
-            if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.6"):
                 tmux_args += ("-C",)
             else:
                 warnings.warn(
@@ -1500,7 +1474,7 @@ class Pane(
                 tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if empty:
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.7"):
                 tmux_args += ("-E",)
             else:
                 warnings.warn(
@@ -1515,7 +1489,7 @@ class Pane(
             "-m": message,
         }
         if keep or any(v is not None for v in styling.values()):
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.7"):
                 for flag, value in styling.items():
                     if value is not None:
                         tmux_args += (flag, escape_trailing_separator(value))
@@ -1655,9 +1629,7 @@ class Pane(
         >>> is_floating
         '1'
         """
-        if not has_gte_version(
-            capability_since("floating-pane"), tmux_bin=self.server.tmux_bin
-        ):
+        if not self._supports_version(capability_since("floating-pane")):
             msg = "new_pane (floating panes) requires tmux 3.7+"
             raise exc.LibTmuxException(msg)
 
@@ -1948,7 +1920,7 @@ class Pane(
             tmux_args += ("-B",)
 
         if close_on_any_key:
-            if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.6"):
                 tmux_args += ("-k",)
             else:
                 warnings.warn(
@@ -1957,7 +1929,7 @@ class Pane(
                 )
 
         if no_keys:
-            if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.6"):
                 tmux_args += ("-N",)
             else:
                 warnings.warn(
@@ -2027,9 +1999,7 @@ class Pane(
             tmux_args += ("-s", separator)
 
         if no_vis:
-            if has_gte_version(
-                capability_since("paste-buffer-no-vis"), tmux_bin=self.server.tmux_bin
-            ):
+            if self._supports_version(capability_since("paste-buffer-no-vis")):
                 tmux_args += ("-S",)
             else:
                 warnings.warn(
@@ -2137,7 +2107,7 @@ class Pane(
             tmux_args += ("-M",)
 
         if page_down:
-            if has_gte_version("3.5", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.5"):
                 tmux_args += ("-d",)
             else:
                 warnings.warn(
@@ -2587,7 +2557,7 @@ class Pane(
         # given (NULL-deref); 3.7a reverted it. When needed, pass a placeholder
         # -n then set the real name via rename-window below. Compare the raw
         # version string to gate the workaround on the literal 3.7 release only.
-        breaks_without_name = get_version_str(tmux_bin=self.server.tmux_bin) == "3.7"
+        breaks_without_name = self.server._version_str == "3.7"
 
         tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
 
@@ -2718,7 +2688,7 @@ class Pane(
         tmux_args: tuple[str, ...] = ()
 
         if reset_hyperlinks:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-H",)
             else:
                 warnings.warn(

@@ -280,7 +280,20 @@ def socket_path_from_env(env: t.Mapping[str, str] | None = None) -> str:
         raise exc.NotInsideTmux(TMUX)
 
     parts = raw.rsplit(",", 2)
-    if len(parts) != 3 or not parts[0]:
+    if (
+        len(parts) != 3
+        or not parts[0]
+        or not parts[1].isascii()
+        or not parts[1].isdecimal()
+        or int(parts[1]) <= 0
+        or (
+            parts[2] != "-1"
+            and (
+                not parts[2].removeprefix("$").isascii()
+                or not parts[2].removeprefix("$").isdecimal()
+            )
+        )
+    ):
         raise exc.NotInsideTmux(
             TMUX,
             reason="not '<socket_path>,<server_pid>,<session_id>'",
@@ -336,6 +349,46 @@ def resolve_ambient_socket_path(env: t.Mapping[str, str] | None = None) -> pathl
         return pathlib.Path(socket_path_from_env(env))
     except exc.NotInsideTmux:
         return resolve_socket_path(env=env)
+
+
+def _absolute_socket_path(value: str, selector: str) -> str:
+    """Validate a selected path without changing its spelling."""
+    if "\0" in value or not pathlib.Path(value).is_absolute():
+        msg = f"{selector} must be an absolute path without NUL"
+        raise ValueError(msg)
+    return value
+
+
+def resolve_server_endpoint(
+    socket_path: str | pathlib.Path | None,
+    socket_name: str | None,
+    env: dict[str, str],
+) -> tuple[str, str | None]:
+    """Capture an endpoint and its named-socket root in a private environment."""
+    if socket_path is not None and socket_name is not None:
+        msg = "socket_path and socket_name are mutually exclusive"
+        raise ValueError(msg)
+    if socket_path is not None:
+        return _absolute_socket_path(str(socket_path), "socket_path"), None
+    if socket_name is None:
+        if path := env.get("LIBTMUX_SOCKET_PATH"):
+            return _absolute_socket_path(path, "LIBTMUX_SOCKET_PATH"), None
+        if name := env.get("LIBTMUX_SOCKET_NAME"):
+            socket_name = name
+        elif env.get(TMUX):
+            return _absolute_socket_path(socket_path_from_env(env), TMUX), None
+        else:
+            socket_name = "default"
+    if (
+        not socket_name
+        or socket_name in {".", ".."}
+        or any(character in socket_name for character in ("/", "\\", "\0"))
+    ):
+        msg = "socket_name must be a nonempty leaf name without separators or NUL"
+        raise ValueError(msg)
+    root = _absolute_socket_path(env.get("TMUX_TMPDIR") or "/tmp", "TMUX_TMPDIR")
+    env["TMUX_TMPDIR"] = root
+    return str(pathlib.Path(root) / f"tmux-{os.getuid()}" / socket_name), socket_name
 
 
 def pane_id_from_env(env: t.Mapping[str, str] | None = None) -> str:

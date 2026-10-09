@@ -178,6 +178,12 @@ docstring. `ELLIPSIS` and `NORMALIZE_WHITESPACE` are enabled globally
 differences do not fail a comparison. Reach for an inline
 `# doctest: +FLAG` only for the block that needs something more.
 
+**Standalone programs.** `tests/test_example_harness.py` compares the
+ordinary README program with `examples/session_scope.py` and runs that file
+unchanged in a child process. Its unprompted README block uses this test
+instead of the doctest collector. The harness supplies endpoint defaults and
+checks cleanup after both successful execution and a body exception.
+
 **`# doctest: +SKIP` is not permitted.** It is a workaround that tests
 nothing. Use the fixtures.
 
