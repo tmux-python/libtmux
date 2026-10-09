@@ -28,9 +28,7 @@ if t.TYPE_CHECKING:
 def env_for(server: Server, pane_id: str, session_id: str) -> dict[str, str]:
     """Build the ``TMUX``/``TMUX_PANE`` pair tmux exports into *pane_id*.
 
-    The test :func:`~libtmux.pytest_plugin.server` fixture is socket-*name*
-    based, so ``Server.socket_path`` is unset; ask tmux for the path the way a
-    real pane's ``$TMUX`` would carry it.
+    Ask tmux for the path the way a real pane's ``$TMUX`` carries it.
     """
     socket_path = server.cmd(
         "display-message",
@@ -68,6 +66,11 @@ SOCKET_PATH_FIXTURES: list[SocketPathFixture] = [
         test_id="comma_inside_socket_path",
         tmux="/tmp/od,d/socket,84215,3",
         expected_socket_path="/tmp/od,d/socket",
+    ),
+    SocketPathFixture(
+        test_id="prefixed_session",
+        tmux="/tmp/tmux-1000/default,84215,$1",
+        expected_socket_path="/tmp/tmux-1000/default",
     ),
     SocketPathFixture(
         test_id="no_session",

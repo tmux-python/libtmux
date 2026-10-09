@@ -23,7 +23,7 @@ from libtmux.options import TerminalOverrides, convert_values, explode_arrays
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
-    from typing_extensions import LiteralString
+    from typing import LiteralString
 
     from libtmux.server import Server
     from libtmux.session import Session

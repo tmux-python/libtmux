@@ -45,6 +45,65 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Server context and executable capture
+
+A plain `Server` context leaves remote state intact. Use `server.own()` to accept whole-daemon destruction.
+
+`Server` captures an absolute tmux executable path from its construction-time `PATH` and working directory. Commands, object queries, control clients, health checks and version probes use that executable and the captured child environment. A missing executable stays unresolved until a new handle is constructed. The read-only `tmux_bin` property reports the captured path or `None`. Version caches belong to each server handle; standalone `get_version()` and `get_version_str()` retain their existing cache behavior.
+
+#### Python 3.11 minimum
+
+Minimum Python 3.11 (was 3.10). Session cleanup uses native
+`BaseExceptionGroup` to retain body and teardown failures, including
+`KeyboardInterrupt` and `SystemExit`.
+
+#### Captured server endpoints
+
+{class}`~libtmux.Server` resolves explicit socket selectors, then
+`LIBTMUX_SOCKET_PATH`, `LIBTMUX_SOCKET_NAME`, `TMUX`, and the default socket.
+It retains the absolute endpoint and client environment for its lifetime.
+Explicit paths must be absolute; passing both selectors raises `ValueError`.
+Socket names reject separators, NUL, `.` and `..`. Named/default selectors
+require an absolute `TMUX_TMPDIR` when set, and a missing root raises instead
+of falling back to another endpoint. Create a new handle to select a changed
+environment.
+
+```python
+import pathlib
+import libtmux
+
+# Before
+server = libtmux.Server(socket_path="relative.sock")
+# After
+server = libtmux.Server(socket_path=pathlib.Path("relative.sock").absolute())
+```
+
+### What's new
+
+#### Explicit remote ownership
+
+Call `.own()` on a server, session, window or pane to accept destruction responsibility. Owners retain the endpoint, daemon token and object ID, refuse replacement daemons, preserve paired body/cleanup failures and permit retry after failed teardown. Adoption reserves the server option `@libtmux_owner_generation`; invalid existing values fail acceptance. Session, window and pane contexts use the same ownership behavior. See {doc}`topics/context_managers` for complete examples.
+
+`resource.own(timeout=...)` bounds acceptance and cleanup, including time spent waiting for another close call. `Server.cmd(timeout=...)` terminates and reaps a timed-out client. A timeout cannot undo a remote operation that the client already dispatched.
+
+#### Client environment isolation and object cleanup
+
+{class}`~libtmux.Server` accepts `child_environment` overrides and exposes an
+immutable captured mapping. Client launches omit `TMUX` and `TMUX_PANE`
+without changing the host environment. Session, window and pane scopes target
+object IDs, including after a rename or a move to another parent.
+`BaseExceptionGroup` retains both a body exception and a cleanup exception.
+A failed cleanup can be retried; a prior successful destruction is harmless.
+`temp_window` uses the window scope's cleanup. Pytest finalizers retain exact
+endpoints and report cleanup failures.
+
+{class}`~libtmux.test.environment.EnvironmentVarGuard` restores each key's
+original state after repeated edits, including prior absence and exceptions.
+See {doc}`topics/configuration` for endpoint precedence and the separate
+client and tmux environment APIs.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

@@ -8,15 +8,11 @@ import typing as t
 from libtmux.test.random import get_test_session_name, get_test_window_name
 
 if t.TYPE_CHECKING:
-    import sys
     from collections.abc import Generator
 
     from libtmux.server import Server
     from libtmux.session import Session
     from libtmux.window import Window
-
-    if sys.version_info >= (3, 11):
-        pass
 
 
 @contextlib.contextmanager
@@ -60,13 +56,8 @@ def temp_session(
     else:
         session_name = get_test_session_name(server)
 
-    session = server.new_session(session_name, *args, **kwargs)
-
-    try:
+    with server.new_session(session_name, *args, **kwargs) as session:
         yield session
-    finally:
-        if server.has_session(session_name):
-            session.kill()
     return
 
 
@@ -117,16 +108,6 @@ def temp_window(
     else:
         window_name = kwargs.pop("window_name")
 
-    window = session.new_window(window_name, *args, **kwargs)
-
-    # Get ``window_id`` before returning it, it may be killed within context.
-    window_id = window.window_id
-    assert window_id is not None
-    assert isinstance(window_id, str)
-
-    try:
+    with session.new_window(window_name, *args, **kwargs) as window:
         yield window
-    finally:
-        if len(session.windows.filter(window_id=window_id)) > 0:
-            window.kill()
     return

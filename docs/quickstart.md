@@ -148,8 +148,10 @@ First, we can grab a {class}`~libtmux.Server`.
 >>> import libtmux
 >>> server = libtmux.Server()
 >>> server
-Server(socket_path=/tmp/tmux-.../default)
+Server(socket_path=...)
 ```
+
+The representation shows the absolute endpoint selected from your arguments or environment. Its location depends on your tmux configuration.
 
 :::{tip}
 

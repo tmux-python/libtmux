@@ -2,7 +2,7 @@
 name = "libtmux"
 version = "0.62.0"
 description = "Typed library that provides an ORM wrapper for tmux, a terminal multiplexer."
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.11,<4.0"
 authors = [
   {name = "Tony Narlock", email = "tony@git-pull.com"}
 ]
@@ -16,7 +16,6 @@ classifiers = [
   "Framework :: Pytest",
   "Intended Audience :: Developers",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -58,7 +57,6 @@ dev = [
   "sphinx-autobuild",
   "types-docutils",
   # Testing
-  "typing-extensions; python_version < '3.11'",
   "gp-libs>=0.0.19",
   "pytest",
   "pytest-rerunfailures",
@@ -81,7 +79,6 @@ docs = [
   "sphinx-autobuild",
 ]
 testing = [
-  "typing-extensions; python_version < '3.11'",
   "gp-libs>=0.0.19",
   "pytest",
   "pytest-rerunfailures",
@@ -94,7 +91,6 @@ coverage =[
   "pytest-cov",
 ]
 lint = [
-  "typing-extensions; python_version < '3.11'",
   "ruff>=0.16.1",
   "mypy",
 ]
@@ -142,7 +138,7 @@ sphinx-ux-badges = false
 
 [tool.mypy]
 strict = true
-python_version = "3.10"
+python_version = "3.11"
 files = [
   "src",
   "tests",
@@ -185,7 +181,7 @@ exclude_lines = [
 ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 # `select` is deliberately unset: ruff 0.16 enables a curated default rule

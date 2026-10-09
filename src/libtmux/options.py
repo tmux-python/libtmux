@@ -86,9 +86,7 @@ from libtmux.constants import (
 from . import exc
 
 if t.TYPE_CHECKING:
-    from typing import TypeAlias
-
-    from typing_extensions import Self
+    from typing import Self, TypeAlias
 
     from libtmux._internal.constants import TerminalFeatures
     from libtmux.common import tmux_cmd
@@ -515,7 +513,7 @@ def explode_complex(
                     try:
                         term, features = item.split(":", maxsplit=1)
                         new_val[term] = features.split(":")
-                    except Exception:  # NOQA: PERF203
+                    except Exception:
                         logger.warning(
                             "tmux options parse failed",
                             extra={"tmux_option_key": key},
@@ -542,7 +540,7 @@ def explode_complex(
                                 new_overrides[term][k] = int(v) if v.isdigit() else v
                             elif feature:
                                 new_overrides[term][feature] = None
-                    except Exception:  # NOQA: PERF203
+                    except Exception:
                         logger.warning(
                             "tmux options parse failed",
                             extra={"tmux_option_key": key},
@@ -561,7 +559,7 @@ def explode_complex(
                         ):
                             options[key] = {}
                         new_aliases[alias] = command
-                    except Exception:  # NOQA: PERF203
+                    except Exception:
                         logger.warning(
                             "tmux options parse failed",
                             extra={"tmux_option_key": key},
