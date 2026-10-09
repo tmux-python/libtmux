@@ -6,6 +6,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import time
 import typing as t
 
 import pytest
@@ -76,18 +77,23 @@ def test_known_creation_rolls_back_failed_materialization(
 
 @pytest.mark.parametrize("kind", ["session", "window", "pane"])
 @pytest.mark.parametrize("interrupt", [False, True])
+@pytest.mark.parametrize("hold_pipe", [False, True])
 def test_interrupted_client_retains_completed_creation_receipt(
     server: Server,
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     kind: str,
     interrupt: bool,
+    hold_pipe: bool,
 ) -> None:
     """Timeout or interruption after stdout still recovers the reported ID."""
+    if hold_pipe and sys.platform != "linux":
+        pytest.skip("observes descendant exit in /proc")
     server.new_session(session_name="keeper")
     before = _ids(server, kind)
     wrapper = tmp_path / "tmux-client"
     pid_file = tmp_path / "wrapper-pid"
+    child_pid = tmp_path / "pipe-owner-pid"
     binary = server._require_tmux_bin()
     operation = {
         "session": "new-session",
@@ -104,6 +110,13 @@ def test_interrupted_client_retains_completed_creation_receipt(
         "    os.write(1, result.stdout)\n"
         "    os.write(2, result.stderr)\n"
         f"    pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid()))\n"
+        f"    if {hold_pipe!r}:\n"
+        "        child = os.fork()\n"
+        "        if child == 0:\n"
+        "            os.setsid()\n"
+        "            time.sleep(3)\n"
+        "            os._exit(0)\n"
+        f"        pathlib.Path({str(child_pid)!r}).write_text(str(child))\n"
         f"    if {interrupt!r}: os.kill(os.getppid(), signal.SIGINT)\n"
         "    time.sleep(30)\n"
         f"os.execv({binary!r}, [{binary!r}, *sys.argv[1:]])\n"
@@ -119,11 +132,26 @@ def test_interrupted_client_retains_completed_creation_receipt(
 
     monkeypatch.setattr(client, "cmd", short_deadline)
     failure = KeyboardInterrupt if interrupt else subprocess.TimeoutExpired
-    with pytest.raises(failure):
-        _create(client, kind)
-    assert _ids(server, kind) == before
-    with pytest.raises(ChildProcessError):
-        os.waitpid(int(pid_file.read_text()), os.WNOHANG)
+    started = time.monotonic()
+    try:
+        with pytest.raises(failure):
+            _create(client, kind)
+        assert time.monotonic() - started < 2.0
+        assert _ids(server, kind) == before
+        assert server.has_session("keeper")
+        with pytest.raises(ChildProcessError):
+            os.waitpid(int(pid_file.read_text()), os.WNOHANG)
+    finally:
+        if child_pid.exists():
+            status = pathlib.Path(f"/proc/{int(child_pid.read_text())}/stat")
+
+            def descendant_exited() -> bool:
+                try:
+                    return status.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+                except FileNotFoundError:
+                    return True
+
+            assert retry_until(descendant_exited, seconds=4, interval=0.01)
 
 
 @pytest.mark.parametrize("kind", ["session", "window", "pane"])
