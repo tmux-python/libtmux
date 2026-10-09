@@ -82,6 +82,10 @@ server = libtmux.Server(socket_path=pathlib.Path("relative.sock").absolute())
 
 ### What's new
 
+#### Recovery after failed creation
+
+Session, window and pane creation retain the creating daemon's token and object ID before decoding snapshots. Failed readback or context entry rolls back that resource against the original daemon. Nonzero client results, timeouts and interruptions retain readable creation receipts. `CreationCleanupError` exposes a failed rollback's owner for inspection and retry; `UnknownCreation` reports missing or unreadable receipts without claiming that no resource was created. Creation now reserves `@libtmux_owner_generation`, and an existing malformed value fails before the create command.
+
 #### Explicit remote ownership
 
 Call `.own()` on a server, session, window or pane to accept destruction responsibility. Owners retain the endpoint, daemon token and object ID, refuse replacement daemons, preserve paired body/cleanup failures and permit retry after failed teardown. Adoption reserves the server option `@libtmux_owner_generation`; invalid existing values fail acceptance. Session, window and pane contexts use the same ownership behavior. See {doc}`topics/context_managers` for complete examples.

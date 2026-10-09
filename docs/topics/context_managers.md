@@ -16,7 +16,7 @@ This program uses your configured tmux endpoint, creates a session and removes t
 True
 ```
 
-Session, window and pane contexts accept ownership when entered. They retain the endpoint, daemon generation and object ID accepted at that point. Renaming a session or moving a window or pane does not redirect cleanup. A second active context on the same handle raises instead of replacing its unfinished cleanup scope.
+Session, window and pane contexts accept ownership when entered. Objects returned by creation retain the creating daemon's identity; context entry verifies that identity instead of accepting a replacement daemon. Handles returned by lookup accept their identity at entry. Renaming a session or moving a window or pane does not redirect cleanup. A second active context on the same handle raises instead of replacing its unfinished cleanup scope.
 
 ## Taking ownership of an existing object
 
@@ -79,7 +79,7 @@ On Linux, the owner retains a process descriptor to observe daemon exit. Removin
 
 ## Daemon identity
 
-Ownership acceptance initializes the reserved server option `@libtmux_owner_generation` if it is absent, then reads that token, PID, start time and object ID through the same tmux connection. The token contains 32 ASCII hexadecimal characters. An existing empty or malformed value fails acceptance without replacing the value. Keep this reserved option unchanged for the daemon's lifetime and do not shadow it on sessions or windows.
+Creation and ownership acceptance initialize the reserved server option `@libtmux_owner_generation` if it is absent, then read that token, PID, start time and object ID through the same tmux connection. The token contains 32 ASCII hexadecimal characters. An existing empty or malformed value fails before creation or acceptance without replacing the value. Keep this reserved option unchanged for the daemon's lifetime and do not shadow it on sessions or windows.
 
 The destructive command checks the token, PID and start time inside the receiving daemon's command dispatch. The random token distinguishes daemons even if the operating system reuses a PID within tmux's whole-second start-time precision. Changing the token after acceptance makes an existing owner stale; it does not authorize cleanup of another daemon.
 
@@ -89,4 +89,14 @@ If the body and teardown both fail, `BaseExceptionGroup` retains the body error 
 
 `resource.own(timeout=5.0)` bounds acceptance and each cleanup attempt, including time spent waiting for another cleanup call. A command timeout kills and reaps the tmux client process; it cannot undo a remote operation that was already dispatched. The owner remains open for inspection and retry. Garbage collection releases local observation descriptors and does not destroy remote resources. These APIs are synchronous; they do not provide an asynchronous task-cancellation supervisor.
 
-The repository's `tests/test_ownership.py` executes adoption for all four resource types, replacement refusal, edited-handle cleanup, a missing socket with a live daemon, paired failures and retry after a hung client. `tests/test_example_harness.py` executes the ordinary example unchanged under both socket environment defaults. Creation recovery, discovery and find-or-create are separate implementation work; this ownership API alone does not establish those guarantees.
+## Creation failures
+
+`Server.new_session()`, `Session.new_window()` and `Pane.split()` retain a creation receipt before decoding the returned object. The receipt contains the endpoint, daemon generation and new object ID. A failed snapshot, parser, context entry or final generation check triggers rollback of that known resource. The same rule applies when tmux returns an ID alongside a nonzero client status. A timeout or Ctrl-C kills and reaps the client, retains readable receipt bytes and attempts that rollback before re-raising the original failure. Rollback uses the original daemon identity and cannot destroy a replacement daemon.
+
+Each creation command, identity query and rollback has a five-second client deadline. This is a per-step limit, not a five-second limit on the whole Python call. Snapshot queries retain their existing timeout behavior. These synchronous calls do not supervise a killed Python process; the external harness must own that recovery boundary.
+
+If rollback also fails, the resulting `BaseExceptionGroup` retains the original operation error and a `CreationCleanupError`. That error's `__cause__` is the cleanup failure. Its `owner.identity` identifies the resource, `owner.cleanup_error` retains the failure, and `owner.close()` retries after the cause is repaired. An interruption during rollback remains a `BaseException` in the group alongside the recovery owner.
+
+`UnknownCreation` means the client returned no trustworthy receipt. This includes a successful empty response or a timeout without a readable ID. Inspect the endpoint before retrying; a new resource may exist. Ctrl-C without a receipt remains `KeyboardInterrupt` with a note explaining that uncertainty. The `select_existing=True` window option can also return no creation output when tmux selects an existing window; it does not supply a created/reused result. A valid new-window receipt still requires rollback if later work fails.
+
+The repository's `tests/test_creation_recovery.py` executes failed materialization, daemon replacement before return or context entry, nonzero results with valid IDs, paired rollback failures, retry, timeout, interruption and missing-receipt behavior. `tests/test_ownership.py` executes adoption for all four resource types, replacement refusal, edited-handle cleanup and a missing socket with a live daemon. `tests/test_example_harness.py` executes the ordinary example unchanged under both socket environment defaults. Discovery and explicit created/reused find-or-create APIs remain separate implementation work.

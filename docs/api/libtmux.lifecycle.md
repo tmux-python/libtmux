@@ -2,5 +2,5 @@
 
 ```{eval-rst}
 .. automodule:: libtmux.lifecycle
-   :members: Owned, OwnedIdentity
+   :members: Owned, OwnedIdentity, CreationCleanupError, UnknownCreation
 ```

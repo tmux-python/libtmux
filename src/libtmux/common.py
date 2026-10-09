@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import concurrent.futures
 import functools
 import logging
 import os
@@ -24,7 +25,7 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Self
 
-    from libtmux.lifecycle import Owned
+    from libtmux.lifecycle import Owned, _CreationReceipt
     from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class CmdMixin:
     """Command mixin for tmux command."""
 
     cmd: CmdProtocol
+    _creation_receipt: _CreationReceipt | None
 
     def own(self, *, timeout: float = 5.0) -> Owned[Self]:
         """Accept remote destruction responsibility for this existing object.
@@ -71,6 +73,18 @@ class CmdMixin:
         from libtmux.lifecycle import Owned
 
         return Owned(self, timeout=timeout)
+
+    def _enter_owned(self) -> Owned[Self]:
+        """Recover a known creation if accepting its automatic scope fails."""
+        from libtmux.lifecycle import _CreationReceipt, _rollback_creation
+
+        try:
+            return self.own()
+        except BaseException as failure:
+            receipt = getattr(self, "_creation_receipt", None)
+            if isinstance(receipt, _CreationReceipt):
+                _rollback_creation(receipt, failure)
+            raise
 
     def _supports_version(self, minimum: str) -> bool:
         """Check capabilities with this object's captured tmux client."""
@@ -353,6 +367,7 @@ class tmux_cmd:
         tmux_bin: str | None = None,
         env: t.Mapping[str, str] | None = None,
         timeout: float | None = None,
+        _on_completion: Callable[[tmux_cmd], None] | None = None,
     ) -> None:
         client_env = dict(os.environ if env is None else env)
         client_env.pop("TMUX", None)
@@ -386,13 +401,26 @@ class tmux_cmd:
                 errors="backslashreplace",
                 env=client_env,
             )
-            try:
-                stdout, stderr = self.process.communicate(timeout=timeout)
-            except BaseException:
-                self.process.kill()
-                self.process.communicate()
-                raise
-            returncode = self.process.returncode
+            if _on_completion is None:
+                stdout, stderr, interrupted = self._communicate(timeout)
+                self._record_output(stdout, stderr)
+            else:
+                # SIGINT must not consume receipt bytes between read and append.
+                # A worker keeps draining while the main thread handles interruption.
+                def receive() -> BaseException | None:
+                    stdout, stderr, failure = self._communicate(timeout)
+                    self._record_output(stdout, stderr)
+                    _on_completion(self)
+                    return failure
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    reader = pool.submit(receive)
+                    try:
+                        interrupted = reader.result()
+                    except BaseException as failure:  # noqa: BLE001 - re-raised below
+                        self.process.kill()
+                        reader.result()
+                        interrupted = failure
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
@@ -404,20 +432,8 @@ class tmux_cmd:
             )
             raise
 
-        self.returncode = returncode
-
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
-
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
-
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
+        if interrupted is not None:
+            raise interrupted
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -431,6 +447,30 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    def _record_output(self, stdout: str, stderr: str) -> None:
+        """Retain command output before the main thread resumes an interrupted call."""
+        self.returncode = self.process.returncode
+        stdout_split = stdout.split("\n")
+        while stdout_split and stdout_split[-1] == "":
+            stdout_split.pop()
+        self.stderr = list(filter(None, stderr.split("\n")))
+        if "has-session" in self.cmd and self.stderr and not stdout_split:
+            self.stdout = [self.stderr[0]]
+        else:
+            self.stdout = stdout_split
+
+    def _communicate(
+        self, timeout: float | None
+    ) -> tuple[str, str, BaseException | None]:
+        """Reap a failed client before handing off its partial stdout receipt."""
+        try:
+            stdout, stderr = self.process.communicate(timeout=timeout)
+        except BaseException as failure:  # noqa: BLE001 - returned for caller to raise
+            self.process.kill()
+            stdout, stderr = self.process.communicate()
+            return stdout, stderr, failure
+        return stdout, stderr, None
 
 
 class _TmuxVersionUnavailable(Exception):

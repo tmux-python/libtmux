@@ -33,6 +33,7 @@ from libtmux.common import (
 )
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
+from libtmux.lifecycle import _creation, _creation_format
 from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -431,6 +432,7 @@ class Server(
         *args: t.Any,
         target: str | int | None = None,
         timeout: float | None = None,
+        _on_completion: t.Callable[[tmux_cmd], None] | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -497,12 +499,16 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
+        completion: dict[str, t.Any] = {}
+        if _on_completion is not None:
+            completion["_on_completion"] = _on_completion
         return tmux_cmd(
             *svr_args,
             *cmd_args,
             tmux_bin=self._require_tmux_bin(),
             env=self.child_environment,
             timeout=timeout,
+            **completion,
         )
 
     @property
@@ -2454,7 +2460,10 @@ class Server(
         tmux_version = str(self._version)
         _fields, format_string = get_output_format("list-sessions", tmux_version)
 
-        tmux_args: tuple[str | int, ...] = ("-P", f"-F{format_string}")
+        tmux_args: tuple[str | int, ...] = (
+            "-P",
+            f"-F{_creation_format('session', format_string)}",
+        )
         if detach_others:
             tmux_args += ("-D",)
         if no_size:
@@ -2480,20 +2489,18 @@ class Server(
         if window_command:
             tmux_args += (window_command,)
 
-        proc = self.cmd("new-session", *tmux_args)
-        raise_if_stderr(proc, "new-session")
-        session_stdout = proc.stdout[0]
+        with _creation(self, "session", "new-session", tmux_args) as (proc, receipt):
+            session_stdout = proc.stdout[0]
+            session_data = parse_output(session_stdout, "list-sessions", tmux_version)
+            session = Session(server=self, **session_data)
+            session._creation_receipt = receipt
 
-        session_data = parse_output(session_stdout, "list-sessions", tmux_version)
-
-        session = Session(server=self, **session_data)
-
-        info_extra: dict[str, str] = {
-            "tmux_subcommand": "new-session",
-        }
-        if session.session_name is not None:
-            info_extra["tmux_session"] = str(session.session_name)
-        logger.info("session created", extra=info_extra)
+            info_extra: dict[str, str] = {
+                "tmux_subcommand": "new-session",
+            }
+            if session.session_name is not None:
+                info_extra["tmux_session"] = str(session.session_name)
+            logger.info("session created", extra=info_extra)
 
         return session
 
