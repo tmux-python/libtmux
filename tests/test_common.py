@@ -16,7 +16,7 @@ import pytest
 
 import libtmux
 from libtmux import exc
-from libtmux._compat import LooseVersion
+from libtmux._compat import BaseExceptionGroup, LooseVersion
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,
@@ -101,6 +101,100 @@ def test_failed_client_does_not_wait_for_inherited_output_pipes(
         if child_pid.exists():
             status = pathlib.Path(f"/proc/{int(child_pid.read_text())}/stat")
             deadline = time.monotonic() + 4
+            while status.exists():
+                try:
+                    if status.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+                        break
+                except FileNotFoundError:
+                    break
+                assert time.monotonic() < deadline, "pipe owner did not exit"
+                time.sleep(0.01)
+
+
+@pytest.mark.parametrize("stream_name", ["stdout", "stderr"])
+@pytest.mark.parametrize("interrupt", [False, True])
+@pytest.mark.parametrize("hold_pipe", [False, True])
+@pytest.mark.skipif(sys.platform != "linux", reason="observes descendant exit in /proc")
+def test_reader_close_failure_retains_receipt_and_reaps_client(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stream_name: str,
+    interrupt: bool,
+    hold_pipe: bool,
+) -> None:
+    """Inject a close error after a real client's timeout or interruption."""
+    wrapper = tmp_path / "tmux-client"
+    child_pid = tmp_path / "child-pid"
+    wrapper.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, signal, time\n"
+        "os.write(1, b'completed receipt\\n')\n"
+        "os.write(2, b'client diagnostic\\n')\n"
+        f"if {hold_pipe!r}:\n"
+        "    child = os.fork()\n"
+        "    if child == 0:\n"
+        "        time.sleep(1)\n"
+        "        os._exit(0)\n"
+        f"    pathlib.Path({str(child_pid)!r}).write_text(str(child))\n"
+        f"if {interrupt!r}:\n"
+        "    time.sleep(0.1)\n"
+        "    os.kill(os.getppid(), signal.SIGINT)\n"
+        "time.sleep(30)\n"
+    )
+    wrapper.chmod(0o700)
+    processes: list[subprocess.Popen[str]] = []
+    original_popen = subprocess.Popen
+    close_error = OSError("reader close failed")
+
+    def launch(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[str]:
+        process = original_popen(*args, **kwargs)
+        processes.append(process)
+        stream = getattr(process, stream_name)
+        original_close = stream.close
+        failed = False
+
+        def close() -> None:
+            nonlocal failed
+            if not failed:
+                failed = True
+                raise close_error
+            original_close()
+
+        monkeypatch.setattr(stream, "close", close)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    observed: list[tmux_cmd] = []
+    try:
+        with pytest.raises(BaseExceptionGroup) as caught:
+            tmux_cmd(
+                tmux_bin=str(wrapper),
+                timeout=None if interrupt else 0.3,
+                _on_completion=observed.append,
+            )
+        assert len(caught.value.exceptions) == 2
+        assert isinstance(
+            caught.value.exceptions[0],
+            KeyboardInterrupt if interrupt else subprocess.TimeoutExpired,
+        )
+        assert caught.value.exceptions[1] is close_error
+        assert len(observed) == 1
+        assert observed[0].stdout == ["completed receipt"]
+        assert observed[0].stderr == ["client diagnostic"]
+        assert observed[0].returncode is not None
+        with pytest.raises(ChildProcessError):
+            os.waitpid(processes[0].pid, os.WNOHANG)
+    finally:
+        for process in processes:
+            if process.returncode is None:
+                process.kill()
+                process.wait(timeout=2)
+            for stream in (process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
+        if child_pid.exists():
+            status = pathlib.Path(f"/proc/{int(child_pid.read_text())}/stat")
+            deadline = time.monotonic() + 3
             while status.exists():
                 try:
                     if status.read_text().rsplit(")", 1)[1].split()[0] == "Z":
