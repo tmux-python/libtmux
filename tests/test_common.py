@@ -113,7 +113,10 @@ def test_failed_client_does_not_wait_for_inherited_output_pipes(
 
 @pytest.mark.parametrize("stream_name", ["stdout", "stderr"])
 @pytest.mark.parametrize("interrupt", [False, True])
-@pytest.mark.parametrize("hold_pipe", [False, True])
+@pytest.mark.parametrize(
+    ("hold_pipe", "late_output"),
+    [(False, False), (True, False), pytest.param(False, True, id="late-output")],
+)
 @pytest.mark.skipif(sys.platform != "linux", reason="observes descendant exit in /proc")
 def test_reader_close_failure_retains_receipt_and_reaps_client(
     tmp_path: pathlib.Path,
@@ -121,6 +124,7 @@ def test_reader_close_failure_retains_receipt_and_reaps_client(
     stream_name: str,
     interrupt: bool,
     hold_pipe: bool,
+    late_output: bool,
 ) -> None:
     """Inject a close error after a real client's timeout or interruption."""
     wrapper = tmp_path / "tmux-client"
@@ -128,12 +132,22 @@ def test_reader_close_failure_retains_receipt_and_reaps_client(
     wrapper.write_text(
         f"#!{sys.executable}\n"
         "import os, pathlib, signal, time\n"
-        "os.write(1, b'completed receipt\\n')\n"
-        "os.write(2, b'client diagnostic\\n')\n"
-        f"if {hold_pipe!r}:\n"
+        f"if not {late_output!r}:\n"
+        "    os.write(1, b'completed receipt\\n')\n"
+        "    os.write(2, b'client diagnostic\\n')\n"
+        f"if {hold_pipe or late_output!r}:\n"
+        "    parent = os.getpid()\n"
         "    child = os.fork()\n"
         "    if child == 0:\n"
-        "        time.sleep(1)\n"
+        f"        if {late_output!r}:\n"
+        "            deadline = time.monotonic() + 2\n"
+        "            while os.getppid() == parent:\n"
+        "                if time.monotonic() >= deadline: os._exit(3)\n"
+        "                time.sleep(0.001)\n"
+        "            os.write(1, b'completed receipt\\n')\n"
+        "            os.write(2, b'client diagnostic\\n')\n"
+        "        else:\n"
+        "            time.sleep(1)\n"
         "        os._exit(0)\n"
         f"    pathlib.Path({str(child_pid)!r}).write_text(str(child))\n"
         f"if {interrupt!r}:\n"

@@ -8,10 +8,12 @@ libtmux.common
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import functools
 import logging
 import os
 import re
+import selectors
 import shlex
 import shutil
 import subprocess
@@ -479,62 +481,80 @@ class tmux_cmd:
         """Bound failed-client cleanup even when another process holds its pipes."""
         deadline = None if timeout is None else time.monotonic() + timeout
         failures: list[BaseException] = []
-        partial_output: subprocess.TimeoutExpired | None = None
+        output = (bytearray(), bytearray())
+        selector: selectors.BaseSelector | None = None
+        completed = False
+
+        def read_ready(reader: selectors.BaseSelector, interval: float | None) -> None:
+            for key, _ in reader.select(interval):
+                chunk = os.read(key.fd, 32768)
+                if chunk:
+                    # Preserve receipt bytes before EOF handling can fail.
+                    output[key.data].extend(chunk)
+                else:
+                    reader.unregister(key.fd)
+
         try:
-            while cancelled is None or not cancelled.is_set():
-                remaining = (
-                    None if deadline is None else max(0.0, deadline - time.monotonic())
-                )
+            selector = selectors.DefaultSelector()
+            for index, stream in enumerate((self.process.stdout, self.process.stderr)):
+                if stream is not None:
+                    selector.register(stream, selectors.EVENT_READ, index)
+            while selector.get_map() or self.process.poll() is None:
+                if cancelled is not None and cancelled.is_set():
+                    break
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if timeout is not None and remaining is not None and remaining <= 0:
+                    failures.append(subprocess.TimeoutExpired(self.cmd, timeout))
+                    break
                 interval = remaining
                 if cancelled is not None:
                     interval = 0.05 if remaining is None else min(0.05, remaining)
-                try:
-                    stdout, stderr = self.process.communicate(timeout=interval)
-                except subprocess.TimeoutExpired as failure:
-                    partial_output = failure
-                    if cancelled is None or (
-                        deadline is not None and time.monotonic() >= deadline
-                    ):
-                        if timeout is not None:
-                            failure.timeout = timeout
-                        raise
+                if selector.get_map():
+                    read_ready(selector, interval)
                 else:
-                    return stdout, stderr, None
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        self.process.wait(timeout=interval)
+            else:
+                completed = True
         except BaseException as failure:  # noqa: BLE001 - returned for caller to raise
             failures.append(failure)
-        try:
-            self.process.kill()
-        except OSError as failure:
-            failures.append(failure)
 
-        output: tuple[str, str] | None = None
-        try:
-            output = self.process.communicate(timeout=0.1)
-        except subprocess.TimeoutExpired as partial:
-            partial_output = partial
-        except BaseException as failure:  # noqa: BLE001 - retained with initial failure
-            failures.append(failure)
-        finally:
-            for stream in (self.process.stdout, self.process.stderr):
-                if stream is not None:
-                    try:
-                        stream.close()
-                    except BaseException as failure:  # noqa: BLE001 - preserve receipt
-                        failures.append(failure)
+        if not completed:
+            try:
+                self.process.kill()
+            except BaseException as failure:  # noqa: BLE001 - preserve initial failure
+                failures.append(failure)
+            if selector is not None:
+                drain_deadline = time.monotonic() + 0.1
+                try:
+                    while selector.get_map():
+                        remaining = drain_deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        read_ready(selector, remaining)
+                except BaseException as failure:  # noqa: BLE001 - preserve receipt
+                    failures.append(failure)
+
+        for resource in (self.process.stdout, self.process.stderr, selector):
+            if resource is not None:
+                try:
+                    resource.close()
+                except BaseException as failure:  # noqa: BLE001 - preserve receipt
+                    failures.append(failure)
         try:
             self.process.wait(timeout=0.1)
-        except (OSError, subprocess.TimeoutExpired) as failure:
+        except BaseException as failure:  # noqa: BLE001 - preserve initial failure
             failures.append(failure)
-        if output is None:
-            # TimeoutExpired retains bytes even for text-mode Popen streams.
-            raw_stdout = partial_output.output if partial_output is not None else None
-            raw_stderr = partial_output.stderr if partial_output is not None else None
-            stdout = (raw_stdout or b"").decode("utf-8", "backslashreplace")
-            stderr = (raw_stderr or b"").decode("utf-8", "backslashreplace")
-            stdout = stdout.replace("\r\n", "\n").replace("\r", "\n")
-            stderr = stderr.replace("\r\n", "\n").replace("\r", "\n")
-        else:
-            stdout, stderr = output
+        for command_error in failures:
+            if isinstance(command_error, subprocess.TimeoutExpired):
+                command_error.output = bytes(output[0]) or None
+                command_error.stderr = bytes(output[1]) or None
+        stdout, stderr = (
+            raw.decode("utf-8", "backslashreplace")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            for raw in output
+        )
         if len(failures) > 1:
             message = "client command and cleanup failed"
             return stdout, stderr, BaseExceptionGroup(message, failures)
