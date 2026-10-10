@@ -1765,3 +1765,34 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_server_timeout_bounds_every_command(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """A server-level timeout is the policy for commands through it."""
+    binary, _pid_file = hanging_tmux
+    server = Server(tmux_bin=binary, timeout=0.3)
+
+    with pytest.raises(exc.TmuxTimeout):
+        server.cmd("list-sessions")
+
+
+@pytest.mark.parametrize("accessor", ["sessions", "windows", "panes", "clients"])
+def test_a_wedged_server_is_not_reported_as_empty(
+    hanging_tmux: tuple[str, pathlib.Path],
+    accessor: str,
+) -> None:
+    """A listing must raise rather than answer empty.
+
+    A tmux server that stopped answering has not said it has nothing.
+    Returning ``[]`` sends a caller on to create a session on a server
+    that already has them. Every accessor is covered because three of
+    them reimplemented the "empty means not ready" rule inline instead
+    of sharing it.
+    """
+    binary, _pid_file = hanging_tmux
+    server = Server(tmux_bin=binary, timeout=0.3)
+
+    with pytest.raises(exc.TmuxTimeout):
+        _ = getattr(server, accessor)
