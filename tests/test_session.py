@@ -16,6 +16,7 @@ from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import namer
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -341,9 +342,14 @@ def test_new_window_with_environment(
     )
     pane = window.active_pane
     assert pane is not None
+    retry_until(lambda: pane.capture_pane() == ["$"], 2, raises=True)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+
+        def output_matches(expected: str = v) -> bool:
+            return pane.capture_pane()[-2:] == [expected, "$"]
+
+        retry_until(output_matches, 2, raises=True)
 
 
 def test_session_new_window_with_direction(

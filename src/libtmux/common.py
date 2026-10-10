@@ -7,20 +7,34 @@ libtmux.common
 
 from __future__ import annotations
 
+import concurrent.futures
+import contextlib
 import functools
 import logging
+import os
 import re
+import selectors
 import shlex
 import shutil
 import subprocess
 import sys
+import threading
+import time
 import typing as t
 
 from . import exc
-from ._compat import LooseVersion
+from ._compat import BaseExceptionGroup, LooseVersion
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
+
+    from libtmux.lifecycle import Owned, _CreationReceipt
+    from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +63,41 @@ class CmdMixin:
     """Command mixin for tmux command."""
 
     cmd: CmdProtocol
+    _creation_receipt: _CreationReceipt | None
+
+    def own(self, *, timeout: float = 5.0) -> Owned[Self]:
+        """Accept remote destruction responsibility for this existing object.
+
+        Parameters
+        ----------
+        timeout : float
+            Maximum seconds for acceptance and for each cleanup attempt.
+
+        Returns
+        -------
+        Owned
+            Context manager retaining the endpoint, daemon and object identity.
+        """
+        from libtmux.lifecycle import Owned
+
+        return Owned(self, timeout=timeout)
+
+    def _enter_owned(self) -> Owned[Self]:
+        """Recover a known creation if accepting its automatic scope fails."""
+        from libtmux.lifecycle import _CreationReceipt, _rollback_creation
+
+        try:
+            return self.own()
+        except BaseException as failure:
+            receipt = getattr(self, "_creation_receipt", None)
+            if isinstance(receipt, _CreationReceipt):
+                _rollback_creation(receipt, failure)
+            raise
+
+    def _supports_version(self, minimum: str) -> bool:
+        """Check capabilities with this object's captured tmux client."""
+        server = t.cast("Server", getattr(self, "server", self))
+        return server._version >= LooseVersion(minimum)
 
 
 class EnvironmentMixin:
@@ -280,6 +329,17 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+def _run_cleanup(cleanup: Callable[[], None], body_error: BaseException | None) -> None:
+    """Run teardown and retain a body error if teardown also fails."""
+    try:
+        cleanup()
+    except BaseException as cleanup_error:
+        if body_error is not None:
+            message = "resource body and cleanup both failed"
+            raise BaseExceptionGroup(message, [body_error, cleanup_error]) from None
+        raise
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
@@ -309,8 +369,20 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
-        resolved = tmux_bin or shutil.which("tmux")
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        env: t.Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        _on_completion: Callable[[tmux_cmd], None] | None = None,
+    ) -> None:
+        client_env = dict(os.environ if env is None else env)
+        client_env.pop("TMUX", None)
+        client_env.pop("TMUX_PANE", None)
+        resolved = tmux_bin or shutil.which(
+            "tmux", path=client_env.get("PATH", os.defpath)
+        )
         if not resolved:
             raise exc.TmuxCommandNotFound
 
@@ -335,9 +407,35 @@ class tmux_cmd:
                 text=True,
                 encoding="utf-8",
                 errors="backslashreplace",
+                env=client_env,
             )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
+            if _on_completion is None:
+                stdout, stderr, interrupted = self._communicate(timeout)
+                self._record_output(stdout, stderr)
+            else:
+                # SIGINT must not consume receipt bytes between read and append.
+                # A worker keeps draining while the main thread handles interruption.
+                cancelled = threading.Event()
+
+                def receive() -> BaseException | None:
+                    stdout, stderr, failure = self._communicate(timeout, cancelled)
+                    self._record_output(stdout, stderr)
+                    _on_completion(self)
+                    return failure
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    reader = pool.submit(receive)
+                    try:
+                        interrupted = reader.result()
+                    except BaseException as failure:  # noqa: BLE001 - re-raised below
+                        cancelled.set()
+                        cleanup_error = reader.result()
+                        if cleanup_error is not None:
+                            message = "client interruption and cleanup both failed"
+                            raise BaseExceptionGroup(
+                                message, [failure, cleanup_error]
+                            ) from None
+                        interrupted = failure
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
@@ -349,20 +447,8 @@ class tmux_cmd:
             )
             raise
 
-        self.returncode = returncode
-
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
-
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
-
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
+        if interrupted is not None:
+            raise interrupted
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -376,6 +462,103 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    def _record_output(self, stdout: str, stderr: str) -> None:
+        """Retain command output before the main thread resumes an interrupted call."""
+        self.returncode = self.process.returncode
+        stdout_split = stdout.split("\n")
+        while stdout_split and stdout_split[-1] == "":
+            stdout_split.pop()
+        self.stderr = list(filter(None, stderr.split("\n")))
+        if "has-session" in self.cmd and self.stderr and not stdout_split:
+            self.stdout = [self.stderr[0]]
+        else:
+            self.stdout = stdout_split
+
+    def _communicate(
+        self, timeout: float | None, cancelled: threading.Event | None = None
+    ) -> tuple[str, str, BaseException | None]:
+        """Bound failed-client cleanup even when another process holds its pipes."""
+        deadline = None if timeout is None else time.monotonic() + timeout
+        failures: list[BaseException] = []
+        output = (bytearray(), bytearray())
+        selector: selectors.BaseSelector | None = None
+        completed = False
+
+        def read_ready(reader: selectors.BaseSelector, interval: float | None) -> None:
+            for key, _ in reader.select(interval):
+                chunk = os.read(key.fd, 32768)
+                if chunk:
+                    # Preserve receipt bytes before EOF handling can fail.
+                    output[key.data].extend(chunk)
+                else:
+                    reader.unregister(key.fd)
+
+        try:
+            selector = selectors.DefaultSelector()
+            for index, stream in enumerate((self.process.stdout, self.process.stderr)):
+                if stream is not None:
+                    selector.register(stream, selectors.EVENT_READ, index)
+            while selector.get_map() or self.process.poll() is None:
+                if cancelled is not None and cancelled.is_set():
+                    break
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if timeout is not None and remaining is not None and remaining <= 0:
+                    failures.append(subprocess.TimeoutExpired(self.cmd, timeout))
+                    break
+                interval = remaining
+                if cancelled is not None:
+                    interval = 0.05 if remaining is None else min(0.05, remaining)
+                if selector.get_map():
+                    read_ready(selector, interval)
+                else:
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        self.process.wait(timeout=interval)
+            else:
+                completed = True
+        except BaseException as failure:  # noqa: BLE001 - returned for caller to raise
+            failures.append(failure)
+
+        if not completed:
+            try:
+                self.process.kill()
+            except BaseException as failure:  # noqa: BLE001 - preserve initial failure
+                failures.append(failure)
+            if selector is not None:
+                drain_deadline = time.monotonic() + 0.1
+                try:
+                    while selector.get_map():
+                        remaining = drain_deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        read_ready(selector, remaining)
+                except BaseException as failure:  # noqa: BLE001 - preserve receipt
+                    failures.append(failure)
+
+        for resource in (self.process.stdout, self.process.stderr, selector):
+            if resource is not None:
+                try:
+                    resource.close()
+                except BaseException as failure:  # noqa: BLE001 - preserve receipt
+                    failures.append(failure)
+        try:
+            self.process.wait(timeout=0.1)
+        except BaseException as failure:  # noqa: BLE001 - preserve initial failure
+            failures.append(failure)
+        for command_error in failures:
+            if isinstance(command_error, subprocess.TimeoutExpired):
+                command_error.output = bytes(output[0]) or None
+                command_error.stderr = bytes(output[1]) or None
+        stdout, stderr = (
+            raw.decode("utf-8", "backslashreplace")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            for raw in output
+        )
+        if len(failures) > 1:
+            message = "client command and cleanup failed"
+            return stdout, stderr, BaseExceptionGroup(message, failures)
+        return stdout, stderr, failures[0] if failures else None
 
 
 class _TmuxVersionUnavailable(Exception):
@@ -397,7 +580,11 @@ def _no_version_flag_fallback() -> str:
     raise exc.LibTmuxException(msg)
 
 
-def _query_version(tmux_bin: str | None = None) -> str:
+def _query_version(
+    tmux_bin: str | None = None,
+    *,
+    env: t.Mapping[str, str] | None = None,
+) -> str:
     """Return the raw ``tmux -V`` version token, letter suffix intact.
 
     Runs ``tmux -V`` and extracts the version token (e.g. ``"3.7a"``,
@@ -408,6 +595,8 @@ def _query_version(tmux_bin: str | None = None) -> str:
     ----------
     tmux_bin : str, optional
         Path to tmux binary. If *None*, uses the system tmux.
+    env : Mapping[str, str], optional
+        Captured environment for the version probe.
 
     Returns
     -------
@@ -422,7 +611,11 @@ def _query_version(tmux_bin: str | None = None) -> str:
     :exc:`~libtmux.exc.VersionTooLow`
         tmux reported another error on ``-V``.
     """
-    proc = tmux_cmd("-V", tmux_bin=tmux_bin)
+    proc = (
+        tmux_cmd("-V", tmux_bin=tmux_bin)
+        if env is None
+        else tmux_cmd("-V", tmux_bin=tmux_bin, env=env)
+    )
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
             raise _TmuxVersionUnavailable
@@ -506,7 +699,11 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
         # OpenBSD base tmux lacks ``-V``; skip letter-stripping on the synthetic.
         return LooseVersion(_no_version_flag_fallback())
 
-    # Allow latest tmux HEAD
+    return _parse_version(version)
+
+
+def _parse_version(version: str) -> LooseVersion:
+    """Normalize a raw tmux version for capability comparisons."""
     if version == "master":
         return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 

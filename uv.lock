@@ -501,7 +501,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -759,6 +759,9 @@ wheels = [
 name = "libtmux"
 version = "0.62.0"
 source = { editable = "." }
+dependencies = [
+    { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
+]
 
 [package.dev-dependencies]
 coverage = [
@@ -769,6 +772,7 @@ coverage = [
 dev = [
     { name = "codecov" },
     { name = "coverage" },
+    { name = "exceptiongroup" },
     { name = "gp-libs" },
     { name = "gp-sphinx" },
     { name = "mypy" },
@@ -794,6 +798,7 @@ docs = [
     { name = "sphinx-autodoc-pytest-fixtures" },
 ]
 lint = [
+    { name = "exceptiongroup" },
     { name = "mypy" },
     { name = "ruff" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
@@ -808,6 +813,7 @@ testing = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "exceptiongroup", marker = "python_full_version < '3.11'", specifier = ">=1.2" }]
 
 [package.metadata.requires-dev]
 coverage = [
@@ -818,6 +824,7 @@ coverage = [
 dev = [
     { name = "codecov" },
     { name = "coverage" },
+    { name = "exceptiongroup", specifier = ">=1.2" },
     { name = "gp-libs", specifier = ">=0.0.19" },
     { name = "gp-sphinx", specifier = "==0.1.0a39" },
     { name = "mypy" },
@@ -841,6 +848,7 @@ docs = [
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.1.0a39" },
 ]
 lint = [
+    { name = "exceptiongroup", specifier = ">=1.2" },
     { name = "mypy" },
     { name = "ruff", specifier = ">=0.16.1" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
