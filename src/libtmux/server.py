@@ -426,6 +426,37 @@ class Server(
             probe_timeout=probe_timeout,
         )
 
+    def ensure_running(self, *, timeout: float = 5.0) -> Self:
+        """Start the selected daemon if needed and return this server handle.
+
+        A newly started daemon has ``exit-empty`` set to ``off``, so it remains
+        available before the first session is created. Reusing a daemon leaves
+        its sessions, options and environment unchanged. Concurrent startup
+        calls use tmux's startup lock and return handles for the same daemon.
+        No bootstrap session is created.
+
+        The daemon remains available after this handle leaves scope or is
+        collected. Use :meth:`find_or_create` when a created daemon should
+        belong to an explicit cleanup scope.
+
+        Parameters
+        ----------
+        timeout : float
+            Positive finite seconds for each startup, acceptance and failure
+            rollback operation. An interrupted startup rolls back a daemon only
+            when this call received proof that it created that daemon. Without
+            that proof, the failure reports uncertainty; inspect the endpoint
+            before retrying.
+
+        Returns
+        -------
+        Server
+            This handle, using its captured endpoint and client environment.
+        """
+        # Discarding an owner releases its local PID handle; it does not kill tmux.
+        _find_or_create_server(self, timeout)
+        return self
+
     def find_or_create(self, *, timeout: float = 5.0) -> FoundOrCreated[Server]:
         """Borrow the answering daemon or own a daemon whose startup this call proves.
 

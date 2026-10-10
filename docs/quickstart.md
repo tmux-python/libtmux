@@ -103,6 +103,16 @@ via trunk (can break easily):
 [uvx]: https://docs.astral.sh/uv/guides/tools/
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 
+## Create or reuse a session
+
+Run this program with or without an existing tmux daemon. {meth}`~libtmux.Server.ensure_running` starts the selected daemon when needed. The program uses your configured endpoint, creates or reuses the named session and window, and leaves them available afterward.
+
+```{literalinclude} ../examples/workspace.py
+:language: python
+```
+
+The {attr}`~libtmux.FoundOrCreated.value` property gives you the session or window handle. Repeating the program reuses those names. See {ref}`context_managers` when you want to remove objects at scope exit. The interactive walkthrough below shows how to work with a session you start from your terminal.
+
 ## Start a tmux session
 
 Now, let's open a tmux session.

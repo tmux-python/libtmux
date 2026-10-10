@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import dataclasses
+import gc
+import math
 import pathlib
 import subprocess
 import sys
@@ -18,6 +20,96 @@ from libtmux.lifecycle import CreationCleanupError, UnknownCreation
 
 if t.TYPE_CHECKING:
     from libtmux.common import tmux_cmd
+
+
+def test_ensure_running_stays_usable_without_an_owned_scope(server: Server) -> None:
+    """An empty daemon stays alive after repeated calls and handle collection."""
+    assert not server.is_alive()
+    assert server.ensure_running() is server
+    identity = server.cmd("display-message", "-p", "#{pid}|#{start_time}").stdout
+    assert len(identity) == 1
+    assert all(int(field) > 0 for field in identity[0].split("|"))
+    assert server.sessions == []
+    for _ in range(3):
+        assert server.ensure_running() is server
+        gc.collect()
+        assert (
+            server.cmd("display-message", "-p", "#{pid}|#{start_time}").stdout
+            == identity
+        )
+        assert server.sessions == []
+    with server:
+        session = server.new_session("ordinary-workspace")
+    assert session.session_id is not None
+    assert server.has_session(session.session_id)
+
+
+def test_ensure_running_keeps_existing_sessions_and_configuration(
+    server: Server,
+) -> None:
+    """Reusing a daemon preserves its options, environment and existing objects."""
+    session = server.new_session("already-working")
+    server.cmd("set-option", "-s", "@ordinary-example", "keep-this")
+    server.cmd("set-option", "-g", "status", "off")
+    server.cmd("set-environment", "-g", "EXISTING_WORKSPACE", "keep-this-too")
+    before = {
+        command: server.cmd(*command).stdout
+        for command in (
+            ("display-message", "-p", "#{pid}|#{start_time}"),
+            ("show-options", "-s"),
+            ("show-options", "-g"),
+            ("show-environment", "-g"),
+            ("list-sessions", "-F", "#{session_id}|#{session_name}"),
+            ("list-panes", "-a", "-F", "#{pane_id}|#{pane_pid}"),
+        )
+    }
+    assert server.ensure_running() is server
+    assert server.ensure_running() is server
+    assert {command: server.cmd(*command).stdout for command in before} == before
+    assert session.session_id is not None
+    assert server.has_session(session.session_id)
+
+
+def test_ensure_running_reads_configuration_when_starting_a_daemon(
+    server: Server, tmp_path: pathlib.Path
+) -> None:
+    """Startup retains configured options while keeping an empty new daemon alive."""
+    config = tmp_path / "startup.conf"
+    config.write_text("set-option -g status off\nset-option -s @startup loaded\n")
+    client = Server(
+        socket_path=server.socket_path,
+        config_file=str(config),
+        tmux_bin=server.tmux_bin,
+        child_environment=server.child_environment,
+    )
+    assert client.ensure_running() is client
+    assert client.cmd("show-options", "-gqv", "status").stdout == ["off"]
+    assert client.cmd("show-options", "-sqv", "@startup").stdout == ["loaded"]
+    assert client.sessions == []
+    assert client.new_session("configured").session_name == "configured"
+
+
+def test_concurrent_ensure_running_returns_one_daemon(server: Server) -> None:
+    """Competing startup calls keep the same daemon and create no bootstrap session."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: server.ensure_running(), range(4)))
+    assert all(result is server for result in results)
+    assert server.cmd("display-message", "-p", "#{pid}").returncode == 0
+    assert server.sessions == []
+    assert (
+        server.new_session("after-concurrent-startup").session_name
+        == "after-concurrent-startup"
+    )
+
+
+@pytest.mark.parametrize("timeout", [0, -1, math.inf, math.nan])
+def test_ensure_running_rejects_invalid_timeouts_before_startup(
+    server: Server, timeout: float
+) -> None:
+    """Invalid budgets leave the selected endpoint without a daemon."""
+    with pytest.raises(ValueError, match="positive and finite"):
+        server.ensure_running(timeout=timeout)
+    assert not server.is_alive()
 
 
 def _scope(server: Server, kind: str, key: str = "worker") -> FoundOrCreated[t.Any]:
@@ -280,8 +372,10 @@ def test_failure_after_creation_rolls_back_known_receipt(
         assert server.cmd("list-panes", "-a", "-F", "#{pane_id}").stdout == before
 
 
+@pytest.mark.parametrize("operation", ["find_or_create", "ensure_running"])
 def test_server_rollback_failure_retains_retryable_owner(
     server: Server,
+    operation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Failed server acceptance and rollback retain both errors and identity."""
@@ -299,9 +393,9 @@ def test_server_rollback_failure_retains_retryable_owner(
     with monkeypatch.context() as patch:
         patch.setattr(Server, "cmd", fail)
         with pytest.raises(BaseExceptionGroup) as failure:
-            server.find_or_create()
-    operation, recovery = failure.value.exceptions
-    assert isinstance(operation, ValueError)
+            getattr(server, operation)()
+    operation_error, recovery = failure.value.exceptions
+    assert isinstance(operation_error, ValueError)
     assert isinstance(recovery, CreationCleanupError)
     assert isinstance(recovery.__cause__, PermissionError)
     recovery.owner.close()
@@ -309,8 +403,10 @@ def test_server_rollback_failure_retains_retryable_owner(
 
 
 @pytest.mark.parametrize("interrupt", [False, True])
+@pytest.mark.parametrize("operation", ["find_or_create", "ensure_running"])
 def test_server_startup_recovers_receipt_after_client_timeout_or_interrupt(
     server: Server,
+    operation: str,
     tmp_path: pathlib.Path,
     interrupt: bool,
 ) -> None:
@@ -335,7 +431,7 @@ def test_server_startup_recovers_receipt_after_client_timeout_or_interrupt(
     )
     server._prepare_socket_directory()
     with pytest.raises(KeyboardInterrupt if interrupt else subprocess.TimeoutExpired):
-        client.find_or_create(timeout=0.5)
+        getattr(client, operation)(timeout=0.5)
     assert not server.is_alive()
 
 
@@ -441,8 +537,10 @@ def test_control_characters_in_names_fail_before_creation(
         _scope(server, kind, "worker\nend")
 
 
+@pytest.mark.parametrize("operation", ["find_or_create", "ensure_running"])
 def test_failed_borrowed_server_command_never_rolls_back_the_daemon(
     server: Server,
+    operation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A client error after a borrowed reply leaves the existing server alive."""
@@ -459,12 +557,14 @@ def test_failed_borrowed_server_command_never_rolls_back_the_daemon(
     with monkeypatch.context() as patch:
         patch.setattr(Server, "cmd", fail)
         with pytest.raises(exc.LibTmuxException, match="client failed"):
-            server.find_or_create()
+            getattr(server, operation)()
     assert server.has_session("keeper")
 
 
+@pytest.mark.parametrize("operation", ["find_or_create", "ensure_running"])
 def test_missing_startup_receipt_reports_uncertainty_and_leaves_daemon_for_inspection(
     server: Server,
+    operation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Missing output cannot justify destroying a daemon at the selected endpoint."""
@@ -480,7 +580,7 @@ def test_missing_startup_receipt_reports_uncertainty_and_leaves_daemon_for_inspe
         with monkeypatch.context() as patch:
             patch.setattr(Server, "cmd", lose)
             with pytest.raises(UnknownCreation, match="inspect the endpoint"):
-                server.find_or_create()
+                getattr(server, operation)()
         assert server.cmd("display-message", "-p", "#{pid}").returncode == 0
     finally:
         # This fixture alone created the private daemon; its test owns final teardown.
@@ -488,8 +588,10 @@ def test_missing_startup_receipt_reports_uncertainty_and_leaves_daemon_for_inspe
 
 
 @pytest.mark.parametrize("interrupt", [False, True])
+@pytest.mark.parametrize("operation", ["find_or_create", "ensure_running"])
 def test_startup_failure_before_a_receipt_preserves_cause_or_interruption(
     server: Server,
+    operation: str,
     monkeypatch: pytest.MonkeyPatch,
     interrupt: bool,
 ) -> None:
@@ -503,17 +605,19 @@ def test_startup_failure_before_a_receipt_preserves_cause_or_interruption(
         patch.setattr(Server, "cmd", fail)
         if interrupt:
             with pytest.raises(KeyboardInterrupt) as caught:
-                server.find_or_create()
+                getattr(server, operation)()
             assert caught.value is failure
             assert "inspect the endpoint" in " ".join(getattr(failure, "__notes__", []))
         else:
             with pytest.raises(UnknownCreation) as unknown:
-                server.find_or_create()
+                getattr(server, operation)()
             assert unknown.value.__cause__ is failure
 
 
+@pytest.mark.parametrize("operation", ["find_or_create", "ensure_running"])
 def test_server_acquisition_failure_keeps_the_requested_rollback_timeout(
     server: Server,
+    operation: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The rollback owner receives the caller's timeout."""
@@ -532,7 +636,7 @@ def test_server_acquisition_failure_keeps_the_requested_rollback_timeout(
         patch.setattr(lifecycle_module, "_verify_identity", reject)
         patch.setattr(lifecycle_module.Owned, "_destroy", observe)
         with pytest.raises(RuntimeError) as caught:
-            server.find_or_create(timeout=0.5)
+            getattr(server, operation)(timeout=0.5)
     assert caught.value is failure
     assert cleanup_timeouts == [0.5]
     assert not server.is_alive()

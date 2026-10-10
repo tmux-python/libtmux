@@ -53,6 +53,10 @@ _Notes on the upcoming release will go here._
 
 Discovery and lifecycle identity checks retain their fields with a `C` client locale.
 
+### Ordinary examples with or without a running server
+
+{meth}`~libtmux.Server.ensure_running` starts the selected daemon when needed and returns the same server handle. It keeps a new daemon alive without a bootstrap session and preserves an existing daemon's sessions and configuration. The daemon remains available after the handle leaves scope. The README's ordinary example creates or reuses a session and window, with test endpoint selection and teardown supplied by the external harness.
+
 ### Breaking changes
 
 #### Server context and executable capture

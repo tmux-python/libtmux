@@ -84,7 +84,44 @@ libtmux = "0.50.*"
 
 ## 🚀 Quickstart
 
-Create a session at your configured tmux endpoint and remove it on scope exit.
+Create or reuse a session and window at your configured tmux endpoint. The same
+program works whether tmux is already running or this is your first session.
+Save it as `workspace.py`, or run
+[`examples/workspace.py`](examples/workspace.py):
+
+```python
+"""Create or reuse a session and window at the ordinary configured endpoint."""
+
+from __future__ import annotations
+
+import libtmux
+
+server = libtmux.Server().ensure_running()
+session = server.find_or_create_session("libtmux-example").value
+window = session.find_or_create_window("work").value
+pane = window.panes[0]
+print(session.session_name, window.window_name, pane.pane_id, flush=True)
+```
+
+`ensure_running()` returns the same `Server` handle. It starts the daemon when
+needed without adding a bootstrap session and preserves an existing daemon's
+sessions and configuration.
+The program leaves `libtmux-example` and its `work` window available. Repeating
+it reuses those names. A find-or-create result's `.value` gives you the ordinary
+session or window; entering the result as a context manager instead requests
+cleanup of an object it creates.
+
+`Server()` captures its endpoint at construction: explicit `socket_path` or
+`socket_name`, then `LIBTMUX_SOCKET_PATH`, `LIBTMUX_SOCKET_NAME`, `TMUX`, or the
+default socket. For named/default sockets, `TMUX_TMPDIR` selects the root.
+Empty selector variables count as absent. Later environment changes do not
+redirect an existing handle. The [external harness](tests/test_example_harness.py)
+runs this file unchanged with both private path and name defaults, starting
+with an absent or an existing daemon. The harness owns test cleanup.
+
+### Clean up a session at scope exit
+
+Use a session context when you want to remove a session after your work finishes.
 Save this program as `session_scope.py`, or run
 [`examples/session_scope.py`](examples/session_scope.py):
 
@@ -102,13 +139,8 @@ with server.new_session(session_name=f"libtmux-example-{uuid.uuid4().hex}") as s
     print(session.session_id, flush=True)
 ```
 
-`Server()` captures its endpoint at construction: explicit `socket_path` or
-`socket_name`, then `LIBTMUX_SOCKET_PATH`, `LIBTMUX_SOCKET_NAME`, `TMUX`, or the
-default socket. For named/default sockets, `TMUX_TMPDIR` selects the root.
-Empty selector variables count as absent. Later environment changes do not
-redirect an existing handle. The [external harness](tests/test_example_harness.py)
-runs this same file unchanged under both private path and name defaults,
-including a body failure that must still remove the session.
+The harness also runs this cleanup demonstration unchanged with both endpoint
+defaults, including a body failure that must still remove the session.
 
 ### Open a tmux session
 
