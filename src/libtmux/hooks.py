@@ -70,6 +70,13 @@ class HooksMixin(CmdMixin):
         self.default_hook_scope = default_hook_scope
         self.hooks = Hooks()
 
+    @property
+    def _tmux_bin(self) -> str | None:
+        """Resolve tmux_bin from self (Server) or self.server (Session/Window/Pane)."""
+        return getattr(self, "tmux_bin", None) or getattr(
+            getattr(self, "server", None), "tmux_bin", None
+        )
+
     def run_hook(
         self,
         hook: str,
