@@ -24,6 +24,7 @@ from libtmux.constants import (
     WindowDirection,
 )
 from libtmux.hooks import HooksMixin
+from libtmux.lifecycle import FoundOrCreated, _find_or_create_child
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
@@ -525,6 +526,36 @@ class Window(
         raise_if_stderr(proc, "select-pane")
 
         return self.active_pane
+
+    def find_or_create_pane(
+        self,
+        key: str,
+        *,
+        start_directory: StrPath | None = None,
+        shell: str | None = None,
+    ) -> FoundOrCreated[Pane]:
+        """Borrow an exact local pane-key match in this window or scope a new split.
+
+        Parameters
+        ----------
+        key : str
+            Nonempty application identity stored in the pane's local
+            ``@libtmux_pane_key`` option. An existing pane can opt in by setting
+            that option. Inherited window or global options do not match.
+            Multiple local matches raise ``AmbiguousMatch``.
+        start_directory : str or PathLike, optional
+            Initial directory for a newly created pane.
+        shell : str, optional
+            Command for a newly created pane; a reused pane stays unchanged.
+
+        Returns
+        -------
+        FoundOrCreated[Pane]
+            The result owns a new detached split and rolls it back if setting
+            its key fails. Lookup and creation are separate commands; serialize
+            competing creators when the application requires unique keys.
+        """
+        return _find_or_create_child(self, "pane", key, start_directory, shell)
 
     def split(
         self,

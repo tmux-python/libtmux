@@ -10,15 +10,18 @@ from __future__ import annotations
 import contextlib
 import copy
 import dataclasses
+import errno
 import math
 import os
 import re
 import secrets
 import select
 import shlex
+import socket
 import sys
 import threading
 import time
+import types
 import typing as t
 import weakref
 
@@ -27,11 +30,12 @@ from libtmux._compat import BaseExceptionGroup
 from libtmux.common import _run_cleanup
 
 if t.TYPE_CHECKING:
-    import types
     from collections.abc import Generator
 
     from libtmux.common import tmux_cmd
     from libtmux.server import Server
+    from libtmux.session import Session
+    from libtmux.window import Window
 
 Resource = t.TypeVar("Resource")
 ObjectKind = t.Literal["server", "session", "window", "pane"]
@@ -140,17 +144,19 @@ def _identity_from_fields(
 
 def _creation_format(kind: ObjectKind, payload: str) -> str:
     """Prefix object output with its same-connection creation receipt."""
+    # Identity fields exclude '|'; printable framing survives C-locale clients.
     return (
-        f"#{{pid}}\t#{{start_time}}\t#{{{_GENERATION_OPTION}}}\t"
-        f"#{{{kind}_id}}\t{payload}"
+        f"#{{pid}}|#{{start_time}}|#{{{_GENERATION_OPTION}}}|#{{{kind}_id}}|{payload}"
     )
 
 
-def _rollback_creation(receipt: _CreationReceipt, failure: BaseException) -> None:
+def _rollback_creation(
+    receipt: _CreationReceipt, failure: BaseException, *, timeout: float = 5.0
+) -> None:
     """Recover the recorded creation without accepting a later daemon token."""
 
     def recover() -> None:
-        owner = Owned._from_receipt(None, receipt)
+        owner = Owned._from_receipt(None, receipt, timeout)
         if not owner._process_exited():
             try:
                 owner.close()
@@ -195,7 +201,7 @@ def _creation_receipt(
     client: Server, kind: ObjectKind, command: str, result: tmux_cmd
 ) -> tuple[_CreationReceipt, str]:
     """Accept a receipt before classifying the command's exit status."""
-    fields = result.stdout[0].split("\t", 4) if result.stdout else []
+    fields = result.stdout[0].split("|", 4) if result.stdout else []
     if len(fields) != 5:
         detail = "\n".join(result.stderr) or f"exit status {result.returncode}"
         message = (
@@ -330,7 +336,7 @@ def _capture_identity(
     """Accept token and numeric identity in the same connected command list."""
     setup = _generation_setup()
     target = ("-t", object_id) if object_id is not None else ()
-    identity_format = f"#{{pid}}\t#{{start_time}}\t#{{{_GENERATION_OPTION}}}\t" + (
+    identity_format = f"#{{pid}}|#{{start_time}}|#{{{_GENERATION_OPTION}}}|" + (
         f"#{{{kind}_id}}" if object_id is not None else ""
     )
     result = client.cmd(
@@ -347,7 +353,7 @@ def _capture_identity(
             "\n".join(result.stderr) or f"exit status {result.returncode}",
             subcommand="accept-ownership",
         )
-    fields = result.stdout[0].split("\t") if len(result.stdout) == 1 else []
+    fields = result.stdout[0].split("|") if len(result.stdout) == 1 else []
     if (
         len(fields) != 4
         or not fields[0].isascii()
@@ -562,3 +568,333 @@ class Owned(t.Generic[Resource]):
     ) -> None:
         """Close the owner while preserving a body failure if teardown also fails."""
         _run_cleanup(self.close, exc_value)
+
+
+class AmbiguousMatch(exc.LibTmuxException):
+    """More than one object matches the requested window name or pane key."""
+
+
+@dataclasses.dataclass(frozen=True)
+class FoundOrCreated(t.Generic[Resource]):
+    """Scope a newly created object while leaving a reused object borrowed.
+
+    Inspect ``created`` before entering the context. ``value`` holds the public
+    resource, and ``owner`` is present only when this call created it. Context
+    exit and ``close()`` clean up that owner. A reused resource survives normal
+    exit and body failures. A failed cleanup keeps the owner available for retry
+    and preserves both body and cleanup exceptions through ``BaseExceptionGroup``.
+    """
+
+    value: Resource
+    owner: Owned[Resource] | None = None
+
+    @property
+    def created(self) -> bool:
+        """Whether this call proved creation and accepted cleanup responsibility."""
+        return self.owner is not None
+
+    def close(self) -> None:
+        """Close the created owner, or leave a borrowed match unchanged."""
+        if self.owner is not None:
+            self.owner.close()
+
+    def __enter__(self) -> Resource:
+        """Return the public object after checking that a created owner is open."""
+        return self.value if self.owner is None else self.owner.__enter__()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Clean up a created object while preserving a body failure."""
+        _run_cleanup(self.close, exc_value)
+
+
+def _find_or_create_server(server: Server, timeout: float) -> FoundOrCreated[Server]:
+    """Prove startup through a nonce inherited by this daemon's initial environment."""
+    if not math.isfinite(timeout) or timeout <= 0:
+        message = "server creation timeout must be positive and finite"
+        raise ValueError(message)
+    client = copy.copy(server)
+    nonce = secrets.token_hex(16)
+    key = "LIBTMUX_STARTUP_PROOF_" + nonce
+    client._child_environment = types.MappingProxyType(
+        {**client.child_environment, key: nonce}
+    )
+    identity_format = f"#{{pid}}|#{{start_time}}|#{{{_GENERATION_OPTION}}}|"
+    created_marker = "libtmux-created-" + nonce
+    existing_marker = "libtmux-existing-" + nonce
+    setup = _generation_setup()
+    created = "; ".join(
+        shlex.join(command)
+        for command in (
+            ["set-option", "-s", "exit-empty", "off"],
+            list(setup[:-1]),
+            ["display-message", "-p", created_marker + "|" + identity_format],
+        )
+    )
+    existing = shlex.join(
+        [
+            "display-message",
+            "-p",
+            existing_marker + "|#{pid}|#{start_time}",
+        ]
+    )
+    observed: list[tmux_cmd] = []
+    receipt: _CreationReceipt | None = None
+
+    def accept(result: tmux_cmd) -> _CreationReceipt | None:
+        for line in result.stdout:
+            if line.startswith(created_marker + "|"):
+                fields = line.split("|")[1:]
+                return _CreationReceipt(
+                    client, _identity_from_fields(client, "server", fields)
+                )
+        return None
+
+    def borrowed_reply(result: tmux_cmd) -> bool:
+        fields = result.stdout[0].split("|") if len(result.stdout) == 1 else []
+        return (
+            len(fields) == 3
+            and fields[0] == existing_marker
+            and fields[1].isascii()
+            and fields[1].isdecimal()
+            and int(fields[1]) > 0
+            and fields[2].isascii()
+            and fields[2].isdecimal()
+        )
+
+    try:
+        result = client.cmd(
+            "start-server",
+            ";",
+            "if-shell",
+            "-F",
+            f"#{{==:#{{{key}}},{nonce}}}",
+            created,
+            existing,
+            timeout=timeout,
+            _on_completion=observed.append,
+        )
+        receipt = accept(result)
+        _require_creation_success(result)
+        if receipt is not None:
+            _verify_identity(client, receipt.identity, timeout)
+            return FoundOrCreated(server, Owned._from_receipt(server, receipt, timeout))
+        if borrowed_reply(result):
+            return FoundOrCreated(server)
+        message = (
+            "server startup returned no trustworthy proof; "
+            "inspect the endpoint before retry"
+        )
+        raise UnknownCreation(message)  # noqa: TRY301 - recover any accepted receipt
+    except BaseException as failure:
+        if receipt is None and observed:
+            with contextlib.suppress(Exception):
+                receipt = accept(observed[0])
+        if receipt is not None:
+            _rollback_creation(receipt, failure, timeout=timeout)
+        elif not any(borrowed_reply(result) for result in observed):
+            message = (
+                "server startup returned no trustworthy proof; "
+                "inspect the endpoint before retry"
+            )
+            if isinstance(failure, Exception) and not isinstance(
+                failure, UnknownCreation
+            ):
+                raise UnknownCreation(message) from failure
+            if not isinstance(failure, Exception):
+                if sys.version_info >= (3, 11):
+                    failure.add_note(message)
+                else:
+                    failure.__dict__.setdefault("__notes__", []).append(message)
+        raise
+
+
+def _server_absent(server: Server) -> bool:
+    """Recognize only OS-confirmed missing or unserved endpoints as absence."""
+    from libtmux.discovery import _probe_server
+
+    try:
+        _probe_server(server, 5.0)
+    except exc.LibTmuxException:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(1.0)
+            try:
+                probe.connect(server.socket_path)
+            except OSError as failure:
+                if failure.errno in (errno.ENOENT, errno.ECONNREFUSED):
+                    return True
+        raise
+    return False
+
+
+def _strict_command(
+    client: Server,
+    identity: OwnedIdentity,
+    argv: list[str],
+    *,
+    after: list[str] | None = None,
+) -> tmux_cmd:
+    """Refuse a replacement daemon and preserve failures from a lookup command."""
+    stale = "libtmux-find-stale-" + secrets.token_hex(16)
+    result = client.cmd(
+        "if-shell",
+        "-F",
+        identity._condition,
+        shlex.join(argv) + ("; " + shlex.join(after) if after is not None else ""),
+        stale,
+        timeout=5.0,
+    )
+    if stale in "\n".join(result.stderr):
+        message = "the lookup endpoint now names a different tmux daemon"
+        raise exc.StaleTmuxOwner(message)
+    _require_creation_success(result)
+    return result
+
+
+def _matching_ids(
+    client: Server,
+    parent: object,
+    kind: ObjectKind,
+    key: str,
+    identity: OwnedIdentity,
+) -> list[str]:
+    """Match exact names or local pane keys, retaining embedded newlines."""
+    _, _, parent_id = _kind_and_id(parent)
+    command = [f"list-{kind}s"]
+    if parent_id is not None:
+        command += ["-t", parent_id]
+    command += ["-F", f"#{{{kind}_id}}"]
+    ids = _strict_command(client, identity, command).stdout
+    prefix = {"session": "$", "window": "@", "pane": "%"}[kind]
+    if any(not re.fullmatch(re.escape(prefix) + r"[0-9]+", value) for value in ids):
+        message = "tmux returned an invalid lookup ID"
+        raise exc.LibTmuxException(message)
+    matches: list[str] = []
+    for object_id in dict.fromkeys(ids):
+        sentinel = "libtmux-value-" + secrets.token_hex(16)
+        query = (
+            ["show-options", "-p", "-q", "-v", "-t", object_id, "@libtmux_pane_key"]
+            if kind == "pane"
+            else ["display-message", "-p", "-t", object_id, f"#{{{kind}_name}}"]
+        )
+        result = _strict_command(
+            client, identity, query, after=["display-message", "-p", sentinel]
+        )
+        if not result.stdout or result.stdout[-1] != sentinel:
+            message = "tmux returned an incomplete lookup value"
+            raise exc.LibTmuxException(message)
+        if result.stdout[:-1] and "\n".join(result.stdout[:-1]) == key:
+            matches.append(object_id)
+    if len(matches) > 1:
+        message = f"more than one {kind} matches {key!r}: {', '.join(matches)}"
+        raise AmbiguousMatch(message)
+    return matches
+
+
+def _find_or_create_child(
+    parent: Server | Session | Window,
+    kind: t.Literal["session", "window", "pane"],
+    key: str,
+    start_directory: str | os.PathLike[str] | None,
+    shell: str | None,
+) -> FoundOrCreated[t.Any]:
+    """Use strict lookup and original creation receipts for a child resource."""
+    from libtmux.common import session_check_name
+    from libtmux.pane import Pane
+    from libtmux.session import Session
+    from libtmux.window import Window
+
+    if not isinstance(key, str) or not key or "\0" in key:
+        message = "find-or-create requires a nonempty name or key without NUL"
+        raise ValueError(message)
+    if kind != "pane" and any(
+        ord(character) < 32 or ord(character) == 127 for character in key
+    ):
+        message = "tmux names cannot contain control characters"
+        raise ValueError(message)
+    if kind == "session":
+        session_check_name(key)
+    server, parent_kind, parent_id = _kind_and_id(parent)
+    client = copy.copy(server)
+    accepted_parent = copy.copy(parent)
+    identity: OwnedIdentity | None = None
+    materializers = {
+        "session": Session.from_session_id,
+        "window": Window.from_window_id,
+        "pane": Pane.from_pane_id,
+    }
+    if kind != "session" or not _server_absent(client):
+        identity = _capture_identity(client, parent_kind, parent_id, 5.0)
+        prior = getattr(parent, "_creation_receipt", None)
+        if isinstance(prior, _CreationReceipt) and prior.identity != identity:
+            message = "the lookup parent no longer identifies its original daemon"
+            raise exc.StaleTmuxOwner(message)
+        accepted_parent._creation_receipt = _CreationReceipt(client, identity)
+        matches = _matching_ids(client, parent, kind, key, identity)
+        if matches:
+            value = materializers[kind](server, matches[0])
+            _verify_identity(client, identity, 5.0)
+            return FoundOrCreated(value)
+    command = {
+        "session": "new-session",
+        "window": "new-window",
+        "pane": "split-window",
+    }[kind]
+    arguments = ["-d", "-P", "-F", _creation_format(kind, f"#{{{kind}_id}}")]
+    if kind == "session":
+        arguments += ["-s", key.replace("#", "##")]
+    elif kind == "window":
+        arguments += ["-t", f"{parent_id}:", "-n", key.replace("#", "##")]
+    else:
+        arguments += ["-t", str(parent_id)]
+    if start_directory is not None:
+        arguments += ["-c", os.fspath(start_directory)]
+    if shell is not None:
+        arguments.append(shell)
+    with _creation(
+        client,
+        kind,
+        command,
+        tuple(arguments),
+        parent=accepted_parent if identity is not None else None,
+    ) as (result, receipt):
+        value = materializers[kind](server, result.stdout[0])
+        value._creation_receipt = receipt
+        if kind != "pane":
+            actual = _strict_command(
+                client,
+                receipt.identity,
+                [
+                    "display-message",
+                    "-p",
+                    "-t",
+                    t.cast(str, receipt.identity.object_id),
+                    f"#{{{kind}_name}}",
+                ],
+            )
+            actual_name = "\n".join(actual.stdout)
+            if actual_name != key:
+                message = (
+                    f"tmux normalized the requested {kind} name to {actual_name!r}; "
+                    "cannot create an exact match"
+                )
+                raise ValueError(message)
+        if kind == "pane":
+            _strict_command(
+                client,
+                receipt.identity,
+                [
+                    "set-option",
+                    "-p",
+                    "-t",
+                    t.cast(str, receipt.identity.object_id),
+                    "@libtmux_pane_key",
+                    key,
+                ],
+            )
+        scope = FoundOrCreated(value, Owned._from_receipt(value, receipt))
+    return scope

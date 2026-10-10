@@ -33,7 +33,13 @@ from libtmux.common import (
 )
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
-from libtmux.lifecycle import _creation, _creation_format
+from libtmux.lifecycle import (
+    FoundOrCreated,
+    _creation,
+    _creation_format,
+    _find_or_create_child,
+    _find_or_create_server,
+)
 from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -54,6 +60,7 @@ if t.TYPE_CHECKING:
     from typing_extensions import Self
 
     from libtmux._internal.types import StrPath
+    from libtmux.discovery import DiscoveryResult
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -367,6 +374,119 @@ class Server(
         exc_tb : types.TracebackType | None
             The traceback of the exception that was raised
         """
+
+    def discover(
+        self,
+        roots: t.Iterable[str | pathlib.Path] = (),
+        *,
+        include_configured: bool = True,
+        max_entries: int = 1024,
+        max_probes: int = 256,
+        timeout: float = 5.0,
+        probe_timeout: float = 0.25,
+    ) -> DiscoveryResult:
+        """Find answering tmux sockets in bounded, nonrecursive directory scans.
+
+        Parameters
+        ----------
+        roots : iterable of str or Path
+            Additional directories whose direct children may be sockets. The
+            filesystem resolves path components, including symlinks and ``..``.
+        include_configured : bool
+            Include this captured endpoint, its parent directory, the captured
+            ``TMUX_TMPDIR/tmux-UID`` directory and ``/tmp/tmux-UID``.
+        max_entries : int
+            Maximum roots and directory entries inspected.
+        max_probes : int
+            Maximum tmux clients launched against current-user sockets.
+        timeout : float
+            Positive overall budget in seconds. Filesystem calls must return
+            before the budget can be checked; client timeout cleanup can add
+            up to 0.2 seconds after the last probe.
+        probe_timeout : float
+            Positive per-client budget, capped by the remaining overall budget.
+
+        Returns
+        -------
+        DiscoveryResult
+            Borrowed server handles, failed/skipped-path diagnostics, work
+            counts and a truncation flag. Probes neither start daemons nor
+            write ownership metadata. KeyboardInterrupt propagates after the
+            active client has been reaped.
+        """
+        from libtmux.discovery import _discover
+
+        return _discover(
+            self,
+            roots,
+            include_configured=include_configured,
+            max_entries=max_entries,
+            max_probes=max_probes,
+            timeout=timeout,
+            probe_timeout=probe_timeout,
+        )
+
+    def find_or_create(self, *, timeout: float = 5.0) -> FoundOrCreated[Server]:
+        """Borrow the answering daemon or own a daemon whose startup this call proves.
+
+        A fresh per-call environment nonce proves startup on the connection
+        that returns the ownership generation. Only that branch sets the server
+        option ``exit-empty`` to ``off``, allowing a new daemon to have no
+        sessions until its owned scope closes. An existing daemon, including
+        one another client starts concurrently, remains borrowed and unchanged.
+
+        Parameters
+        ----------
+        timeout : float
+            Positive finite seconds for each startup, acceptance and cleanup
+            operation. An interrupted command retains any returned creation
+            receipt for rollback. Without a receipt, inspect the endpoint
+            before retrying a potentially dispatched startup.
+
+        Returns
+        -------
+        FoundOrCreated[Server]
+            ``created`` identifies the proven startup; ``owner`` retains its
+            cleanup identity. Use whole-server ownership on an explicit
+            disposable endpoint because its scope destroys that daemon.
+        """
+        return _find_or_create_server(self, timeout)
+
+    def find_or_create_session(
+        self,
+        session_name: str,
+        *,
+        start_directory: StrPath | None = None,
+        window_command: str | None = None,
+    ) -> FoundOrCreated[Session]:
+        """Borrow an exact session-name match or scope a new detached session.
+
+        Parameters
+        ----------
+        session_name : str
+            Full tmux session name. Prefixes and tmux target patterns do not
+            match. A missing daemon may start when the session is created.
+            If tmux sanitizes the name, creation rolls back and raises ValueError.
+        start_directory : str or PathLike, optional
+            Initial directory for a newly created session.
+        window_command : str, optional
+            Command for its initial pane; an existing session stays unchanged.
+
+        Returns
+        -------
+        FoundOrCreated[Session]
+            The result owns only a session created by this call. Lookup and
+            creation are separate commands: concurrent creators of the same
+            session name may receive tmux's duplicate-name error. Lookup
+            failures propagate instead of being treated as an empty server.
+        """
+        return _find_or_create_child(
+            self,
+            "session",
+            session_name,
+            start_directory,
+            window_command,
+        )
 
     def is_alive(self) -> bool:
         """Return True if tmux server alive.
