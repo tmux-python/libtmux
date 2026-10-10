@@ -229,7 +229,7 @@ class Server(
             resolved = executable
         else:
             resolved = shutil.which(executable, path=client_env.get("PATH", os.defpath))
-        self._tmux_bin = (
+        self._captured_tmux_bin = (
             f"{pathlib.Path.cwd()}/{resolved}"
             if resolved is not None and not pathlib.Path(resolved).is_absolute()
             else resolved
@@ -261,7 +261,7 @@ class Server(
     @property
     def tmux_bin(self) -> str | None:
         """Absolute executable path captured at construction, or ``None`` if absent."""
-        return self._tmux_bin
+        return self._captured_tmux_bin
 
     def _require_tmux_bin(self) -> str:
         """Return the captured executable without repeating PATH lookup."""
