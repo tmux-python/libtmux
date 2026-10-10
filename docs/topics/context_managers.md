@@ -157,4 +157,93 @@ If rollback also fails, the resulting `BaseExceptionGroup` retains the original 
 
 `UnknownCreation` means the client returned no trustworthy receipt. This includes a successful empty response or a timeout without a readable ID. Inspect the endpoint before retrying; a new resource may exist. Ctrl-C without a receipt remains `KeyboardInterrupt` with a note explaining that uncertainty. The `select_existing=True` window option can also return no creation output when tmux selects an existing window; it does not supply a created/reused result. A valid new-window receipt still requires rollback if later work fails.
 
-The repository's `tests/test_creation_recovery.py` executes failed materialization, daemon replacement before return or context entry, nonzero results with valid IDs, paired rollback failures, retry, timeout, interruption and missing-receipt behavior. `tests/test_ownership.py` executes adoption for all four resource types, replacement refusal, edited-handle cleanup and a missing socket with a live daemon. `tests/test_example_harness.py` executes the ordinary example unchanged under both socket environment defaults. Discovery and explicit created/reused find-or-create APIs remain separate implementation work.
+The repository's `tests/test_creation_recovery.py` executes failed materialization, daemon replacement before return or context entry, nonzero results with valid IDs, paired rollback failures, retry, timeout, interruption and missing-receipt behavior. `tests/test_ownership.py` executes adoption for all four resource types, replacement refusal, edited-handle cleanup and a missing socket with a live daemon. `tests/test_example_harness.py` executes the ordinary example unchanged under both socket environment defaults. The sections below describe discovery and created/reused find-or-create scopes.
+
+## Find or create
+
+Use a `FoundOrCreated` scope when an example should reuse an existing object and remove only what it creates. Session and window methods match the full name. Pane matching uses the local `@libtmux_pane_key` option because tmux has no stable pane name.
+
+This program uses your normal endpoint. The external example harness executes this same file with path and name defaults, checks the displayed source, and checks cleanup after successful execution and an injected body failure:
+
+```python
+"""Reuse matching objects and clean up only the objects this program creates."""
+
+from __future__ import annotations
+
+import libtmux
+
+server = libtmux.Server()
+with (
+    server.find_or_create_session("libtmux-example") as session,
+    session.find_or_create_window("worker") as window,
+    window.find_or_create_pane("worker") as pane,
+):
+    print(pane.pane_id, flush=True)
+```
+
+Inspect the result before entering its scope when the distinction matters:
+
+```python
+>>> import libtmux
+>>> server = libtmux.Server()
+>>> with server.new_session() as keeper:
+...     created = server.find_or_create_session("libtmux-find-example")
+...     with created as session:
+...         reused = server.find_or_create_session("libtmux-find-example")
+...         with reused as same_session:
+...             print(created.created, reused.created)
+...             print(session.session_id == same_session.session_id)
+...         print(server.has_session("libtmux-find-example"))
+...     print(server.has_session("libtmux-find-example"))
+True False
+True
+True
+False
+```
+
+`result.value` holds the public object. `result.owner` exists for a proven creation; `result.close()` leaves a reused object alive. A created owner retains its identity and cleanup error for retry. Body and teardown failures remain separate exceptions inside a `BaseExceptionGroup`, including on Python 3.10 through the existing backport.
+
+Lookup failures raise instead of returning an empty match. Older tmux versions sanitize some session names, including backslashes and a dollar sign before a variable name. If tmux changes a requested name during creation, the call raises `ValueError` and rolls back the created object instead of returning a different name. Duplicate window names or pane keys raise `AmbiguousMatch`. Lookup and creation use separate tmux commands. Concurrent session creators can receive a duplicate-name error; concurrent window or pane creators can each create a matching object. Serialize those callers when your application requires uniqueness. Other clients can rename, move or destroy a borrowed object after lookup.
+
+The lifecycle lookup writes `@libtmux_owner_generation` when absent so that subsequent lookup and creation commands can reject a replacement daemon. Reuse does not transfer destruction responsibility. Pane creation writes `@libtmux_pane_key` only on its new pane, and rolls back that pane if the write fails. Window and global options with the same key do not count as a pane's identity.
+
+## Find or create a server
+
+`server.find_or_create()` borrows an answering daemon or owns a daemon whose startup it proves. A new daemon inherits a fresh environment nonce; the same tmux connection checks that nonce and returns the generation receipt. A concurrent caller that reaches the daemon after startup receives a borrowed result. Server reuse leaves its options and ownership metadata unchanged.
+
+This server-destruction example names a disposable endpoint because the created owner will destroy the whole daemon:
+
+```python
+>>> import libtmux
+>>> server = libtmux.Server(socket_name="libtmux-disposable-example", config_file="/dev/null")
+>>> result = server.find_or_create()
+>>> with result as running:
+...     print(running.cmd("display-message", "-p", "#{pid}").returncode)
+0
+>>> print(result.owner is None or result.owner.closed)
+True
+```
+
+A proven new server sets the server option `exit-empty` to `off`, so it can remain alive without a session until its owner closes. Startup adds a per-call `LIBTMUX_STARTUP_PROOF_<nonce>` variable to that daemon's initial environment. This internal variable is distinct from the public endpoint-default variables. The host environment does not change. A configuration that removes the proof prevents the caller from claiming ownership; the answering daemon remains borrowed. A startup failure without a trustworthy receipt requires inspecting the endpoint before retrying.
+
+## Finding running tmux servers
+
+`server.discover()` checks its captured endpoint, the endpoint's parent directory, the captured `TMUX_TMPDIR/tmux-UID` directory, and `/tmp/tmux-UID`. Pass additional socket directories through `roots`, or set `include_configured=False` to inspect only those directories. Discovery does not start tmux or write ownership metadata.
+
+This example limits the scan to the normal endpoint's socket directory. The test harness redirects the server before construction:
+
+```python
+>>> import pathlib
+>>> import libtmux
+>>> server = libtmux.Server()
+>>> with server.new_session() as keeper:
+...     found = server.discover([pathlib.Path(server.socket_path).parent], include_configured=False)
+...     print(any(item.server.socket_path == server.socket_path for item in found.servers))
+...     print(found.truncated)
+True
+False
+```
+
+Each `DiscoveredServer` contains a borrowed `server`, its `server_pid`, and its whole-second `start_time`. Inspect `diagnostics` for skipped paths and failed probes. `max_entries`, `max_probes`, `timeout`, and `probe_timeout` bound the scan. `entries` counts roots and directory entries; `probes` counts launched tmux clients. `truncated=True` means a limit prevented the scan from finishing. A blocked filesystem call must return before Python can check the deadline; the final client's timeout cleanup can add up to 0.2 seconds. `KeyboardInterrupt` propagates after the client has been reaped.
+
+The scan covers direct children of the selected directories, not every socket on the machine. It checks sockets owned by the current user, deduplicates filesystem aliases, and retains path components for the filesystem to resolve. A missing component in `missing/../root` remains an error; `symlink/..` follows the symlink before resolving its parent.
