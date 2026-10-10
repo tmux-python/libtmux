@@ -182,37 +182,28 @@ everything that follows it. This is how you pull a command's result out of a sha
 pane without dragging along the prompt and prior history.
 
 ```python
->>> import time
+>>> from libtmux.test.retry import retry_until
 
 >>> capture_window = session.new_window(window_name='capture', attach=False)
 >>> capture_pane = capture_window.active_pane
 
->>> def capture_after_marker(pane, marker, timeout=5.0):
-...     """Capture output after a marker appears."""
-...     start_time = time.time()
-...     while time.time() - start_time < timeout:
-...         lines = pane.capture_pane()
-...         output = '\\n'.join(lines)
-...         if marker in output:
-...             # Return all lines after the marker
-...             found = False
-...             result = []
-...             for line in lines:
-...                 if marker in line:
-...                     found = True
-...                     continue
-...                 if found:
-...                     result.append(line)
-...             return result
-...         time.sleep(0.1)
-...     return None
+>>> def capture_between_markers(pane, start, end, timeout=5.0):
+...     """Return the lines printed between two marker lines, or None on timeout."""
+...     def has_both():
+...         lines = [line.strip() for line in pane.capture_pane()]
+...         return start in lines and end in lines
+...
+...     # Match whole lines: the typed command echoes the markers too, but never
+...     # as a line of their own.
+...     if not retry_until(has_both, seconds=timeout, raises=False):
+...         return None
+...     lines = [line.strip() for line in pane.capture_pane()]
+...     return lines[lines.index(start) + 1 : lines.index(end)]
 
 >>> # Test marker capture
->>> capture_pane.send_keys('echo "MARKER"; echo "captured data"')
->>> time.sleep(0.3)
->>> result = capture_after_marker(capture_pane, 'MARKER', timeout=2.0)
->>> any('captured' in line for line in (result or []))
-True
+>>> capture_pane.send_keys('echo START; echo "captured data"; echo END')
+>>> capture_between_markers(capture_pane, 'START', 'END')
+['captured data']
 
 >>> # Clean up
 >>> capture_window.kill()
