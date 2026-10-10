@@ -5,6 +5,7 @@ import typing as t
 
 import pytest
 
+import libtmux
 from libtmux._internal.query_list import (
     MultipleObjectsReturned,
     ObjectDoesNotExist,
@@ -13,6 +14,32 @@ from libtmux._internal.query_list import (
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+
+    from typing_extensions import assert_type
+
+    def check_public_query_types(values: libtmux.QueryList[int]) -> None:
+        """Public get distinguishes a required result from each default type."""
+        assert_type(values.get(), int)
+        assert_type(values.get(lambda value: value > 0), int)
+        assert_type(values.get(default=None), int | None)
+        assert_type(values.get(default="missing"), int | str)
+        assert_type(values.get(None, "missing"), int | str)
+        assert_type(values.get(lambda value: value > 0, None), int | None)
+        assert_type(values.filter(lambda value: value > 0), libtmux.QueryList[int])
+
+
+def test_public_query_uses_existing_collection() -> None:
+    """The public import preserves list behavior and lookup failure contracts."""
+    assert libtmux.QueryList is QueryList
+    values = libtmux.QueryList([1, 2, 2])
+    assert values.get(1) == 1
+    assert values.get(9, "missing") == "missing"
+    assert values.get(9, default=None) is None
+    assert values.filter(lambda value: value > 1) == [2, 2]
+    with pytest.raises(ObjectDoesNotExist):
+        values.get(9)
+    with pytest.raises(MultipleObjectsReturned):
+        values.get(2, default=None)
 
 
 @dataclasses.dataclass

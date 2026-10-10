@@ -704,6 +704,7 @@ class OptionsMixin(CmdMixin):
         cmd = self.cmd(
             "set-option",
             *flags,
+            "--",
             option,
             value,
         )
@@ -792,6 +793,7 @@ class OptionsMixin(CmdMixin):
         cmd = self.cmd(
             "set-option",
             *flags,
+            "--",
             option,
         )
 
@@ -1129,7 +1131,7 @@ class OptionsMixin(CmdMixin):
         if include_hooks is not None and include_hooks:
             flags += ("-H",)
 
-        flags += (option,)
+        flags += ("--", option)
 
         return self.cmd("show-options", *flags)
 

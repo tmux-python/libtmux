@@ -14,6 +14,7 @@ from .__about__ import (
     __title__,
     __version__,
 )
+from ._internal.query_list import QueryList
 from .client import Client
 from .pane import Pane
 from .server import Server
@@ -25,6 +26,7 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 __all__ = (
     "Client",
     "Pane",
+    "QueryList",
     "Server",
     "Session",
     "Window",

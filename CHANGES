@@ -45,6 +45,86 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Completed command results (#758)
+
+{func}`~libtmux.common.run_command` returns captured output and exit status
+as a {class}`~libtmux.common.CommandResult`, including nonzero exits.
+
+#### Optional command timeouts (#758)
+
+{attr}`~libtmux.Server.timeout` bounds commands, listings and liveness
+checks. {meth}`~libtmux.Server.cmd` and {meth}`~libtmux.Server.wait_for`
+accept per-call overrides. Expiry raises {exc}`~libtmux.exc.TmuxTimeout`;
+a timed-out command may already have taken effect.
+
+#### Signal a waiting channel (#758)
+
+Use `signal=True` with {meth}`~libtmux.Server.wait_for` to wake waiters.
+The previous `set_flag` keyword remains a deprecated alias.
+
+#### Temporary servers and sessions (#758)
+
+{meth}`~libtmux.Server.owned` creates a private server scope;
+{meth}`~libtmux.Server.owned_session` creates a temporary session on an
+existing server. Both clean up their own resources on scope exit and
+report cleanup failures. See {doc}`topics/context_managers`.
+
+#### Decoded captured fields (#758)
+
+Pane and window properties expose dimensions and activity as numbers and
+booleans. Panes also expose position and {attr}`~libtmux.Pane.is_dead`;
+sessions expose {attr}`~libtmux.Session.attached_count`. Values come from
+the last capture; refresh the object for current state.
+
+#### Public local queries (#758)
+
+Import {class}`~libtmux.QueryList` from the package root. Required lookups
+and lookups with defaults preserve their distinct result types.
+
+### Fixes
+
+#### Invalid layouts are rejected before dispatch (#758)
+
+{meth}`~libtmux.Window.select_layout` rejects invalid or flag-like values
+before they can affect the server. Use a preset, an unambiguous preset
+prefix or a saved layout; use `None` to omit the layout instead of `""`.
+
+#### Leading-dash arguments remain literal (#758)
+
+Command text, names, messages and paths beginning with `-` are passed as
+values instead of being interpreted as tmux flags.
+
+#### Pane operations report tmux refusals (#758)
+
+{meth}`~libtmux.Pane.send_keys`, {meth}`~libtmux.Pane.capture_pane`,
+{meth}`~libtmux.Pane.enter`, {meth}`~libtmux.Pane.reset` and
+{meth}`~libtmux.Pane.split` raise {exc}`~libtmux.exc.LibTmuxException`
+when tmux refuses the operation.
+
+#### Listings preserve paths containing newlines (#758)
+
+Newlines in paths no longer break listings or
+{meth}`~libtmux.Server.new_session`. Unparseable records raise
+{exc}`~libtmux.exc.TmuxRecordParseError`, including in otherwise lenient
+server listings.
+
+#### Refresh clears fields that became empty (#758)
+
+Refreshing a pane, window, session or client clears fields tmux now
+reports empty instead of retaining their previous values.
+
+#### Additional tmux hooks decode correctly (#758)
+
+Reading hooks recognizes additional pane, window, client and command
+events supported by newer tmux releases.
+
+#### Server access accepts flags with a user (#758)
+
+{meth}`~libtmux.Server.server_access` accepts calls that combine access
+flags with a user instead of failing with an argument error.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -56,6 +136,12 @@ its {meth}`Server <libtmux.Server.from_env>`,
 environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
+
+#### Runnable automation examples (#758)
+
+Standalone scripts cover command results, temporary resources and
+polling for changes. Each uses its own server, leaving existing sessions
+alone. See {doc}`topics/examples`.
 
 ### Development
 
@@ -86,6 +172,11 @@ flake8-blind-except, and flake8-bandit checks now apply; the tmux output
 parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
+
+#### Benchmarks for library operations (#758)
+
+Run `just bench` to measure command dispatch, listings, captures and
+format decoding separately from the test suite.
 
 ## libtmux 0.62.0 (2026-07-12)
 

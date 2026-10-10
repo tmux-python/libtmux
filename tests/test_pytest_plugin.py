@@ -5,8 +5,9 @@ from __future__ import annotations
 import contextlib
 import os
 import pathlib
+import subprocess
+import sys
 import textwrap
-import time
 import typing as t
 
 from libtmux.pytest_plugin import _reap_test_server
@@ -14,6 +15,8 @@ from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     import pytest
+
+REPO_ROOT = pathlib.Path(__file__).parent.parent
 
 
 def test_plugin(
@@ -117,28 +120,19 @@ def test_test_server_with_config(
 
 
 def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
-    """Test TestServer properly cleans up after itself."""
+    """kill() leaves the same server object reading as dead, not just quiet."""
     server = TestServer()
     socket_name = server.socket_name
     assert socket_name is not None
 
-    # Create multiple sessions
     server.new_session(session_name="test1")
     server.new_session(session_name="test2")
     assert len(server.sessions) == 2
-
-    # Verify server is alive
     assert server.is_alive() is True
 
-    # Delete server and verify cleanup
     server.kill()
-    time.sleep(0.1)  # Give time for cleanup
 
-    # Create new server to verify old one was cleaned up
-    new_server = TestServer()
-    assert new_server.is_alive() is False  # Server not started yet
-    new_server.new_session()  # This should work if old server was cleaned up
-    assert new_server.is_alive() is True
+    assert server.is_alive() is False
 
 
 def test_test_server_multiple(TestServer: t.Callable[..., Server]) -> None:
@@ -221,3 +215,62 @@ def test_reap_test_server_tolerates_none() -> None:
     other nullable paths in the API.
     """
     _reap_test_server(None)
+
+
+def test_pytest_benchmarks_directly_raises_usage_error() -> None:
+    """``pytest benchmarks/`` errors instead of silently collecting nothing.
+
+    Runs the real command against this checkout (not a ``pytester``
+    sandbox, so it exercises the actual root ``conftest.py`` hook):
+    pytest's default ``python_files`` (``test_*.py``) never matches
+    ``benchmarks/``'s ``bench_*.py`` files, so a bare invocation exits
+    with pytest's own usage-error code and names ``just bench`` rather
+    than collecting 0 items and exiting 0.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "benchmarks/"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 4  # pytest.ExitCode.USAGE_ERROR
+    assert "collected 0 items" in result.stdout + result.stderr
+    assert "just bench" in result.stdout + result.stderr
+
+
+def test_just_bench_still_collects_and_runs() -> None:
+    """The documented workaround (``-o python_files``) is unaffected.
+
+    Companion to the error-path test above: the collection guard must
+    not fire, and must not otherwise interfere, once there is something
+    to collect. ``--collect-only`` proves discovery without running the
+    benchmarks here; ``--benchmark-only`` is deliberately omitted -- this
+    test itself may run under this suite's own ``-n auto`` (see
+    CONTRIBUTING.md's coverage invocation), and the spawned subprocess
+    inherits that xdist worker's environment, which makes pytest-benchmark
+    auto-activate ``--benchmark-disable`` and then refuse to run alongside
+    an explicit ``--benchmark-only``.
+    """
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "benchmarks/",
+            "-o",
+            "python_files=bench_*.py",
+            "--co",  # collect-only: prove discovery, skip running them here
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no tests ran" not in result.stdout
+    assert "bench_" in result.stdout
