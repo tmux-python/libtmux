@@ -15,12 +15,22 @@ from libtmux.pytest_plugin import _reap_test_server
 from libtmux.test.retry import retry_until
 
 
+@pytest.mark.parametrize(
+    ("example_name", "document", "id_prefix"),
+    [
+        ("session_scope.py", "README.md", "$"),
+        ("find_or_create.py", "docs/topics/context_managers.md", "%"),
+    ],
+)
 @pytest.mark.parametrize("selector", ["path", "name"])
 @pytest.mark.parametrize("fail_body", [False, True])
 def test_unchanged_session_example(
     tmp_path: pathlib.Path,
     selector: str,
     fail_body: bool,
+    example_name: str,
+    document: str,
+    id_prefix: str,
 ) -> None:
     """Redirect the same program and force body failure through a closed pipe."""
     before = dict(os.environ)
@@ -37,8 +47,8 @@ def test_unchanged_session_example(
     child["TMUX"] = "/tmp/ignored,42,0"
     child["TMUX_PANE"] = "%42"
     server = Server(config_file="/dev/null", child_environment=child)
-    example = pathlib.Path(__file__).parents[1] / "examples" / "session_scope.py"
-    readme = pathlib.Path(__file__).parents[1] / "README.md"
+    example = pathlib.Path(__file__).parents[1] / "examples" / example_name
+    readme = pathlib.Path(__file__).parents[1] / document
     assert f"```python\n{example.read_text()}```" in readme.read_text()
     read_fd, write_fd = os.pipe()
     os.close(read_fd)
@@ -66,7 +76,7 @@ def test_unchanged_session_example(
             assert "BrokenPipeError" in result.stderr
         else:
             assert result.returncode == 0, result.stderr
-            assert result.stdout.strip().startswith("$")
+            assert result.stdout.strip().startswith(id_prefix)
             assert result.stdout.strip() != anchor.session_id
         assert [session.session_id for session in server.sessions] == [
             anchor.session_id

@@ -22,7 +22,12 @@ from libtmux.common import (
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR, Format
 from libtmux.hooks import HooksMixin
-from libtmux.lifecycle import _creation, _creation_format
+from libtmux.lifecycle import (
+    FoundOrCreated,
+    _creation,
+    _creation_format,
+    _find_or_create_child,
+)
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.options import OptionsMixin
 from libtmux.pane import Pane
@@ -893,6 +898,41 @@ class Session(
         logger.info("session renamed", extra=extra)
 
         return self
+
+    def find_or_create_window(
+        self,
+        window_name: str,
+        *,
+        start_directory: StrPath | None = None,
+        window_shell: str | None = None,
+    ) -> FoundOrCreated[Window]:
+        """Borrow one exact window-name match in this session or scope a new window.
+
+        Parameters
+        ----------
+        window_name : str
+            Full name, including spaces or punctuation. Multiple matches raise
+            ``AmbiguousMatch``; a linked window counts once by its stable ID.
+        start_directory : str or PathLike, optional
+            Initial directory for a newly created window.
+        window_shell : str, optional
+            Command for its initial pane; a reused window stays unchanged.
+
+        Returns
+        -------
+        FoundOrCreated[Window]
+            The result owns only a newly created detached window. Other clients
+            may create matching names between lookup and creation; this is not
+            an atomic uniqueness operation. Serialize competing creators when
+            the application requires one window per name.
+        """
+        return _find_or_create_child(
+            self,
+            "window",
+            window_name,
+            start_directory,
+            window_shell,
+        )
 
     def _find_window_by_name(self, window_name: str | Format) -> Window | None:
         """Return this session's window named *window_name*, if there is one.

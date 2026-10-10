@@ -45,6 +45,14 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Lifecycle discovery and find or create
+
+`Server.discover()` scans explicit and captured tmux socket directories with entry, probe and time budgets. Results include borrowed servers, failed/skipped-path diagnostics and truncation. Probes do not start daemons or write ownership metadata.
+
+`Server.find_or_create()`, `Server.find_or_create_session()`, `Session.find_or_create_window()` and `Window.find_or_create_pane()` return `FoundOrCreated` scopes. A created result owns its resource; a reused result leaves it alive. Child lookup matches full names or local pane keys and raises on ambiguous matches or command failures. Server creation uses a per-call startup nonce before accepting whole-daemon ownership. Known receipts retain guarded rollback after client failure, interruption or failed materialization.
+
+Discovery and lifecycle identity checks retain their fields with a `C` client locale.
+
 ### Breaking changes
 
 #### Server context and executable capture
