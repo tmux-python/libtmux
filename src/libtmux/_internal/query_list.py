@@ -121,7 +121,8 @@ def parse_lookup(
 
     If comparator not used or value not found, return None.
 
-    >>> parse_lookup({ "food": "red apple" }, "food__istartswith", "__istartswith")
+    >>> obj = {"food": "red apple"}
+    >>> parse_lookup(obj, "food__istartswith", "__istartswith")
     'red apple'
 
     It can also look up objects:
@@ -337,13 +338,19 @@ class QueryList(list[T], t.Generic[T]):
     ...             "place": "Largo",
     ...             "city": "Tampa",
     ...             "state": "Florida",
-    ...             "foods": {"fruit": ["banana", "orange"], "breakfast": "cereal"},
+    ...             "foods": {
+    ...                 "fruit": ["banana", "orange"],
+    ...                 "breakfast": "cereal",
+    ...             },
     ...         },
     ...         {
     ...             "place": "Chicago suburbs",
     ...             "city": "Elmhurst",
     ...             "state": "Illinois",
-    ...             "foods": {"fruit": ["apple", "cantelope"], "breakfast": "waffles"},
+    ...             "foods": {
+    ...                 "fruit": ["apple", "cantelope"],
+    ...                 "breakfast": "waffles",
+    ...             },
     ...         },
     ...     ]
     ... )
@@ -585,7 +592,8 @@ class QueryList(list[T], t.Generic[T]):
         --------
         >>> from libtmux._internal.query_list import QueryList
         >>> from libtmux import exc
-        >>> qs = QueryList([{"pane_id": "%0"}, {"pane_id": "%0"}, {"pane_id": "%1"}])
+        >>> rows = [{"pane_id": "%0"}, {"pane_id": "%0"}, {"pane_id": "%1"}]
+        >>> qs = QueryList(rows)
 
         >>> qs.get(pane_id="%1")
         {'pane_id': '%1'}

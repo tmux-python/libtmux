@@ -361,7 +361,7 @@ catch instead of a script that quietly stalls.
 ```python
 >>> import time
 
->>> timeout_window = session.new_window(window_name='timeout-demo', attach=False)
+>>> timeout_window = session.new_window('timeout-demo', attach=False)
 >>> timeout_pane = timeout_window.active_pane
 
 >>> class CommandTimeout(Exception):
@@ -401,13 +401,13 @@ up for. Tune both for how expensive the command is and how patient you can be.
 >>> retry_window = session.new_window(window_name='retry-demo', attach=False)
 >>> retry_pane = retry_window.active_pane
 
->>> def retry_until_success(pane, command, success_marker, max_retries=3, delay=0.5):
+>>> def retry_until_success(pane, command, marker, max_retries=3, delay=0.5):
 ...     """Retry command until success marker appears."""
 ...     for attempt in range(max_retries):
 ...         pane.send_keys(command)
 ...         time.sleep(delay)
 ...         output = '\\n'.join(pane.capture_pane())
-...         if success_marker in output:
+...         if marker in output:
 ...             return True, attempt + 1
 ...     return False, max_retries
 
@@ -550,7 +550,7 @@ it. Tear down what you opened when you're done, so a long-running automation pro
 doesn't accumulate orphaned objects.
 
 ```python
->>> cleanup_window = session.new_window(window_name='cleanup-demo', attach=False)
+>>> cleanup_window = session.new_window('cleanup-demo', attach=False)
 >>> cleanup_window  # doctest: +ELLIPSIS
 Window(@... ...)
 
