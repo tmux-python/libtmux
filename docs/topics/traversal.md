@@ -41,7 +41,7 @@ $ python
 First, create a test session:
 
 ```python
->>> session = server.new_session()  # Create a test session using existing server
+>>> session = server.new_session()
 ```
 
 ## Server level
@@ -191,7 +191,7 @@ return only matching rows on large servers, see {ref}`native-filtering`.
 Find windows by exact attribute match:
 
 ```python
->>> session.windows.filter(window_index=window.window_index)  # doctest: +ELLIPSIS
+>>> session.windows.filter(window_index=window.window_index)
 [Window(@... ..., Session($... ...))]
 ```
 
@@ -213,12 +213,14 @@ Use lookup suffixes like `__contains`, `__startswith`, `__endswith`:
 >>> w3 = session.new_window(window_name="logs")
 
 >>> # Find windows starting with 'app-'
->>> session.windows.filter(window_name__startswith='app-')  # doctest: +ELLIPSIS
-[Window(@... ...:app-frontend, Session($... ...)), Window(@... ...:app-backend, Session($... ...))]
+>>> found = session.windows.filter(window_name__startswith='app-')
+>>> [window.window_name for window in found]
+['app-frontend', 'app-backend']
 
 >>> # Find windows containing 'end'
->>> session.windows.filter(window_name__contains='end')  # doctest: +ELLIPSIS
-[Window(@... ...:app-frontend, Session($... ...)), Window(@... ...:app-backend, Session($... ...))]
+>>> found = session.windows.filter(window_name__contains='end')
+>>> [window.window_name for window in found]
+['app-frontend', 'app-backend']
 
 >>> # Clean up
 >>> w1.kill()
@@ -236,8 +238,9 @@ Prefix any lookup with `i` for case-insensitive matching:
 >>> w2 = session.new_window(window_name="myapp-worker")
 
 >>> # Case-insensitive search
->>> session.windows.filter(window_name__istartswith='myapp')  # doctest: +ELLIPSIS
-[Window(@... ...:MyApp, Session($... ...)), Window(@... ...:myapp-worker, Session($... ...))]
+>>> found = session.windows.filter(window_name__istartswith='myapp')
+>>> [window.window_name for window in found]
+['MyApp', 'myapp-worker']
 
 >>> # Clean up
 >>> w1.kill()
@@ -255,8 +258,9 @@ For complex patterns, use `__regex` or `__iregex`:
 >>> w3 = session.new_window(window_name="dev")
 
 >>> # Match version pattern
->>> session.windows.filter(window_name__regex=r'v\d+-\d+')  # doctest: +ELLIPSIS
-[Window(@... ...:release-v1-0, Session($... ...)), Window(@... ...:release-v2-0, Session($... ...))]
+>>> found = session.windows.filter(window_name__regex=r'v\d+-\d+')
+>>> [window.window_name for window in found]
+['release-v1-0', 'release-v2-0']
 
 >>> # Clean up
 >>> w1.kill()

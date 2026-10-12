@@ -248,7 +248,7 @@ For typed access that reflects the client's *live* attachment, use
 client = server.clients.get(client_name=ctl.client_name)
 session_id = client.session_id  # str captured when the object was read
 
-# Live (re-reads list-clients; returns None if tmux no longer reports the client)
+# Live (re-reads list-clients; None if tmux no longer reports the client)
 attached = client.attached_session  # libtmux.Session | None
 window = client.attached_window     # libtmux.Window  | None
 pane = client.attached_pane         # libtmux.Pane    | None
@@ -449,7 +449,11 @@ from libtmux.test import (
 # New (0.45.0+)
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.environment import EnvironmentVarGuard
-from libtmux.test.random import get_test_session_name, get_test_window_name, namer
+from libtmux.test.random import (
+    get_test_session_name,
+    get_test_window_name,
+    namer,
+)
 from libtmux.test.temporary import temp_session, temp_window
 ```
 
@@ -526,7 +530,9 @@ from libtmux.test.temporary import temp_session, temp_window
 
       ```python
       from libtmux.constants import ResizeAdjustmentDirection
-      pane.resize_pane(adjustment_direction=ResizeAdjustmentDirection.Down, adjustment=25)
+      pane.resize_pane(
+        adjustment_direction=ResizeAdjustmentDirection.Down, adjustment=25
+      )
       pane.resize_pane(
         adjustment_direction=ResizeAdjustmentDirection.Right, adjustment=25
       )

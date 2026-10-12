@@ -105,7 +105,7 @@ once and have every layer torn down for you:
 ...             with window.split() as pane:
 ...                 pane.send_keys('echo "Hello"')
 ...                 # Do work with the pane
-...                 # Everything is cleaned up automatically when exiting contexts
+...                 # Exiting the contexts cleans everything up
 ```
 
 This ensures that:
