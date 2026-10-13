@@ -96,6 +96,12 @@ Base classes and command execution.
 Dataclass-based query interface.
 :::
 
+:::{grid-item-card} Engine
+:link: libtmux.engines
+:link-type: doc
+How tmux commands are executed, and how to swap that out.
+:::
+
 :::{grid-item-card} Options
 :link: libtmux.options
 :link-type: doc
@@ -173,6 +179,7 @@ Window <libtmux.window>
 Pane <libtmux.pane>
 Client <libtmux.client>
 Common <libtmux.common>
+Engine <libtmux.engines>
 Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
