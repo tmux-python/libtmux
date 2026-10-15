@@ -81,11 +81,22 @@ class Client(Obj):
 
     References
     ----------
-    .. [client_manual] tmux client. openbsd manpage for TMUX(1).
-           "tmux supports multiple attached clients. Each client has its
-           own keymap, view of the session, and message log."
+    .. [client_manual] `tmux 3.7c manual, Clients and sessions
+       <https://libtmux.org/en/tmux/3.7c/manual/full/#CLIENTS_AND_SESSIONS>`_.
 
-       https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed 2026.
+           "Clients are attached to sessions to interact with them..."
+
+       `attach-session
+       <https://libtmux.org/en/tmux/3.7c/manual/attach-session/>`_ attaches
+       a terminal. `switch-client
+       <https://libtmux.org/en/tmux/3.7c/manual/switch-client/>`_ selects
+       its session or key table. `show-messages
+       <https://libtmux.org/en/tmux/3.7c/manual/show-messages/>`_ displays
+       a client's message log.
+       `Upstream source
+       <https://github.com/tmux/tmux/blob/3.7c/tmux.1#L1048-L1063>`_;
+       `OpenBSD tmux(1) manual
+       <https://man.openbsd.org/tmux.1#CLIENTS_AND_SESSIONS>`_.
     """
 
     server: Server
