@@ -63,7 +63,6 @@ class _DefaultOptionScope:
     """
 
 
-
 DEFAULT_OPTION_SCOPE: _DefaultOptionScope = _DefaultOptionScope()
 
 
