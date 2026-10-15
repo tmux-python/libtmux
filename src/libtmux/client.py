@@ -91,8 +91,8 @@ class Client(Obj):
        a terminal. `switch-client
        <https://libtmux.org/en/tmux/3.7c/manual/switch-client/>`_ selects
        its session or key table. `show-messages
-       <https://libtmux.org/en/tmux/3.7c/manual/show-messages/>`_ displays
-       a client's message log.
+       <https://libtmux.org/en/tmux/3.7c/manual/show-messages/>`_ shows
+       server messages or information.
        `Upstream source
        <https://github.com/tmux/tmux/blob/3.7c/tmux.1#L1048-L1063>`_;
        `OpenBSD tmux(1) manual
