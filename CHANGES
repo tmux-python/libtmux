@@ -47,6 +47,13 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### tmux manual links
+
+The references for {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, {class}`~libtmux.Pane`, and
+{class}`~libtmux.Client` link to the versioned tmux manual and the commands
+that create or attach their native objects.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
