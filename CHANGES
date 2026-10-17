@@ -45,6 +45,30 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Minimum tmux 3.3a
+
+Minimum `tmux>=3.3a` (was `>=3.2a`). Ordinary reads, writes, batches, and raw
+commands raise {exc}`~libtmux.exc.VersionTooLow` for an older daemon, including
+3.3 without its patch letter. The daemon's version governs an existing
+endpoint; the executable's version governs creation on an absent endpoint.
+
+```text
+# Before
+tmux>=3.2a
+
+# After
+tmux>=3.3a
+```
+
+Upgrade tmux and restart existing daemons after saving their sessions.
+Updating the client executable alone does not upgrade a running daemon.
+Binary version and help diagnostics remain available. Undated development
+reports cannot qualify admission. {meth}`Server.kill() <libtmux.Server.kill>`
+remains a no-op for an absent endpoint. See {doc}`project/compatibility` for
+support and feature requirements.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
