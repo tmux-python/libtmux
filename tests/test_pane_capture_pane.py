@@ -444,32 +444,14 @@ def test_capture_pane_start_end_with_flags(session: Session) -> None:
     assert len(output) > 0
 
 
-def test_capture_pane_trim_trailing_warning(
-    session: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Test that trim_trailing issues a warning on tmux < 3.4."""
-    import warnings
-
-    from libtmux import Server
-
-    # Feature flags follow the daemon's release, so patch that decision.
-    monkeypatch.setattr(Server, "_has_gte_version", lambda _self, v: v != "3.4")
-
-    pane = session.active_window.split(shell="sh")
-
-    def prompt_ready() -> bool:
-        return "$" in "\n".join(pane.capture_pane())
-
-    retry_until(prompt_ready, 2, raises=True)
-
-    # Should issue a warning
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
+def test_capture_pane_trim_trailing_warning(session: Session) -> None:
+    """Warn and omit the unavailable flag on the actual older daemon."""
+    if session.server._has_gte_version("3.4"):
+        pytest.skip("requires a daemon without capture-pane -T")
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.warns(UserWarning, match="trim_trailing requires tmux 3.4"):
         pane.capture_pane(trim_trailing=True)
-
-        # Check warning was issued
-        assert len(w) == 1
-        assert "trim_trailing requires tmux 3.4+" in str(w[0].message)
 
 
 @pytest.mark.parametrize(
@@ -522,7 +504,8 @@ def test_capture_pane_to_buffer(session: Session) -> None:
 
     contents = session.server.cmd("show-buffer", "-b", "cap_test_buf").stdout
     assert any("BUFFER_CAPTURE_MARKER" in line for line in contents)
-    session.server.cmd("delete-buffer", "-b", "cap_test_buf")
+    if session.server._has_gte_version("3.4"):
+        session.server.delete_buffer(buffer_name="cap_test_buf")
 
 
 def test_capture_pane_pending_emits_dash_P(

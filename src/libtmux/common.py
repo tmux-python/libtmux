@@ -74,6 +74,10 @@ def __getattr__(name: str) -> t.Any:
     raise AttributeError(msg)
 
 
+#: Version of the optional-feature policy contract for backend consumers.
+TMUX_OPTIONAL_FEATURE_POLICY_VERSION = 1
+
+
 SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
@@ -357,6 +361,9 @@ class tmux_cmd:
         *args: t.Any,
         tmux_bin: str | None = None,
         _version_cache: versions.VersionCache | None = None,
+        _minimum_version: str = versions.MINIMUM,
+        _expected_version: str | None = None,
+        _repaired_break: bool = False,
     ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
@@ -368,7 +375,17 @@ class tmux_cmd:
 
         self.cmd = cmd
         cached = _version_cache is not None and bool(_version_cache)
-        dispatched, marker = versions.prepare(cmd, cache=_version_cache)
+
+        def prepare_dispatch() -> tuple[list[str], str | None]:
+            return versions.prepare(
+                cmd,
+                cache=_version_cache,
+                minimum=_minimum_version,
+                expected_version=_expected_version,
+                repaired_break=_repaired_break,
+            )
+
+        dispatched, marker = prepare_dispatch()
 
         if logger.isEnabledFor(logging.DEBUG):
             cmd_str = shlex.join(cmd)
@@ -383,7 +400,7 @@ class tmux_cmd:
                 # The cached daemon vanished; nothing ran, so check its version again.
                 assert _version_cache is not None
                 _version_cache.clear()
-                dispatched, marker = versions.prepare(cmd, cache=_version_cache)
+                dispatched, marker = prepare_dispatch()
                 stdout, stderr, returncode = self._dispatch(dispatched)
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None

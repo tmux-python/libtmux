@@ -888,13 +888,6 @@ def test_display_message_warns_on_tmux_error(session: Session) -> None:
 
 def test_split_percentage(session: Session) -> None:
     """Test Pane.split() with percentage parameter."""
-    from tests.tmux_client import client_gte
-
-    # tmux 3.4 has a regression in split-window -p; fixed in 3.5.
-    # Per CHANGES FROM 3.4 TO 3.5: "Fix split-window -p."
-    if not client_gte("3.5"):
-        pytest.skip("split-window -p was broken in tmux 3.4 (fixed in 3.5)")
-
     window = session.new_window(window_name="test_split_pct")
     window.resize(height=40, width=80)
     pane = window.active_pane
@@ -1286,7 +1279,7 @@ def test_join_pane(session: Session) -> None:
     new_pane = pane.split(shell="sleep 1m")
     assert len(window.panes) == 2
 
-    new_window = new_pane.break_pane()
+    new_window = new_pane.break_pane(window_name="join-source")
     window.refresh()
     assert len(window.panes) == 1
 
@@ -1309,7 +1302,7 @@ def test_join_pane_horizontal(session: Session) -> None:
     assert pane is not None
 
     new_pane = pane.split(shell="sleep 1m")
-    new_pane.break_pane()
+    new_pane.break_pane(window_name="join-source")
 
     new_pane.join(window, vertical=False)
     window.refresh()
@@ -1325,6 +1318,13 @@ def test_break_pane_basic(session: Session) -> None:
 
     new_pane = pane.split(shell="sleep 1m")
     assert len(window.panes) == 2
+
+    if session.server._get_version() == "3.7":
+        with pytest.raises(exc.VersionTooLow, match="provide window_name"):
+            new_pane.break_pane()
+        assert len(session.windows) == initial_window_count
+        assert len(window.panes) == 2
+        return
 
     new_window = new_pane.break_pane()
     session.refresh()
@@ -1365,6 +1365,11 @@ def test_break_pane_no_name_uses_natural_name(session: Session) -> None:
         return new_pane.pane_current_command == "sleep"
 
     retry_until(command_started)
+    if session.server._get_version() == "3.7":
+        with pytest.raises(exc.VersionTooLow, match="provide window_name"):
+            new_pane.break_pane()
+        assert len(window.panes) == 2
+        return
     broken = new_pane.break_pane()
     assert broken.window_name == "sleep"
 
