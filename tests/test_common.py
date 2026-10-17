@@ -15,7 +15,6 @@ from libtmux import exc
 from libtmux._compat import LooseVersion
 from libtmux.common import (
     get_libtmux_version,
-    get_version,
     session_check_name,
     tmux_cmd,
 )
@@ -222,7 +221,7 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
 
     server = session.server
 
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    tmux_version = server._get_version()
     _fields, fmt_str = get_output_format("list-sessions", tmux_version)
 
     old_lc_ctype = locale.setlocale(locale.LC_CTYPE)
