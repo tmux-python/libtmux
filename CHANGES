@@ -65,6 +65,7 @@ tmux>=3.3a
 Upgrade tmux and restart existing daemons after saving their sessions.
 Updating the client executable alone does not upgrade a running daemon.
 A renamed tmux 3.3a executable still qualifies the minimum.
+Version admission runs no user hooks.
 Binary version and help diagnostics remain available. Undated development
 reports cannot qualify admission. {meth}`Server.kill() <libtmux.Server.kill>`
 remains a no-op for an absent endpoint. See {doc}`project/compatibility` for
