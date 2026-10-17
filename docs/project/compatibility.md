@@ -26,10 +26,12 @@ does not cache daemon versions. Binary diagnostics through `tmux -V` and
 `tmux -h` remain available. Raw `tmux -c` shell execution is refused; use
 {meth}`~libtmux.Server.run_shell` for a tmux command instead.
 
-`master` and numbered development builds newer than the baseline are accepted
-as development candidates. They do not inherit stable feature qualification.
-Unknown reports are refused. On OpenBSD, an existing daemon must report a
-qualified release; an executable without `-V` cannot start an absent endpoint.
+Numbered development reports are accepted as candidates when their release
+base meets the baseline; a `next-` build precedes the release it names. These
+candidates do not inherit stable feature qualification. Unknown reports,
+including an undated `master`, are refused. On OpenBSD, an existing daemon
+must report a qualified release; an executable without `-V` cannot start an
+absent endpoint.
 The synthetic values returned by legacy version helpers are diagnostic values
 and never authorize a command.
 
