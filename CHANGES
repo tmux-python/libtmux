@@ -79,8 +79,11 @@ support and feature requirements.
 #### Optional tmux feature requirements
 
 On tmux 3.3a, literal `select-layout` refuses unknown names and malformed
-serialized headers before batch effects. Optional policy version 2 includes
-this validation; ordinary layouts retain the 3.3a minimum.
+serialized headers before batch effects with
+{exc}`~libtmux.exc.InvalidLayout`, a {exc}`~libtmux.exc.LibTmuxException` that is
+also a `ValueError`; ordinary layouts retain the 3.3a minimum. Programs that run
+their own tmux subprocesses can apply these checks through
+{func}`libtmux.admission.require_commands`.
 
 Single-pane `Pane.break_pane()` returns its actual window on tmux 3.3a through
 3.5, whose native relink path succeeds without printing the requested ID.
@@ -96,6 +99,11 @@ Exact named-buffer deletion and rename require tmux 3.4+. Captured shell-job
 stdout from {meth}`Server.run_shell() <libtmux.Server.run_shell>` requires
 3.5+ and is refused before launching the job on older daemons. Background,
 pane-directed and native tmux-command execution remain available on 3.3a+.
+
+{meth}`Server.run_shell(target_pane=...) <libtmux.Server.run_shell>` now returns
+`None`, as its signature documents, instead of an empty list: the job's output
+goes to the pane, so there is no captured stdout to return. Code that iterates
+the result of a pane-directed call must handle `None`.
 
 Percentage splits use portable `-l N%`. On exact tmux 3.7, raw `break-pane`
 and unnamed {meth}`Pane.break_pane() <libtmux.Pane.break_pane>` requests are
