@@ -108,8 +108,8 @@ def test_prefix_preserves_native_arguments(monkeypatch: pytest.MonkeyPatch) -> N
     guarded, marker = versions.prepare(original)
     assert guarded[:3] == ["/tmux", "-L", "odd;socket"]
     assert guarded[-6:] == original[-6:]
-    assert guarded[3:7] == ["if-shell", "-F", "#{==:#{version},3.3a}", ""]
-    assert guarded[7] == marker
+    assert guarded[3:8] == ["-N", "if-shell", "-F", "#{==:#{version},3.3a}", ""]
+    assert guarded[8] == marker
 
 
 def test_changed_daemon_is_explicit() -> None:
@@ -191,3 +191,26 @@ def test_absent_cleanup_never_dispatches(monkeypatch: pytest.MonkeyPatch) -> Non
     Server(socket_name="absent", tmux_bin="/test/old-tmux").kill()
     assert len(calls) == 1
     assert calls[0][-1] == "#{version}"
+
+
+def test_checked_daemon_disappearance_never_restarts(
+    server: Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Losing a checked daemon cannot start the configured executable."""
+    server.new_session("versioned", window_command="sleep 300")
+    run = support._run
+
+    def disappear(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        result = run(argv)
+        if result.returncode == 0 and argv[-1] == "#{version}":
+            assert run([*argv[:-4], "kill-server"]).returncode == 0
+        return result
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(versions, "_run", disappear)
+        result = server.cmd(
+            "new-session", "-d", "-s", "unexpected-restart", "sleep 300"
+        )
+    assert result.returncode != 0, "dispatch restarted the checked daemon"
+    binary, selectors = server._version_endpoint()
+    assert support.live_version(binary, selectors) is None

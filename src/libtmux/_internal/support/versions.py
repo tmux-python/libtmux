@@ -71,7 +71,12 @@ def prepare(argv: list[str]) -> tuple[list[str], str | None]:
             globals_.append(value)
         if flag in {"-L", "-S"}:
             selectors.extend((flag, value))
-    version = endpoint_version(argv[0], selectors)
+    version = live_version(argv[0], selectors)
+    if version is None:
+        version = _binary_version(argv[0])
+    elif "-N" not in globals_:
+        # A vanished daemon must not restart an older configured executable.
+        globals_.append("-N")
     marker = "libtmux-version-" + uuid.uuid4().hex
     condition = "#{==:#{version}," + version + "}"
     return [
@@ -121,6 +126,10 @@ def endpoint_version(binary: str, selectors: list[str]) -> str:
     version = live_version(binary, selectors)
     if version is not None:
         return version
+    return _binary_version(binary)
+
+
+def _binary_version(binary: str) -> str:
     result = _run([binary, "-V"])
     if result.returncode or not result.stdout.startswith("tmux "):
         detail = result.stderr.strip() or result.stdout.strip()
