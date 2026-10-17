@@ -68,6 +68,7 @@ output synchronization or other optional behavior on every later release.
 | `Pane.split(percentage=...)` | Available on 3.3a+, using `-l N%`. Direct `split-window -p` is refused on the affected 3.4 interval. |
 | `break-pane` on exact 3.7 | Raw calls and unnamed typed calls are refused. `Pane.break_pane(window_name=...)` applies the explicit name after the move. A later rename failure can leave the moved pane in its new window. |
 | `break-pane` on other supported releases | Native behavior is retained. The exact-3.7 restriction does not raise their minimum. |
+| Single-pane `break-pane` before 3.6 | Native success prints no window ID. The typed method rereads the pane's actual window after the command. |
 | Window names containing `:` or `.` | Exact 3.7 rejects creation before creating a window. Other tested supported releases retain those names. There is no automatic name substitution. |
 
 Eligibility comes from the selected daemon, including when a newer client is

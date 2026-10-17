@@ -12,6 +12,41 @@ from libtmux._internal.support import versions
 from libtmux.common import tmux_cmd
 
 
+@pytest.mark.parametrize("window_name", [None, "sole-after-break"])
+@pytest.mark.parametrize("stale_window", [False, True])
+def test_single_pane_break_returns_the_actual_window(
+    session: Session, window_name: str | None, stale_window: bool
+) -> None:
+    """Old sole-pane relinking succeeds without printing its requested ID."""
+    window = session.active_window
+    window.rename_window("sole-before-break")
+    pane = window.active_pane
+    assert pane is not None
+    before = window.window_id
+    expected_name = "sole-before-break"
+    if stale_window:
+        peer = session.new_window(window_name="actual-before-break")
+        peer_pane = peer.active_pane
+        assert peer_pane is not None
+        swapped = session.server.cmd(
+            "swap-pane", "-d", "-s", pane.pane_id, "-t", peer_pane.pane_id
+        )
+        assert swapped.returncode == 0
+        before = peer.window_id
+        expected_name = "actual-before-break"
+    if session.server._get_version() == "3.7" and window_name is None:
+        with pytest.raises(exc.VersionTooLow, match="unnamed break-pane"):
+            pane.break_pane()
+        pane.refresh()
+        assert pane.window.window_id == before
+        assert pane.window.window_name == expected_name
+        return
+    result = pane.break_pane(window_name=window_name)
+    assert result.window_id == before
+    assert result.window_name == (window_name or expected_name)
+    assert [item.pane_id for item in result.panes] == [pane.pane_id]
+
+
 @pytest.mark.parametrize(
     ("version", "arguments", "reason"),
     [
