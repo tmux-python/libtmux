@@ -264,9 +264,7 @@ class WindowNameSpecialCharFixture(t.NamedTuple):
     window_name: str
 
 
-# The tmux 3.7 point release briefly rejected ':' and '.' in window names,
-# then reverted it in 3.7a as "overly pernickety" (tmux commit 166267c8).
-# Every tmux libtmux supports -- 3.2a-3.6 and 3.7a onward -- accepts them.
+# Exact tmux 3.7 rejects these names; 3.7a reverts that validation.
 WINDOW_NAME_SPECIAL_CHAR_FIXTURES: list[WindowNameSpecialCharFixture] = [
     WindowNameSpecialCharFixture(test_id="colon", window_name="project:frontend"),
     WindowNameSpecialCharFixture(test_id="period", window_name="app-v1.0"),
@@ -283,14 +281,13 @@ def test_new_window_name_colon_period_accepted(
     test_id: str,
     window_name: str,
 ) -> None:
-    """Window names with ':' and '.' are accepted verbatim.
-
-    The lone tmux 3.7 point release briefly rejected these characters before
-    3.7a reverted the restriction (tmux commit 166267c8, "overly
-    pernickety"). The suite's executable gate strips the letter suffix, so it
-    cannot tell 3.7 from 3.7a -- both report ``3.7`` -- so CI exercises
-    3.7a/3.7b rather than the superseded 3.7 release.
-    """
+    """Preserve native names or exact 3.7's rejection before creation."""
+    if session.server._get_version() == "3.7":
+        before = [window.window_id for window in session.windows]
+        with pytest.raises(exc.LibTmuxException, match="invalid window name"):
+            session.new_window(window_name=window_name)
+        assert [window.window_id for window in session.windows] == before
+        return
     window = session.new_window(window_name=window_name)
     assert window.window_name == window_name
     window.kill()
