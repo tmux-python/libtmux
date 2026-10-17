@@ -445,6 +445,8 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
 

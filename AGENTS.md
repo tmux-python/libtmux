@@ -61,6 +61,9 @@ list-shaped accessors are lenient by default; `Server.is_alive()` and
 `src/libtmux/AGENTS.md` for the full contract and this package's
 logging conventions.
 
+An unsupported tmux version raises `VersionTooLow`, including from lenient
+list accessors and query traversal. Version refusals are not empty results.
+
 ## References
 
 - Documentation: https://libtmux.git-pull.com/
