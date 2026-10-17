@@ -78,6 +78,9 @@ support and feature requirements.
 
 #### Optional tmux feature requirements
 
+Single-pane `Pane.break_pane()` returns its actual window on tmux 3.3a through
+3.5, whose native relink path succeeds without printing the requested ID.
+
 Core support remains tmux 3.3a+. {class}`ControlMode
 <libtmux._internal.control_mode.ControlMode>` requires a stable tmux 3.7+
 release and a local socket filesystem that permits a private hard link.
