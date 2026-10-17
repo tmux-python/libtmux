@@ -13,6 +13,7 @@ import pytest
 import libtmux
 from libtmux import exc
 from libtmux._compat import LooseVersion
+from libtmux._internal import version as legacy_version
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,
@@ -618,7 +619,7 @@ def test_version_validation(
 ) -> None:
     """Test version validation."""
     if mock_min_version is not None:
-        monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", mock_min_version)
+        monkeypatch.setattr(legacy_version, "TMUX_MIN_VERSION", mock_min_version)
 
     if mock_version is not None:
 
@@ -628,7 +629,7 @@ def test_version_validation(
         monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
         if check_type == "min_version":
             monkeypatch.setattr(
-                libtmux.common, "_query_version", lambda **kwargs: mock_version
+                legacy_version, "_query_version", lambda **kwargs: mock_version
             )
 
     if check_type == "min_version":
