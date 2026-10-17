@@ -1140,6 +1140,7 @@ def fetch_objs(
     proc = tmux_cmd(
         *tmux_cmds,
         tmux_bin=server.tmux_bin,
+        _version_cache=server._version_cache,
     )
 
     raise_if_stderr(proc, list_cmd)
