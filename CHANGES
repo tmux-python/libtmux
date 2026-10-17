@@ -47,7 +47,7 @@ _Notes on the upcoming release will go here._
 
 ### Breaking changes
 
-#### Minimum tmux 3.3a
+#### Minimum tmux 3.3a (#779)
 
 Minimum `tmux>=3.3a` (was `>=3.2a`). Ordinary reads, writes, batches, and raw
 commands raise {exc}`~libtmux.exc.VersionTooLow` for an older daemon, including
