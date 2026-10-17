@@ -2469,11 +2469,19 @@ class Pane(
 
         raise_if_stderr(proc, "break-pane")
 
-        window_id = proc.stdout[0].strip()
-
         from libtmux.window import Window
 
-        window = Window.from_window_id(server=self.server, window_id=window_id)
+        if proc.stdout:
+            window = Window.from_window_id(
+                server=self.server, window_id=proc.stdout[0].strip()
+            )
+        elif proc.returncode:
+            msg = f"break-pane failed with exit code {proc.returncode}"
+            raise exc.LibTmuxException(msg, subcommand="break-pane")
+        else:
+            # Before 3.6 the sole-pane path returns before printing -P.
+            self.refresh()
+            window = self.window
 
         if window_name is not None and breaks_without_name:
             window.rename_window(window_name)
