@@ -56,6 +56,26 @@ including 3.3 without its patch letter. Upgrading the executable does not
 upgrade a server that is already running: restart it after saving its
 sessions. See {doc}`project/compatibility` for the releases each feature needs.
 
+#### Optional tmux feature requirements (#780)
+
+Core support remains tmux 3.3a+. {class}`ControlMode
+<libtmux._internal.control_mode.ControlMode>` requires a stable tmux 3.7+
+release and a local socket filesystem that permits a private hard link.
+Control acquisition validates the retained endpoint before starting its client;
+UTF-8 metadata and output remain usable under a C locale.
+
+Exact named-buffer deletion and rename require tmux 3.4+. Captured shell-job
+stdout from {meth}`Server.run_shell() <libtmux.Server.run_shell>` requires
+3.5+ and is refused before launching the job on older daemons. Background,
+pane-directed and native tmux-command execution remain available on 3.3a+.
+
+Percentage splits use portable `-l N%`. On exact tmux 3.7, raw `break-pane`
+and unnamed {meth}`Pane.break_pane() <libtmux.Pane.break_pane>` requests are
+refused. An explicit `window_name` uses the named break and rename repair;
+a failed rename can leave the completed break in place. Other supported
+releases retain ordinary naming. See {doc}`project/compatibility` for the
+operation boundaries and synchronization requirements.
+
 #### Executable version helpers are deprecated (#779)
 
 {func}`~libtmux.common.get_version`, {func}`~libtmux.common.get_version_str`,
