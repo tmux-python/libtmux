@@ -102,12 +102,20 @@ def check_result(stderr: str, marker: str | None) -> None:
 
 
 def live_version(binary: str, selectors: list[str]) -> str | None:
-    """Admit an existing daemon, returning None for an absent endpoint."""
-    probe = _run([binary, *selectors, "-N", "display-message", "-p", "#{version}"])
-    if probe.returncode == 0:
-        version = probe.stdout.strip()
-        require_version(version)
-        return version
+    """Check an existing daemon's version, returning None for an absent endpoint."""
+    # run-shell has no after-hook and, with -C, fails while parsing its own
+    # output, so the probe fires neither after-* nor command-error hooks.
+    marker = "libtmux-version-" + uuid.uuid4().hex + "-"
+    probe = _run([binary, *selectors, "-N", "run-shell", "-C", marker + "#{version}"])
+    prefix = f"unknown command: {marker}"
+    reports = [
+        line[len(prefix) :]
+        for line in probe.stderr.splitlines()
+        if line.startswith(prefix)
+    ]
+    if probe.returncode == 1 and len(reports) == 1:
+        require_version(reports[0])
+        return reports[0]
     if "no server running" in probe.stderr or (
         "error connecting to" in probe.stderr
         and any(
