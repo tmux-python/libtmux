@@ -76,6 +76,31 @@ Binary version and help diagnostics remain available. {meth}`Server.kill() <libt
 remains a no-op for an absent endpoint. See {doc}`project/compatibility` for
 support and feature requirements.
 
+### Deprecations
+
+#### Executable version helpers warn (#779)
+
+{func}`~libtmux.common.get_version`, {func}`~libtmux.common.get_version_str`,
+{func}`~libtmux.common.has_version`, {func}`~libtmux.common.has_gt_version`,
+{func}`~libtmux.common.has_gte_version`, {func}`~libtmux.common.has_lte_version`,
+{func}`~libtmux.common.has_lt_version`, {func}`~libtmux.common.has_minimum_version`
+and the `TMUX_MIN_VERSION` and `TMUX_MAX_VERSION` constants now emit a
+{exc}`DeprecationWarning`. They read the tmux client executable, not the
+daemon a {class}`~libtmux.Server` is connected to, which can be a different
+release. All of them stay importable from `libtmux.common`.
+
+```python
+# Before
+from libtmux.common import has_gte_version
+
+has_gte_version("3.4")
+
+# After
+from libtmux._internal.support import is_at_least, server_version
+
+is_at_least(server_version(server), "3.4")
+```
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
