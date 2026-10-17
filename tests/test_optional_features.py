@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import typing as t
 
@@ -10,6 +11,58 @@ import pytest
 from libtmux import Pane, Server, Session, exc
 from libtmux._internal.support import versions
 from libtmux.common import tmux_cmd
+
+if t.TYPE_CHECKING:
+    import pathlib
+
+
+@pytest.mark.parametrize("verb", ["select-layout", "selectl", "select-l"])
+def test_malformed_layout_is_refused_before_any_batch_effect(
+    session: Session, tmp_path: pathlib.Path, verb: str
+) -> None:
+    """Refuse the 3.3a layout error path before the batch prefix runs."""
+    server = session.server
+    marker = tmp_path / "layout-prefix-effect"
+    command = (
+        "run-shell",
+        f": > {shlex.quote(str(marker))}",
+        ";",
+        verb,
+        "-t",
+        session.active_window.window_id,
+        "not-a-layout",
+    )
+    if server._get_version() == "3.3a":
+        with pytest.raises(ValueError, match="layout"):
+            server.cmd(*command)
+        assert not marker.exists()
+    else:
+        result = server.cmd(*command)
+        assert result.returncode != 0
+        assert marker.exists()
+    assert server.is_alive()
+
+
+def test_33a_layout_validation_retains_native_safe_forms(session: Session) -> None:
+    """Preset prefixes, serialized forms and ignored operands stay available."""
+    server = session.server
+    if server._get_version() != "3.3a":
+        pytest.skip("the narrow layout error guard applies to tmux 3.3a")
+    target = session.active_window.window_id
+    for flag in ("-n", "-p", "-E"):
+        assert server.cmd("selectl", flag, "-t", target, "not-a-layout").returncode == 0
+    assert server.cmd("select-layout", "-t", target, "even-h").returncode == 0
+    layout = server.cmd(
+        "display-message", "-p", "-t", target, "#{window_layout}"
+    ).stdout[0]
+    assert server.cmd("select-layout", "-t", target, layout).returncode == 0
+    assert server.cmd("select-layout", "-o", "-t", target, layout).returncode == 0
+    assert server.cmd("select-layout", "-o", "-t", target).returncode == 0
+    invalid = server.cmd("select-layout", "-t", target, "0000,not-a-layout")
+    assert invalid.returncode != 0
+    with pytest.raises(ValueError, match="layout"):
+        server.cmd("select-layout", "-o", "-t", target, "tiled")
+    assert server.is_alive()
 
 
 @pytest.mark.parametrize("window_name", [None, "sole-after-break"])
