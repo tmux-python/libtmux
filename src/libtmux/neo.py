@@ -1139,6 +1139,7 @@ def fetch_objs(
     proc = tmux_cmd(
         *tmux_cmds,
         tmux_bin=server.tmux_bin,
+        _admission=server._admission,
     )
 
     raise_if_stderr(proc, list_cmd)

@@ -7,6 +7,7 @@ import os
 import pathlib
 import re
 import subprocess
+import threading
 import uuid
 
 from libtmux import exc
@@ -82,7 +83,71 @@ def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
         raise exc.LibTmuxException(msg) from error
 
 
-def prepare(argv: list[str]) -> tuple[list[str], str | None]:
+class AdmissionCache:
+    """The daemon release last admitted for one endpoint.
+
+    The in-band version fence catches a replaced daemon, so a cached release
+    only needs a new probe after the fence fires or the daemon disappears.
+    An absent endpoint is never cached.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._entry: tuple[tuple[str, tuple[str, ...], str, str], str] | None = None
+
+    @staticmethod
+    def _key(
+        binary: str, selectors: list[str]
+    ) -> tuple[str, tuple[str, ...], str, str]:
+        # The socket directory follows the environment when no path is named.
+        env = os.environ
+        return (
+            binary,
+            tuple(selectors),
+            env.get("TMUX_TMPDIR", ""),
+            env.get("TMUX", ""),
+        )
+
+    def get(self, binary: str, selectors: list[str]) -> str | None:
+        """Return the admitted release for this endpoint, if one is cached."""
+        with self._lock:
+            entry = self._entry
+        if entry is not None and entry[0] == self._key(binary, selectors):
+            return entry[1]
+        return None
+
+    def put(self, binary: str, selectors: list[str], version: str) -> None:
+        """Remember an admitted release."""
+        with self._lock:
+            self._entry = (self._key(binary, selectors), version)
+
+    def clear(self) -> None:
+        """Forget the admitted release."""
+        with self._lock:
+            self._entry = None
+
+    def __bool__(self) -> bool:
+        return self._entry is not None
+
+
+def _absent_endpoint(stderr: str) -> bool:
+    return "no server running" in stderr or (
+        "error connecting to" in stderr
+        and any(
+            reason in stderr
+            for reason in ("No such file or directory", "Connection refused")
+        )
+    )
+
+
+def daemon_gone(stderr: str) -> bool:
+    """Report that a command found no daemon to talk to."""
+    return _absent_endpoint(stderr)
+
+
+def prepare(
+    argv: list[str], *, cache: AdmissionCache | None = None
+) -> tuple[list[str], str | None]:
     """Admit the daemon, then fence dispatch against its exact version."""
     try:
         options, commands = getopt.getopt(argv[1:], "28c:CDdf:hlL:NqS:T:uUvV")
@@ -103,7 +168,14 @@ def prepare(argv: list[str]) -> tuple[list[str], str | None]:
             globals_.append(value)
         if flag in {"-L", "-S"}:
             selectors.extend((flag, value))
-    version = live_version(argv[0], selectors)
+    version = cache.get(argv[0], selectors) if cache is not None else None
+    if version is None:
+        version = live_version(argv[0], selectors)
+        if cache is not None:
+            if version is None:
+                cache.clear()
+            else:
+                cache.put(argv[0], selectors, version)
     if version is None:
         version = _binary_version(argv[0])
     elif not any(flag == "-N" for flag, _ in options):
@@ -124,9 +196,13 @@ def prepare(argv: list[str]) -> tuple[list[str], str | None]:
     ], marker
 
 
-def check_result(stderr: str, marker: str | None) -> None:
+def check_result(
+    stderr: str, marker: str | None, *, cache: AdmissionCache | None = None
+) -> None:
     """Reject a replaced daemon before returning an ordinary result."""
     if marker is not None and f"unknown command: {marker}" in stderr.splitlines():
+        if cache is not None:
+            cache.clear()
         msg = "tmux daemon changed before dispatch; retry the command"
         raise exc.VersionTooLow(msg)
 
@@ -146,26 +222,30 @@ def live_version(binary: str, selectors: list[str]) -> str | None:
     if probe.returncode == 1 and len(reports) == 1:
         require_version(reports[0])
         return reports[0]
-    if "no server running" in probe.stderr or (
-        "error connecting to" in probe.stderr
-        and any(
-            reason in probe.stderr
-            for reason in (
-                "No such file or directory",
-                "Connection refused",
-            )
-        )
-    ):
+    if _absent_endpoint(probe.stderr):
         return None
     msg = probe.stderr.strip() or "tmux did not report a daemon version"
     raise exc.LibTmuxException(msg)
 
 
-def endpoint_version(binary: str, selectors: list[str]) -> str:
-    """Read a fresh daemon version, or the executable for an absent endpoint."""
+def endpoint_version(
+    binary: str, selectors: list[str], *, cache: AdmissionCache | None = None
+) -> str:
+    """Read the daemon version, or the executable's for an absent endpoint.
+
+    With a cache, a release admitted earlier is returned without a probe.
+    """
+    if cache is not None:
+        cached = cache.get(binary, selectors)
+        if cached is not None:
+            return cached
     version = live_version(binary, selectors)
     if version is not None:
+        if cache is not None:
+            cache.put(binary, selectors, version)
         return version
+    if cache is not None:
+        cache.clear()
     return _binary_version(binary)
 
 

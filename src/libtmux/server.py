@@ -183,6 +183,7 @@ class Server(
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self._admission = support.AdmissionCache()
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
@@ -343,7 +344,9 @@ class Server(
         return binary, selectors
 
     def _get_version(self) -> str:
-        return support.endpoint_version(*self._version_endpoint())
+        return support.endpoint_version(
+            *self._version_endpoint(), cache=self._admission
+        )
 
     def _has_gte_version(self, minimum: str) -> bool:
         return support.is_at_least(self._get_version(), minimum)
@@ -422,7 +425,12 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self.tmux_bin,
+            _admission=self._admission,
+        )
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -488,9 +496,15 @@ class Server(
         >>> svr.is_alive()
         False
         """
-        if support.live_version(*self._version_endpoint()) is None:
+        # Liveness is read afresh; the kill then reuses what that read admitted.
+        self._admission.clear()
+        binary, selectors = self._version_endpoint()
+        version = support.live_version(binary, selectors)
+        if version is None:
             return
+        self._admission.put(binary, selectors, version)
         proc = self.cmd("kill-server")
+        self._admission.clear()
         if proc.stderr:
             stderr_text = " ".join(str(line) for line in proc.stderr)
             if _is_daemon_not_up_error(stderr_text):

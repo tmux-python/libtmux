@@ -310,7 +310,12 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        _admission: support.AdmissionCache | None = None,
+    ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -320,7 +325,8 @@ class tmux_cmd:
         cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
-        dispatched, marker = support.prepare(cmd)
+        cached = _admission is not None and bool(_admission)
+        dispatched, marker = support.prepare(cmd, cache=_admission)
 
         if logger.isEnabledFor(logging.DEBUG):
             cmd_str = shlex.join(cmd)
@@ -330,16 +336,13 @@ class tmux_cmd:
             )
 
         try:
-            self.process = subprocess.Popen(
-                dispatched,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
+            stdout, stderr, returncode = self._dispatch(dispatched)
+            if cached and support.daemon_gone(stderr):
+                # The cached daemon vanished; nothing ran, so admit afresh.
+                assert _admission is not None
+                _admission.clear()
+                dispatched, marker = support.prepare(cmd, cache=_admission)
+                stdout, stderr, returncode = self._dispatch(dispatched)
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
@@ -351,7 +354,7 @@ class tmux_cmd:
             )
             raise
 
-        support.check_result(stderr, marker)
+        support.check_result(stderr, marker, cache=_admission)
         self.returncode = returncode
 
         stdout_split = stdout.split("\n")
@@ -379,6 +382,18 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    def _dispatch(self, argv: list[str]) -> tuple[str, str, int]:
+        self.process = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="backslashreplace",
+        )
+        stdout, stderr = self.process.communicate()
+        return stdout, stderr, self.process.returncode
 
 
 class _TmuxVersionUnavailable(Exception):
