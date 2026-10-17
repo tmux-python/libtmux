@@ -58,6 +58,10 @@ sessions. See {doc}`project/compatibility` for the releases each feature needs.
 
 #### Optional tmux feature requirements (#780)
 
+On tmux 3.3a, literal `select-layout` refuses unknown names and malformed
+serialized headers before batch effects. Optional policy version 2 includes
+this validation; ordinary layouts retain the 3.3a minimum.
+
 Single-pane `Pane.break_pane()` returns its actual window on tmux 3.3a through
 3.5, whose native relink path succeeds without printing the requested ID.
 
