@@ -466,6 +466,8 @@ class Server(
     def kill(self) -> None:
         """Kill tmux server.
 
+        An absent endpoint returns without dispatching or starting a daemon.
+
         >>> svr = Server(socket_name="testing")
         >>> svr
         Server(socket_name=testing)
