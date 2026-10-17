@@ -909,8 +909,8 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.3"):
         ...     result = server.server_access(list_access=True)
         ...     assert isinstance(result, list)
         """
@@ -1166,8 +1166,8 @@ class Server(
         works on 3.3+ but the ``send-keys -K -c <client>`` round-trip
         used here is unreliable on 3.3a:
 
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.4"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.4"):
         ...     with control_mode() as ctl:
         ...         server.confirm_before(
         ...             'set -g @cf_test yes',
@@ -1277,8 +1277,8 @@ class Server(
         on 3.3+ but the ``send-keys -K -c <client>`` round-trip used
         here is unreliable on 3.3a:
 
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.4"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.4"):
         ...     with control_mode() as ctl:
         ...         server.command_prompt(
         ...             "set -g @cp_test '%1'",
@@ -1770,8 +1770,8 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.3"):
         ...     result = server.show_prompt_history()
         ... else:
         ...     result = []
@@ -1804,8 +1804,8 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.3"):
         ...     server.clear_prompt_history()
         """
         tmux_args: tuple[str, ...] = ()
