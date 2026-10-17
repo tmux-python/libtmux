@@ -15,6 +15,7 @@ import pytest
 import libtmux
 from libtmux import exc
 from libtmux._compat import LooseVersion
+from libtmux._internal import version as legacy_version
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,
@@ -120,11 +121,11 @@ def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     allow letters.
 
     """
-    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.9a")
+    monkeypatch.setattr(legacy_version, "TMUX_MIN_VERSION", "1.9a")
     result = has_minimum_version()
     assert result
 
-    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.8a")
+    monkeypatch.setattr(legacy_version, "TMUX_MIN_VERSION", "1.8a")
     result = has_minimum_version()
     assert result
 
@@ -136,7 +137,7 @@ def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
     """Refuse an old executable without dropping its version report."""
-    monkeypatch.setattr(libtmux.common, "_query_version", lambda **kwargs: "1.7")
+    monkeypatch.setattr(legacy_version, "_query_version", lambda **kwargs: "1.7")
     with pytest.raises(exc.VersionTooLow, match="libtmux only supports"):
         has_minimum_version()
     assert not has_minimum_version(raises=False)
