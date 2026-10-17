@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import itertools
+import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 import typing as t
 
 import pytest
@@ -526,3 +528,119 @@ def test_executable_report_uses_its_exact_name(
     else:
         with pytest.raises(exc.VersionTooLow):
             support._binary_version("/test/custom tmux")
+
+
+def _native_binary(variable: str, expected: str) -> str:
+    value = os.environ.get(variable)
+    if value is None:
+        pytest.skip(f"set {variable} to native tmux {expected}")
+    report = subprocess.run([value, "-V"], capture_output=True, timeout=5, check=True)
+    assert report.stdout == f"tmux {expected}\n".encode()
+    return value
+
+
+def _native(
+    binary: str, socket: pathlib.Path, *argv: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [binary, "-N", "-S", str(socket), *argv],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+
+
+@pytest.fixture
+def rejection_socket() -> t.Iterator[pathlib.Path]:
+    """Return a short private socket path for a real older daemon."""
+    folder = tempfile.mkdtemp(prefix="lt-")
+    try:
+        yield pathlib.Path(folder) / "s"
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+REJECTED_RELEASES = [
+    ("LIBTMUX_TEST_UNSUPPORTED_TMUX", "3.2a"),
+    ("LIBTMUX_TEST_UNPATCHED_TMUX", "3.3"),
+]
+
+
+@pytest.mark.parametrize(("variable", "release"), REJECTED_RELEASES)
+def test_native_older_daemon_refuses_every_route_without_effects(
+    rejection_socket: pathlib.Path, variable: str, release: str
+) -> None:
+    """A supported client cannot admit a real 3.2a or 3.3 daemon."""
+    supported = _native_binary("LIBTMUX_TEST_MINIMUM_TMUX", "3.3a")
+    older = _native_binary(variable, release)
+    started = subprocess.run(
+        [
+            older,
+            "-f",
+            "/dev/null",
+            "-S",
+            str(rejection_socket),
+            "new-session",
+            "-d",
+            "-s",
+            "kept",
+            "exec sleep 120",
+        ],
+        capture_output=True,
+        timeout=5,
+        check=False,
+    )
+    assert started.returncode == 0, started.stderr
+    server = Server(tmux_bin=supported, socket_path=str(rejection_socket))
+    try:
+        with pytest.raises(exc.VersionTooLow, match=r"3\.3a"):
+            server.cmd("set-option", "-g", "@forbidden", "changed")
+        with pytest.raises(exc.VersionTooLow):
+            server.new_session("forbidden", window_command="exec sleep 120")
+        with pytest.raises(exc.VersionTooLow):
+            tmux_cmd(
+                "-S",
+                str(rejection_socket),
+                "kill-server",
+                tmux_bin=supported,
+            )
+        with pytest.raises(exc.VersionTooLow):
+            _ = server.sessions
+        assert (
+            _native(
+                older, rejection_socket, "show-options", "-gqv", "@forbidden"
+            ).stdout
+            == ""
+        )
+        names = _native(older, rejection_socket, "list-sessions", "-F", "#S")
+        assert names.stdout.split() == ["kept"]
+    finally:
+        _native(older, rejection_socket, "kill-server")
+
+
+@pytest.mark.parametrize(("variable", "release"), REJECTED_RELEASES)
+def test_native_older_executable_does_not_start_an_endpoint(
+    rejection_socket: pathlib.Path, variable: str, release: str
+) -> None:
+    """Cold creation validates the executable before new-session can run."""
+    older = _native_binary(variable, release)
+    server = Server(tmux_bin=older, socket_path=str(rejection_socket))
+    with pytest.raises(exc.VersionTooLow):
+        server.new_session("forbidden", window_command="exec sleep 120")
+    assert not rejection_socket.exists()
+
+
+def test_native_supported_daemon_is_admitted(rejection_socket: pathlib.Path) -> None:
+    """Control: the same client admits and serves a real 3.3a daemon."""
+    supported = _native_binary("LIBTMUX_TEST_MINIMUM_TMUX", "3.3a")
+    server = Server(
+        tmux_bin=supported, socket_path=str(rejection_socket), config_file="/dev/null"
+    )
+    try:
+        session = server.new_session("admitted", window_command="exec sleep 120")
+        assert server._get_version() == "3.3a"
+        assert [item.session_name for item in server.sessions] == ["admitted"]
+        assert session.session_id is not None
+    finally:
+        server.kill()
