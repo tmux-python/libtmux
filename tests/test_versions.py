@@ -16,6 +16,17 @@ from libtmux._internal.support import versions
 from libtmux.common import tmux_cmd
 
 
+def _is_probe(argv: list[str]) -> bool:
+    return argv[-3:-1] == ["run-shell", "-C"]
+
+
+def _reply(argv: list[str], version: str) -> subprocess.CompletedProcess[str]:
+    """Answer a version probe the way a live daemon does."""
+    return subprocess.CompletedProcess(
+        argv, 1, "", f"unknown command: {argv[-1].replace('#{version}', version)}\n"
+    )
+
+
 @pytest.mark.parametrize(
     "version",
     ["3.3a", "3.3b", "3.4", "3.10", "4.0", "3.3a-master", "next-3.8"],
@@ -72,7 +83,7 @@ def test_older_daemon_refused_before_dispatch(
 
     def probe(argv: list[str]) -> subprocess.CompletedProcess[str]:
         probes.append(argv)
-        return subprocess.CompletedProcess(argv, 0, "3.3\n", "")
+        return _reply(argv, "3.3")
 
     def dispatch(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         pytest.fail("requested process started below the minimum")
@@ -114,14 +125,52 @@ def test_older_daemon_refused_before_dispatch(
         else:
             server.cmd("new-session", "-d")
     assert len(probes) == 1
-    assert probes[0][-3:] == ["display-message", "-p", "#{version}"]
+    assert probes[0][-4:-1] == ["-N", "run-shell", "-C"]
+    assert probes[0][-1].endswith("#{version}")
+
+
+def test_version_check_fires_no_user_hooks(server: Server) -> None:
+    """The version probe has no side effects a user's hooks can observe."""
+    from libtmux.test.retry import retry_until
+
+    server.new_session("versioned", window_command="sleep 300")
+    version = server._get_version()
+    has_command_error = True
+    try:
+        versions.require_version(version, "3.5")
+    except exc.VersionTooLow:
+        has_command_error = False
+    server.cmd(
+        "set-hook", "-g", "after-display-message", "set-option -ag @probe-after x"
+    )
+    if has_command_error:
+        server.cmd("set-hook", "-g", "command-error", "set-option -ag @probe-error y")
+
+    binary, selectors = server._version_endpoint()
+    assert versions.live_version(binary, selectors) == version
+    versions.prepare([binary, *selectors, "list-sessions"])
+    server.cmd("list-sessions")
+
+    # Hooks run in order, so a control firing after the probes proves that no
+    # earlier probe left a mark: each sentinel holds exactly one letter.
+    server.cmd("display-message", "-p", "control")
+    if has_command_error:
+        assert server.cmd("kill-session", "-t", "=missing").returncode != 0
+
+    def settled() -> bool:
+        after = server.cmd("show-option", "-gqv", "@probe-after").stdout
+        error = server.cmd("show-option", "-gqv", "@probe-error").stdout
+        return after == ["x"] and (error == ["y"] or not has_command_error)
+
+    assert retry_until(settled, seconds=5, raises=False)
+    assert server.cmd("show-option", "-gqv", "@probe-after").stdout == ["x"]
+    if has_command_error:
+        assert server.cmd("show-option", "-gqv", "@probe-error").stdout == ["y"]
 
 
 def test_prefix_preserves_native_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep native argv and batch separators after the version fence."""
-    monkeypatch.setattr(
-        support, "_run", lambda argv: subprocess.CompletedProcess(argv, 0, "3.3a\n", "")
-    )
+    monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.3a"))
     original = [
         "/tmux",
         "-Lodd;socket",
@@ -150,10 +199,8 @@ def test_no_start_flag_distinguishes_option_values(
     monkeypatch: pytest.MonkeyPatch, option: str
 ) -> None:
     """A literal option value cannot disable daemon restart protection."""
-    monkeypatch.setattr(
-        support, "_run", lambda argv: subprocess.CompletedProcess(argv, 0, "3.3a\n", "")
-    )
-    guarded, _ = support.prepare(["/tmux", option, "-N", "new-session", "-d"])
+    monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.3a"))
+    guarded, _ = versions.prepare(["/tmux", option, "-N", "new-session", "-d"])
     assert guarded[:4] == ["/tmux", option, "-N", "-N"]
 
 
@@ -195,8 +242,8 @@ def test_native_prefix_refuses_a_changed_report(
 
     def changed(argv: list[str]) -> subprocess.CompletedProcess[str]:
         result = run(argv)
-        if result.returncode == 0 and argv[-1] == "#{version}":
-            return subprocess.CompletedProcess(argv, 0, "3.99\n", "")
+        if _is_probe(argv) and result.returncode == 1:
+            return _reply(argv, "3.99")
         return result
 
     with monkeypatch.context() as scoped:
@@ -232,7 +279,7 @@ def test_absent_cleanup_never_dispatches(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(subprocess, "Popen", dispatch)
     Server(socket_name="absent", tmux_bin="/test/old-tmux").kill()
     assert len(calls) == 1
-    assert calls[0][-1] == "#{version}"
+    assert _is_probe(calls[0])
 
 
 def test_checked_daemon_disappearance_never_restarts(
@@ -244,7 +291,7 @@ def test_checked_daemon_disappearance_never_restarts(
 
     def disappear(argv: list[str]) -> subprocess.CompletedProcess[str]:
         result = run(argv)
-        if result.returncode == 0 and argv[-1] == "#{version}":
+        if _is_probe(argv) and result.returncode == 1:
             assert run([*argv[:-4], "kill-server"]).returncode == 0
         return result
 
