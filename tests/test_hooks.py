@@ -9,7 +9,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.constants import Hooks
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import has_gte_version
+from libtmux.common import has_gte_version, has_lte_version
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -314,6 +314,7 @@ class HookTestCase(t.NamedTuple):
     test_id: str
     hook: str  # tmux hook name (hyphenated)
     min_version: str = "3.0"  # Minimum tmux version required
+    max_version: str | None = None  # Last tmux version that has the hook
     xfail_reason: str | None = None  # Mark as expected failure with reason
     removed_version: str | None = None
 
@@ -401,7 +402,17 @@ AFTER_HOOKS: list[HookTestCase] = [
     HookTestCase("after_show_messages", "after-show-messages"),
     HookTestCase("after_show_options", "after-show-options"),
     HookTestCase("after_split_window", "after-split-window"),
+    HookTestCase("after_swap_window", "after-swap-window", "3.8"),
     HookTestCase("after_unbind_key", "after-unbind-key"),
+]
+
+# --- Hooks added in tmux 3.8 ---
+TMUX_38_HOOKS: list[HookTestCase] = [
+    HookTestCase("client_closed", "client-closed", "3.8"),
+    HookTestCase("client_created", "client-created", "3.8"),
+    HookTestCase("marked_pane_changed", "marked-pane-changed", "3.8"),
+    HookTestCase("session_added_to_group", "session-added-to-group", "3.8"),
+    HookTestCase("session_removed_from_group", "session-removed-from-group", "3.8"),
 ]
 
 # --- New Hooks (tmux 3.5+) ---
@@ -475,6 +486,8 @@ def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> N
     """
     if not has_gte_version(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
+    if test_case.max_version and not has_lte_version(test_case.max_version):
+        pytest.skip(f"Removed after tmux {test_case.max_version}")
 
     session = server.new_session(session_name="test_hook_cycle")
     window = session.active_window
