@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 TMUX_MIN_VERSION = support.MINIMUM
 
 #: Version of the optional-feature admission contract for backend consumers.
-TMUX_OPTIONAL_FEATURE_POLICY_VERSION = 1
+TMUX_OPTIONAL_FEATURE_POLICY_VERSION = 2
 
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.7"

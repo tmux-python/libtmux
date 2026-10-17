@@ -173,6 +173,34 @@ def _require_commands(
     for command in _command_items(arguments):
         name = command[0]
         if not is_at_least(version, "3.4") and (
+            name == "selectl" or (len(name) >= 8 and "select-layout".startswith(name))
+        ):
+            options, operands = getopt.getopt(command[1:], "Enopt:")
+            flags = {flag for flag, _ in options}
+            if not operands or flags & {"-E", "-n", "-p"}:
+                continue
+            layout = operands[0]
+            # Before 3.4 an invalid header leaves the native error cause unset.
+            if re.fullmatch(r"[0-9a-fA-F]{4},[\s\S]+", layout):
+                continue
+            presets = (
+                "even-horizontal",
+                "even-vertical",
+                "main-horizontal",
+                "main-vertical",
+                "tiled",
+            )
+            if (
+                "-o" not in flags
+                and sum(item.startswith(layout) for item in presets) == 1
+            ):
+                continue
+            msg = (
+                "invalid layout refused before dispatch on tmux 3.3a; "
+                "use a unique built-in layout name or a serialized layout"
+            )
+            raise ValueError(msg)
+        elif not is_at_least(version, "3.4") and (
             name == "deleteb" or "delete-buffer".startswith(name)
         ):
             options, _ = getopt.getopt(command[1:], "b:")
