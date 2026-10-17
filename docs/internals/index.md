@@ -37,6 +37,12 @@ Internal format strings and tmux constants.
 Sparse array data structure for tmux format parsing.
 :::
 
+:::{grid-item-card} Support
+:link: api/libtmux._internal.support
+:link-type: doc
+The tmux version check every command runs against the connected daemon.
+:::
+
 ::::
 
 ```{toctree}
@@ -47,6 +53,7 @@ api/libtmux._internal.dataclasses
 api/libtmux._internal.query_list
 api/libtmux._internal.constants
 api/libtmux._internal.sparse_array
+api/libtmux._internal.support
 ```
 
 ## Environmental variables
