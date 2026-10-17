@@ -284,7 +284,9 @@ def test_new_window_name_colon_period_accepted(
     """Preserve native names or exact 3.7's rejection before creation."""
     if session.server._get_version() == "3.7":
         before = [window.window_id for window in session.windows]
-        with pytest.raises(exc.LibTmuxException, match="invalid window name"):
+        with pytest.raises(
+            exc.LibTmuxException, match="invalid window or session name"
+        ):
             session.new_window(window_name=window_name)
         assert [window.window_id for window in session.windows] == before
         return
