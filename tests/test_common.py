@@ -488,7 +488,10 @@ def test_version_parsing(
             exc_info.match(exc_msg_regex)
     else:
         assert get_version() == expected_version
-        assert has_minimum_version()
+        if test_id == "openbsd_version":
+            assert not has_minimum_version(raises=False)
+        else:
+            assert has_minimum_version()
         assert has_gte_version(TMUX_MIN_VERSION)
         assert has_gt_version(TMUX_MAX_VERSION)
 
@@ -623,6 +626,10 @@ def test_version_validation(
             return LooseVersion(mock_version)
 
         monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
+        if check_type == "min_version":
+            monkeypatch.setattr(
+                libtmux.common, "_query_version", lambda **kwargs: mock_version
+            )
 
     if check_type == "min_version":
         if raises:
