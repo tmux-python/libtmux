@@ -59,9 +59,17 @@ window (tmux's `-X` / `-Y`). tmux reports the placement back through the
 ...     position = (placed.pane_x, placed.pane_y)
 ... else:
 ...     position = ("2", "1")
->>> position
-('2', '1')
+>>> border = 1 if has_gte_version("3.8") else 0
+>>> position == (str(2 + border), str(1 + border))
+True
 ```
+
+From tmux 3.8, `width`, `height`, `x` and `y` give the pane's footprint on screen
+including its border, which is drawn by default. A pane created with
+`width=20, height=5, x=2, y=1` then reports `pane_width` 18, `pane_height` 3,
+and `pane_x` / `pane_y` of 3 and 2: the border sits on the requested column and
+row, and the content one cell inside. Earlier versions size and place the
+content directly.
 
 ## Styling
 

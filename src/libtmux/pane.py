@@ -1470,13 +1470,19 @@ class Pane(
         environment : dict, optional
             Environment variables for the new pane (``-e`` flag).
         width : int, optional
-            Width of the floating pane in cells (``-x`` flag).
+            Width of the floating pane in cells (``-x`` flag). On tmux 3.8+
+            a bordered pane (the default) counts its border, so ``pane_width``
+            reads 2 less than requested.
         height : int, optional
-            Height of the floating pane in cells (``-y`` flag).
+            Height of the floating pane in cells (``-y`` flag). Counts the
+            border on tmux 3.8+, like *width*.
         x : int, optional
-            X position of the floating pane in cells (``-X`` flag).
+            X position of the floating pane in cells (``-X`` flag). On tmux
+            3.8+ the border lands on this column, so ``pane_left`` reads 1
+            more.
         y : int, optional
-            Y position of the floating pane in cells (``-Y`` flag).
+            Y position of the floating pane in cells (``-Y`` flag). On tmux
+            3.8+ the border lands on this row, so ``pane_top`` reads 1 more.
         zoom : bool, optional
             Zoom the pane (``-Z`` flag).
         empty : bool, optional
