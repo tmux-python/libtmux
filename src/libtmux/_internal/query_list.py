@@ -12,6 +12,7 @@ import re
 import typing as t
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
+from libtmux import exc
 from libtmux.exc import (
     MultipleObjectsReturned as MultipleObjectsReturned,
     ObjectDoesNotExist as ObjectDoesNotExist,
@@ -101,6 +102,8 @@ def keygetter(
             elif hasattr(dct, sub_field):
                 dct = getattr(dct, sub_field)
 
+    except exc.VersionTooLow:
+        raise
     except Exception:
         logger.debug(
             "key lookup failed for path: %s",
@@ -145,6 +148,8 @@ def parse_lookup(
             field_name = path.split(lookup, maxsplit=1)[0]
             if field_name is not None:
                 return keygetter(obj, field_name)
+    except exc.VersionTooLow:
+        raise
     except Exception:
         logger.debug(
             "lookup parsing failed for path: %s",

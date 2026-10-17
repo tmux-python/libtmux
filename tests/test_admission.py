@@ -7,8 +7,9 @@ import typing as t
 
 import pytest
 
-from libtmux import Server, exc
+from libtmux import Server, Window, exc
 from libtmux._internal import support
+from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 
 
@@ -45,7 +46,20 @@ def test_refused_release(version: str) -> None:
 
 @pytest.mark.parametrize(
     "route",
-    ["raw-read", "raw-write", "raw-batch", "server", "alive", "raise-if-dead", "kill"],
+    [
+        "raw-read",
+        "raw-write",
+        "raw-batch",
+        "server",
+        "alive",
+        "raise-if-dead",
+        "kill",
+        "sessions",
+        "clients",
+        "attached-sessions",
+        "linked-sessions",
+        "query",
+    ],
 )
 def test_older_daemon_refused_before_dispatch(
     monkeypatch: pytest.MonkeyPatch, route: str
@@ -84,6 +98,16 @@ def test_older_daemon_refused_before_dispatch(
             server.kill()
         elif route == "raise-if-dead":
             server.raise_if_dead()
+        elif route == "sessions":
+            _ = server.sessions
+        elif route == "clients":
+            _ = server.clients
+        elif route == "attached-sessions":
+            _ = server.attached_sessions
+        elif route == "linked-sessions":
+            _ = Window(server=server, window_id="@1").linked_sessions
+        elif route == "query":
+            QueryList([server]).filter(sessions__noeq=[])
         else:
             server.cmd("new-session", "-d")
     assert len(probes) == 1
