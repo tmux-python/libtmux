@@ -233,6 +233,28 @@ def test_feature_flags_follow_the_daemon_not_the_client(
     assert not server._has_gte_version("3.7")
 
 
+def test_public_admission_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Consumers reach the decision through libtmux.admission alone."""
+    from libtmux import admission
+
+    assert set(admission.__all__) == {
+        "MINIMUM",
+        "VersionTooLow",
+        "server_version",
+        "check_fence",
+        "is_at_least",
+        "require_version",
+    }
+    monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.3"))
+    with pytest.raises(support.VersionTooLow, match=r"3\.3a"):
+        support.server_version(Server(tmux_bin="/test/tmux"))
+    monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.8"))
+    assert support.server_version(Server(tmux_bin="/test/tmux")) == "3.8"
+    with pytest.raises(support.VersionTooLow, match="changed before dispatch"):
+        support.check_fence("unknown command: private-marker\n", "private-marker")
+    support.check_fence("unknown command: other\n", "private-marker")
+
+
 def test_prefix_preserves_native_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep native argv and batch separators after the version fence."""
     monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.3a"))
