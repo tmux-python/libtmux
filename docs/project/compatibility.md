@@ -69,6 +69,7 @@ output synchronization or other optional behavior on every later release.
 | `break-pane` on exact 3.7 | Raw calls and unnamed typed calls are refused. `Pane.break_pane(window_name=...)` applies the explicit name after the move. A later rename failure can leave the moved pane in its new window. |
 | `break-pane` on other supported releases | Native behavior is retained. The exact-3.7 restriction does not raise their minimum. |
 | Single-pane `break-pane` before 3.6 | Native success prints no window ID. The typed method rereads the pane's actual window after the command. |
+| Literal `select-layout` on 3.3a | Require a unique native preset or a serialized layout header before dispatch. Unknown names and malformed headers are refused before any batch effect; valid presets, layout cycling and undo remain available. |
 | Window names containing `:` or `.` | Exact 3.7 rejects creation before creating a window. Other tested supported releases retain those names. There is no automatic name substitution. |
 
 Eligibility comes from the selected daemon, including when a newer client is
@@ -81,10 +82,15 @@ Raw command stdout is native client output; it does not promise capture of a
 nested shell job's stdout.
 
 Backend consumers can require
-`libtmux.common.TMUX_OPTIONAL_FEATURE_POLICY_VERSION >= 1` before handing off
+`libtmux.common.TMUX_OPTIONAL_FEATURE_POLICY_VERSION >= 2` before handing off
 work. This identifies the feature enforcement contract in the table; each
 operation still checks its daemon and control acquisition still checks its
 socket carrier.
+
+On 3.3a, the layout guard validates the preset or serialized header before any
+batch effect. Checksum, tree structure and pane-count errors retain native
+reporting. The native missing-error-cause defect is fixed from 3.4 by
+[the upstream layout repair](https://github.com/tmux/tmux/commit/f10854cfc5e43f646b02b3031bfc4bc3f5f6c513).
 
 The version check assumes library-owned metadata and guard commands retain tmux's
 built-in semantics. Owner `command-alias` redefinitions of commands such as
@@ -96,6 +102,11 @@ to retain or identify that socket refuses acquisition. The native alias and
 replacement checks have been exercised on Linux/WSL; other filesystem and
 platform combinations need their own qualification. A successful idle attach
 does not establish concurrent or sustained-load stability.
+
+Control also needs a natively compatible client. Native clients 3.3a, 3.4 and
+3.5 fail to register with an exact-3.7 daemon; the daemon remains alive. A
+newer compatible client can register with that same daemon. Ordinary client
+operations retain the 3.3a minimum.
 
 ### Synchronization and testing
 
