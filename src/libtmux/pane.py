@@ -1512,8 +1512,8 @@ class Pane(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.7"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.7"):
         ...     floating = pane.new_pane(width=40, height=10, shell="sleep 5")
         ...     is_floating = floating.pane_floating_flag
         ... else:
