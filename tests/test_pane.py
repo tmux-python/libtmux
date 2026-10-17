@@ -1091,7 +1091,7 @@ def test_display_popup_flags(
     test_id: str,
     kwargs: dict[str, t.Any],
     min_tmux_version: str | None,
-    control_mode: t.Callable[..., t.Any],
+    pty_client: t.Callable[[], str],
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1110,14 +1110,14 @@ def test_display_popup_flags(
 
     call_kwargs = {"command": f"touch {marker}", "close_on_exit": True, **kwargs}
 
-    with control_mode():
-        pane.display_popup(**call_kwargs)
+    pty_client()
+    pane.display_popup(**call_kwargs)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
 
 def test_display_popup_close_on_success(
-    control_mode: t.Callable[..., t.Any],
+    pty_client: t.Callable[[], str],
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -1126,8 +1126,8 @@ def test_display_popup_close_on_success(
     pane = session.active_window.active_pane
     assert pane is not None
 
-    with control_mode():
-        pane.display_popup(command=f"touch {marker}", close_on_success=True)
+    pty_client()
+    pane.display_popup(command=f"touch {marker}", close_on_success=True)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
@@ -1157,26 +1157,26 @@ def test_display_popup_close_existing(
 
 
 def test_display_popup_target_client(
-    control_mode: t.Callable[..., t.Any],
+    pty_client: t.Callable[[], str],
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
     """Test Pane.display_popup(target_client=...) emits ``-c <client>``.
 
     ``-c`` has been on ``display-popup`` since tmux 3.2a, so no version
-    guard is needed. The popup itself is invisible without a TTY-backed
-    client; this is a smoke test for the flag-passing path.
+    guard is needed. The client is attached on a pseudo-terminal because
+    tmux 3.8 ignores ``display-popup`` for control-mode clients.
     """
     pane = session.active_window.active_pane
     assert pane is not None
     marker = tmp_path / "popup_target_client.marker"
 
-    with control_mode() as ctl:
-        pane.display_popup(
-            command=f"touch {marker}",
-            close_on_exit=True,
-            target_client=ctl.client_name,
-        )
+    client_name = pty_client()
+    pane.display_popup(
+        command=f"touch {marker}",
+        close_on_exit=True,
+        target_client=client_name,
+    )
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
