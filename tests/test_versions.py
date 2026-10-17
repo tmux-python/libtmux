@@ -144,13 +144,16 @@ def test_probe_error_is_not_a_cold_endpoint(monkeypatch: pytest.MonkeyPatch) -> 
     assert len(calls) == 1
 
 
-def test_format_version_uses_tmux_release_order() -> None:
+@pytest.mark.parametrize(
+    "floor_report", ["3.3a", "3.3a-master", "3.3a-dev", "next-3.3b"]
+)
+def test_format_version_uses_tmux_release_order(floor_report: str) -> None:
     """Patch letters qualify the core but keep the release's format tokens."""
     from libtmux.neo import get_output_format
 
     fields, _ = get_output_format("list-panes", "3.7d")
     assert "pane_floating_flag" in fields
-    fields, _ = get_output_format("list-panes", "3.3a")
+    fields, _ = get_output_format("list-panes", floor_report)
     assert "pane_dead_signal" in fields
     assert "pane_floating_flag" not in fields
 
