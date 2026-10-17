@@ -76,6 +76,26 @@ Binary version and help diagnostics remain available. {meth}`Server.kill() <libt
 remains a no-op for an absent endpoint. See {doc}`project/compatibility` for
 support and feature requirements.
 
+#### Optional tmux feature requirements
+
+Core support remains tmux 3.3a+. {class}`ControlMode
+<libtmux._internal.control_mode.ControlMode>` requires a stable tmux 3.7+
+release and a local socket filesystem that permits a private hard link.
+Control acquisition validates the retained endpoint before starting its client;
+UTF-8 metadata and output remain usable under a C locale.
+
+Exact named-buffer deletion and rename require tmux 3.4+. Captured shell-job
+stdout from {meth}`Server.run_shell() <libtmux.Server.run_shell>` requires
+3.5+ and is refused before launching the job on older daemons. Background,
+pane-directed and native tmux-command execution remain available on 3.3a+.
+
+Percentage splits use portable `-l N%`. On exact tmux 3.7, raw `break-pane`
+and unnamed {meth}`Pane.break_pane() <libtmux.Pane.break_pane>` requests are
+refused. An explicit `window_name` uses the named break and rename repair;
+a failed rename can leave the completed break in place. Other supported
+releases retain ordinary naming. See {doc}`project/compatibility` for the
+operation boundaries and synchronization requirements.
+
 ### Deprecations
 
 #### Executable version helpers warn (#779)
