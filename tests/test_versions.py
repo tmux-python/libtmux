@@ -14,7 +14,7 @@ from libtmux.common import tmux_cmd
 
 @pytest.mark.parametrize(
     "version",
-    ["3.3a", "3.3b", "3.4", "3.10", "4.0", "3.3a-master", "next-3.8", "master"],
+    ["3.3a", "3.3b", "3.4", "3.10", "4.0", "3.3a-master", "next-3.8"],
 )
 def test_admitted_release(version: str) -> None:
     """Keep patch letters and numeric minor ordering at the floor."""
@@ -32,6 +32,7 @@ def test_admitted_release(version: str) -> None:
         "next-3.3a",
         "",
         "unknown",
+        "master",
         "3.3alpha",
         "3.3a\n3.7",
     ],
