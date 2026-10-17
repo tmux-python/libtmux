@@ -1343,7 +1343,7 @@ class Pane(
             tmux_args += (f"-l{size}",)
 
         if percentage is not None:
-            tmux_args += (f"-p{percentage}",)
+            tmux_args += (f"-l{percentage}%",)
 
         if full_window_split:
             tmux_args += ("-f",)
@@ -2364,7 +2364,7 @@ class Pane(
         Examples
         --------
         >>> pane_to_join = window.split(shell='sleep 1m')
-        >>> new_window = pane_to_join.break_pane()
+        >>> new_window = pane_to_join.break_pane(window_name='join-source')
         >>> pane_to_join.join(window)
         """
         tmux_args: tuple[str, ...] = ()
@@ -2415,7 +2415,9 @@ class Pane(
         detach : bool, optional
             Do not switch to the new window (``-d`` flag), default True.
         window_name : str, optional
-            Name for the new window (``-n`` flag).
+            Name for the new window (``-n`` flag). Required on exact tmux
+            3.7, whose unnamed break is unsafe. Named breaks on that release
+            apply the name again after the pane moves.
 
         Returns
         -------
@@ -2429,11 +2431,16 @@ class Pane(
         >>> new_window.window_name
         'broken'
         """
-        # tmux 3.7 segfaults break-pane when -n is absent and ignores -n when
-        # given (NULL-deref); 3.7a reverted it. When needed, pass a placeholder
-        # -n then set the real name via rename-window below. Compare the raw
-        # version string to gate the workaround on the literal 3.7 release only.
-        breaks_without_name = self.server._get_version() == "3.7"
+        # Exact 3.7 needs -n to avoid a crash, then rename-window to apply it.
+        # An unnamed placeholder also changes single-pane window names.
+        version = self.server._get_version()
+        breaks_without_name = version == "3.7"
+        if breaks_without_name and window_name is None:
+            msg = (
+                "unnamed break-pane is unsafe on tmux 3.7; "
+                "provide window_name or upgrade to 3.7a"
+            )
+            raise exc.VersionTooLow(msg)
 
         tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
 
@@ -2442,13 +2449,16 @@ class Pane(
 
         if window_name is not None:
             tmux_args += ("-n", window_name)
-        elif breaks_without_name:
-            tmux_args += ("-n", "libtmux")
 
         tmux_args += ("-s", str(self.pane_id))
 
         # Use server.cmd to avoid auto-adding -t from self.cmd
-        proc = self.server.cmd("break-pane", *tmux_args)
+        proc = self.server.cmd(
+            "break-pane",
+            *tmux_args,
+            _expected_version=version,
+            _repaired_break=breaks_without_name,
+        )
 
         raise_if_stderr(proc, "break-pane")
 

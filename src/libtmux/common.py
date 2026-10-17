@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 #: Minimum version of tmux required to run libtmux
 TMUX_MIN_VERSION = support.MINIMUM
 
+#: Version of the optional-feature admission contract for backend consumers.
+TMUX_OPTIONAL_FEATURE_POLICY_VERSION = 1
+
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.7"
 
@@ -315,6 +318,9 @@ class tmux_cmd:
         *args: t.Any,
         tmux_bin: str | None = None,
         _admission: support.AdmissionCache | None = None,
+        _minimum_version: str = support.MINIMUM,
+        _expected_version: str | None = None,
+        _repaired_break: bool = False,
     ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
@@ -326,7 +332,17 @@ class tmux_cmd:
 
         self.cmd = cmd
         cached = _admission is not None and bool(_admission)
-        dispatched, marker = support.prepare(cmd, cache=_admission)
+
+        def admit() -> tuple[list[str], str | None]:
+            return support.prepare(
+                cmd,
+                cache=_admission,
+                minimum=_minimum_version,
+                expected_version=_expected_version,
+                repaired_break=_repaired_break,
+            )
+
+        dispatched, marker = admit()
 
         if logger.isEnabledFor(logging.DEBUG):
             cmd_str = shlex.join(cmd)
@@ -341,7 +357,7 @@ class tmux_cmd:
                 # The cached daemon vanished; nothing ran, so admit afresh.
                 assert _admission is not None
                 _admission.clear()
-                dispatched, marker = support.prepare(cmd, cache=_admission)
+                dispatched, marker = admit()
                 stdout, stderr, returncode = self._dispatch(dispatched)
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
