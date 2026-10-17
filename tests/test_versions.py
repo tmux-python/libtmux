@@ -118,6 +118,18 @@ def test_changed_daemon_is_explicit() -> None:
         versions.check_result("unknown command: private-marker\n", "private-marker")
 
 
+@pytest.mark.parametrize("option", ["-L", "-S", "-f"])
+def test_no_start_flag_distinguishes_option_values(
+    monkeypatch: pytest.MonkeyPatch, option: str
+) -> None:
+    """A literal option value cannot disable daemon restart protection."""
+    monkeypatch.setattr(
+        support, "_run", lambda argv: subprocess.CompletedProcess(argv, 0, "3.3a\n", "")
+    )
+    guarded, _ = support.prepare(["/tmux", option, "-N", "new-session", "-d"])
+    assert guarded[:4] == ["/tmux", option, "-N", "-N"]
+
+
 def test_probe_error_is_not_a_cold_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     """Permission and protocol failures never authorize server creation."""
     calls: list[list[str]] = []

@@ -74,7 +74,7 @@ def prepare(argv: list[str]) -> tuple[list[str], str | None]:
     version = live_version(argv[0], selectors)
     if version is None:
         version = _binary_version(argv[0])
-    elif "-N" not in globals_:
+    elif not any(flag == "-N" for flag, _ in options):
         # A vanished daemon must not restart an older configured executable.
         globals_.append("-N")
     marker = "libtmux-version-" + uuid.uuid4().hex
