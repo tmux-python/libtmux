@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import pathlib
 import shutil
 import subprocess
@@ -26,35 +27,87 @@ def _reply(argv: list[str], version: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-@pytest.mark.parametrize(
-    "version",
-    ["3.3a", "3.3b", "3.4", "3.10", "4.0", "3.3a-master", "next-3.8"],
-)
+ADMITTED = [
+    "3.3a",
+    "3.3b",
+    "3.4",
+    "3.7d",
+    "3.8",
+    "3.10",
+    "4.0",
+    "3.4-rc",
+    "3.8-rc",
+    "3.8-rc2",
+    "next-3.4",
+    "next-3.9",
+]
+BELOW_FLOOR = ["3.3", "3.2a", "3.3-rc", "3.2-rc5", "next-3.3"]
+UNPARSEABLE = [
+    "master",
+    "openbsd-7.6",
+    "",
+    "3",
+    "garbage",
+    "3.3a garbage",
+    "3.3a\n3.7",
+    "3.3a-master",
+    "3.3a-dev",
+    "next-3.3a",
+    "next-3.9-master",
+    "next-3.9a",
+    "3.3a-rc",
+    "3.3a-rc1",
+    "03.3a",
+    "3.03a",
+    "3.3A",
+    "3.3aa",
+    "3.3a ",
+    "\u0663.\u0663a",
+]
+
+
+@pytest.mark.parametrize("version", ADMITTED)
 def test_admitted_release(version: str) -> None:
-    """Keep patch letters and numeric minor ordering at the floor."""
+    """Every form tmux reports at or above the floor is admitted."""
     support.require_version(version)
 
 
-@pytest.mark.parametrize(
-    "version",
-    [
-        "3.2a",
-        "3.3",
-        "3.3rc1",
-        "3.3a-rc1",
-        "next-3.3",
-        "next-3.3a",
-        "",
-        "unknown",
-        "master",
-        "3.3alpha",
-        "3.3a\n3.7",
-    ],
-)
+@pytest.mark.parametrize("version", [*BELOW_FLOOR, *UNPARSEABLE])
 def test_refused_release(version: str) -> None:
-    """Unknown and pre-floor reports cannot inherit admission."""
+    """Older and unparseable reports cannot inherit admission."""
     with pytest.raises(exc.VersionTooLow, match=r"3\.3a"):
         support.require_version(version)
+
+
+@pytest.mark.parametrize(
+    "ascending",
+    [
+        ["next-3.7", "3.7-rc", "3.7-rc3", "3.7", "3.7a"],
+        ["next-3.4", "3.4-rc", "3.4"],
+        ["3.9", "3.10"],
+        ["3.3", "3.3a", "3.3b"],
+    ],
+)
+def test_release_order(ascending: list[str]) -> None:
+    """Development builds precede candidates, which precede the release."""
+    for lower, higher in itertools.pairwise(ascending):
+        assert support.is_at_least(higher, lower)
+        assert not support.is_at_least(lower, higher)
+
+
+@pytest.mark.parametrize(
+    ("version", "allowed"),
+    [
+        ("3.8-rc2", True),
+        ("next-3.8", True),
+        ("next-3.7", False),
+        ("3.7-rc2", False),
+        ("3.7", True),
+    ],
+)
+def test_candidates_rank_against_a_feature_floor(version: str, allowed: bool) -> None:
+    """A build below a release does not inherit that release's features."""
+    assert support.is_at_least(version, "3.7") is allowed
 
 
 @pytest.mark.parametrize(

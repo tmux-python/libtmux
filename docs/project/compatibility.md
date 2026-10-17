@@ -30,12 +30,16 @@ that refusal, which reports a real error. Binary diagnostics through `tmux -V` a
 `tmux -h` remain available. Raw `tmux -c` shell execution is refused; use
 {meth}`~libtmux.Server.run_shell` for a tmux command instead.
 
-Numbered development reports are accepted as candidates when their release
-base meets the baseline; a `next-` build precedes the release it names. These
-candidates do not inherit stable feature qualification. Unknown reports,
-including an undated `master`, are refused. On OpenBSD, an existing daemon
-must report a qualified release; an executable without `-V` cannot start an
-absent endpoint.
+Admission reads the forms tmux reports: a release with an optional patch
+letter (`3.3a`), a candidate (`3.8-rc`, `3.8-rc2`) and a development build
+(`next-3.9`). They order as `next-3.9` < `3.9-rc` < `3.9-rc2` < `3.9` < `3.9a`,
+and minor numbers compare numerically, so a candidate or development build is
+admitted only when its release number is above the baseline. Such builds do not
+inherit stable feature qualification. Everything else is refused: an undated
+`master`, a development suffix on a release (`3.3a-dev`), a patch letter on a
+development build (`next-3.3a`), leading zeros and OpenBSD's own numbering. On
+OpenBSD, an existing daemon must report a qualified release; an executable
+without `-V` cannot start an absent endpoint.
 The synthetic values returned by legacy version helpers are diagnostic values
 and never authorize a command.
 
