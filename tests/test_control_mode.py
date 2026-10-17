@@ -7,7 +7,6 @@ import locale
 import os
 import pathlib
 import queue
-import re
 import select
 import subprocess
 import threading
@@ -17,7 +16,8 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux._internal.control_mode import ControlMode
+from libtmux._internal import support
+from libtmux._internal.control_mode import ControlMode, _require_release
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -32,8 +32,7 @@ def test_ineligible_control_refuses_before_startup(
 ) -> None:
     """Refusal stays exercised on old and unqualified development daemons."""
     version = server._get_version()
-    stable = re.fullmatch(r"(\d+)\.(\d+)[a-z]?", version)
-    if stable is not None and (int(stable[1]), int(stable[2])) >= (3, 7):
+    if support.is_at_least(version, "3.7"):
         pytest.skip("requires an ineligible control release")
     original = subprocess.Popen
     starts: list[list[str]] = []
@@ -60,8 +59,7 @@ def test_unavailable_socket_link_refuses_before_control(
 ) -> None:
     """A failed pin leaves no control client or temporary socket directory."""
     version = server._get_version()
-    stable = re.fullmatch(r"(\d+)\.(\d+)[a-z]?", version)
-    if stable is None or (int(stable[1]), int(stable[2])) < (3, 7):
+    if not support.is_at_least(version, "3.7"):
         pytest.skip("requires an eligible control release")
     socket = pathlib.Path(
         server.cmd("display-message", "-p", "#{socket_path}").stdout[0]
@@ -146,6 +144,35 @@ def _read_lines(
         yield line
 
 
+@pytest.mark.parametrize(
+    "version",
+    ["3.7", "3.7a", "3.7d", "3.8", "3.8-rc", "3.8-rc2", "next-3.8", "next-3.9"],
+)
+def test_control_admits_what_ranks_at_or_above_3_7(version: str) -> None:
+    """Candidates and development builds above 3.7 final qualify for control."""
+    _require_release(version)
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["3.6b", "3.7-rc", "3.7-rc3", "next-3.7", "3.3a", "3.7a-dev", "master", ""],
+)
+def test_control_refuses_what_ranks_below_3_7(version: str) -> None:
+    """A build below 3.7 final does not inherit the 3.7 initialization fix."""
+    with pytest.raises(exc.VersionTooLow, match=r"3\.7"):
+        _require_release(version)
+
+
+def test_control_client_is_named_from_its_pid(
+    control_mode: t.Callable[[], ControlMode], server: Server
+) -> None:
+    """The name is derived locally, and it is the name tmux gave the client."""
+    with control_mode() as ctl:
+        assert ctl.client_name == f"client-{ctl._proc.pid}"
+        names = set(server.cmd("list-clients", "-F", "#{client_name}").stdout)
+        assert ctl.client_name in names
+
+
 def test_control_mode_creates_client(
     control_mode: t.Callable[[], ControlMode],
     server: Server,
@@ -166,6 +193,15 @@ def test_control_identity_probe_fires_no_user_hooks(
 
     server.cmd("set-hook", "-g", "after-display-message", "set -ag @probe-after x")
     server.cmd("set-hook", "-g", "command-error", "set -ag @probe-error y")
+    # Acquisition must not run any query a user could hook, such as the old
+    # list-clients name lookup.
+    for hook in (
+        "after-list-clients",
+        "after-list-panes",
+        "after-list-sessions",
+        "after-refresh-client",
+    ):
+        server.cmd("set-hook", "-g", hook, "set -ag @probe-extra z")
     with control_mode():
         pass
 
@@ -182,6 +218,7 @@ def test_control_identity_probe_fires_no_user_hooks(
     assert retry_until(settled, seconds=5, raises=False)
     assert server.cmd("show-option", "-gqv", "@probe-after").stdout == ["x"]
     assert server.cmd("show-option", "-gqv", "@probe-error").stdout == ["y"]
+    assert server.cmd("show-option", "-gqv", "@probe-extra").stdout == []
 
 
 def test_control_identity_reports_an_unusual_socket_path(
