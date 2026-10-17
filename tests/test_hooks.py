@@ -8,7 +8,7 @@ import pytest
 
 from libtmux._internal.constants import Hooks
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import has_gte_version, has_lte_version
+from tests.tmux_client import client_gte, client_lte
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -106,7 +106,7 @@ def test_hooks_raw_cmd(
     )
     assert session.cmd("show-hooks", "-s", "session-renamed[0]").stdout == []
 
-    if has_gte_version("3.2"):
+    if client_gte("3.2"):
         #
         # Window
         #
@@ -458,9 +458,9 @@ def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> N
     2. Shown and verified
     3. Unset cleanly
     """
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
-    if test_case.max_version and not has_lte_version(test_case.max_version):
+    if test_case.max_version and not client_lte(test_case.max_version):
         pytest.skip(f"Removed after tmux {test_case.max_version}")
 
     session = server.new_session(session_name="test_hook_cycle")
@@ -512,7 +512,7 @@ def test_new_hooks_version_gated(server: Server, test_case: HookTestCase) -> Non
 
     These hooks are version-gated and will skip on older tmux versions.
     """
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
 
     session = server.new_session(session_name="test_new_hooks")
@@ -847,7 +847,7 @@ def test_show_hooks_stores_string_values(
     test_case: ShowHooksTestCase,
 ) -> None:
     """Test that show_hooks() correctly stores string hook values."""
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux >= {test_case.min_version}")
 
     session = server.new_session(session_name="test_show_hooks")
@@ -870,7 +870,7 @@ def test_show_hooks_stores_string_values(
 
 def test_run_hook_basic(server: Server) -> None:
     """Test run_hook() method exists and can be called without error."""
-    if not has_gte_version("3.2"):
+    if not client_gte("3.2"):
         pytest.skip("Requires tmux >= 3.2")
 
     session = server.new_session(session_name="test_run_hook")
@@ -935,7 +935,7 @@ def test_set_hook_flag_combinations(
     test_case: SetHookFlagTestCase,
 ) -> None:
     """Test set_hook with various flag combinations."""
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
 
     session = server.new_session(session_name="test_flags")
@@ -1020,7 +1020,7 @@ def test_hook_scope_handling(
     test_case: HookScopeTestCase,
 ) -> None:
     """Test hooks at different scopes (session, window, pane)."""
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
 
     session = server.new_session(session_name="test_scope")

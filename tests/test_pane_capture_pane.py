@@ -12,8 +12,8 @@ import typing as t
 
 import pytest
 
-from libtmux.common import has_gte_version
 from libtmux.test.retry import retry_until
+from tests.tmux_client import client_gte
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -329,7 +329,7 @@ def test_capture_pane_flags(
         pytest fixture providing tmux session.
     """
     # Skip if tmux version too old
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     # Find env for predictable shell
@@ -495,7 +495,7 @@ def test_capture_pane_flag_smoke(
     returns a list without raising. Output-pattern assertions live in
     CAPTURE_PANE_CASES for the flags whose behaviour is observable.
     """
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     pane = session.active_window.active_pane

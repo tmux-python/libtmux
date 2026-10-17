@@ -10,9 +10,9 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
+from tests.tmux_client import client_gte
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -518,7 +518,7 @@ def test_send_keys_flags(
     session: Session,
 ) -> None:
     """Test send_keys() with various flag combinations."""
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     env = shutil.which("env")
@@ -863,7 +863,7 @@ def test_display_message_flags(
     session: Session,
 ) -> None:
     """Test display_message() with various flag combinations."""
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     pane = session.active_window.active_pane
@@ -888,11 +888,11 @@ def test_display_message_warns_on_tmux_error(session: Session) -> None:
 
 def test_split_percentage(session: Session) -> None:
     """Test Pane.split() with percentage parameter."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
     # tmux 3.4 has a regression in split-window -p; fixed in 3.5.
     # Per CHANGES FROM 3.4 TO 3.5: "Fix split-window -p."
-    if not has_gte_version("3.5"):
+    if not client_gte("3.5"):
         pytest.skip("split-window -p was broken in tmux 3.4 (fixed in 3.5)")
 
     window = session.new_window(window_name="test_split_pct")
@@ -949,7 +949,7 @@ def test_copy_mode_source_pane(session: Session) -> None:
 
 def test_copy_mode_page_down(session: Session) -> None:
     """Test Pane.copy_mode(page_down=True) on tmux 3.5+."""
-    if not has_gte_version("3.5"):
+    if not client_gte("3.5"):
         pytest.skip("page_down requires tmux 3.5+")
 
     pane = session.active_window.active_pane
@@ -1101,7 +1101,7 @@ def test_display_popup_flags(
     verifying the marker file proves the popup invoked the command and
     the wrapper's flag-building branch was exercised.
     """
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     marker = tmp_path / f"popup_{test_id}.marker"
@@ -1641,7 +1641,7 @@ def test_capture_pane_3_7_flags(
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         assert isinstance(pane.capture_pane(**kwargs), list)
     else:
         with pytest.warns(UserWarning, match=match):
@@ -1655,7 +1655,7 @@ def test_split_empty(session: Session) -> None:
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         new_pane = pane.split(empty=True)
         assert new_pane in window.panes
         assert len(window.panes) == 2
@@ -1700,7 +1700,7 @@ def test_split_3_7_flags(
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         new_pane = pane.split(**kwargs)
         assert new_pane in window.panes
     else:
@@ -1748,7 +1748,7 @@ def test_split_preserves_empty_option_values(
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         new_pane = pane.split(**option_kwargs)
         assert new_pane in window.panes
     else:
@@ -1770,7 +1770,7 @@ def test_paste_buffer_no_vis(session: Session) -> None:
     retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
 
     session.server.set_buffer("raw_content", buffer_name="novis_test")
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         pane.paste_buffer(buffer_name="novis_test", no_vis=True)
         retry_until(
             lambda: "raw_content" in "\n".join(pane.capture_pane()),
@@ -1815,11 +1815,11 @@ def test_new_pane_floating(session: Session) -> None:
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
         assert floating.pane_floating_flag == "1"
         # tmux 3.8 counts the border in -x/-y/-X/-Y, so the content is smaller.
-        border = 2 if has_gte_version("3.8") else 0
+        border = 2 if client_gte("3.8") else 0
         assert floating.pane_width == str(80 - border)
         assert floating.pane_height == str(15 - border)
         assert floating.pane_x == str(5 + border // 2)
@@ -1836,7 +1836,7 @@ def test_new_pane_keep(session: Session) -> None:
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         floating = pane.new_pane(width=80, height=15, keep=True, shell="sleep 30")
         assert floating.pane_floating_flag == "1"
         remain = floating.cmd("show-options", "-p", "-v", "remain-on-exit").stdout
@@ -1861,7 +1861,7 @@ def test_new_pane_preserves_empty_option_values(
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         floating = pane.new_pane(
             width=40,
             height=10,
@@ -1880,7 +1880,7 @@ def test_new_pane_error_tags_subcommand(session: Session) -> None:
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         with pytest.raises(exc.LibTmuxException) as excinfo:
             pane.new_pane(target="%99999")
         assert excinfo.value.subcommand == "new-pane"
