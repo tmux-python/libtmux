@@ -36,7 +36,9 @@ if t.TYPE_CHECKING:
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_master_diagnostic_does_not_qualify_minimum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Assert get_version() works with builds from git trunk."""
 
     class Hi:
@@ -48,7 +50,7 @@ def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
 
-    assert has_minimum_version()
+    assert not has_minimum_version(raises=False)
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
     assert get_version() == f"{TMUX_MAX_VERSION}-master", (

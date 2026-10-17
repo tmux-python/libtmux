@@ -17,8 +17,6 @@ def require_version(version: str, minimum: str = MINIMUM) -> None:
     """Reject unknown or older releases, preserving numeric and patch order."""
     # Development lanes are explicit candidates, not stable feature guarantees.
     candidate = version.removeprefix("next-")
-    if candidate == "master":
-        return
     parsed = _RELEASE.fullmatch(candidate)
     floor = _RELEASE.fullmatch(minimum)
     if parsed is not None and floor is not None:

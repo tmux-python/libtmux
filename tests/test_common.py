@@ -488,7 +488,7 @@ def test_version_parsing(
             exc_info.match(exc_msg_regex)
     else:
         assert get_version() == expected_version
-        if test_id == "openbsd_version":
+        if test_id in {"openbsd_version", "master_version"}:
             assert not has_minimum_version(raises=False)
         else:
             assert has_minimum_version()
