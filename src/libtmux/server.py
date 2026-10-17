@@ -25,6 +25,7 @@ from libtmux._internal.env import (
     socket_path_from_env,
 )
 from libtmux._internal.query_list import QueryList
+from libtmux._internal.support import versions
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.client import Client
 from libtmux.common import (
@@ -502,6 +503,8 @@ class Server(
         """
         try:
             res = self.cmd("list-sessions")
+        except exc.VersionTooLow:
+            raise
         except Exception:
             return False
         return res.returncode == 0
@@ -527,18 +530,22 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
+        result = self.cmd("list-sessions")
+        if result.returncode:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                result.cmd,
+                output="\n".join(result.stdout),
+                stderr="\n".join(result.stderr),
+            )
+
+    def _version_endpoint(self) -> tuple[str, list[str]]:
+        binary = self.tmux_bin or shutil.which("tmux")
+        if binary is None:
             raise exc.TmuxCommandNotFound
-
-        cmd_args: list[str] = [*self._socket_args(), "list-sessions"]
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        # Selectors come from _socket_args(), which measures the socket path.
+        selectors: list[str] = self._socket_args()
+        return binary, selectors
 
     #
     # Command
@@ -780,6 +787,8 @@ class Server(
         >>> svr.is_alive()
         False
         """
+        if support.live_version(*self._version_endpoint()) is None:
+            return
         proc = self.cmd("kill-server")
         if proc.stderr:
             stderr_text = " ".join(str(line) for line in proc.stderr)
