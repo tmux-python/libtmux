@@ -45,6 +45,56 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### tmux 3.3a is the minimum (#779)
+
+Minimum `tmux>=3.3a` (was `>=3.2a`). libtmux now checks the release of the
+tmux server it talks to, not the `tmux` executable on `PATH`, and raises
+{exc}`~libtmux.exc.VersionTooLow` before sending anything to an older server,
+including 3.3 without its patch letter. Upgrading the executable does not
+upgrade a server that is already running: restart it after saving its
+sessions. See {doc}`project/compatibility` for the releases each feature needs.
+
+#### Executable version helpers are deprecated (#779)
+
+{func}`~libtmux.common.get_version`, {func}`~libtmux.common.get_version_str`,
+{func}`~libtmux.common.has_version`, {func}`~libtmux.common.has_gt_version`,
+{func}`~libtmux.common.has_gte_version`, {func}`~libtmux.common.has_lte_version`,
+{func}`~libtmux.common.has_lt_version`,
+{func}`~libtmux.common.has_minimum_version`, `TMUX_MIN_VERSION` and
+`TMUX_MAX_VERSION` now emit a {exc}`DeprecationWarning`. They read the `tmux`
+executable, which can be a different release from the server a
+{class}`~libtmux.Server` talks to. They keep working.
+
+```python
+# Before
+from libtmux.common import has_gte_version
+
+has_gte_version("3.4")
+
+# After
+from libtmux._internal.support import is_at_least, server_version
+
+is_at_least(server_version(server), "3.4")
+```
+
+The replacement lives in the private `libtmux._internal.support` module for
+now, so its names can still change.
+
+### Fixes
+
+#### Optional flags follow the server's release (#779)
+
+Commands now pick their optional flags from the tmux server's release, not
+the `tmux` executable's, so a newer executable talking to an older server no
+longer sends flags that server rejects.
+
+#### Hooks from tmux 3.8 are read (#779)
+
+{meth}`~libtmux.hooks.HooksMixin.show_hook` knows the hooks tmux 3.8 adds, and
+a hook a newer tmux adds no longer stops the hook table from being read.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -56,6 +106,12 @@ its {meth}`Server <libtmux.Server.from_env>`,
 environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
+
+#### Completion example waits for real output (#779)
+
+The command-completion example in {doc}`topics/automation_patterns` runs a
+real command and waits for its exact output line, so it no longer matches the
+echoed input or misses output that arrives late.
 
 ### Development
 
