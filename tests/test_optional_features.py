@@ -40,7 +40,7 @@ def test_malformed_layout_is_refused_before_any_batch_effect(
         "not-a-layout",
     )
     if server._get_version() == "3.3a":
-        with pytest.raises(ValueError, match="layout"):
+        with pytest.raises(exc.InvalidLayout, match="layout"):
             server.cmd(*command)
         assert not marker.exists()
     else:
@@ -48,6 +48,12 @@ def test_malformed_layout_is_refused_before_any_batch_effect(
         assert result.returncode != 0
         assert marker.exists()
     assert server.is_alive()
+
+
+def test_refused_layout_is_a_library_exception() -> None:
+    """Callers that catch LibTmuxException see the refusal on every release."""
+    assert issubclass(exc.InvalidLayout, exc.LibTmuxException)
+    assert issubclass(exc.InvalidLayout, ValueError)
 
 
 def test_33a_layout_validation_retains_native_safe_forms(session: Session) -> None:
@@ -67,7 +73,7 @@ def test_33a_layout_validation_retains_native_safe_forms(session: Session) -> No
     assert server.cmd("select-layout", "-o", "-t", target).returncode == 0
     invalid = server.cmd("select-layout", "-t", target, "0000,not-a-layout")
     assert invalid.returncode != 0
-    with pytest.raises(ValueError, match="layout"):
+    with pytest.raises(exc.InvalidLayout, match="layout"):
         server.cmd("select-layout", "-o", "-t", target, "tiled")
     assert server.is_alive()
 
