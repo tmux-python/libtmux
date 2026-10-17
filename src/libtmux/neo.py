@@ -5,13 +5,14 @@ from __future__ import annotations
 import dataclasses
 import functools
 import logging
+import re
 import shlex
 import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR, Format
 
 if t.TYPE_CHECKING:
@@ -273,7 +274,8 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
     """
     if "master" in version.lower():
         return LooseVersion("99.0")
-    return LooseVersion(version)
+    release = re.match(r"(?:next-)?(\d+\.\d+)", version)
+    return LooseVersion(release[1] if release is not None else version)
 
 
 @dataclasses.dataclass()
@@ -1154,7 +1156,7 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    tmux_version = server._get_version()
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
     tmux_cmds: list[str | int] = [

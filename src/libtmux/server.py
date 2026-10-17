@@ -25,7 +25,6 @@ from libtmux._internal.env import (
     socket_path_from_env,
 )
 from libtmux._internal.query_list import QueryList
-from libtmux._internal.support import versions
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.client import Client
 from libtmux.common import (
@@ -33,7 +32,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     _literal,
-    get_version,
     has_gte_version,
     raise_if_stderr,
     tmux_cmd,
@@ -546,6 +544,9 @@ class Server(
         # Selectors come from _socket_args(), which measures the socket path.
         selectors: list[str] = self._socket_args()
         return binary, selectors
+
+    def _get_version(self) -> str:
+        return support.endpoint_version(*self._version_endpoint())
 
     #
     # Command
@@ -2768,7 +2769,7 @@ class Server(
             del os.environ["TMUX"]
 
         try:
-            tmux_version = str(get_version(tmux_bin=self.tmux_bin))
+            tmux_version = self._get_version()
             _fields, format_string = get_output_format("list-sessions", tmux_version)
 
             tmux_args: tuple[str | int, ...] = (

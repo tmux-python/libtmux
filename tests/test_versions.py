@@ -131,6 +131,17 @@ def test_probe_error_is_not_a_cold_endpoint(monkeypatch: pytest.MonkeyPatch) -> 
     assert len(calls) == 1
 
 
+def test_format_version_uses_tmux_release_order() -> None:
+    """Patch letters qualify the core but keep the release's format tokens."""
+    from libtmux.neo import get_output_format
+
+    fields, _ = get_output_format("list-panes", "3.7d")
+    assert "pane_floating_flag" in fields
+    fields, _ = get_output_format("list-panes", "3.3a")
+    assert "pane_dead_signal" in fields
+    assert "pane_floating_flag" not in fields
+
+
 def test_native_prefix_refuses_a_changed_report(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,

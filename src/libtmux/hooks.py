@@ -5,7 +5,7 @@ tmux Hook Features
 Hooks are array options (e.g., ``session-renamed[0]``, ``session-renamed[1]``)
 with sparse index support (can have gaps: ``[0]``, ``[5]``, ``[10]``).
 
-All features available in libtmux's minimum supported version (tmux 3.3a):
+Features available on the tmux 3.3a baseline:
 
 - Session, window, and pane-level hooks
 - Window hooks via ``-w`` flag, pane hooks via ``-p`` flag
@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 class HooksMixin(CmdMixin):
     """Mixin for manager scoped hooks in tmux.
 
-    Requires tmux 3.1+. For older versions, use raw commands.
+    Commands share the tmux 3.3a core minimum.
     """
 
     default_hook_scope: OptionScope | None
