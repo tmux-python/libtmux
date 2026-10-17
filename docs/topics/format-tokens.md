@@ -120,8 +120,10 @@ startup, they use the selected executable's report. This keeps field selection
 correct when the executable and daemon have different versions.
 
 {func}`libtmux.common.get_version` and
-{func}`libtmux.common.get_version_str` describe the executable and cache their
-results independently. Their caches do not authorize daemon operations.
+{func}`libtmux.common.get_version_str` describe the executable, cache their
+results independently and are deprecated. Their caches do not authorize daemon
+operations; use `server_version(server)` from `libtmux._internal.support` to
+read the daemon's release.
 
 See {doc}`/project/compatibility` for the tmux 3.3a core minimum and the
 version-check rules.
