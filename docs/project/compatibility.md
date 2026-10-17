@@ -35,6 +35,10 @@ absent endpoint.
 The synthetic values returned by legacy version helpers are diagnostic values
 and never authorize a command.
 
+If an admitted daemon disappears before dispatch, that command fails without
+starting the configured executable. Retry against the absent endpoint to
+validate the executable before creating a replacement.
+
 Individual features can require a newer daemon. Their API documentation states
 those requirements. Raising the core floor does not qualify control startup,
 output synchronization or other optional behavior on every later release.
