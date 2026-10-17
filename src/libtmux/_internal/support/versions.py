@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import getopt
+import os
+import pathlib
 import re
 import subprocess
 import uuid
@@ -131,10 +133,18 @@ def endpoint_version(binary: str, selectors: list[str]) -> str:
 
 def _binary_version(binary: str) -> str:
     result = _run([binary, "-V"])
-    if result.returncode or not result.stdout.startswith("tmux "):
+    # tmux 3.3a prints its executable name, including non-UTF-8 bytes.
+    name = os.fsencode(pathlib.Path(binary).name).decode(
+        "utf-8", errors="backslashreplace"
+    )
+    prefix = next(
+        (item for item in (name + " ", "tmux ") if result.stdout.startswith(item)),
+        None,
+    )
+    if result.returncode or prefix is None:
         detail = result.stderr.strip() or result.stdout.strip()
         msg = f"cannot establish tmux version before command dispatch: {detail}"
         raise exc.VersionTooLow(msg)
-    version = result.stdout.removeprefix("tmux ").strip()
+    version = result.stdout[len(prefix) :].strip()
     require_version(version)
     return version
