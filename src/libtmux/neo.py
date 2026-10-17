@@ -5,13 +5,14 @@ from __future__ import annotations
 import dataclasses
 import functools
 import logging
+import re
 import shlex
 import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -264,8 +265,8 @@ def _token_scope(field_name: str) -> str:
 def _normalize_tmux_version(version: str) -> LooseVersion:
     """Convert a tmux version string into a comparable :class:`LooseVersion`.
 
-    tmux master is reported as ``"master"`` (or e.g. ``"3.6a-master"``);
-    treat it as larger than any tagged release.
+    Numbered reports select their release's format catalog. Bare ``"master"``
+    selects the complete catalog for offline inspection; it cannot admit a daemon.
 
     Examples
     --------
@@ -274,7 +275,12 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
     True
     >>> _normalize_tmux_version("3.2a") < _normalize_tmux_version("3.6a")
     True
+    >>> _normalize_tmux_version("3.3a-master") == _normalize_tmux_version("3.3")
+    True
     """
+    release = re.match(r"(?:next-)?(\d+\.\d+)", version)
+    if release is not None:
+        return LooseVersion(release[1])
     if "master" in version.lower():
         return LooseVersion("99.0")
     return LooseVersion(version)
@@ -908,7 +914,7 @@ class Obj:
 @functools.cache
 def get_output_format(
     list_cmd: str = "list-panes",
-    tmux_version: str = "3.2a",
+    tmux_version: str = "3.3a",
 ) -> tuple[tuple[str, ...], str]:
     """Return field names and tmux format string filtered by scope and version.
 
@@ -985,7 +991,7 @@ def get_output_format(
 def parse_output(
     output: str,
     list_cmd: str = "list-panes",
-    tmux_version: str = "3.2a",
+    tmux_version: str = "3.3a",
 ) -> OutputRaw:
     """Parse a tmux ``-F`` line into a dict keyed by Obj field name.
 
@@ -1095,7 +1101,7 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    tmux_version = server._get_version()
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
     cmd_args: list[str | int] = []
@@ -1133,6 +1139,7 @@ def fetch_objs(
     proc = tmux_cmd(
         *tmux_cmds,
         tmux_bin=server.tmux_bin,
+        _admission=server._admission,
     )
 
     raise_if_stderr(proc, list_cmd)
@@ -1347,6 +1354,8 @@ def fetch_obj(
             list_cmd=list_cmd,
             list_extra_args=list_extra_args,
         )
+    except exc.VersionTooLow:
+        raise
     except exc.LibTmuxException as e:
         # A ``-t``-scoped listing pushes the "does it exist?" question down
         # into tmux, which answers on stderr rather than with an empty listing.

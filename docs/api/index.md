@@ -114,6 +114,12 @@ tmux hook management.
 Format strings and constants.
 :::
 
+:::{grid-item-card} Version admission
+:link: libtmux.admission
+:link-type: doc
+Reuse libtmux's tmux release check in your own subprocesses.
+:::
+
 :::{grid-item-card} Exceptions
 :link: libtmux.exc
 :link-type: doc
@@ -177,5 +183,6 @@ Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
 Constants <libtmux.constants>
+Admission <libtmux.admission>
 Exceptions <libtmux.exc>
 ```

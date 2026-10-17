@@ -523,21 +523,19 @@ True
 
 ### 1. Always use markers for completion detection
 
-Timing is a guess; a marker is a fact. Instead of sleeping long enough and hoping a
-command finished, have it print an explicit marker and poll for that. Your automation
-then reacts to what actually happened rather than to a clock.
+Have the command print a marker when it finishes, then wait until that marker appears
+as a complete output line. Starting the command with the window avoids matching an
+echo of typed input. The shell keeps the pane open so its output remains available.
 
 ```python
->>> bp_window = session.new_window(window_name='best-practice', attach=False)
+>>> bp_window = session.new_window(
+...     window_name='best-practice', attach=False,
+...     window_shell="printf '%s\\n' 'work complete' '__DONE__'; exec /bin/sh",
+... )
 >>> bp_pane = bp_window.active_pane
 
->>> # Good: Use completion marker
->>> bp_pane.send_keys('long_command; echo "__DONE__"')
-
->>> # Then poll for marker
->>> import time
->>> time.sleep(0.2)
->>> '__DONE__' in '\\n'.join(bp_pane.capture_pane())
+>>> from libtmux.test.retry import retry_until
+>>> retry_until(lambda: '__DONE__' in bp_pane.capture_pane(), seconds=3)
 True
 
 >>> bp_window.kill()

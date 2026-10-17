@@ -1358,7 +1358,13 @@ def test_break_pane_no_name_uses_natural_name(session: Session) -> None:
     pane = window.active_pane
     assert pane is not None
 
-    new_pane = pane.split(shell="sleep 123")
+    new_pane = pane.split(shell="exec sleep 123")
+
+    def command_started() -> bool:
+        new_pane.refresh()
+        return new_pane.pane_current_command == "sleep"
+
+    retry_until(command_started)
     broken = new_pane.break_pane()
     assert broken.window_name == "sleep"
 

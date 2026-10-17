@@ -15,7 +15,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -363,6 +363,8 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
 
@@ -1322,7 +1324,7 @@ class Window(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self.server._has_gte_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(

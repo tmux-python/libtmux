@@ -18,6 +18,7 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal import support
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 #: Minimum version of tmux required to run libtmux
-TMUX_MIN_VERSION = "3.2a"
+TMUX_MIN_VERSION = support.MINIMUM
 
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.7"
@@ -309,7 +310,12 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        _admission: support.AdmissionCache | None = None,
+    ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -319,6 +325,8 @@ class tmux_cmd:
         cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
+        cached = _admission is not None and bool(_admission)
+        dispatched, marker = support.prepare(cmd, cache=_admission)
 
         if logger.isEnabledFor(logging.DEBUG):
             cmd_str = shlex.join(cmd)
@@ -328,16 +336,13 @@ class tmux_cmd:
             )
 
         try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
+            stdout, stderr, returncode = self._dispatch(dispatched)
+            if cached and support.daemon_gone(stderr):
+                # The cached daemon vanished; nothing ran, so admit afresh.
+                assert _admission is not None
+                _admission.clear()
+                dispatched, marker = support.prepare(cmd, cache=_admission)
+                stdout, stderr, returncode = self._dispatch(dispatched)
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
@@ -349,6 +354,7 @@ class tmux_cmd:
             )
             raise
 
+        support.check_result(stderr, marker, cache=_admission)
         self.returncode = returncode
 
         stdout_split = stdout.split("\n")
@@ -376,6 +382,18 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    def _dispatch(self, argv: list[str]) -> tuple[str, str, int]:
+        self.process = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="backslashreplace",
+        )
+        stdout, stderr = self.process.communicate()
+        return stdout, stderr, self.process.returncode
 
 
 class _TmuxVersionUnavailable(Exception):
@@ -428,7 +446,10 @@ def _query_version(tmux_bin: str | None = None) -> str:
             raise _TmuxVersionUnavailable
         raise exc.VersionTooLow(proc.stderr)
 
-    return proc.stdout[0].split("tmux ")[1]
+    if len(proc.stdout) != 1 or not proc.stdout[0].startswith("tmux "):
+        msg = "tmux -V did not report a single version"
+        raise exc.VersionTooLow(msg)
+    return proc.stdout[0].removeprefix("tmux ")
 
 
 @functools.cache
@@ -606,7 +627,10 @@ def has_lt_version(max_version: str, tmux_bin: str | None = None) -> bool:
 
 
 def has_minimum_version(raises: bool = True, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux meets version requirement. Version >= 3.2a.
+    """Return True if the executable meets the complete release minimum.
+
+    Commands independently admit their connected daemon. This helper preserves
+    patch letters and does not use the legacy normalized version cache.
 
     Parameters
     ----------
@@ -637,15 +661,13 @@ def has_minimum_version(raises: bool = True, tmux_bin: str | None = None) -> boo
         Versions will now remove trailing letters per
         `Issue 55 <https://github.com/tmux-python/tmuxp/issues/55>`_.
     """
-    current_version = get_version(tmux_bin=tmux_bin)
-    if current_version < LooseVersion(TMUX_MIN_VERSION):
+    try:
+        version = _query_version(tmux_bin=tmux_bin)
+        support.require_version(version, minimum=TMUX_MIN_VERSION)
+    except (exc.VersionTooLow, _TmuxVersionUnavailable):
         if raises:
-            msg = (
-                f"libtmux only supports tmux {TMUX_MIN_VERSION} and greater. This "
-                f"system has {current_version} installed. Upgrade your "
-                "tmux to use libtmux, or use libtmux v0.48.x for older tmux versions."
-            )
-            raise exc.VersionTooLow(msg)
+            msg = f"libtmux only supports tmux {TMUX_MIN_VERSION} and greater"
+            raise exc.VersionTooLow(msg) from None
         return False
     return True
 
