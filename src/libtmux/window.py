@@ -656,13 +656,16 @@ class Window(
         environment : dict, optional
             Environment variables for the new pane (``-e``).
         width : int, optional
-            Width in cells (``-x``).
+            Width in cells (``-x``). On tmux 3.8+ a bordered pane (the
+            default) counts its border, so ``pane_width`` reads 2 less.
         height : int, optional
-            Height in cells (``-y``).
+            Height in cells (``-y``). Counts the border on tmux 3.8+.
         x : int, optional
-            X position in cells (``-X``).
+            X position in cells (``-X``). On tmux 3.8+ the border lands on
+            this column, so ``pane_left`` reads 1 more.
         y : int, optional
-            Y position in cells (``-Y``).
+            Y position in cells (``-Y``). On tmux 3.8+ the border lands on
+            this row, so ``pane_top`` reads 1 more.
         zoom : bool, optional
             Zoom the pane (``-Z``).
         empty : bool, optional
