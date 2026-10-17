@@ -16,6 +16,13 @@ if t.TYPE_CHECKING:
     import pathlib
 
 
+def _reply(argv: list[str], version: str) -> subprocess.CompletedProcess[str]:
+    """Answer a version probe the way a live daemon does."""
+    return subprocess.CompletedProcess(
+        argv, 1, "", f"unknown command: {argv[-1].replace('#{version}', version)}\n"
+    )
+
+
 @pytest.mark.parametrize("verb", ["select-layout", "selectl", "select-l"])
 def test_malformed_layout_is_refused_before_any_batch_effect(
     session: Session, tmp_path: pathlib.Path, verb: str
@@ -131,7 +138,7 @@ def test_refused_native_feature_has_no_dispatch(
     monkeypatch.setattr(
         versions,
         "_run",
-        lambda argv: subprocess.CompletedProcess(argv, 0, version + "\n", ""),
+        lambda argv: _reply(argv, version),
     )
 
     def unexpected(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
@@ -170,7 +177,7 @@ def test_native_feature_scope_preserves_arguments(
     monkeypatch.setattr(
         versions,
         "_run",
-        lambda argv: subprocess.CompletedProcess(argv, 0, version + "\n", ""),
+        lambda argv: _reply(argv, version),
     )
     guarded, _ = versions.prepare(["/test/tmux", *arguments])
     assert guarded[-len(arguments) :] == arguments
@@ -188,8 +195,10 @@ def test_capture_refusal_uses_actual_daemon(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(
         versions,
         "_run",
-        lambda argv: subprocess.CompletedProcess(
-            argv, 0, "tmux 3.7d\n" if "-V" in argv else "3.3a\n", ""
+        lambda argv: (
+            subprocess.CompletedProcess(argv, 0, "tmux 3.7d\n", "")
+            if "-V" in argv
+            else _reply(argv, "3.3a")
         ),
     )
 
@@ -208,7 +217,7 @@ def test_unnamed_exact_37_break_is_refused(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(
         versions,
         "_run",
-        lambda argv: subprocess.CompletedProcess(argv, 0, "3.7\n", ""),
+        lambda argv: _reply(argv, "3.7"),
     )
     pane = Pane(server=Server(tmux_bin="/test/tmux"), pane_id="%1")
     with pytest.raises(exc.VersionTooLow, match="provide window_name"):
@@ -222,7 +231,7 @@ def test_capability_selection_cannot_cross_daemon_release(
     monkeypatch.setattr(
         versions,
         "_run",
-        lambda argv: subprocess.CompletedProcess(argv, 0, "3.3a\n", ""),
+        lambda argv: _reply(argv, "3.3a"),
     )
     with pytest.raises(exc.VersionTooLow, match="selecting"):
         versions.prepare(
