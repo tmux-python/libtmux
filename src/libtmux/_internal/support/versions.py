@@ -12,26 +12,56 @@ import uuid
 from libtmux import exc
 
 MINIMUM = "3.3a"
-_RELEASE = re.compile(r"(\d+)\.(\d+)([a-z]?)(?:-(master|dev|rc\d+))?")
+
+_NUMBER = r"(?:0|[1-9][0-9]*)"
+_REPORT = re.compile(
+    rf"(?P<dev>next-)?(?P<major>{_NUMBER})\.(?P<minor>{_NUMBER})"
+    r"(?:(?P<letter>[a-z])|-rc(?P<candidate>[0-9]*))?",
+    re.ASCII,
+)
+
+
+def _rank(report: str) -> tuple[int, int, int, int, str] | None:
+    """Order the forms tmux reports, or return None for any other string.
+
+    ``next-X.Y`` precedes ``X.Y-rc``, then ``X.Y-rcN``, then ``X.Y`` and its
+    patch letters. A bare ``-rc`` ranks as the first candidate.
+    """
+    parsed = _REPORT.fullmatch(report)
+    if parsed is None:
+        return None
+    dev = parsed["dev"] is not None
+    letter = parsed["letter"]
+    candidate = parsed["candidate"]
+    if dev and (letter or candidate is not None):
+        return None
+    stage = 0 if dev else 1 if candidate is not None else 2
+    return (
+        int(parsed["major"]),
+        int(parsed["minor"]),
+        stage,
+        int(candidate or 1) if stage == 1 else 0,
+        letter or "",
+    )
 
 
 def require_version(version: str, minimum: str = MINIMUM) -> None:
-    """Reject unknown or older releases, preserving numeric and patch order."""
-    # Development lanes are explicit candidates, not stable feature guarantees.
-    candidate = version.removeprefix("next-")
-    parsed = _RELEASE.fullmatch(candidate)
-    floor = _RELEASE.fullmatch(minimum)
-    if parsed is not None and floor is not None:
-        running = (int(parsed[1]), int(parsed[2]), parsed[3])
-        required = (int(floor[1]), int(floor[2]), floor[3])
-        if running > required or (
-            running == required
-            and not version.startswith("next-")
-            and not (parsed[4] or "").startswith("rc")
-        ):
-            return
+    """Reject unknown or older reports, preserving numeric and patch order."""
+    running = _rank(version)
+    required = _rank(minimum)
+    if running is not None and required is not None and running >= required:
+        return
     msg = f"libtmux requires tmux {minimum} or newer; endpoint reports {version!r}"
     raise exc.VersionTooLow(msg)
+
+
+def is_at_least(version: str, minimum: str) -> bool:
+    """Compare a checked version report with a feature's complete release floor."""
+    try:
+        require_version(version, minimum=minimum)
+    except exc.VersionTooLow:
+        return False
+    return True
 
 
 def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
