@@ -31,6 +31,12 @@ libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelli
 ## Requirements & support
 
 - tmux: >= 3.3a
+
+Optional operations have separate requirements. Control acquisition requires a
+qualified tmux 3.7+ release and a retainable local socket; exact named-buffer
+deletion/rename require 3.4+, and captured shell stdout requires 3.5+.
+See the [compatibility policy](https://libtmux.git-pull.com/project/compatibility/)
+for exact-3.7 break-pane restrictions and the operations available on 3.3a.
 - Python: >= 3.10 (CPython and PyPy)
 
 Maintenance-only backports (no new fixes):

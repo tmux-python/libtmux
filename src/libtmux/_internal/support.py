@@ -145,8 +145,140 @@ def daemon_gone(stderr: str) -> bool:
     return _absent_endpoint(stderr)
 
 
+def _command_items(arguments: list[str]) -> list[list[str]]:
+    """Inspect the native argv command boundaries without rewriting them."""
+    commands: list[list[str]] = []
+    current: list[str] = []
+    for argument in arguments:
+        if argument.endswith(";"):
+            value = argument[:-1]
+            if value.endswith("\\"):
+                current.append(value[:-1] + ";")
+                continue
+            if value:
+                current.append(value)
+            if current:
+                commands.append(current)
+                current = []
+        else:
+            current.append(argument)
+    if current:
+        commands.append(current)
+    return commands
+
+
+def _matches(name: str, full: str, alias: str) -> bool:
+    """Report whether *name* is tmux's alias or a long-enough prefix of *full*."""
+    return name == alias or (len(name) >= 5 and full.startswith(name))
+
+
+def _require_names(version: str, command: list[str]) -> None:
+    """Refuse names that exact tmux 3.7 rejects, before any command runs.
+
+    3.7 rejects ``:`` and ``.`` in session and window names; 3.7a reverted it.
+    """
+    if version != "3.7":
+        return
+    name = command[0]
+    values: list[str] = []
+    if _matches(name, "new-window", "neww"):
+        options, _ = getopt.getopt(command[1:], "abdkPSt:F:c:e:n:")
+        values = [value for flag, value in options if flag == "-n"]
+    elif _matches(name, "new-session", "new"):
+        options, _ = getopt.getopt(command[1:], "AdDEPXc:e:f:F:n:s:t:x:y:")
+        values = [value for flag, value in options if flag in {"-n", "-s"}]
+    elif _matches(name, "rename-window", "renamew") or _matches(
+        name, "rename-session", "rename"
+    ):
+        _, operands = getopt.getopt(command[1:], "t:")
+        values = operands[-1:]
+    for value in values:
+        if ":" in value or "." in value:
+            msg = (
+                f"invalid window or session name {value!r}: tmux 3.7 rejects "
+                "':' and '.' in names; choose another name or upgrade to 3.7a"
+            )
+            raise exc.VersionTooLow(msg)
+
+
+def _require_commands(
+    version: str, arguments: list[str], *, repaired_break: bool
+) -> None:
+    for command in _command_items(arguments):
+        name = command[0]
+        _require_names(version, command)
+        if not is_at_least(version, "3.4") and (
+            name == "selectl" or (len(name) >= 8 and "select-layout".startswith(name))
+        ):
+            options, operands = getopt.getopt(command[1:], "Enopt:")
+            flags = {flag for flag, _ in options}
+            if not operands or flags & {"-E", "-n", "-p"}:
+                continue
+            layout = operands[0]
+            # Before 3.4 an invalid header leaves the native error cause unset.
+            if re.fullmatch(r"[0-9a-fA-F]{4},[\s\S]+", layout):
+                continue
+            presets = (
+                "even-horizontal",
+                "even-vertical",
+                "main-horizontal",
+                "main-vertical",
+                "tiled",
+            )
+            if (
+                "-o" not in flags
+                and sum(item.startswith(layout) for item in presets) == 1
+            ):
+                continue
+            msg = (
+                "invalid layout refused before dispatch on tmux 3.3a; "
+                "use a unique built-in layout name or a serialized layout"
+            )
+            raise exc.InvalidLayout(msg)
+        elif not is_at_least(version, "3.4") and (
+            name == "deleteb" or "delete-buffer".startswith(name)
+        ):
+            options, _ = getopt.getopt(command[1:], "b:")
+            if any(flag == "-b" for flag, _ in options):
+                msg = "exact named-buffer deletion requires tmux 3.4 or newer"
+                raise exc.VersionTooLow(msg)
+        elif not is_at_least(version, "3.4") and (
+            name == "setb" or (len(name) >= 5 and "set-buffer".startswith(name))
+        ):
+            options, _ = getopt.getopt(command[1:], "ab:t:n:w")
+            flags = {flag for flag, _ in options}
+            if {"-b", "-n"} <= flags:
+                msg = "exact named-buffer rename requires tmux 3.4 or newer"
+                raise exc.VersionTooLow(msg)
+        elif version == "3.7" and (name == "breakp" or "break-pane".startswith(name)):
+            options, _ = getopt.getopt(command[1:], "abdPF:n:s:t:")
+            if not repaired_break or not any(flag == "-n" for flag, _ in options):
+                msg = (
+                    "raw break-pane is unsafe on tmux 3.7; use Pane.break_pane "
+                    "with an explicit window_name or upgrade to 3.7a"
+                )
+                raise exc.VersionTooLow(msg)
+        elif (
+            is_at_least(version, "3.4")
+            and not is_at_least(version, "3.5")
+            and (name == "splitw" or "split-window".startswith(name))
+        ):
+            options, _ = getopt.getopt(command[1:], "bc:de:fF:hIl:p:Pt:vZ")
+            if any(flag == "-p" for flag, _ in options):
+                msg = (
+                    "split-window -p is broken on tmux 3.4; "
+                    "use -l with a percentage or Pane.split"
+                )
+                raise exc.VersionTooLow(msg)
+
+
 def prepare(
-    argv: list[str], *, cache: AdmissionCache | None = None
+    argv: list[str],
+    *,
+    cache: AdmissionCache | None = None,
+    minimum: str = MINIMUM,
+    expected_version: str | None = None,
+    repaired_break: bool = False,
 ) -> tuple[list[str], str | None]:
     """Admit the daemon, then fence dispatch against its exact version."""
     try:
@@ -157,6 +289,9 @@ def prepare(
         return argv, None
     if any(flag == "-c" for flag, _ in options):
         msg = "tmux -c is outside command dispatch; use Server.run_shell instead"
+        raise exc.LibTmuxException(msg)
+    if any(flag == "-C" for flag, _ in options):
+        msg = "raw control startup cannot retain a daemon endpoint; use ControlMode"
         raise exc.LibTmuxException(msg)
     if not commands:
         commands = ["new-session"]
@@ -181,6 +316,19 @@ def prepare(
     elif not any(flag == "-N" for flag, _ in options):
         # A vanished daemon must not restart an older configured executable.
         globals_.append("-N")
+    if not is_at_least(version, minimum):
+        msg = (
+            f"this operation requires tmux {minimum} or newer; "
+            f"daemon reports {version!r}"
+        )
+        raise exc.VersionTooLow(msg)
+    if expected_version is not None and version != expected_version:
+        msg = "tmux daemon changed while selecting the operation's capabilities"
+        raise exc.VersionTooLow(msg)
+    try:
+        _require_commands(version, commands, repaired_break=repaired_break)
+    except getopt.GetoptError as error:
+        raise exc.LibTmuxException(str(error)) from error
     marker = "libtmux-version-" + uuid.uuid4().hex
     condition = "#{==:#{version}," + version + "}"
     return [

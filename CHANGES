@@ -76,6 +76,48 @@ Binary version and help diagnostics remain available. {meth}`Server.kill() <libt
 remains a no-op for an absent endpoint. See {doc}`project/compatibility` for
 support and feature requirements.
 
+#### Optional tmux feature requirements
+
+On tmux 3.3a, literal `select-layout` refuses unknown names and malformed
+serialized headers before batch effects with
+{exc}`~libtmux.exc.InvalidLayout`, a {exc}`~libtmux.exc.LibTmuxException` that is
+also a `ValueError`; ordinary layouts retain the 3.3a minimum. Programs that run
+their own tmux subprocesses can apply these checks through
+{func}`libtmux.admission.require_commands`.
+
+Single-pane `Pane.break_pane()` returns its actual window on tmux 3.3a through
+3.5, whose native relink path succeeds without printing the requested ID.
+
+Core support remains tmux 3.3a+. {class}`ControlMode
+<libtmux._internal.control_mode.ControlMode>` requires a stable tmux 3.7+
+release and a local socket filesystem that permits a private hard link.
+Control acquisition validates the retained endpoint before starting its client;
+UTF-8 metadata and output remain usable under a C locale. Acquisition runs no
+user hooks before it validates the endpoint and names its client locally
+(`client-<pid>`), and any release ranking at or above 3.7, such as `3.8-rc2` or
+`next-3.8`, qualifies while `next-3.7` and `3.7-rc*` do not.
+
+Exact named-buffer deletion and rename require tmux 3.4+. Captured shell-job
+stdout from {meth}`Server.run_shell() <libtmux.Server.run_shell>` requires
+3.5+ and is refused before launching the job on older daemons. Background,
+pane-directed and native tmux-command execution remain available on 3.3a+.
+
+{meth}`Server.run_shell(target_pane=...) <libtmux.Server.run_shell>` now returns
+`None`, as its signature documents, instead of an empty list: the job's output
+goes to the pane, so there is no captured stdout to return. Code that iterates
+the result of a pane-directed call must handle `None`.
+
+On exact tmux 3.7, window and session names containing `:` or `.` are refused
+before dispatch (`new-window -n`, `new-session -s/-n`, `rename-window`,
+`rename-session`); 3.7a accepts them again.
+
+Percentage splits use portable `-l N%`. On exact tmux 3.7, raw `break-pane`
+and unnamed {meth}`Pane.break_pane() <libtmux.Pane.break_pane>` requests are
+refused. An explicit `window_name` uses the named break and rename repair;
+a failed rename can leave the completed break in place. Other supported
+releases retain ordinary naming. See {doc}`project/compatibility` for the
+operation boundaries and synchronization requirements.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

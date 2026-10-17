@@ -308,6 +308,10 @@ class VersionTooLow(LibTmuxException):
     """Raised if tmux below the minimum version to use libtmux."""
 
 
+class InvalidLayout(LibTmuxException, ValueError):
+    """Layout refused before dispatch because tmux 3.3a would mishandle it."""
+
+
 class BadSessionName(LibTmuxException):
     """Disallowed session name for tmux (empty, contains periods or colons)."""
 

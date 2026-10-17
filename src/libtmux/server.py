@@ -359,6 +359,9 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        _minimum_version: str = support.MINIMUM,
+        _expected_version: str | None = None,
+        _repaired_break: bool = False,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -430,6 +433,9 @@ class Server(
             *cmd_args,
             tmux_bin=self.tmux_bin,
             _admission=self._admission,
+            _minimum_version=_minimum_version,
+            _expected_version=_expected_version,
+            _repaired_break=_repaired_break,
         )
 
     @property
@@ -589,15 +595,24 @@ class Server(
         Returns
         -------
         list[str] | None
-            Stdout lines, or None when *background* is True. Empty list on
-            tmux 3.3a/3.4 (upstream stdout passthrough was broken until 3.5).
+            Stdout lines, or None when *background* is True or output is
+            directed to *target_pane*. Captured shell-job stdout requires
+            tmux 3.5+; older daemons are refused before starting the job.
+            Background jobs, pane-directed output and native tmux-command
+            execution remain available on tmux 3.3a+.
 
         Examples
         --------
-        >>> result = server.run_shell('true')
+        >>> result = server.run_shell('display-message -p ready', as_tmux_command=True)
         >>> isinstance(result, list)
         True
         """
+        version = self._get_version()
+        minimum = (
+            "3.5"
+            if not background and target_pane is None and not as_tmux_command
+            else support.MINIMUM
+        )
         tmux_args: tuple[str, ...] = ()
 
         if background:
@@ -613,7 +628,7 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
-            if self._has_gte_version("3.4"):
+            if support.is_at_least(version, "3.4"):
                 tmux_args += ("-c", str(cwd))
             else:
                 warnings.warn(
@@ -622,7 +637,7 @@ class Server(
                 )
 
         if show_stderr:
-            if self._has_gte_version("3.6"):
+            if support.is_at_least(version, "3.6"):
                 tmux_args += ("-E",)
             else:
                 warnings.warn(
@@ -633,7 +648,7 @@ class Server(
         tmux_args += (command,)
 
         if args:
-            if self._has_gte_version("3.7"):
+            if support.is_at_least(version, "3.7"):
                 tmux_args += tuple(args)
             else:
                 warnings.warn(
@@ -641,11 +656,16 @@ class Server(
                     stacklevel=2,
                 )
 
-        proc = self.cmd("run-shell", *tmux_args)
+        proc = self.cmd(
+            "run-shell",
+            *tmux_args,
+            _minimum_version=minimum,
+            _expected_version=version,
+        )
 
         raise_if_stderr(proc, "run-shell")
 
-        if background:
+        if background or target_pane is not None:
             return None
         return proc.stdout
 
@@ -1892,12 +1912,16 @@ class Server(
         ----------
         buffer_name : str, optional
             Name of the buffer to delete (``-b`` flag). Defaults to the most
-            recent.
+            recent. Exact named deletion requires tmux 3.4+; older releases
+            can delete an unrelated top buffer when the name is missing.
 
         Examples
         --------
         >>> server.set_buffer('to_delete', buffer_name='del_buf')
-        >>> server.delete_buffer(buffer_name='del_buf')
+        >>> try:
+        ...     server.delete_buffer(buffer_name='del_buf')
+        ... except exc.VersionTooLow:
+        ...     assert server.show_buffer(buffer_name='del_buf') == 'to_delete'
         """
         tmux_args: tuple[str, ...] = ()
 

@@ -244,6 +244,7 @@ def test_public_admission_surface(monkeypatch: pytest.MonkeyPatch) -> None:
         "admitted_version",
         "check_fence",
         "is_at_least",
+        "require_commands",
         "require_version",
     }
     monkeypatch.setattr(support, "_run", lambda argv: _reply(argv, "3.3"))
@@ -254,6 +255,23 @@ def test_public_admission_surface(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(admission.VersionTooLow, match="changed before dispatch"):
         admission.check_fence("unknown command: private-marker\n", "private-marker")
     admission.check_fence("unknown command: other\n", "private-marker")
+
+
+def test_public_command_policy() -> None:
+    """Consumers can ask whether an admitted release may run a literal command."""
+    from libtmux import admission
+
+    with pytest.raises(exc.VersionTooLow, match=r"3\.4"):
+        admission.require_commands("3.3a", ["delete-buffer", "-b", "named"])
+    with pytest.raises(exc.InvalidLayout):
+        admission.require_commands("3.3a", ["select-layout", "not-a-layout"])
+    admission.require_commands("3.4", ["delete-buffer", "-b", "named"])
+    admission.require_commands("3.3a", ["paste-buffer", "-d", "-b", "named"])
+    with pytest.raises(exc.VersionTooLow, match="break-pane"):
+        admission.require_commands("3.7", ["break-pane", "-s", "%1"])
+    admission.require_commands(
+        "3.7", ["break-pane", "-n", "named", "-s", "%1"], repaired_break=True
+    )
 
 
 def test_prefix_preserves_native_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
