@@ -303,7 +303,8 @@ def test_native_prefix_refuses_a_changed_report(
 ) -> None:
     """A native mismatch aborts every requested command in the same batch."""
     server.new_session("versioned")
-    run = support._run
+    server._version_cache.clear()
+    run = versions._run
 
     def changed(argv: list[str]) -> subprocess.CompletedProcess[str]:
         result = run(argv)
@@ -329,6 +330,83 @@ def test_native_prefix_refuses_a_changed_report(
     assert server.cmd("show-option", "-gqv", "@version-second").stdout == []
 
 
+def _count_probes(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    probes: list[list[str]] = []
+    run = versions._run
+
+    def counted(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        if _is_probe(argv):
+            probes.append(argv)
+        return run(argv)
+
+    monkeypatch.setattr(versions, "_run", counted)
+    return probes
+
+
+def test_checked_release_is_probed_once_per_endpoint(
+    server: Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Later commands and flag decisions reuse the release the fence guards."""
+    server.new_session("versioned", window_command="sleep 300")
+    server._version_cache.clear()
+    probes = _count_probes(monkeypatch)
+    for _ in range(3):
+        assert server.cmd("list-sessions").returncode == 0
+    _ = server.sessions
+    assert server._has_gte_version("3.3a")
+    assert len(probes) == 1
+
+
+def test_stale_cached_release_is_refused_and_forgotten(
+    server: Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A daemon that no longer matches the cached release fails the fence."""
+    server.new_session("versioned", window_command="sleep 300")
+    server.cmd("list-sessions")
+    binary, selectors = server._version_endpoint()
+    server._version_cache.put(binary, selectors, "3.99")
+    with pytest.raises(exc.VersionTooLow, match="changed before dispatch"):
+        server.cmd("set-option", "-g", "@stale-effect", "ran")
+    assert not server._version_cache
+    probes = _count_probes(monkeypatch)
+    assert server.cmd("show-option", "-gqv", "@stale-effect").stdout == []
+    assert server.cmd("list-sessions").returncode == 0
+    assert len(probes) == 1
+
+
+def test_cached_release_survives_daemon_loss_without_a_stale_refusal(
+    server: Server,
+) -> None:
+    """A vanished daemon is detected, and the next command checks again."""
+    server.new_session("versioned", window_command="sleep 300")
+    server.cmd("list-sessions")
+    assert server._version_cache
+    binary, selectors = server._version_endpoint()
+    stop = subprocess.run(
+        [binary, "-N", *selectors, "kill-server"], capture_output=True, check=False
+    )
+    assert stop.returncode == 0
+    assert not server.is_alive()
+    assert not server._version_cache
+    created = server.new_session("returned", window_command="sleep 300")
+    assert created.session_name == "returned"
+    assert server.is_alive()
+
+
+def test_kill_reads_liveness_afresh(
+    server: Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Server.kill() probes even with a cached release, then forgets it."""
+    server.new_session("versioned", window_command="sleep 300")
+    server.cmd("list-sessions")
+    assert server._version_cache
+    probes = _count_probes(monkeypatch)
+    server.kill()
+    assert len(probes) == 1
+    assert not server._version_cache
+    assert not server.is_alive()
+
+
 def test_absent_cleanup_never_dispatches(monkeypatch: pytest.MonkeyPatch) -> None:
     """An absent endpoint stays untouched even when its binary is too old."""
     calls: list[list[str]] = []
@@ -352,7 +430,8 @@ def test_checked_daemon_disappearance_never_restarts(
 ) -> None:
     """Losing a checked daemon cannot start the configured executable."""
     server.new_session("versioned", window_command="sleep 300")
-    run = support._run
+    server._version_cache.clear()
+    run = versions._run
 
     def disappear(argv: list[str]) -> subprocess.CompletedProcess[str]:
         result = run(argv)
