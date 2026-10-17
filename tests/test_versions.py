@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 import itertools
 import os
 import pathlib
+import pickle
 import shutil
 import subprocess
 import tempfile
@@ -645,3 +647,16 @@ def test_native_supported_daemon_passes(rejection_socket: pathlib.Path) -> None:
         assert session.session_id is not None
     finally:
         server.kill()
+
+
+def test_server_pickles_and_copies_without_its_version_cache() -> None:
+    """A copied or unpickled Server checks its daemon again."""
+    server = Server(tmux_bin="/test/tmux", socket_name="copied")
+    server._version_cache.put(*server._version_endpoint(), "3.8")
+    clones: list[Server] = [copy.deepcopy(server), pickle.loads(pickle.dumps(server))]
+    for clone in clones:
+        assert clone.socket_name == "copied"
+        assert not clone._version_cache
+        clone._version_cache.put(*clone._version_endpoint(), "3.4")
+        assert clone._version_cache.get(*clone._version_endpoint()) == "3.4"
+    assert server._version_cache.get(*server._version_endpoint()) == "3.8"
