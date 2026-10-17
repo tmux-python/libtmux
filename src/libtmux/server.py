@@ -25,6 +25,7 @@ from libtmux._internal.env import (
     socket_path_from_env,
 )
 from libtmux._internal.query_list import QueryList
+from libtmux._internal.support import versions
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.client import Client
 from libtmux.common import (
@@ -32,7 +33,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     _literal,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -550,6 +550,9 @@ class Server(
     def _get_version(self) -> str:
         return support.endpoint_version(*self._version_endpoint())
 
+    def _has_gte_version(self, minimum: str) -> bool:
+        return versions.is_at_least(self._get_version(), minimum)
+
     #
     # Command
     #
@@ -962,17 +965,14 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
-            expands_cwd = has_gte_version(
+            expands_cwd = self._has_gte_version(
                 capability_since("run-shell-start-directory-format"),
-                tmux_bin=self.tmux_bin,
             )
             if isinstance(cwd, Format) and not expands_cwd:
                 # Before 3.8, tmux uses run-shell -c as given, without expanding it.
                 msg = "cwd=Format(...) requires tmux 3.8+"
                 raise exc.LibTmuxException(msg)
-            if not has_gte_version(
-                capability_since("run-shell-start-directory"), tmux_bin=self.tmux_bin
-            ):
+            if not self._has_gte_version(capability_since("run-shell-start-directory")):
                 warnings.warn(
                     "cwd requires tmux 3.4+, ignoring",
                     stacklevel=2,
@@ -985,9 +985,7 @@ class Server(
                 tmux_args += ("-c", str(cwd))
 
         if show_stderr:
-            if has_gte_version(
-                capability_since("run-shell-show-stderr"), tmux_bin=self.tmux_bin
-            ):
+            if self._has_gte_version(capability_since("run-shell-show-stderr")):
                 tmux_args += ("-E",)
             else:
                 warnings.warn(
@@ -998,9 +996,7 @@ class Server(
         tmux_args += ("--", _format_text(command))
 
         if args:
-            if has_gte_version(
-                capability_since("run-shell-args"), tmux_bin=self.tmux_bin
-            ):
+            if self._has_gte_version(capability_since("run-shell-args")):
                 tmux_args += tuple(args)
             else:
                 warnings.warn(
@@ -1183,9 +1179,7 @@ class Server(
             tmux_args += ("-T", key_table)
 
         if format_ is not None:
-            if has_gte_version(
-                capability_since("list-keys-format"), tmux_bin=self.tmux_bin
-            ):
+            if self._has_gte_version(capability_since("list-keys-format")):
                 tmux_args += ("-F", format_)
             else:
                 warnings.warn(
@@ -1339,7 +1333,7 @@ class Server(
             tmux_args += ("-t", target_client)
 
         if request_clipboard:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.7"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1549,7 +1543,7 @@ class Server(
             tmux_args += ("-p", prompt)
 
         if confirm_key is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-c", confirm_key)
             else:
                 warnings.warn(
@@ -1558,7 +1552,7 @@ class Server(
                 )
 
         if default_yes:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-y",)
             else:
                 warnings.warn(
@@ -1680,7 +1674,7 @@ class Server(
             tmux_args += ("-F",)
 
         if literal:
-            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.6"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1689,7 +1683,7 @@ class Server(
                 )
 
         if bspace_exit:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.7"):
                 tmux_args += ("-e",)
             else:
                 warnings.warn(
@@ -1698,7 +1692,7 @@ class Server(
                 )
 
         if no_freeze:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.7"):
                 tmux_args += ("-C",)
             else:
                 warnings.warn(
@@ -1817,7 +1811,7 @@ class Server(
             tmux_args += ("-y", str(y))
 
         if starting_choice is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-C", str(starting_choice))
             else:
                 warnings.warn(
@@ -1826,7 +1820,7 @@ class Server(
                 )
 
         if border_lines is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-b", escape_trailing_separator(border_lines))
             else:
                 warnings.warn(
@@ -1835,7 +1829,7 @@ class Server(
                 )
 
         if style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-s", escape_trailing_separator(style))
             else:
                 warnings.warn(
@@ -1844,7 +1838,7 @@ class Server(
                 )
 
         if border_style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-S", escape_trailing_separator(border_style))
             else:
                 warnings.warn(
@@ -1853,7 +1847,7 @@ class Server(
                 )
 
         if selected_style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-H", escape_trailing_separator(selected_style))
             else:
                 warnings.warn(
@@ -1862,7 +1856,7 @@ class Server(
                 )
 
         if mouse:
-            if has_gte_version("3.5", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.5"):
                 tmux_args += ("-M",)
             else:
                 warnings.warn(
@@ -2096,7 +2090,7 @@ class Server(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(

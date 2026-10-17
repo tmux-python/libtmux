@@ -221,6 +221,18 @@ def test_version_check_fires_no_user_hooks(server: Server) -> None:
         assert server.cmd("show-option", "-gqv", "@probe-error").stdout == ["y"]
 
 
+def test_feature_flags_follow_the_daemon_not_the_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A newer client executable cannot select flags an older daemon rejects."""
+    monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.3a"))
+    monkeypatch.setattr("libtmux.common.has_gte_version", lambda *args, **kwargs: True)
+    server = Server(tmux_bin="/test/newer-client")
+    assert server._has_gte_version("3.3a")
+    assert not server._has_gte_version("3.4")
+    assert not server._has_gte_version("3.7")
+
+
 def test_prefix_preserves_native_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep native argv and batch separators after the version fence."""
     monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.3a"))

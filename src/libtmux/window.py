@@ -18,7 +18,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     escape_trailing_separator,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -1422,7 +1421,7 @@ class Window(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self.server._has_gte_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
