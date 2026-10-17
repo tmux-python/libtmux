@@ -209,7 +209,7 @@ def _require_commands(
                 "invalid layout refused before dispatch on tmux 3.3a; "
                 "use a unique built-in layout name or a serialized layout"
             )
-            raise ValueError(msg)
+            raise exc.InvalidLayout(msg)
         elif not is_at_least(version, "3.4") and (
             name == "deleteb" or "delete-buffer".startswith(name)
         ):
