@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pathlib
+import shutil
 import subprocess
 import typing as t
 
@@ -253,3 +255,61 @@ def test_admitted_daemon_disappearance_never_restarts(
     assert result.returncode != 0, "dispatch restarted the admitted daemon"
     binary, selectors = server._version_endpoint()
     assert support.live_version(binary, selectors) is None
+
+
+@pytest.mark.parametrize("name", ["renamed-tmux", "tmux with spaces", "tmux\udcff"])
+def test_named_33a_executable_can_create(tmp_path: pathlib.Path, name: str) -> None:
+    """The native 3.3a banner includes the configured executable basename."""
+    binary = shutil.which("tmux")
+    assert binary is not None
+    report = subprocess.run(
+        [binary, "-V"], capture_output=True, check=True, timeout=5
+    ).stdout
+    if report != b"tmux 3.3a\n":
+        pytest.skip("requires native tmux 3.3a")
+    renamed = tmp_path / name
+    renamed.symlink_to(binary)
+    socket = tmp_path / "s"
+    server = Server(
+        tmux_bin=str(renamed), socket_path=str(socket), config_file="/dev/null"
+    )
+    try:
+        session = server.new_session(
+            "named-executable", window_command="exec sleep 123"
+        )
+        assert session.session_id is not None
+        assert server._get_version() == "3.3a"
+    finally:
+        subprocess.run(
+            [binary, "-N", "-S", str(socket), "kill-server"],
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+
+
+@pytest.mark.parametrize(
+    ("banner", "accepted"),
+    [
+        ("tmux 3.3a\n", True),
+        ("custom tmux 3.3a\n", True),
+        ("unrelated 3.3a\n", False),
+        ("custom tmux-suffix 3.3a\n", False),
+        ("custom tmux 3.3a extra\n", False),
+        ("custom tmux 3.3\n", False),
+    ],
+)
+def test_executable_report_uses_its_exact_name(
+    monkeypatch: pytest.MonkeyPatch, banner: str, accepted: bool
+) -> None:
+    """An executable's native name cannot relax the complete release token."""
+    monkeypatch.setattr(
+        support,
+        "_run",
+        lambda argv: subprocess.CompletedProcess(argv, 0, banner, ""),
+    )
+    if accepted:
+        assert support._binary_version("/test/custom tmux") == "3.3a"
+    else:
+        with pytest.raises(exc.VersionTooLow):
+            support._binary_version("/test/custom tmux")
