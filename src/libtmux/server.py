@@ -20,7 +20,7 @@ from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux._internal.support import versions
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -339,6 +339,9 @@ class Server(
         if self.socket_path:
             selectors = ["-S", str(self.socket_path), *selectors]
         return binary, selectors
+
+    def _get_version(self) -> str:
+        return support.endpoint_version(*self._version_endpoint())
 
     #
     # Command
@@ -890,10 +893,6 @@ class Server(
         ...     result = server.server_access(list_access=True)
         ...     assert isinstance(result, list)
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "server_access requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         if read_only and write:
             msg = "read_only and write are mutually exclusive (tmux rejects -r -w)"
             raise ValueError(msg)
@@ -1160,10 +1159,6 @@ class Server(
         >>> result
         'yes'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "confirm_before requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ("-b",)
 
         if prompt is not None:
@@ -1276,10 +1271,6 @@ class Server(
         >>> result
         'hi'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "command_prompt requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ("-b",)
 
         if one_key:
@@ -1766,10 +1757,6 @@ class Server(
         >>> isinstance(result, list)
         True
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "show_prompt_history requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
@@ -1800,10 +1787,6 @@ class Server(
         >>> if has_gte_version("3.3"):
         ...     server.clear_prompt_history()
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "clear_prompt_history requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
@@ -2338,7 +2321,7 @@ class Server(
             del os.environ["TMUX"]
 
         try:
-            tmux_version = str(get_version(tmux_bin=self.tmux_bin))
+            tmux_version = self._get_version()
             _fields, format_string = get_output_format("list-sessions", tmux_version)
 
             tmux_args: tuple[str | int, ...] = (
