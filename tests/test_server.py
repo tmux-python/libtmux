@@ -227,7 +227,6 @@ def test_new_session_shell_env(server: Server) -> None:
     assert pane_start_command.replace('"', "") == cmd
 
 
-@pytest.mark.skipif(True, reason="tmux 3.2 returns wrong width - test needs rework")
 def test_new_session_width_height(server: Server) -> None:
     """Verify ``Server.new_session`` creates valid session running w/ dimensions."""
     cmd = "/usr/bin/env PS1='$ ' sh"
