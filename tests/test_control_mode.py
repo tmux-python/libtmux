@@ -37,7 +37,7 @@ def test_ineligible_control_refuses_before_startup(
     def tracked(
         argv: list[str], *args: t.Any, **kwargs: t.Any
     ) -> subprocess.Popen[str]:
-        if "-C" in argv:
+        if "-C" in argv and "run-shell" not in argv:
             starts.append(argv)
         return original(argv, *args, **kwargs)
 
@@ -69,7 +69,7 @@ def test_unavailable_socket_link_refuses_before_control(
     def tracked(
         argv: list[str], *args: t.Any, **kwargs: t.Any
     ) -> subprocess.Popen[str]:
-        if "-C" in argv:
+        if "-C" in argv and "run-shell" not in argv:
             starts.append(argv)
         return original(argv, *args, **kwargs)
 
@@ -97,6 +97,58 @@ def test_control_mode_creates_client(
         clients = server.list_clients()
         assert len(clients) > 0
         assert ctl.client_name != ""
+
+
+def test_control_identity_probe_fires_no_user_hooks(
+    control_mode: t.Callable[[], ControlMode],
+    server: Server,
+) -> None:
+    """Pinning a control endpoint never runs the user's display-message hooks."""
+    from libtmux.test.retry import retry_until
+
+    server.cmd("set-hook", "-g", "after-display-message", "set -ag @probe-after x")
+    server.cmd("set-hook", "-g", "command-error", "set -ag @probe-error y")
+    with control_mode():
+        pass
+
+    # Hooks run in order, so one control firing afterwards proves the pinning
+    # left none: each sentinel holds exactly one letter.
+    server.cmd("display-message", "-p", "control")
+    assert server.cmd("kill-session", "-t", "=missing").returncode != 0
+
+    def settled() -> bool:
+        return server.cmd("show-option", "-gqv", "@probe-after").stdout == [
+            "x"
+        ] and server.cmd("show-option", "-gqv", "@probe-error").stdout == ["y"]
+
+    assert retry_until(settled, seconds=5, raises=False)
+    assert server.cmd("show-option", "-gqv", "@probe-after").stdout == ["x"]
+    assert server.cmd("show-option", "-gqv", "@probe-error").stdout == ["y"]
+
+
+def test_control_identity_reports_an_unusual_socket_path(
+    control_mode: t.Callable[[], ControlMode],
+) -> None:
+    """Quotes, separators and commas in a socket path survive the probe."""
+    import shutil
+    import tempfile
+
+    from libtmux import Server
+    from libtmux._internal.control_mode import _identity
+
+    binary, _ = control_mode().server._version_endpoint()
+    folder = tempfile.mkdtemp(prefix="lt-")
+    path = pathlib.Path(folder) / "q'\"; {a} #~$x,\\b"
+    path.mkdir()
+    socket = path / "s"
+    server = Server(tmux_bin=binary, socket_path=str(socket), config_file="/dev/null")
+    try:
+        server.new_session("identity", window_command="exec sleep 123")
+        report = _identity(binary, ["-S", str(socket)])
+        assert report.split(",", 3)[3] == str(socket)
+    finally:
+        server.cmd("kill-server")
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def test_control_mode_cleanup(

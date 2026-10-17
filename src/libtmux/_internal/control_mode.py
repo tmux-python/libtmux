@@ -10,6 +10,7 @@ import stat
 import subprocess
 import tempfile
 import typing as t
+import uuid
 
 from libtmux import exc
 from libtmux._internal.support import versions
@@ -24,18 +25,29 @@ if t.TYPE_CHECKING:
     from libtmux.server import Server
     from libtmux.session import Session
 
-_IDENTITY = "#{version}\t#{pid}\t#{start_time}\t#{socket_path}"
+# run-shell -C parses the expanded text, so the fields avoid whitespace and the
+# socket path, which may hold anything, is single-quoted with quotes re-opened.
+_IDENTITY = r"#{version},#{pid},#{start_time},'#{s/'/'\\''/:socket_path}'"
 
 
 def _identity(binary: str, selectors: list[str]) -> str:
+    # run-shell -C fires no after-* or command-error hook; the expanded
+    # identity comes back in the error text of its failed parse.
+    marker = "libtmux-identity-" + uuid.uuid4().hex + "-"
     result = versions._run(
-        [binary, "-u", *selectors, "-N", "display-message", "-p", _IDENTITY]
+        [binary, "-u", *selectors, "-N", "run-shell", "-C", marker + _IDENTITY]
     )
-    report = result.stdout.rstrip("\n")
-    fields = report.split("\t", 3)
+    prefix = f"unknown command: {marker}"
+    # A single line: a newline inside the socket path must not truncate it.
+    lines = result.stderr.rstrip("\n").split("\n")
+    report = (
+        lines[0][len(prefix) :]
+        if result.returncode == 1 and len(lines) == 1 and lines[0].startswith(prefix)
+        else ""
+    )
+    fields = report.split(",", 3)
     if (
-        result.returncode
-        or "\n" in report
+        not report
         or len(fields) != 4
         or not fields[1].isdigit()
         or not fields[2].isdigit()
@@ -62,7 +74,7 @@ def _require_release(version: str) -> None:
 def _pinned_endpoint(server: Server) -> Iterator[list[str]]:
     binary, selectors = server._version_endpoint()
     identity = _identity(binary, selectors)
-    version, _, _, socket = identity.split("\t", 3)
+    version, _, _, socket = identity.split(",", 3)
     _require_release(version)
 
     original = pathlib.Path(socket)
