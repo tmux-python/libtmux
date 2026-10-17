@@ -655,6 +655,9 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        _minimum_version: str = versions.MINIMUM,
+        _expected_version: str | None = None,
+        _repaired_break: bool = False,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -741,6 +744,9 @@ class Server(
             *cmd_args,
             tmux_bin=self.tmux_bin,
             _version_cache=self._version_cache,
+            _minimum_version=_minimum_version,
+            _expected_version=_expected_version,
+            _repaired_break=_repaired_break,
         )
 
     @property
@@ -944,7 +950,8 @@ class Server(
         Returns
         -------
         list[str] | None
-            Stdout lines, or None when *background* is True.
+            Stdout lines, or None when *background* is True or output is
+            directed to *target_pane*.
 
         Raises
         ------
@@ -958,14 +965,15 @@ class Server(
         >>> server.run_shell('true', background=True) is None
         True
         """
+        version = self._get_version()
         captures_output = not (background or as_tmux_command or target_pane)
         output_since = capability_since("run-shell-output-in-copy-mode")
-        if captures_output and not self._has_gte_version(output_since):
+        if captures_output and not versions.is_at_least(version, output_since):
             # tmux 3.3a and 3.4 send a foreground run-shell's output to the
             # pane's copy mode, not back to the caller.
             msg = f"run_shell output requires tmux {output_since}+"
             raise exc.VersionTooLow(msg)
-
+        minimum = output_since if captures_output else versions.MINIMUM
         tmux_args: tuple[str, ...] = ()
 
         if background:
@@ -981,14 +989,16 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
-            expands_cwd = self._has_gte_version(
-                capability_since("run-shell-start-directory-format"),
+            expands_cwd = versions.is_at_least(
+                version, capability_since("run-shell-start-directory-format")
             )
             if isinstance(cwd, Format) and not expands_cwd:
                 # Before 3.8, tmux uses run-shell -c as given, without expanding it.
                 msg = "cwd=Format(...) requires tmux 3.8+"
                 raise exc.LibTmuxException(msg)
-            if not self._has_gte_version(capability_since("run-shell-start-directory")):
+            if not versions.is_at_least(
+                version, capability_since("run-shell-start-directory")
+            ):
                 warnings.warn(
                     "cwd requires tmux 3.4+, ignoring",
                     stacklevel=2,
@@ -1001,7 +1011,7 @@ class Server(
                 tmux_args += ("-c", str(cwd))
 
         if show_stderr:
-            if self._has_gte_version(capability_since("run-shell-show-stderr")):
+            if versions.is_at_least(version, capability_since("run-shell-show-stderr")):
                 tmux_args += ("-E",)
             else:
                 warnings.warn(
@@ -1012,7 +1022,7 @@ class Server(
         tmux_args += ("--", _format_text(command))
 
         if args:
-            if self._has_gte_version(capability_since("run-shell-args")):
+            if versions.is_at_least(version, capability_since("run-shell-args")):
                 tmux_args += tuple(args)
             else:
                 warnings.warn(
@@ -1020,11 +1030,16 @@ class Server(
                     stacklevel=2,
                 )
 
-        proc = self.cmd("run-shell", *tmux_args)
+        proc = self.cmd(
+            "run-shell",
+            *tmux_args,
+            _minimum_version=minimum,
+            _expected_version=version,
+        )
 
         raise_if_stderr(proc, "run-shell")
 
-        if background:
+        if background or target_pane is not None:
             return None
         return proc.stdout
 
@@ -2276,12 +2291,16 @@ class Server(
         ----------
         buffer_name : str, optional
             Name of the buffer to delete (``-b`` flag). Defaults to the most
-            recent.
+            recent. Exact named deletion requires tmux 3.4+; older releases
+            can delete an unrelated top buffer when the name is missing.
 
         Examples
         --------
         >>> server.set_buffer('to_delete', buffer_name='del_buf')
-        >>> server.delete_buffer(buffer_name='del_buf')
+        >>> try:
+        ...     server.delete_buffer(buffer_name='del_buf')
+        ... except exc.VersionTooLow:
+        ...     assert server.show_buffer(buffer_name='del_buf') == 'to_delete'
         """
         tmux_args: tuple[str, ...] = ()
 
