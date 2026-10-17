@@ -75,7 +75,7 @@ def __getattr__(name: str) -> t.Any:
 
 
 #: Version of the optional-feature policy contract for backend consumers.
-TMUX_OPTIONAL_FEATURE_POLICY_VERSION = 1
+TMUX_OPTIONAL_FEATURE_POLICY_VERSION = 2
 
 
 SessionDict = dict[str, t.Any]
