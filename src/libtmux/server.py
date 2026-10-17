@@ -97,7 +97,117 @@ class Server(
 
           - :class:`Pane`
 
-    When instantiated stores information on live, running tmux server.
+    A :class:`Server` is the handle to one tmux server, named by its socket.
+    Creating one starts nothing and contacts nothing;
+    :meth:`Server.new_session` starts the server when none is running. Each
+    read of :attr:`Server.sessions`, or of any list below it, runs a tmux
+    command, so you get the server as it is now and pay a round trip for it.
+
+    Pass ``socket_name`` or ``socket_path`` to choose which server it
+    addresses. With neither, it addresses your default tmux server; a
+    ``socket_name`` of your own gives a separate server that leaves that one
+    alone.
+
+    **What is on here.** Members group by what you reach for them to do.
+
+    **Connecting.** ``config_file`` and ``colors`` pass through to every tmux
+    command and ``tmux_bin`` names the binary; the socket and these settings
+    read back as :attr:`Server.socket_name`, :attr:`Server.socket_path`,
+    :attr:`Server.config_file`, :attr:`Server.colors` and
+    :attr:`Server.tmux_bin`. :meth:`Server.from_env` addresses the server this
+    process is already running inside. :meth:`Server.is_alive` answers whether
+    a server is listening, and :meth:`Server.raise_if_dead` raises when none
+    is. :meth:`Server.start_server` starts a server without a session, which
+    tmux ends again at once under its default ``exit-empty`` setting.
+
+    **Finding one thing.** :meth:`Server.has_session` takes a session name and
+    answers ``True`` or ``False``. For the object itself, look it up in a list
+    with :meth:`~libtmux._internal.query_list.QueryList.get`, as in
+    ``server.sessions.get(session_id="$1", default=None)``. Without
+    ``default``, a miss raises :exc:`~libtmux.exc.ObjectDoesNotExist`.
+
+    **Listing everything.** :attr:`Server.sessions`, :attr:`Server.windows`,
+    and :attr:`Server.panes` list everything on the server.
+    :attr:`Server.clients` lists the attached terminals as
+    :class:`~libtmux.Client` objects, and :attr:`Server.attached_sessions`
+    lists the sessions that have a client on them. Each is a
+    :class:`~libtmux._internal.query_list.QueryList`.
+    :meth:`Server.list_clients` returns tmux's raw lines for the same clients.
+
+    An empty list can mean "nothing there" or "no server". When nothing is
+    listening, all five lists read as empty, and :attr:`Server.sessions`,
+    :attr:`Server.clients`, and :attr:`Server.attached_sessions` also read as
+    empty on any other tmux failure instead of raising.
+    :meth:`Server.list_clients` raises :exc:`~libtmux.exc.LibTmuxException`
+    instead. Check :meth:`Server.is_alive`, or call
+    :meth:`Server.raise_if_dead` to get an exception.
+
+    **Querying things and getting around.**
+    :meth:`~libtmux._internal.query_list.QueryList.filter` and
+    :meth:`~libtmux._internal.query_list.QueryList.get` select from any of
+    those lists by field lookup in Python (see :ref:`querylist-filtering`).
+    :meth:`Server.search_sessions`, :meth:`Server.search_windows`, and
+    :meth:`Server.search_panes` hand tmux a filter instead, so the rows it
+    rejects never become objects (see :ref:`native-filtering`); a malformed
+    filter matches nothing and reports no error. To move between levels, go
+    down with :attr:`Session.windows` and :attr:`Window.panes`, up with
+    :attr:`Pane.window`, :attr:`Pane.session`, and :attr:`Window.session`, and
+    to whatever has focus with :attr:`Session.active_window`,
+    :attr:`Session.active_pane`, and :attr:`Window.active_pane` (see
+    :ref:`traversal`).
+
+    **Changing things.** :meth:`Server.new_session` creates a session.
+    :meth:`Server.kill_session` ends one; a bare name that matches no session
+    exactly falls back to a prefix match, so pass ``=name`` to match one
+    session exactly. :meth:`Server.kill` ends the
+    server and every session on it, and so does leaving a ``with`` block
+    around a :class:`Server` (see :ref:`context_managers`). With no socket
+    named, that server is your default tmux.
+
+    **Options and hooks.** :meth:`Server.show_option`,
+    :meth:`Server.show_options`, :meth:`Server.set_option`, and
+    :meth:`Server.unset_option` read and write server options.
+    :meth:`Server.show_hook`, :meth:`Server.show_hooks`,
+    :meth:`Server.set_hook`, :meth:`Server.set_hooks`,
+    :meth:`Server.unset_hook`, and :meth:`Server.run_hook` do the same for
+    hooks. Both default to the server scope, through
+    :attr:`Server.default_option_scope` and :attr:`Server.default_hook_scope`
+    (see :ref:`options-and-hooks`). The server's global environment is
+    :meth:`Server.show_environment`, :meth:`Server.getenv`,
+    :meth:`Server.set_environment`, :meth:`Server.unset_environment`, and
+    :meth:`Server.remove_environment`.
+
+    **Everything else tmux keeps.** Paste buffers are
+    :meth:`Server.set_buffer`, :meth:`Server.show_buffer`,
+    :meth:`Server.list_buffers`, :meth:`Server.delete_buffer`,
+    :meth:`Server.save_buffer`, and :meth:`Server.load_buffer`. Key bindings
+    are :meth:`Server.bind_key`, :meth:`Server.unbind_key`, and
+    :meth:`Server.list_keys`. :meth:`Server.list_commands` lists the commands
+    tmux knows and :meth:`Server.source_file` loads a configuration file.
+    :meth:`Server.run_shell` and :meth:`Server.if_shell` run shell commands,
+    :meth:`Server.wait_for` waits on, signals, or locks a channel, and
+    :meth:`Server.server_access` manages which users may attach. The message
+    log is :meth:`Server.show_messages`; :meth:`Server.display_message` shows
+    a message, or with ``get_text=True`` returns the expanded text. The prompt
+    history is :meth:`Server.show_prompt_history` and
+    :meth:`Server.clear_prompt_history`.
+
+    **Things that need a terminal.** These need a terminal or other attached
+    client and raise :exc:`~libtmux.exc.LibTmuxException` without one:
+    :meth:`Server.attach_session`, :meth:`Server.switch_client`,
+    :meth:`Server.detach_client`, :meth:`Server.detach_all_clients`,
+    :meth:`Server.lock_client`, :meth:`Server.suspend_client`,
+    :meth:`Server.refresh_client`, :meth:`Server.display_menu`,
+    :meth:`Server.command_prompt`, and :meth:`Server.confirm_before`.
+    :meth:`Server.display_menu` needs a real terminal; a control-mode client
+    does not count. :meth:`Server.lock_server` locks every attached client and
+    does nothing when there are none. See :ref:`clients`.
+
+    Anything tmux can do that is not listed here goes through
+    :meth:`Server.cmd`. It runs any tmux command against this server and
+    returns a :class:`~libtmux.common.tmux_cmd` holding ``stdout``,
+    ``stderr``, and ``returncode``; a tmux error shows up there instead of
+    being raised.
 
     Parameters
     ----------
@@ -125,6 +235,24 @@ class Server(
 
     >>> server.sessions[0].active_pane
     Pane(%1 Window(@1 1:..., Session($1 ...)))
+
+    Look one session up in the list. With ``default=None`` a miss gives
+    ``None``:
+
+    >>> server.sessions.get(session_id=session.session_id) == session
+    True
+
+    >>> server.sessions.get(session_id="$99", default=None) is None
+    True
+
+    An empty list does not say whether a server is listening:
+
+    >>> idle = Server(socket_name="no_exist")
+    >>> idle.sessions
+    []
+
+    >>> idle.is_alive()
+    False
 
     The server can be used as a context manager to ensure proper cleanup:
 
@@ -831,7 +959,7 @@ class Server(
     def lock_server(self) -> None:
         """Lock the tmux server via ``$ tmux lock-server``.
 
-        Requires an attached client.
+        Locks every attached client; with none attached it does nothing.
 
         >>> with control_mode() as ctl:
         ...     server.lock_server()
