@@ -15,6 +15,7 @@ import typing as t
 import pytest
 
 from libtmux import Server, Window, exc
+from libtmux._compat import LooseVersion
 from libtmux._internal import support
 from libtmux._internal.query_list import QueryList
 from libtmux._internal.support import versions
@@ -230,7 +231,10 @@ def test_feature_flags_follow_the_daemon_not_the_client(
 ) -> None:
     """A newer client executable cannot select flags an older daemon rejects."""
     monkeypatch.setattr(versions, "_run", lambda argv: _reply(argv, "3.3a"))
-    monkeypatch.setattr("libtmux.common.has_gte_version", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        "libtmux._internal.version._get_version",
+        lambda *args, **kwargs: LooseVersion("9.9"),
+    )
     server = Server(tmux_bin="/test/newer-client")
     assert server._has_gte_version("3.3a")
     assert not server._has_gte_version("3.4")
