@@ -1177,13 +1177,9 @@ def test_run_shell_cwd_warns_on_old_tmux(
 ) -> None:
     """``cwd=`` emits a warning and skips ``-c`` on tmux <3.4.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace (where it's bound at
-    import time).
+    Simulates an older daemon by patching the daemon release decision.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(Server, "_has_gte_version", lambda *_a: False)
     server.new_session(session_name="run_shell_cwd_warn_test")
     with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
         server.run_shell("true", cwd=tmp_path)
@@ -1195,12 +1191,9 @@ def test_run_shell_show_stderr_warns_on_old_tmux(
 ) -> None:
     """``show_stderr=True`` emits a warning and skips ``-E`` on tmux <3.6.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace.
+    Simulates an older daemon by patching the daemon release decision.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(Server, "_has_gte_version", lambda *_a: False)
     server.new_session(session_name="run_shell_stderr_warn_test")
     with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
         server.run_shell("true", show_stderr=True)

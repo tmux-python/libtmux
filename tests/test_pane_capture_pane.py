@@ -450,12 +450,10 @@ def test_capture_pane_trim_trailing_warning(
     """Test that trim_trailing issues a warning on tmux < 3.4."""
     import warnings
 
-    from libtmux import pane as pane_module
+    from libtmux import Server
 
-    # has_gte_version is imported into libtmux.pane at module import time;
-    # monkeypatching the libtmux.common attribute would not propagate, so
-    # patch the pane module's binding directly.
-    monkeypatch.setattr(pane_module, "has_gte_version", lambda v, **kw: v != "3.4")
+    # Feature flags follow the daemon's release, so patch that decision.
+    monkeypatch.setattr(Server, "_has_gte_version", lambda _self, v: v != "3.4")
 
     pane = session.active_window.split(shell="sh")
 
