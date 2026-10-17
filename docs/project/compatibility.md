@@ -21,8 +21,12 @@ A replacement daemon is checked again before dispatch.
 {meth}`~libtmux.Server.kill` returns without dispatching when its endpoint is
 absent.
 
-Each command adds a version query, bounded to five seconds. The check does not
-cache daemon versions. The query is `run-shell -C` with a marker format, which
+Each {class}`~libtmux.Server` probes its endpoint once, bounded to five
+seconds, and reuses the checked release for later commands and optional-flag
+decisions. The version fence in every command catches a replaced daemon: it
+refuses with no effect and the next command probes again. A vanished daemon is
+detected and the next command checks the version again; {meth}`~libtmux.Server.kill` and
+an absent endpoint always read the endpoint directly. The query is `run-shell -C` with a marker format, which
 fires neither `after-*` hooks nor `command-error`, so a user's hooks never run
 for a version check. It exits 1 with the version in its error text. If a replaced
 daemon fails the fence on tmux 3.5 or newer, `command-error` fires once for
