@@ -265,8 +265,8 @@ def _token_scope(field_name: str) -> str:
 def _normalize_tmux_version(version: str) -> LooseVersion:
     """Convert a tmux version string into a comparable :class:`LooseVersion`.
 
-    tmux master is reported as ``"master"`` (or e.g. ``"3.6a-master"``);
-    treat it as larger than any tagged release.
+    Numbered reports select their release's format catalog. Bare ``"master"``
+    selects the complete catalog for offline inspection; it cannot admit a daemon.
 
     Examples
     --------
@@ -275,11 +275,15 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
     True
     >>> _normalize_tmux_version("3.2a") < _normalize_tmux_version("3.6a")
     True
+    >>> _normalize_tmux_version("3.3a-master") == _normalize_tmux_version("3.3")
+    True
     """
+    release = re.match(r"(?:next-)?(\d+\.\d+)", version)
+    if release is not None:
+        return LooseVersion(release[1])
     if "master" in version.lower():
         return LooseVersion("99.0")
-    release = re.match(r"(?:next-)?(\d+\.\d+)", version)
-    return LooseVersion(release[1] if release is not None else version)
+    return LooseVersion(version)
 
 
 @dataclasses.dataclass()
