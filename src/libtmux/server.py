@@ -18,6 +18,7 @@ import warnings
 from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
+from libtmux._internal.support import versions
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
@@ -295,6 +296,8 @@ class Server(
         """
         try:
             res = self.cmd("list-sessions")
+        except exc.VersionTooLow:
+            raise
         except Exception:
             return False
         return res.returncode == 0
@@ -317,22 +320,25 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
+        result = self.cmd("list-sessions")
+        if result.returncode:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                result.cmd,
+                output="\n".join(result.stdout),
+                stderr="\n".join(result.stderr),
+            )
+
+    def _version_endpoint(self) -> tuple[str, list[str]]:
+        binary = self.tmux_bin or shutil.which("tmux")
+        if binary is None:
             raise exc.TmuxCommandNotFound
-
-        cmd_args: list[str] = ["list-sessions"]
+        selectors: list[str] = []
         if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
+            selectors.extend(("-L", str(self.socket_name)))
         if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+            selectors = ["-S", str(self.socket_path), *selectors]
+        return binary, selectors
 
     #
     # Command
@@ -472,6 +478,8 @@ class Server(
         >>> svr.is_alive()
         False
         """
+        if support.live_version(*self._version_endpoint()) is None:
+            return
         proc = self.cmd("kill-server")
         if proc.stderr:
             stderr_text = " ".join(str(line) for line in proc.stderr)
