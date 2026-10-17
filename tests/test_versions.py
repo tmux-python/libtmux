@@ -238,9 +238,7 @@ def test_feature_flags_follow_the_daemon_not_the_client(
 
 
 def test_support_surface(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Consumers reach the decision through libtmux._internal.support alone."""
-    from libtmux._internal import support
-
+    """Consumers reach the version check through libtmux._internal.support."""
     assert set(support.__all__) == {
         "MINIMUM",
         "VersionTooLow",
@@ -657,6 +655,52 @@ def test_server_pickles_and_copies_without_its_version_cache() -> None:
     for clone in clones:
         assert clone.socket_name == "copied"
         assert not clone._version_cache
-        clone._version_cache.put(*clone._version_endpoint(), "3.4")
-        assert clone._version_cache.get(*clone._version_endpoint()) == "3.4"
+        binary, selectors = clone._version_endpoint()
+        clone._version_cache.put(binary, selectors, "3.4")
+        assert clone._version_cache.get(binary, selectors) == "3.4"
     assert server._version_cache.get(*server._version_endpoint()) == "3.8"
+
+
+def test_native_server_version_reads_a_replaced_daemon(
+    rejection_socket: pathlib.Path,
+) -> None:
+    """server_version reports the daemon now on the socket, not a cached one."""
+    supported = _native_binary("LIBTMUX_TEST_MINIMUM_TMUX", "3.3a")
+    older = _native_binary("LIBTMUX_TEST_UNSUPPORTED_TMUX", "3.2a")
+
+    def start(binary: str) -> None:
+        started = subprocess.run(
+            [
+                binary,
+                *("-f", "/dev/null", "-S", str(rejection_socket)),
+                *("new-session", "-d", "-s", "kept", "exec sleep 120"),
+            ],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        assert started.returncode == 0, started.stderr
+
+    start(supported)
+    server = Server(tmux_bin=supported, socket_path=str(rejection_socket))
+    try:
+        assert support.server_version(server) == "3.3a"
+        _native(supported, rejection_socket, "kill-server")
+        start(older)
+        with pytest.raises(exc.VersionTooLow, match=r"3\.3a"):
+            support.server_version(server)
+        assert not server._version_cache
+    finally:
+        _native(older, rejection_socket, "kill-server")
+        _native(supported, rejection_socket, "kill-server")
+
+
+def test_check_fence_forgets_the_checked_release() -> None:
+    """A fired fence makes the server read its daemon's release afresh."""
+    server = Server(tmux_bin="/test/tmux", socket_name="fenced")
+    server._version_cache.put(*server._version_endpoint(), "3.8")
+    support.check_fence("unknown command: other\n", "marker", server)
+    assert server._version_cache
+    with pytest.raises(support.VersionTooLow):
+        support.check_fence("unknown command: marker\n", "marker", server)
+    assert not server._version_cache
