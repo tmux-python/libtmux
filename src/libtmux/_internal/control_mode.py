@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import os
 import pathlib
-import re
 import stat
 import subprocess
 import tempfile
@@ -60,14 +59,12 @@ def _identity(binary: str, selectors: list[str]) -> str:
 
 
 def _require_release(version: str) -> None:
+    # Strict ranking: 3.8-rc2 and next-3.8 qualify, next-3.7 and 3.7-rc* do not.
     try:
         support.require_version(version, minimum="3.7")
     except exc.VersionTooLow:
         msg = f"ControlMode requires tmux 3.7 or newer; daemon reports {version!r}"
         raise exc.VersionTooLow(msg) from None
-    if re.fullmatch(r"\d+\.\d+[a-z]?", version) is None:
-        msg = f"ControlMode requires a qualified release; daemon reports {version!r}"
-        raise exc.VersionTooLow(msg)
 
 
 @contextlib.contextmanager
@@ -185,21 +182,26 @@ class ControlMode:
             self.stdout = self._proc.stdout
             client_pid = str(self._proc.pid)
 
+            # tmux names a client with no tty "client-<pid>"; ask for the live
+            # client pids with run-shell -C, which fires no hook.
+            self.client_name = f"client-{client_pid}"
+
             def client_registered() -> bool:
                 if self._proc.poll() is not None:
                     assert self._proc.stderr is not None
                     detail = self._proc.stderr.read().strip()
                     msg = f"ControlMode client exited before registration: {detail}"
                     raise exc.LibTmuxException(msg)
-                result = self.server.cmd(
-                    "-u", "list-clients", "-F", "#{client_pid}\t#{client_name}"
+                marker = "libtmux-clients-" + uuid.uuid4().hex + "-"
+                result = support._run(
+                    [*endpoint, "run-shell", "-C", marker + "#{L:#{client_pid},}"]
                 )
-                for line in result.stdout:
-                    pid, _, client_name = line.partition("\t")
-                    if pid == client_pid and client_name:
-                        self.client_name = client_name.strip()
-                        return True
-                return False
+                prefix = f"unknown command: {marker}"
+                return any(
+                    client_pid in line[len(prefix) :].split(",")
+                    for line in result.stderr.splitlines()
+                    if line.startswith(prefix)
+                )
 
             retry_until(client_registered, 3, raises=True)
             self._resources = resources.pop_all()
