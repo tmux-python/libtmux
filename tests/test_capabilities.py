@@ -45,7 +45,7 @@ def test_manifest_matches_table() -> None:
 
 def test_manifest_floor_is_the_minimum_tmux() -> None:
     """The manifest's floor is the release libtmux declares as its minimum."""
-    from libtmux.common import TMUX_MIN_VERSION
+    from libtmux._internal.support import MINIMUM as TMUX_MIN_VERSION
 
     assert capabilities.manifest()["floor"] == {"minimum": TMUX_MIN_VERSION}
 
