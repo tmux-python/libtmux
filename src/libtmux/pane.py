@@ -1782,59 +1782,23 @@ class Pane(
             tmux_args += ("-d", str(start_path))
 
         if title is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-T", title)
-            else:
-                warnings.warn(
-                    "title requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-T", title)
 
         if border_lines is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-b", border_lines)
-            else:
-                warnings.warn(
-                    "border_lines requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-b", border_lines)
 
         if style is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-s", style)
-            else:
-                warnings.warn(
-                    "style requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-s", style)
 
         if border_style is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-S", border_style)
-            else:
-                warnings.warn(
-                    "border_style requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-S", border_style)
 
         if environment:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
-            else:
-                warnings.warn(
-                    "environment requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
 
         if no_border:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-B",)
-            else:
-                warnings.warn(
-                    "no_border requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-B",)
 
         if close_on_any_key:
             if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):

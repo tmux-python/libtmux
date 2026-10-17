@@ -5,13 +5,14 @@ from __future__ import annotations
 import dataclasses
 import functools
 import logging
+import re
 import shlex
 import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -277,7 +278,8 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
     """
     if "master" in version.lower():
         return LooseVersion("99.0")
-    return LooseVersion(version)
+    release = re.match(r"(?:next-)?(\d+\.\d+)", version)
+    return LooseVersion(release[1] if release is not None else version)
 
 
 @dataclasses.dataclass()
@@ -908,7 +910,7 @@ class Obj:
 @functools.cache
 def get_output_format(
     list_cmd: str = "list-panes",
-    tmux_version: str = "3.2a",
+    tmux_version: str = "3.3a",
 ) -> tuple[tuple[str, ...], str]:
     """Return field names and tmux format string filtered by scope and version.
 
@@ -985,7 +987,7 @@ def get_output_format(
 def parse_output(
     output: str,
     list_cmd: str = "list-panes",
-    tmux_version: str = "3.2a",
+    tmux_version: str = "3.3a",
 ) -> OutputRaw:
     """Parse a tmux ``-F`` line into a dict keyed by Obj field name.
 
@@ -1095,7 +1097,7 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    tmux_version = server._get_version()
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
     cmd_args: list[str | int] = []
