@@ -8,6 +8,7 @@ import pathlib
 import re
 import subprocess
 import threading
+import typing as t
 import uuid
 
 from libtmux import exc
@@ -128,6 +129,15 @@ class VersionCache:
 
     def __bool__(self) -> bool:
         return self._entry is not None
+
+    def __getstate__(self) -> dict[str, t.Any]:
+        # A pickled or copied Server must check its daemon again: the lock
+        # cannot be copied, and a release checked elsewhere proves nothing.
+        return {}
+
+    def __setstate__(self, state: dict[str, t.Any]) -> None:
+        self._lock = threading.Lock()
+        self._entry = None
 
 
 def _absent_endpoint(stderr: str) -> bool:
