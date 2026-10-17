@@ -77,6 +77,8 @@ def _fetch_or_empty(
     """
     try:
         return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
+    except exc.VersionTooLow:
+        raise
     except exc.LibTmuxException as e:
         if e.args and _is_daemon_not_up_error(str(e.args[0])):
             return []
@@ -2405,12 +2407,15 @@ class Server(
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no sessions" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        Unsupported tmux reports raise :exc:`~libtmux.exc.VersionTooLow`.
         """
         try:
             sessions: list[Session] = [
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2466,6 +2471,7 @@ class Server(
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no clients attached" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        Unsupported tmux reports raise :exc:`~libtmux.exc.VersionTooLow`.
 
         Returns
         -------
@@ -2483,6 +2489,8 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)

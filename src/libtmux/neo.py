@@ -1354,6 +1354,8 @@ def fetch_obj(
             list_cmd=list_cmd,
             list_extra_args=list_extra_args,
         )
+    except exc.VersionTooLow:
+        raise
     except exc.LibTmuxException as e:
         # A ``-t``-scoped listing pushes the "does it exist?" question down
         # into tmux, which answers on stderr rather than with an empty listing.
