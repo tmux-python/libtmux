@@ -17,10 +17,9 @@ import typing as t
 import pytest
 from _pytest.doctest import DoctestItem
 
-from libtmux._internal.control_mode import ControlMode
 from libtmux.client import Client
 from libtmux.pane import Pane
-from libtmux.pytest_plugin import USING_ZSH
+from libtmux.pytest_plugin import USING_ZSH, _control_mode_for_test
 from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
@@ -51,9 +50,9 @@ def add_doctest_fixtures(
         doctest_namespace["window"] = session.active_window
         doctest_namespace["pane"] = session.active_pane
         doctest_namespace["request"] = request
-        doctest_namespace["ControlMode"] = ControlMode
+        doctest_namespace["ControlMode"] = _control_mode_for_test
         doctest_namespace["control_mode"] = functools.partial(
-            ControlMode,
+            _control_mode_for_test,
             server=session.server,
             session=session,
         )
