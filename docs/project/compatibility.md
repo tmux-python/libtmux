@@ -21,8 +21,12 @@ A replacement daemon is checked again before dispatch.
 {meth}`~libtmux.Server.kill` returns without dispatching when its endpoint is
 absent.
 
-Each command adds a read-only version query, bounded to five seconds. Admission
-does not cache daemon versions. Binary diagnostics through `tmux -V` and
+Each command adds a version query, bounded to five seconds. Admission does not
+cache daemon versions. The query is `run-shell -C` with a marker format, which
+fires neither `after-*` hooks nor `command-error`, so a user's hooks never run
+for admission. It exits 1 with the version in its error text. If a replaced
+daemon fails the fence on tmux 3.5 or newer, `command-error` fires once for
+that refusal, which reports a real error. Binary diagnostics through `tmux -V` and
 `tmux -h` remain available. Raw `tmux -c` shell execution is refused; use
 {meth}`~libtmux.Server.run_shell` for a tmux command instead.
 
