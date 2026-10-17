@@ -51,22 +51,32 @@ __all__ = (
 def server_version(server: Server) -> str:
     """Return the tmux release *server* talks to, refusing an unsupported one.
 
-    A live daemon answers with its own release; an absent endpoint answers
-    with the configured executable's. Either must meet :data:`MINIMUM`.
+    The release is read from the endpoint on every call, never from what
+    *server* checked earlier, so a daemon replaced since then is reported as
+    it is now. A live daemon answers with its own release; an absent endpoint
+    answers with the configured executable's. Either must meet
+    :data:`MINIMUM`.
 
     Raises
     ------
     :exc:`~libtmux.exc.VersionTooLow`
         When the release is below the minimum or cannot be established.
     """
+    server._version_cache.clear()
     return server._get_version()
 
 
-def check_fence(stderr: str, marker: str | None) -> None:
+def check_fence(stderr: str, marker: str | None, server: Server | None = None) -> None:
     """Raise :exc:`~libtmux.exc.VersionTooLow` if a fenced batch was refused.
 
     A batch prefixed with ``if-shell -F '#{==:#{version},<V>}' '' <marker> ;``
     reports ``unknown command: <marker>`` on stderr when the daemon is not the
-    release the caller admitted, and none of its commands ran.
+    release the caller checked, and none of its commands ran. Pass *server*
+    so its next command reads the replacement daemon's release afresh.
     """
-    check_result(stderr, marker)
+    try:
+        check_result(stderr, marker)
+    except VersionTooLow:
+        if server is not None:
+            server._version_cache.clear()
+        raise
