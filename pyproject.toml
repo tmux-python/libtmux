@@ -275,6 +275,11 @@ addopts = [
   "-p no:doctest",
   "--reruns=2"
 ]
+filterwarnings = [
+  # libtmux and its tests must not call the deprecated executable version
+  # helpers; tests/legacy_api exercises them on purpose.
+  "error:libtmux\\.common\\.:DeprecationWarning:(libtmux|tests)\\.(?!legacy_api)",
+]
 doctest_optionflags = [
   "ELLIPSIS",
   "NORMALIZE_WHITESPACE"
