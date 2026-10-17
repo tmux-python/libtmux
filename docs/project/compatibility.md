@@ -81,11 +81,10 @@ remain outside this guarantee.
 Raw command stdout is native client output; it does not promise capture of a
 nested shell job's stdout.
 
-Backend consumers can require
-`libtmux.common.TMUX_OPTIONAL_FEATURE_POLICY_VERSION >= 2` before handing off
-work. This identifies the feature enforcement contract in the table; each
-operation still checks its daemon and control acquisition still checks its
-socket carrier.
+Programs that run their own tmux subprocesses can apply the same checks
+through {mod}`libtmux.admission`: `require_commands` refuses the literal
+commands in the table for an admitted release. Each libtmux operation still
+checks its daemon, and control acquisition still checks its socket carrier.
 
 On 3.3a, the layout guard validates the preset or serialized header before any
 batch effect. Checksum, tree structure and pane-count errors retain native
