@@ -167,11 +167,46 @@ def _command_items(arguments: list[str]) -> list[list[str]]:
     return commands
 
 
+def _matches(name: str, full: str, alias: str) -> bool:
+    """Report whether *name* is tmux's alias or a long-enough prefix of *full*."""
+    return name == alias or (len(name) >= 5 and full.startswith(name))
+
+
+def _require_names(version: str, command: list[str]) -> None:
+    """Refuse names that exact tmux 3.7 rejects, before any command runs.
+
+    3.7 rejects ``:`` and ``.`` in session and window names; 3.7a reverted it.
+    """
+    if version != "3.7":
+        return
+    name = command[0]
+    values: list[str] = []
+    if _matches(name, "new-window", "neww"):
+        options, _ = getopt.getopt(command[1:], "abdkPSt:F:c:e:n:")
+        values = [value for flag, value in options if flag == "-n"]
+    elif _matches(name, "new-session", "new"):
+        options, _ = getopt.getopt(command[1:], "AdDEPXc:e:f:F:n:s:t:x:y:")
+        values = [value for flag, value in options if flag in {"-n", "-s"}]
+    elif _matches(name, "rename-window", "renamew") or _matches(
+        name, "rename-session", "rename"
+    ):
+        _, operands = getopt.getopt(command[1:], "t:")
+        values = operands[-1:]
+    for value in values:
+        if ":" in value or "." in value:
+            msg = (
+                f"invalid window or session name {value!r}: tmux 3.7 rejects "
+                "':' and '.' in names; choose another name or upgrade to 3.7a"
+            )
+            raise exc.VersionTooLow(msg)
+
+
 def _require_commands(
     version: str, arguments: list[str], *, repaired_break: bool
 ) -> None:
     for command in _command_items(arguments):
         name = command[0]
+        _require_names(version, command)
         if not is_at_least(version, "3.4") and (
             name == "selectl" or (len(name) >= 8 and "select-layout".startswith(name))
         ):

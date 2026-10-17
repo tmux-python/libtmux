@@ -275,3 +275,47 @@ def test_option_aliases_keep_native_meaning(session: Session) -> None:
         "server-value"
     ]
     assert server.cmd("show-window-options", "-gv", "mode-keys").stdout == ["vi"]
+
+
+NAME_COMMANDS = [
+    ["new-window", "-n", "a.b"],
+    ["neww", "-dn", "a:b", "-t", "=s"],
+    ["new-session", "-d", "-s", "a.b"],
+    ["new", "-d", "-n", "x:y", "-s", "ok"],
+    ["rename-window", "-t", "@1", "a.b"],
+    ["renamew", "a:b"],
+    ["rename-session", "-t", "=s", "a.b"],
+    ["rename", "a:b"],
+    ["set-option", "-g", "@x", "1", ";", "new-window", "-n", "a.b"],
+]
+
+
+@pytest.mark.parametrize("command", NAME_COMMANDS)
+def test_exact_37_refuses_delimiters_in_window_and_session_names(
+    command: list[str],
+) -> None:
+    """Window and session names are checked before the batch runs on 3.7."""
+    with pytest.raises(exc.VersionTooLow, match="invalid window or session name"):
+        support._require_commands("3.7", command, repaired_break=False)
+
+
+@pytest.mark.parametrize("command", NAME_COMMANDS)
+@pytest.mark.parametrize("version", ["3.3a", "3.6b", "3.7a", "3.8", "3.8-rc2"])
+def test_other_releases_keep_native_names(version: str, command: list[str]) -> None:
+    """Only the 3.7 release rejected these names; 3.7a and the rest accept them."""
+    support._require_commands(version, command, repaired_break=False)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["new-window", "-n", "plain"],
+        ["new-window", "-t", "=s:1", "-n", "plain"],
+        ["rename-window", "-t", "@1", "plain"],
+        ["new-session", "-d", "-s", "plain", "-n", "also-plain"],
+        ["list-windows", "-F", "#{window_name}.x"],
+    ],
+)
+def test_exact_37_allows_names_without_delimiters(command: list[str]) -> None:
+    """Targets and formats may hold delimiters; only the name does not."""
+    support._require_commands("3.7", command, repaired_break=False)
