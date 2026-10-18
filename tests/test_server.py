@@ -44,24 +44,22 @@ def test_socket_name(server: Server) -> None:
     assert myserver.socket_name == "test"
 
 
-def test_socket_path(server: Server) -> None:
+def test_socket_path(server: Server, tmp_path: pathlib.Path) -> None:
     """``-S`` socket_path  (alternative path for server socket)."""
-    myserver = Server(socket_path="test")
+    myserver = Server(socket_path=tmp_path / "test")
 
-    assert myserver.socket_path == "test"
+    assert myserver.socket_path == str(tmp_path / "test")
 
 
-def test_socket_path_not_derived_from_socket_name() -> None:
-    """A named socket leaves ``socket_path`` unset.
-
-    tmux resolves a ``-L`` name against its own socket directory, so libtmux
-    has no reason to guess the path. Anything that needs the real path asks
-    tmux for it (``#{socket_path}``).
-    """
+def test_socket_path_captured_from_socket_name() -> None:
+    """A named socket captures its root and absolute endpoint."""
     myserver = Server(socket_name="libtmux_test_named_socket")
 
     assert myserver.socket_name == "libtmux_test_named_socket"
-    assert myserver.socket_path is None
+    root = os.environ.get("TMUX_TMPDIR") or "/tmp"
+    assert myserver.socket_path == str(
+        pathlib.Path(root) / f"tmux-{os.getuid()}" / myserver.socket_name,
+    )
 
 
 def test_config(server: Server) -> None:
@@ -354,14 +352,15 @@ def test_socket_name_precedence(server: Server) -> None:
 
 
 def test_server_context_manager(TestServer: type[Server]) -> None:
-    """Test Server context manager functionality."""
+    """Server client scope leaves the daemon alive; explicit ownership destroys it."""
     with TestServer() as server:
         session = server.new_session()
         assert server.is_alive()
         assert len(server.sessions) == 1
         assert session in server.sessions
 
-    # Server should be killed after exiting context
+    assert server.is_alive()
+    server.own().close()
     assert not server.is_alive()
 
 
@@ -474,8 +473,8 @@ def test_new_session_start_directory_pathlib(
 
 
 def test_tmux_bin_default(server: Server) -> None:
-    """Default tmux_bin is None, falls back to shutil.which."""
-    assert server.tmux_bin is None
+    """Default tmux_bin records the executable found at construction."""
+    assert server.tmux_bin == shutil.which("tmux")
 
 
 def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
@@ -1178,13 +1177,9 @@ def test_run_shell_cwd_warns_on_old_tmux(
 ) -> None:
     """``cwd=`` emits a warning and skips ``-c`` on tmux <3.4.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace (where it's bound at
-    import time).
+    Simulates an older executable on this server handle.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(server, "_supports_version", lambda minimum: False)
     server.new_session(session_name="run_shell_cwd_warn_test")
     with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
         server.run_shell("true", cwd=tmp_path)
@@ -1196,12 +1191,9 @@ def test_run_shell_show_stderr_warns_on_old_tmux(
 ) -> None:
     """``show_stderr=True`` emits a warning and skips ``-E`` on tmux <3.6.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace.
+    Simulates an older executable on this server handle.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(server, "_supports_version", lambda minimum: False)
     server.new_session(session_name="run_shell_stderr_warn_test")
     with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
         server.run_shell("true", show_stderr=True)

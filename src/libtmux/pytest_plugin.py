@@ -13,6 +13,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._compat import BaseExceptionGroup
 from libtmux._internal.control_mode import ControlMode
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
@@ -25,8 +26,8 @@ logger = logging.getLogger(__name__)
 USING_ZSH = "zsh" in os.getenv("SHELL", "")
 
 
-def _reap_test_server(socket_name: str | None) -> None:
-    """Kill the tmux daemon on ``socket_name`` and unlink the socket file.
+def _reap_test_server(server: Server | str | None) -> None:
+    """Kill the captured test daemon and unlink its socket file.
 
     Invoked from the :func:`server` and :func:`TestServer` fixture
     finalizers to guarantee teardown even when the daemon has already
@@ -35,28 +36,24 @@ def _reap_test_server(socket_name: str | None) -> None:
     non-graceful exit, so ``/tmp/tmux-<uid>/`` otherwise accumulates
     stale entries across test runs.
 
-    Conservative: suppresses ``LibTmuxException`` / ``OSError`` on both
-    the kill and the unlink. A finalizer that raises replaces the real
-    test failure with a cleanup error, and cleanup failures are not
-    actionable (socket already gone, permissions changed, race with a
-    concurrent pytest-xdist worker).
+    Retains each fixture's endpoint and exposes command or unlink failures.
+    A string selects a named endpoint from the current environment; fixtures
+    pass the captured Server instead.
     """
-    if not socket_name:
+    if server is None:
         return
-
-    with contextlib.suppress(exc.LibTmuxException, OSError):
-        srv = Server(socket_name=socket_name)
-        if srv.is_alive():
-            srv.kill()
-
-    # ``Server(socket_name=...)`` does not populate ``socket_path`` —
-    # the Server class only derives the path when neither ``socket_name``
-    # nor ``socket_path`` was supplied. Recompute the location tmux uses
-    # so we can unlink the file regardless of daemon state.
-    tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
-    socket_path = tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name
-    with contextlib.suppress(OSError):
-        socket_path.unlink(missing_ok=True)
+    if isinstance(server, str):
+        srv = Server(socket_name=server)
+    else:
+        # Tests may replace methods on their handle before fixture teardown.
+        srv = Server(
+            socket_name=server.socket_name,
+            socket_path=server.socket_path if server.socket_name is None else None,
+            child_environment=server.child_environment,
+            tmux_bin=server.tmux_bin,
+        )
+    srv.kill()
+    pathlib.Path(srv.socket_path).unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")
@@ -172,10 +169,13 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    server = Server(socket_name=f"libtmux_test{next(namer)}")
+    server = Server(
+        socket_name=f"libtmux_test{next(namer)}",
+        config_file=str(config_file),
+    )
 
     def fin() -> None:
-        _reap_test_server(server.socket_name)
+        _reap_test_server(server)
 
     request.addfinalizer(fin)
 
@@ -342,11 +342,11 @@ def TestServer(
     >>> server2.socket_name != server.socket_name
     True
     """
-    created_sockets: list[str] = []
+    created_servers: list[Server] = []
 
     def on_init(server: Server) -> None:
         """Track created servers for cleanup."""
-        created_sockets.append(server.socket_name or "default")
+        created_servers.append(server)
 
     def socket_name_factory() -> str:
         """Generate unique socket names."""
@@ -354,8 +354,15 @@ def TestServer(
 
     def fin() -> None:
         """Kill all servers created with these sockets and unlink their sockets."""
-        for socket_name in created_sockets:
-            _reap_test_server(socket_name)
+        failures: list[BaseException] = []
+        for server in created_servers:
+            try:
+                _reap_test_server(server)
+            except BaseException as error:  # noqa: BLE001, PERF203
+                failures.append(error)
+        if failures:
+            message = "test server cleanup failed"
+            raise BaseExceptionGroup(message, failures)
 
     request.addfinalizer(fin)
 

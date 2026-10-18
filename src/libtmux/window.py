@@ -15,7 +15,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -24,6 +24,7 @@ from libtmux.constants import (
     WindowDirection,
 )
 from libtmux.hooks import HooksMixin
+from libtmux.lifecycle import FoundOrCreated, _find_or_create_child
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
@@ -131,13 +132,18 @@ class Window(
     server: Server
 
     def __enter__(self) -> Self:
-        """Enter the context, returning self.
+        """Accept destruction responsibility and enter the window scope.
 
         Returns
         -------
         :class:`Window`
             The window instance
         """
+        previous = getattr(self, "_scope_owner", None)
+        if previous is not None and not previous.closed:
+            message = "this window already has an active or failed cleanup scope"
+            raise RuntimeError(message)
+        self._scope_owner = self._enter_owned()
         return self
 
     def __exit__(
@@ -146,22 +152,20 @@ class Window(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the window if it exists.
+        """Destroy the accepted window identity and retain paired failures.
 
         Parameters
         ----------
         exc_type : type[BaseException] | None
-            The type of the exception that was raised
+            The type of the body exception, or ``None`` on normal exit.
         exc_value : BaseException | None
-            The instance of the exception that was raised
+            The body exception, retained if cleanup also raises.
         exc_tb : types.TracebackType | None
-            The traceback of the exception that was raised
+            The traceback of the body exception, or ``None``.
         """
-        if (
-            self.window_id is not None
-            and len(self.session.windows.filter(window_id=self.window_id)) > 0
-        ):
-            self.kill()
+        owner = getattr(self, "_scope_owner", None)
+        if owner is not None:
+            owner.__exit__(exc_type, exc_value, exc_tb)
 
     def refresh(self) -> None:
         """Refresh window attributes from tmux.
@@ -522,6 +526,36 @@ class Window(
         raise_if_stderr(proc, "select-pane")
 
         return self.active_pane
+
+    def find_or_create_pane(
+        self,
+        key: str,
+        *,
+        start_directory: StrPath | None = None,
+        shell: str | None = None,
+    ) -> FoundOrCreated[Pane]:
+        """Borrow an exact local pane-key match in this window or scope a new split.
+
+        Parameters
+        ----------
+        key : str
+            Nonempty application identity stored in the pane's local
+            ``@libtmux_pane_key`` option. An existing pane can opt in by setting
+            that option. Inherited window or global options do not match.
+            Multiple local matches raise ``AmbiguousMatch``.
+        start_directory : str or PathLike, optional
+            Initial directory for a newly created pane.
+        shell : str, optional
+            Command for a newly created pane; a reused pane stays unchanged.
+
+        Returns
+        -------
+        FoundOrCreated[Pane]
+            The result owns a new detached split and rolls it back if setting
+            its key fails. Lookup and creation are separate commands; serialize
+            competing creators when the application requires unique keys.
+        """
+        return _find_or_create_child(self, "pane", key, start_directory, shell)
 
     def split(
         self,
@@ -1322,7 +1356,7 @@ class Window(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(

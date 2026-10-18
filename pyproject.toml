@@ -3,6 +3,7 @@ name = "libtmux"
 version = "0.62.0"
 description = "Typed library that provides an ORM wrapper for tmux, a terminal multiplexer."
 requires-python = ">=3.10,<4.0"
+dependencies = ["exceptiongroup>=1.2; python_version < '3.11'"]
 authors = [
   {name = "Tony Narlock", email = "tony@git-pull.com"}
 ]
@@ -70,6 +71,7 @@ dev = [
   "coverage",
   "pytest-cov",
   # Lint
+  "exceptiongroup>=1.2",
   "ruff>=0.16.1",
   "mypy",
 ]
@@ -95,6 +97,7 @@ coverage =[
 ]
 lint = [
   "typing-extensions; python_version < '3.11'",
+  "exceptiongroup>=1.2",
   "ruff>=0.16.1",
   "mypy",
 ]
