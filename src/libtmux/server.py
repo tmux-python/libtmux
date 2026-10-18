@@ -135,16 +135,23 @@ class Server(
 
     References
     ----------
-    .. [server_manual] CLIENTS AND SESSIONS. openbsd manpage for TMUX(1)
+    .. [server_manual] `tmux 3.7c manual, Clients and sessions
+       <https://libtmux.org/en/tmux/3.7c/manual/full/#CLIENTS_AND_SESSIONS>`_.
+
            "The tmux server manages clients, sessions, windows and panes.
            Clients are attached to sessions to interact with them, either when
-           they are created with the new-session command, or later with the
-           attach-session command. Each session has one or more windows linked
+           they are created with the `new-session
+           <https://libtmux.org/en/tmux/3.7c/manual/new-session/>`_ command,
+           or later with the `attach-session
+           <https://libtmux.org/en/tmux/3.7c/manual/attach-session/>`_ command.
+           Each session has one or more windows linked
            into it. Windows may be linked to multiple sessions and are made up
            of one or more panes, each of which contains a pseudo terminal."
 
-       https://man.openbsd.org/tmux.1#CLIENTS_AND_SESSIONS.
-       Accessed April 1st, 2018.
+       `Upstream source
+       <https://github.com/tmux/tmux/blob/3.7c/tmux.1#L1048-L1063>`_;
+       `OpenBSD tmux(1) manual
+       <https://man.openbsd.org/tmux.1#CLIENTS_AND_SESSIONS>`_.
     """
 
     socket_name = None

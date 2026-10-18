@@ -101,13 +101,19 @@ class Pane(
 
     References
     ----------
-    .. [pane_manual] tmux pane. openbsd manpage for TMUX(1).
+    .. [pane_manual] `tmux 3.7c manual, Windows and panes
+       <https://libtmux.org/en/tmux/3.7c/manual/full/#WINDOWS_AND_PANES>`_.
+
            "Each window displayed by tmux may be split into one or more
            panes; each pane takes up a certain area of the display and is
            a separate terminal."
 
-       https://man.openbsd.org/tmux.1#WINDOWS_AND_PANES.
-       Accessed April 1st, 2018.
+       Create a pane with `split-window
+       <https://libtmux.org/en/tmux/3.7c/manual/split-window/>`_.
+       `Upstream source
+       <https://github.com/tmux/tmux/blob/3.7c/tmux.1#L1759-L1764>`_;
+       `OpenBSD tmux(1) manual
+       <https://man.openbsd.org/tmux.1#WINDOWS_AND_PANES>`_.
     """
 
     default_option_scope: OptionScope | None = OptionScope.Pane
