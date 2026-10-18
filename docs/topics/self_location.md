@@ -190,7 +190,8 @@ the session tmux's own `display-message -t` names:
 ...     "link-window", "-s", shared.window_id, "-t", f"{guest.session_id}:"
 ... )
 
->>> holders = {p.session_name for p in server.panes.filter(pane_id=worker.pane_id)}
+>>> worker_panes = server.panes.filter(pane_id=worker.pane_id)
+>>> holders = {p.session_name for p in worker_panes}
 >>> holders == {"aaa-home", "zzz-guest"}
 True
 

@@ -210,7 +210,15 @@ Pane(%... ...)
 >>> pane.clear()
 Pane(%... ...)
 >>> pane.send_keys("echo 'hello world'", enter=True)
->>> pane.cmd('capture-pane', '-p').stdout  # doctest: +SKIP
+>>> from libtmux.test.retry import retry_until
+>>> retry_until(lambda: 'hello world' in pane.capture_pane())
+True
+```
+
+`pane.capture_pane()` returns the pane's lines, prompt included, so the
+capture above reads like this (the prompt depends on your shell):
+
+```text
 ["$ echo 'hello world'", 'hello world', '$']
 ```
 

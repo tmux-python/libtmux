@@ -111,7 +111,7 @@ you split:
 >>> from libtmux.constants import PaneDirection
 
 >>> # Create a window with enough space
->>> v_split_window = session.new_window(window_name='v-split-demo', attach=False)
+>>> v_split_window = session.new_window('v-split-demo', attach=False)
 >>> v_split_window.resize(height=40, width=120)  # doctest: +ELLIPSIS
 Window(@... ...)
 
@@ -348,14 +348,15 @@ Split a row across, repeat down the rows, then let the `tiled`
 ...         row_start = panes[-cols]
 ...         current = row_start
 ...         for col in range(cols):
-...             new_pane = panes[-cols + col].split(direction=PaneDirection.Below)
+...             source = panes[-cols + col]
+...             new_pane = source.split(direction=PaneDirection.Below)
 ...             panes.append(new_pane)
 ...
 ...     # Apply tiled layout for even distribution
 ...     window.select_layout('tiled')
 ...     return window, panes
 
->>> grid_window, grid_panes = create_pane_grid(session, rows=2, cols=2, name='test-grid')
+>>> grid_window, grid_panes = create_pane_grid(session, 2, 2, 'test-grid')
 >>> len(grid_panes) >= 4
 True
 
