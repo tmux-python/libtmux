@@ -81,6 +81,8 @@ Attached terminal. Read read-only state, theme, termtype.
 
 ## Supporting Modules
 
+Discover local servers with the optional {doc}`lobby <../contrib/lobby/index>`.
+
 ::::{grid} 1 2 3 3
 :gutter: 2 2 3 3
 
