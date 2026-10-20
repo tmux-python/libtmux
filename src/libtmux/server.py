@@ -16,7 +16,10 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux._internal.env import socket_path_from_env
+from libtmux._internal.env import (
+    resolve_ambient_socket_path,
+    socket_path_from_env,
+)
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
@@ -2682,17 +2685,45 @@ class Server(
         return False
 
     def __repr__(self) -> str:
-        """Representation of :class:`Server` object."""
+        """Representation of :class:`Server` object.
+
+        A server given neither ``socket_name`` nor ``socket_path`` talks to
+        whichever socket a bare tmux client would: ``$TMUX`` when it runs
+        inside a pane, and the path resolved from ``$TMUX_TMPDIR`` otherwise.
+        That is the path shown, so the repr names the server the object will
+        actually reach.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server
+        >>> Server(socket_name="libtmux_repr_demo")
+        Server(socket_name=libtmux_repr_demo)
+
+        >>> Server(socket_path="/run/user/1000/tmux-1000/demo")
+        Server(socket_path=/run/user/1000/tmux-1000/demo)
+
+        Outside a pane the socket directory is the one ``$TMUX_TMPDIR`` names:
+
+        >>> with monkeypatch.context() as m:
+        ...     m.delenv("TMUX", raising=False)
+        ...     m.setenv("TMUX_TMPDIR", "/run/user/1000")
+        ...     Server()
+        Server(socket_path=/run/user/1000/tmux-.../default)
+
+        Inside one, ``$TMUX`` names the socket outright and the directory is
+        not consulted:
+
+        >>> with monkeypatch.context() as m:
+        ...     m.setenv("TMUX", "/tmp/tmux-1000/inherited,8421,0")
+        ...     m.setenv("TMUX_TMPDIR", "/run/user/1000")
+        ...     Server()
+        Server(socket_path=/tmp/tmux-1000/inherited)
+        """
         if self.socket_name is not None:
-            return (
-                f"{self.__class__.__name__}"
-                f"(socket_name={getattr(self, 'socket_name', 'default')})"
-            )
+            return f"{self.__class__.__name__}(socket_name={self.socket_name})"
         if self.socket_path is not None:
             return f"{self.__class__.__name__}(socket_path={self.socket_path})"
-        return (
-            f"{self.__class__.__name__}(socket_path=/tmp/tmux-{os.geteuid()}/default)"
-        )
+        return f"{self.__class__.__name__}(socket_path={resolve_ambient_socket_path()})"
 
     #
     # Legacy: Redundant stuff we want to remove
