@@ -15,7 +15,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import get_version_str, has_gte_version, raise_if_stderr
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -23,6 +23,7 @@ from libtmux.constants import (
     PaneDirection,
     ResizeAdjustmentDirection,
 )
+from libtmux.engines.base import CommandResult, CommandSeparator
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj
@@ -311,7 +312,7 @@ class Pane(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux subcommand within pane context.
 
         Automatically binds target by adding  ``-t`` for object's pane ID to the
@@ -689,7 +690,7 @@ class Pane(
         proc = self.cmd(*cmd)
         if to_buffer is not None:
             return None
-        return proc.stdout
+        return list(proc.stdout)
 
     def send_keys(
         self,
@@ -1011,7 +1012,7 @@ class Pane(
             )
 
         if get_text:
-            return proc.stdout
+            return list(proc.stdout)
 
         return None
 
@@ -2613,7 +2614,9 @@ class Pane(
         Sends ``send-keys -R`` and ``clear-history`` to the pane in one
         targeted tmux command sequence so output cannot land in the
         freshly-cleared grid between the terminal-state reset and the
-        history clear.
+        history clear. The boundary between the two is a
+        :class:`~libtmux.engines.base.CommandSeparator`, which marks it
+        structural: a plain ``";"`` argument is data, and reaches tmux escaped.
 
         Examples
         --------
@@ -2625,7 +2628,7 @@ class Pane(
             "-t",
             self.pane_id,
             "-R",
-            ";",
+            CommandSeparator(";"),
             "clear-history",
             "-t",
             self.pane_id,

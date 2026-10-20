@@ -45,7 +45,213 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### A bare `";"` argument is now literal data (#738)
+
+tmux reads a trailing `;` on a command argument as a command boundary, so a `;`
+passed to {meth}`Server.cmd() <libtmux.Server.cmd>` as a *separator* worked by
+relying on that parse. Arguments are now escaped, which fixes the data case
+(below) and makes the separator case explicit. Pass
+{class}`~libtmux.engines.base.CommandSeparator` where you mean a boundary:
+
+```python
+# Before
+server.cmd("send-keys", "-t", pane.pane_id, "-R", ";", "clear-history")
+
+# After
+from libtmux.engines import CommandSeparator
+
+server.cmd(
+    "send-keys", "-t", pane.pane_id, "-R",
+    CommandSeparator(";"),
+    "clear-history",
+)
+```
+
+See {ref}`migration-0-63-command-separator`.
+
+#### Commands return `CommandResult` (#738)
+
+{meth}`Server.cmd() <libtmux.Server.cmd>` and its `Session`, `Window`, and `Pane`
+counterparts return {class}`~libtmux.engines.base.CommandResult` rather than
+{class}`~libtmux.common.tmux_cmd`. `stdout`, `stderr`, `cmd`, and `returncode`
+read exactly as before, and the sequences still compare equal to lists — they are
+now read-only, so a caller that mutated a result in place gets
+{exc}`TypeError`. {attr}`~libtmux.engines.base.CommandResult.ok` and
+{meth}`~libtmux.engines.base.CommandResult.raise_for_status` come with it.
+`tmux_cmd` is unchanged and still constructible directly. See
+{ref}`migration-0-63-command-result`.
+
+#### `tmux_cmd.process` deprecated (#738)
+
+{attr}`libtmux.common.tmux_cmd.process` is now a deprecated property. Reading it
+warns, and it raises {exc}`~libtmux.exc.LibTmuxException` under an engine that
+forks no process. Use `returncode`, `stdout`, and `stderr` on the result, which
+are unchanged.
+
+#### `raise_if_dead()` no longer echoes tmux's error (#738)
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` previously let
+tmux write its message straight to the terminal. It now captures that text onto
+the raised {exc}`subprocess.CalledProcessError`. The exception type is
+unchanged.
+
+### What's new
+
+#### Pluggable command engines (#738)
+
+Every tmux command libtmux runs now goes through an *engine* — an object that
+takes a rendered argv and returns a structured result. The default,
+{class}`~libtmux.engines.subprocess.SubprocessEngine`, forks the tmux binary
+exactly as before, so existing code is unaffected.
+
+Pass `engine=` to {class}`~libtmux.Server` and every command on that server runs
+through your object instead. {class}`~libtmux.engines.base.TmuxEngine` is a
+{class}`typing.Protocol`, so any object with `run()` and `run_batch()` qualifies
+— there is no base class to inherit. That makes it possible to drive libtmux
+against a recorded or in-memory tmux with no server running, and it is the seam
+the control-mode, asyncio, and native-protocol engines will plug into.
+
+An engine that names no tmux server of its own adopts the server's connection,
+so injecting one into a socket-scoped {class}`~libtmux.Server` cannot silently
+dispatch to the ambient tmux server. Engines that name a server keep it.
+
+{class}`~libtmux.engines.connection.ServerConnection` is now the single place
+the tmux binary and the `-L`/`-S`/`-f`/`-2`/`-8` flags are computed; four
+separate copies previously disagreed about which flags to emit. It is derived
+from the server's public attributes on each use, so reassigning `socket_name`
+takes effect on the next command, and it memoizes its {func}`shutil.which`
+lookup instead of re-walking `$PATH` for every command.
+
+See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
+
+#### Several commands in one round trip (#738)
+
+{meth}`Server.cmd_batch() <libtmux.Server.cmd_batch>` runs a sequence of commands
+and returns one result each, in order; a tmux-side failure is data on its own
+result rather than an exception that truncates the rest. Whether it is faster
+than repeated {meth}`Server.cmd() <libtmux.Server.cmd>` depends on the engine —
+the default forks per command either way, while an engine holding a persistent
+connection writes every command before waiting for the first reply.
+
+{func}`~libtmux.common.dispatch_batch` hands a whole sequence of commands to an
+engine's {meth}`~libtmux.engines.base.TmuxEngine.run_batch`, rather than looping
+over single dispatches. A stateless engine loops internally and behaves as
+repeated calls would; a persistent-connection engine writes every command before
+waiting for the first reply, which is where the round trips collapse.
+
+#### Async engines can run commands (#738)
+
+{class}`~libtmux.engines.asyncio.AsyncSubprocessEngine` awaits the tmux binary
+rather than blocking on it. {func}`~libtmux.common.adispatch` and
+{func}`~libtmux.common.adispatch_batch` run one command or a whole sequence
+through any {class}`~libtmux.engines.base.AsyncTmuxEngine`, applying the same
+adaptations as their synchronous counterparts. {class}`~libtmux.Server` remains
+synchronous and refuses an async engine, naming the reason.
+
+#### A persistent-connection engine is buildable on the public API (#738)
+
+{func}`~libtmux.engines.base.render_control_line` and
+{func}`~libtmux.engines.base.unescape_control_output` encode a command for
+tmux's line-oriented control parser and decode a ``%output`` payload back to the
+bytes a pane wrote. With them, an engine that holds one long-lived ``tmux -C``
+connection can be written entirely against the public engine API — including the
+format-heavy listing queries the object API depends on. See
+`tests/examples/engines/test_control_mode_engine.py` for a worked example.
+
+#### Testing without a tmux server (#738)
+
+{class}`~libtmux.engines.record.RecordingEngine` wraps a real engine and keeps
+what tmux answered; {class}`~libtmux.engines.record.ReplayEngine` serves those
+answers back with no tmux running, so the whole object API — `sessions`,
+`windows`, `panes` — works offline against real recorded output. Tapes
+round-trip through JSON, so recording needs tmux and running does not. A replay
+engine fails closed, raising {exc}`~libtmux.exc.UnscriptedCommand` for a command
+it never recorded. The `recording_server` pytest fixture provides a server that
+records, which doubles as a spy over the tmux commands your code issued.
+
+Engines resolve by name through {func}`~libtmux.engines.registry.create_engine`,
+with {func}`~libtmux.engines.registry.available_engines` listing what is
+registered. A packaged engine joins that list by advertising itself in the
+`libtmux.engines` entry-point group, which is read on first use rather than at
+import. A distribution whose engine fails to load is skipped rather than
+breaking resolution for every other engine.
+
+{meth}`Server.using() <libtmux.Server.using>` swaps the engine for a block and
+restores it afterwards, including when the block raises; scopes nest.
+{meth}`Server.recording() <libtmux.Server.recording>` builds on it to record
+everything a block issues against the engine already in use.
+
+A tape keeps every exchange in order rather than one answer per command, and a
+replay serves them in order. A command whose answer never varied while recording
+replays as often as needed; one that varied raises once its answers run out,
+because repeating the final answer would report the end state for an earlier
+step.
+
+A tape carries the tmux version it was recorded against, and a replay engine
+reports it through {class}`~libtmux.engines.base.SupportsTmuxVersion`. That is
+what lets a replay serve listing queries with no tmux binary present at all:
+the version-gated `-F` template is otherwise resolved by running `tmux -V`.
+
+{attr}`Server.sessions <libtmux.Server.sessions>` and
+{attr}`Server.clients <libtmux.Server.clients>` stay lenient when tmux cannot be
+reached, but no longer swallow {exc}`~libtmux.exc.UnscriptedCommand` — an engine
+that was never taught to answer is a gap in a fixture, not an unreachable tmux.
+
+#### Result objects report success directly (#738)
+
+{attr}`CommandResult.ok <libtmux.engines.base.CommandResult.ok>` and
+{meth}`CommandResult.raise_for_status()
+<libtmux.engines.base.CommandResult.raise_for_status>` replace hand-written
+`returncode` comparisons, and {class}`~libtmux.common.tmux_cmd` carries the same
+two, so results read the same whichever layer produced them.
+
+#### Engines report transport failure by name (#738)
+
+{exc}`~libtmux.exc.EngineError` names the case where a command never reached
+tmux at all — a missing binary, a closed connection, a desynchronized protocol
+— as distinct from tmux rejecting a command, which stays data on the result.
+{exc}`~libtmux.exc.TmuxCommandNotFound` now subclasses it, so existing handlers
+are unaffected and a caller can additionally catch the broader case.
+
+#### Engines are validated where they are supplied (#738)
+
+{class}`~libtmux.Server` now rejects a non-engine at construction, naming the
+missing method, rather than failing with an {exc}`AttributeError` inside the
+first command. An async engine is rejected explicitly: it satisfies the
+structural check, since a runtime-checkable {class}`typing.Protocol` compares
+method names rather than signatures.
+
+Subclassing {class}`~libtmux.engines.base.TmuxEngine` supplies `run_batch`, so a
+stateless engine only implements `run`.
+{class}`~libtmux.engines.base.AsyncTmuxEngine` is declared for engines that will
+hold a persistent connection.
+
+### Fixes
+
+#### A trailing `;` in a command argument is no longer swallowed (#738)
+
+`pane.cmd("send-keys", "echo hello;")` sent `echo hello` — tmux consumed the
+final `;` as a command boundary and the character never reached the pane.
+Arguments are now escaped for tmux's parser, so the `;` arrives as typed.
+
+#### Listing queries honor `config_file` and `colors` (#738)
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` and the listing
+queries behind {attr}`~libtmux.Server.sessions` built their own connection flags
+and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
+`colors=` passed those flags on some commands and not others. All paths now
+share one connection. A `colors=` value other than `256` or `88` raises
+{exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
+
 ### Documentation
+
+#### Engines guide and API reference (#738)
+
+{ref}`engines` covers what an engine is, writing one, the optional capability
+protocols, and explicit command separators. {ref}`engines-api` documents the
+module.
 
 #### Cleaner `from_env` examples (#719)
 
