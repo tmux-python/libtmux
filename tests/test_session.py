@@ -709,12 +709,17 @@ def test_session_search_panes_filter_by_id(session: Session) -> None:
 
 
 SESSION_FORMAT_FIELDS = (
+    "session_active",
+    "session_activity_flag",
+    "session_alert",
+    "session_bell_flag",
     "session_format",
     "session_group_attached_list",
     "session_group_many_attached",
     "session_grouped",
     "session_many_attached",
     "session_marked",
+    "session_silence_flag",
 )
 
 
