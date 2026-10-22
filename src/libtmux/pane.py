@@ -15,6 +15,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
+from libtmux.capture import CaptureCursor, CaptureSince, _capture_since
 from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
@@ -690,6 +691,82 @@ class Pane(
         if to_buffer is not None:
             return None
         return proc.stdout
+
+    def capture_since(self, cursor: CaptureCursor | None = None) -> CaptureSince:
+        """Capture only the rows written since ``cursor``.
+
+        Where :meth:`capture_pane` returns a snapshot, this returns a
+        *delta* plus a fresh cursor to resume from, for watching a pane
+        over time without re-reading and re-diffing the whole screen.
+
+        The cursor is never modified: replaying the same one returns the
+        same rows. Assign the returned cursor to advance.
+
+        When tmux destroyed the anchor -- ``clear-history``, or a
+        ``history-limit`` trim that discarded it --
+        :attr:`~libtmux.capture.CaptureSince.lines_missed` is ``True`` and
+        the rows are the current visible screen instead of a complete
+        delta. Rows are never silently dropped without that flag.
+
+        Parameters
+        ----------
+        cursor : CaptureCursor, optional
+            Cursor from a previous call. When omitted, captures the
+            current visible screen and opens a first cursor.
+
+        Returns
+        -------
+        CaptureSince
+            ``(lines, cursor, lines_missed)``.
+
+        Raises
+        ------
+        libtmux.exc.InvalidCaptureCursor
+            If ``cursor`` belongs to a different pane.
+        libtmux.exc.PaneLifecycleChanged
+            If the pane died or was respawned since ``cursor`` was taken,
+            or, when no ``cursor`` is given, if the pane is already dead.
+
+        See Also
+        --------
+        libtmux.pane.Pane.capture_pane : Snapshot of the whole pane.
+
+        Examples
+        --------
+        A first call opens a cursor:
+
+        >>> first = pane.capture_since()
+        >>> first.lines_missed
+        False
+
+        Nothing new has been written, so replaying it returns nothing:
+
+        >>> pane.capture_since(first.cursor).lines
+        []
+
+        New output comes back on its own:
+
+        >>> pane.send_keys('echo capture_since_demo', enter=True)
+        >>> from libtmux.test.retry import retry_until
+        >>> retry_until(
+        ...     lambda: any(
+        ...         'capture_since_demo' in line
+        ...         for line in pane.capture_since(first.cursor).lines
+        ...     ),
+        ...     2,
+        ... )
+        True
+
+        The cursor it was handed is untouched, so the next delta is taken
+        from the cursor the call returned:
+
+        >>> second = pane.capture_since(first.cursor)
+        >>> second.cursor == first.cursor
+        False
+
+        .. versionadded:: 0.63
+        """
+        return _capture_since(self, cursor)
 
     def send_keys(
         self,
