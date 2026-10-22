@@ -45,6 +45,105 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Query records use the command logger (#748)
+
+Calls through {func}`~libtmux.neo.fetch_objs` no longer emit the `tmux list
+queried` and `tmux list parsed` `DEBUG` records from `libtmux.neo`. They produce
+`tmux command dispatched` and `tmux command completed` records from
+`libtmux.common` instead. Applications that configure module-specific logging
+now select the command logger:
+
+```python
+import logging
+
+# Before
+query_logger = logging.getLogger("libtmux.neo")
+
+# After
+query_logger = logging.getLogger("libtmux.common")
+```
+
+`libtmux.common` carries every tmux subprocess rather than list queries alone.
+Filter a handler on the `tmux_subcommand` field to isolate queries again;
+{ref}`logging` shows the filter.
+
+#### Raised failures stay in the exception channel (#748)
+
+A failure that libtmux propagates or translates no longer emits an `ERROR`
+record first. Applications that consumed those records now log at their own
+exception boundary.
+
+```python
+import logging
+
+from libtmux import exc
+
+logger = logging.getLogger(__name__)
+
+# Before
+operation()
+
+# After
+try:
+    operation()
+except exc.LibTmuxException:
+    logger.exception("libtmux operation failed")
+    raise
+```
+
+#### Unusable tmux executables share one exception (#748)
+
+Missing, non-executable, and malformed tmux executables now raise
+{exc}`~libtmux.exc.TmuxCommandNotFound` from
+{class}`~libtmux.common.tmux_cmd` and
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>`. Attempted
+launches preserve the operating-system message and cause. Other launch
+failures remain native `OSError` values.
+
+```python
+available = True
+try:
+    server.raise_if_dead()
+# Before: except (exc.TmuxCommandNotFound, OSError):
+# After:
+except exc.TmuxCommandNotFound:
+    available = False
+```
+
+### What's new
+
+#### Structured records identify tmux work (#748)
+
+Command `DEBUG` records add best-effort subcommand and socket fields while
+retaining the complete command, exit status, bounded output snapshots, and
+line counts. Lifecycle `INFO` records consistently identify affected sockets,
+sessions, windows, panes, and targets.
+
+Applications can route and format these fields independently through
+standard-library handlers without modifying the original records.
+
+#### Handled failures produce one diagnostic (#748)
+
+{attr}`Server.sessions <libtmux.Server.sessions>`,
+{attr}`Server.attached_sessions <libtmux.Server.attached_sessions>`, and
+{attr}`Server.clients <libtmux.Server.clients>` now emit one `ERROR` record
+when they convert a tmux execution failure to an empty result. Expected probes
+and failures returned to callers stay quiet.
+
+Malformed `terminal-features`, `terminal-overrides`, and `command-alias`
+entries produce one aggregate `WARNING` per option with the skipped-entry
+count.
+
+### Fixes
+
+#### Caller-controlled log context stays on one line (#748)
+
+Command arguments, socket labels, object identities, targets, and failed
+lookup paths escape control characters before rendering, so one value cannot
+forge additional log lines.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -56,6 +155,12 @@ its {meth}`Server <libtmux.Server.from_env>`,
 environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
+
+#### Logging configuration and record reference (#748)
+
+{ref}`logging` documents logger ownership, levels, structured fields, failure
+routing, payload policy, handler filtering and formatting, and `caplog`
+assertions.
 
 ### Development
 

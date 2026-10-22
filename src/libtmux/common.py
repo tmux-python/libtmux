@@ -7,10 +7,10 @@ libtmux.common
 
 from __future__ import annotations
 
+import errno
 import functools
 import logging
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -18,12 +18,14 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal.log_context import LOG_OUTPUT_LINE_LIMIT, command_extra
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
+_UNUSABLE_TMUX_ERRNOS = frozenset({errno.EACCES, errno.ENOENT, errno.ENOEXEC})
 
 #: Minimum version of tmux required to run libtmux
 TMUX_MIN_VERSION = "3.2a"
@@ -35,6 +37,12 @@ SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
+
+
+def _raise_if_unusable_tmux(error: OSError) -> None:
+    """Translate an unavailable executable while preserving its OS diagnostic."""
+    if error.errno in _UNUSABLE_TMUX_ERRNOS:
+        raise exc.TmuxCommandNotFound(str(error)) from error
 
 
 class CmdProtocol(t.Protocol):
@@ -106,11 +114,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -135,11 +138,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -164,11 +162,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -303,6 +296,13 @@ class tmux_cmd:
 
         $ tmux new-session -s my session
 
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxCommandNotFound`
+        When the tmux binary cannot be found or executed.
+    :class:`OSError`
+        When the operating system rejects the launch for another reason.
+
     Notes
     -----
     .. versionchanged:: 0.8
@@ -311,21 +311,19 @@ class tmux_cmd:
 
     def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
         resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
-
-        cmd = [resolved]
+        cmd = [resolved or "tmux"]
         cmd += args  # add the command arguments to cmd
         cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
 
-        if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = shlex.join(cmd)
-            logger.debug(
-                "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
+        if not resolved:
+            msg = "tmux executable not found on PATH"
+            raise exc.TmuxCommandNotFound(msg)
+
+        log_extra = command_extra(cmd) if logger.isEnabledFor(logging.DEBUG) else None
+        if log_extra is not None:
+            logger.debug("tmux command dispatched", extra=log_extra)
 
         try:
             self.process = subprocess.Popen(
@@ -336,18 +334,12 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
-                extra={
-                    "tmux_cmd": shlex.join(cmd),
-                },
-            )
+        except OSError as error:
+            _raise_if_unusable_tmux(error)
             raise
+
+        stdout, stderr = self.process.communicate()
+        returncode = self.process.returncode
 
         self.returncode = returncode
 
@@ -364,14 +356,14 @@ class tmux_cmd:
         else:
             self.stdout = stdout_split
 
-        if logger.isEnabledFor(logging.DEBUG):
+        if log_extra is not None:
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": shlex.join(cmd),
+                    **log_extra,
                     "tmux_exit_code": self.returncode,
-                    "tmux_stdout": self.stdout[:100],
-                    "tmux_stderr": self.stderr[:100],
+                    "tmux_stdout": self.stdout[:LOG_OUTPUT_LINE_LIMIT],
+                    "tmux_stderr": self.stderr[:LOG_OUTPUT_LINE_LIMIT],
                     "tmux_stdout_len": len(self.stdout),
                     "tmux_stderr_len": len(self.stderr),
                 },

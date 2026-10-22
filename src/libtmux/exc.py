@@ -96,7 +96,7 @@ class TmuxSessionExists(LibTmuxException):
 
 
 class TmuxCommandNotFound(LibTmuxException):
-    """Application binary for tmux not found."""
+    """Application binary for tmux not found or not executable."""
 
 
 class NotInsideTmux(LibTmuxException):
