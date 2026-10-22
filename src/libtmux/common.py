@@ -303,13 +303,33 @@ class tmux_cmd:
 
         $ tmux new-session -s my session
 
+    Parameters
+    ----------
+    tmux_bin : str, optional
+        Path to the tmux binary. Defaults to the first ``tmux`` on ``PATH``.
+    timeout : float, optional
+        Seconds to wait for the command. On expiry the tmux process is
+        killed and reaped, then :exc:`~libtmux.exc.TmuxTimeout` is
+        raised. ``None`` waits indefinitely.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxTimeout`
+        ``timeout`` elapsed. The command may or may not have taken
+        effect -- the process was killed mid-command.
+
     Notes
     -----
     .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -336,8 +356,15 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
+            stdout, stderr = self.process.communicate(timeout=timeout)
             returncode = self.process.returncode
+        except subprocess.TimeoutExpired:
+            # Kill and reap before raising. A caller that gives up on an
+            # unbounded call leaves the child running, so repeated
+            # timeouts accumulate tmux clients that nothing is waiting on.
+            self.process.kill()
+            self.process.communicate()
+            raise exc.TmuxTimeout(cmd, t.cast("float", timeout)) from None
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
