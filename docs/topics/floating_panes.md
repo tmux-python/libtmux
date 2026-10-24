@@ -32,9 +32,9 @@ floating by reading its {attr}`pane_floating_flag <libtmux.Pane.pane_floating_fl
 which is `"1"` when it floats:
 
 ```python
->>> from libtmux.common import has_gte_version
+>>> from libtmux._internal.support import is_at_least, server_version
 
->>> if has_gte_version("3.7"):
+>>> if is_at_least(server_version(server), "3.7"):
 ...     floating = window.new_pane(width=20, height=5, shell="sleep 30")
 ...     is_floating = floating.pane_floating_flag
 ... else:
@@ -52,16 +52,24 @@ window (tmux's `-X` / `-Y`). tmux reports the placement back through the
 {attr}`pane_y <libtmux.Pane.pane_y>` fields:
 
 ```python
->>> from libtmux.common import has_gte_version
+>>> from libtmux._internal.support import is_at_least, server_version
 
->>> if has_gte_version("3.7"):
+>>> if is_at_least(server_version(server), "3.7"):
 ...     placed = window.new_pane(width=20, height=5, x=2, y=1, shell="sleep 30")
 ...     position = (placed.pane_x, placed.pane_y)
 ... else:
 ...     position = ("2", "1")
->>> position
-('2', '1')
+>>> border = 1 if is_at_least(server_version(server), "3.8") else 0
+>>> position == (str(2 + border), str(1 + border))
+True
 ```
+
+From tmux 3.8, `width`, `height`, `x` and `y` give the pane's footprint on screen
+including its border, which is drawn by default. A pane created with
+`width=20, height=5, x=2, y=1` then reports `pane_width` 18, `pane_height` 3,
+and `pane_x` / `pane_y` of 3 and 2: the border sits on the requested column and
+row, and the content one cell inside. Earlier versions size and place the
+content directly.
 
 ## Styling
 
@@ -84,9 +92,9 @@ that stays on screen and waits for you after the command finishes instead of
 vanishing:
 
 ```python
->>> from libtmux.common import has_gte_version
+>>> from libtmux._internal.support import is_at_least, server_version
 
->>> if has_gte_version("3.7"):
+>>> if is_at_least(server_version(server), "3.7"):
 ...     held = window.new_pane(width=20, height=5, shell="sleep 30", keep=True)
 ...     remain = held.cmd("show-options", "-p", "-v", "remain-on-exit").stdout
 ... else:
@@ -104,9 +112,9 @@ hold a pane — including filtering a window's {attr}`~libtmux.Window.panes` dow
 to just the floats:
 
 ```python
->>> from libtmux.common import has_gte_version
+>>> from libtmux._internal.support import is_at_least, server_version
 
->>> if has_gte_version("3.7"):
+>>> if is_at_least(server_version(server), "3.7"):
 ...     _ = window.new_pane(width=20, height=5, shell="sleep 30")
 ...     floating = [p for p in window.panes if p.pane_floating_flag == "1"]
 ...     found = len(floating) >= 1

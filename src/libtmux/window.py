@@ -15,7 +15,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -363,6 +363,8 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
 
@@ -654,13 +656,16 @@ class Window(
         environment : dict, optional
             Environment variables for the new pane (``-e``).
         width : int, optional
-            Width in cells (``-x``).
+            Width in cells (``-x``). On tmux 3.8+ a bordered pane (the
+            default) counts its border, so ``pane_width`` reads 2 less.
         height : int, optional
-            Height in cells (``-y``).
+            Height in cells (``-y``). Counts the border on tmux 3.8+.
         x : int, optional
-            X position in cells (``-X``).
+            X position in cells (``-X``). On tmux 3.8+ the border lands on
+            this column, so ``pane_left`` reads 1 more.
         y : int, optional
-            Y position in cells (``-Y``).
+            Y position in cells (``-Y``). On tmux 3.8+ the border lands on
+            this row, so ``pane_top`` reads 1 more.
         zoom : bool, optional
             Zoom the pane (``-Z``).
         empty : bool, optional
@@ -685,8 +690,8 @@ class Window(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.7"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.7"):
         ...     floating = window.new_pane(width=40, height=10, shell="sleep 5")
         ...     is_floating = floating.pane_floating_flag
         ... else:
@@ -1322,7 +1327,7 @@ class Window(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self.server._has_gte_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(

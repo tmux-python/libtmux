@@ -17,10 +17,10 @@ from libtmux._internal.constants import (
     WindowOptions,
 )
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
 from libtmux.options import TerminalOverrides, convert_values, explode_arrays
 from libtmux.pane import Pane
+from tests.tmux_client import client_gte
 
 if t.TYPE_CHECKING:
     from typing_extensions import LiteralString
@@ -62,12 +62,12 @@ def test_options(server: Server) -> None:
         obj._show_options(include_hooks=True)
         with pytest.raises(exc.OptionError):
             obj._show_option("test")
-        if has_gte_version("3.0"):
+        if client_gte("3.0"):
             obj._show_option("test", ignore_errors=True)
         with pytest.raises(exc.OptionError):
             obj.set_option("test", "invalid")
         if isinstance(obj, Pane):
-            if has_gte_version("3.0"):
+            if client_gte("3.0"):
                 obj.set_option("test", "invalid", ignore_errors=True)
             else:
                 with pytest.raises(exc.OptionError):
@@ -84,10 +84,10 @@ def test_options_server(server: Server) -> None:
 
     server.set_option("buffer-limit", 100)
     assert server._show_option("buffer-limit") == 100
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         server.set_option("buffer-limit", 150, scope=OptionScope.Pane)
 
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         # set-option and show-options w/ Pane (-p) does not exist until 3.0+
         server.set_option(
             "buffer-limit",
@@ -97,23 +97,23 @@ def test_options_server(server: Server) -> None:
         )
     server.set_option("buffer-limit", 150, scope=OptionScope.Server)
 
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         assert session._show_option("buffer-limit") == 150
 
     # Server option in deeper objects
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         pane.set_option("buffer-limit", 100)
     else:
         with pytest.raises(exc.OptionError):
             pane.set_option("buffer-limit", 100)
 
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         assert pane._show_option("buffer-limit") == 100
         assert window._show_option("buffer-limit") == 100
         assert server._show_option("buffer-limit") == 100
 
     server_options = ServerOptions(**server._show_options(scope=OptionScope.Server))
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         assert server._show_option("buffer-limit") == 100
 
         assert server_options.buffer_limit == 100
@@ -217,11 +217,7 @@ def test_options_grid(server: Server) -> None:
                             f"Expect {field.name} to be {expected} when "
                             + f"scope={scope}, global_={global_}"
                         )
-                    if (
-                        has_gte_version("3.0")
-                        and scope == OptionScope.Window
-                        and global_
-                    ):
+                    if client_gte("3.0") and scope == OptionScope.Window and global_:
                         assert objglobal__options.pane_base_index == 0
 
 
@@ -558,7 +554,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         "splitp": "split-window",
     }
 
-    if has_gte_version("3.2"):
+    if client_gte("3.2"):
         terminal_features = server.show_option("terminal-features")
         assert isinstance(terminal_features, dict)
         assert "screen*" in terminal_features
@@ -572,17 +568,17 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
             "title",
         ]
         # Additional features in tmux 3.4+
-        if has_gte_version("3.4"):
+        if client_gte("3.4"):
             assert "rxvt*" in terminal_features
             assert terminal_features["rxvt*"] == ["ignorefkeys"]
 
     # Terminal overrides differ by version
     # tmux 3.0a-3.1b: has default values (xterm*, screen*)
     # tmux 3.2+: defaults removed, returns None unless explicitly set
-    if has_gte_version("3.2"):
+    if client_gte("3.2"):
         terminal_overrides = server.show_option("terminal-overrides")
         assert isinstance(terminal_overrides, (dict, type(None)))
-    elif has_gte_version("3.0"):
+    elif client_gte("3.0"):
         # tmux 3.0a/3.1b have defaults like "xterm*:XT:Ms=...,screen*:XT"
         terminal_overrides = server.show_option("terminal-overrides")
         assert isinstance(terminal_overrides, dict)
@@ -596,7 +592,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
     assert server.show_option("user-keys") is None
 
     # status-format was added in tmux 2.9
-    if has_gte_version("2.9"):
+    if client_gte("2.9"):
         status_format = server.show_option("status-format")
         assert isinstance(status_format, (dict, type(None)))
     else:
@@ -604,7 +600,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
             server.show_option("status-format")
 
     # update-environment was added in tmux 3.0
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         update_env = server.show_option("update-environment")
         assert isinstance(update_env, (list, type(None)))
     else:
@@ -614,7 +610,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
     # List variables: Pane (pane-colours added in tmux 3.3)
     pane = session.active_pane
     assert pane is not None
-    if has_gte_version("3.3"):
+    if client_gte("3.3"):
         assert pane.show_option("pane-colours") is None
 
 
@@ -651,7 +647,7 @@ def test_complex_option_values(server: Server) -> None:
     assert session.show_option("@empty-option") == ""
 
     # Test option inheritance (only for tmux >= 3.0)
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         # Capture the inherited value (from global scope). Need include_inherited
         # because without an explicit session-level value, show_option returns None
         inherited_val = session.show_option("status-style", include_inherited=True)
@@ -677,7 +673,7 @@ def test_style_option_validation(server: Server) -> None:
     assert isinstance(style, str)
     assert "fg=red" in str(style)
 
-    if has_gte_version("3.2"):
+    if client_gte("3.2"):
         # tmux 3.2+: literal string output
         assert "bg=default" in str(style)
         assert "bold" in str(style)
@@ -691,14 +687,14 @@ def test_style_option_validation(server: Server) -> None:
         session.set_option("status-style", "invalid-style")
 
     # Test complex style with multiple attributes (tmux >= 3.0)
-    if has_gte_version("3.0"):
+    if client_gte("3.0"):
         session.set_option(
             "status-style",
             "fg=colour240,bg=#525252,bold,underscore",
         )
         style = session.show_option("status-style")
         assert isinstance(style, str)
-        if has_gte_version("3.2"):
+        if client_gte("3.2"):
             # tmux 3.2+: literal string output
             assert style == "fg=colour240,bg=#525252,bold,underscore"
         else:
@@ -706,7 +702,7 @@ def test_style_option_validation(server: Server) -> None:
             assert style == "fg=colour240,bg=#525252,bright,underscore"
 
         # Test style with variables (format expansion added in tmux 3.2)
-        if has_gte_version("3.2"):
+        if client_gte("3.2"):
             session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
             style = session.show_option("status-style")
             assert isinstance(style, str)
@@ -728,7 +724,7 @@ def test_option_error_handling(server: Server) -> None:
         session.set_option("aggressive-resize", "invalid")
 
     # Test ambiguous option (if supported by tmux version)
-    if has_gte_version("2.4"):
+    if client_gte("2.4"):
         with pytest.raises(exc.OptionError) as exc_info:
             # Use a partial name that could match multiple options
             session.show_option(
@@ -742,7 +738,7 @@ def test_terminal_features_edge_cases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test edge cases for terminal-features option."""
-    if not has_gte_version("3.2"):
+    if not client_gte("3.2"):
         pytest.skip("terminal-features requires tmux >= 3.2")
 
     # Test empty features
@@ -1295,10 +1291,10 @@ def _build_option_params() -> list[t.Any]:
 @pytest.mark.parametrize("test_case", _build_option_params())
 def test_option_set_show_cycle(server: Server, test_case: OptionTestCase) -> None:
     """Test set/show cycle for each option type."""
-    if not has_gte_version("3.0"):
+    if not client_gte("3.0"):
         pytest.skip("Option tests require tmux 3.0+")
 
-    if test_case.min_version and not has_gte_version(test_case.min_version):
+    if test_case.min_version and not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
 
     # Get appropriate target object
@@ -1405,7 +1401,7 @@ def test_show_options_returns_expected_keys(
     test_case: ShowOptionsTestCase,
 ) -> None:
     """Test that show_options() returns dict with expected scope-specific keys."""
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux >= {test_case.min_version}")
 
     session = server.new_session(session_name="test_show_options")

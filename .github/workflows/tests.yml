@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.15']
-        tmux-version: ['3.2a', '3.3a', '3.4', '3.5', '3.6', '3.7a', '3.7b', 'master']
+        tmux-version: ['3.3a', '3.4', '3.5', '3.6', '3.7a', '3.7b', '3.8', 'master']
     steps:
       - uses: actions/checkout@v7
 
@@ -89,6 +89,44 @@ jobs:
       - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  unsupported-versions:
+    # Real 3.2a and 3.3 daemons must be refused with no effects.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.14
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Build supported and rejected native endpoints
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libevent-dev libncurses-dev bison
+          mkdir -p "$RUNNER_TEMP/tmux-versions"
+          for version in 3.2a 3.3 3.3a; do
+            git clone --quiet --depth=1 --branch "$version" https://github.com/tmux/tmux.git "$RUNNER_TEMP/tmux-versions/$version"
+            cd "$RUNNER_TEMP/tmux-versions/$version"
+            sh autogen.sh
+            ./configure --prefix="$RUNNER_TEMP/tmux-versions/$version/install"
+            make -j2
+            make install
+          done
+          echo "LIBTMUX_TEST_MINIMUM_TMUX=$RUNNER_TEMP/tmux-versions/3.3a/install/bin/tmux" >> "$GITHUB_ENV"
+          echo "LIBTMUX_TEST_UNSUPPORTED_TMUX=$RUNNER_TEMP/tmux-versions/3.2a/install/bin/tmux" >> "$GITHUB_ENV"
+          echo "LIBTMUX_TEST_UNPATCHED_TMUX=$RUNNER_TEMP/tmux-versions/3.3/install/bin/tmux" >> "$GITHUB_ENV"
+
+      - name: Refuse older daemons
+        run: uv run pytest tests/test_versions.py --reruns=0 -q
 
   release:
     runs-on: ubuntu-latest
