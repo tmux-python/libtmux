@@ -5,12 +5,10 @@
     <a href="https://libtmux.git-pull.com/"><img src="https://raw.githubusercontent.com/tmux-python/libtmux/master/docs/_static/img/libtmux.svg" alt="libtmux logo" height="120"></a>
   </p>
   <p>
-    <a href="https://pypi.org/project/libtmux/"><img src="https://img.shields.io/pypi/v/libtmux.svg" alt="PyPI version"></a>
+    <a href="https://github.com/tmux-python/libtmux/actions/workflows/tests.yml"><img src="https://github.com/tmux-python/libtmux/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+    <a href="https://pypi.org/project/libtmux/"><img src="https://img.shields.io/pypi/v/libtmux?label=libtmux" alt="libtmux"></a>
     <a href="https://libtmux.org/en/py/"><img src="https://img.shields.io/badge/docs-libtmux.org-0b7285" alt="libtmux.org"></a>
-    <a href="https://libtmux.git-pull.com/"><img src="https://github.com/tmux-python/libtmux/workflows/docs/badge.svg" alt="Docs status"></a>
-    <a href="https://github.com/tmux-python/libtmux/actions"><img src="https://github.com/tmux-python/libtmux/workflows/tests/badge.svg" alt="Tests status"></a>
-    <a href="https://codecov.io/gh/tmux-python/libtmux"><img src="https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg" alt="Coverage"></a>
-    <a href="https://github.com/tmux-python/libtmux/blob/master/LICENSE"><img src="https://img.shields.io/github/license/tmux-python/libtmux.svg" alt="License"></a>
+    <a href="https://github.com/tmux-python/libtmux/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
   </p>
 </div>
 
