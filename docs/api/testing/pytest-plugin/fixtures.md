@@ -5,8 +5,9 @@
 ## Quick Start
 
 Add a fixture name as a test parameter — [pytest] creates and injects it
-automatically. You never call fixtures yourself. In doctests, libtmux injects
-the same objects through `doctest_namespace`:
+automatically. You never call fixtures yourself. This repository's
+`conftest.py` also injects objects through `doctest_namespace` for the examples
+below; downstream doctests need their own namespace setup:
 
 ```python
 >>> created_session = server.new_session(session_name="my-session")
