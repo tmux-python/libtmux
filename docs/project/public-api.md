@@ -2,7 +2,7 @@
 
 ## What Is Public
 
-Every module documented under [API Reference](index.md) is public API.
+Every module documented under [API Reference](../api/index.md) is public API.
 This includes:
 
 ### Core Library
