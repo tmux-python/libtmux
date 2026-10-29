@@ -21,86 +21,65 @@ from inside a live tmux session.
 
 ## Installation
 
-Next, ensure `libtmux` is installed:
+Install `libtmux` into your project's Python environment:
 
 ```console
-$ pip install --user libtmux
+$ python -m pip install libtmux
 ```
 
 (developmental-releases)=
 
 ### Developmental releases
 
-New versions of libtmux are published to [PyPI] as alpha, beta, or release
-candidates. In their versions you will see notifications like `a1`, `b1`, and
-`rc1`, respectively. `1.10.0b4` would mean the 4th beta release of `1.10.0`
-before general availability.
+Prerelease versions on [PyPI] use suffixes such as `a1`, `b1`, and `rc1`
+for alpha, beta, and release candidates. Opt into them with your package
+manager:
 
-- [pip]\:
+- [pip]:
 
   ```console
-  $ pip install --user --upgrade --pre libtmux
+  $ python -m pip install \
+      --upgrade \
+      --pre \
+      libtmux
   ```
 
-- [pipx]\:
+- [uv] in a project:
 
   ```console
-  $ pipx install \
-      --suffix=@next \
-      --pip-args '\--pre' \
-      --force \
-      'libtmux'
+  $ uv add \
+      --prerelease allow \
+      libtmux
   ```
 
-  Usage: `libtmux@next [command]`
-
-- [uv tool install][uv-tools]\:
+- An ad hoc Python REPL with [uv]:
 
   ```console
-  $ uv tool install --prerelease=allow libtmux
+  $ uv run \
+      --prerelease allow \
+      --with libtmux \
+      python
   ```
 
-- [uv]\:
+To install unreleased changes from trunk:
+
+- [pip]:
 
   ```console
-  $ uv add libtmux --prerelease allow
-  ```
-
-- [uvx]\:
-
-  ```console
-  $ uvx --from 'libtmux' --prerelease allow python
-  ```
-
-via trunk (can break easily):
-
-- [pip]\:
-
-  ```console
-  $ pip install --user -e git+https://github.com/tmux-python/libtmux.git#egg=libtmux
-  ```
-
-- [pipx]\:
-
-  ```console
-  $ pipx install \
-      --suffix=@master \
-      --force \
+  $ python -m pip install \
       'libtmux @ git+https://github.com/tmux-python/libtmux.git@master'
   ```
 
-- [uv]\:
+- [uv] in a project:
 
   ```console
-  $ uv tool install libtmux --from git+https://github.com/tmux-python/libtmux.git
+  $ uv add 'libtmux @ git+https://github.com/tmux-python/libtmux.git@master'
   ```
 
 [pip]: https://pip.pypa.io/en/stable/
-[pipx]: https://pypa.github.io/pipx/docs/
 [PyPI]: https://pypi.org/project/libtmux/
 [uv]: https://docs.astral.sh/uv/
-[uv-tools]: https://docs.astral.sh/uv/concepts/tools/
-[uvx]: https://docs.astral.sh/uv/guides/tools/
+
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 
 ## Start a tmux session

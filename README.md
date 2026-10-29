@@ -30,7 +30,7 @@ libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelli
 ## Requirements & support
 
 - tmux: >= 3.2a
-- Python: >= 3.10 (CPython and PyPy)
+- Python: >= 3.10, < 4.0 (CPython and PyPy)
 
 Maintenance-only backports (no new fixes):
 
@@ -39,46 +39,46 @@ Maintenance-only backports (no new fixes):
 
 ## 📦 Installation
 
-Release:
+Install libtmux into the Python environment that will import it:
 
 ```console
-$ pip install libtmux
+$ python -m pip install libtmux
 ```
 
-With pipx:
-
-```console
-$ pipx install libtmux
-```
-
-With uv / uvx:
+With uv in a project:
 
 ```console
 $ uv add libtmux
 ```
 
+For an ad hoc Python REPL:
+
 ```console
-$ uvx --from "libtmux" python
+$ uv run \
+    --with libtmux \
+    python
 ```
 
 From the main branch (bleeding edge):
 
 ```console
-$ pip install 'git+https://github.com/tmux-python/libtmux.git'
+$ python -m pip install 'git+https://github.com/tmux-python/libtmux.git'
 ```
 
-Tip: libtmux is pre-1.0. Pin a range in projects to avoid surprises:
+libtmux is pre-1.0: minor releases may change the API. Pin the minor series
+you have tested; for example, to stay on 0.62.x:
 
 requirements.txt:
 
 ```ini
-libtmux==0.50.*
+libtmux>=0.62,<0.63
 ```
 
 pyproject.toml:
 
 ```toml
-libtmux = "0.50.*"
+[project]
+dependencies = ["libtmux>=0.62,<0.63"]
 ```
 
 ## 🚀 Quickstart
