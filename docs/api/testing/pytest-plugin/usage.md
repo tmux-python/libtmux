@@ -37,14 +37,15 @@ object lookups in the test grid.
 [pytest-tmux] also works through {ref}`pytest fixtures <pytest:fixtures-api>`,
 so the same fixture concepts apply.
 
-The plugin's fixtures guarantee a fresh, headless {command}`tmux(1)` server, session, window, or pane is
-passed into your test.
+Request `server` or `session` as a test parameter to receive a fresh, headless
+{command}`tmux(1)` server or session. Derive windows and panes from the session;
+the plugin does not register `window` or `pane` fixtures.
 
 (recommended-fixtures)=
 
 ## Recommended fixtures
 
-These fixtures are automatically used when the plugin is enabled and `pytest` is run.
+Requesting `server` or `session` also creates their filesystem dependencies:
 
 - Creating temporary, test directories for:
   - `/home/` ({fixture}`home_path`)
@@ -53,7 +54,8 @@ These fixtures are automatically used when the plugin is enabled and `pytest` is
 
   - `base-index -g 1`
 
-  These are set to ensure panes and windows can be reliably referenced and asserted.
+  To make tmux read this configuration, set the temporary home directory as
+  shown in {ref}`set_home`, or pass `config_file` to a server you create.
 
 (setting_a_tmux_configuration)=
 

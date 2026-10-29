@@ -37,6 +37,16 @@ Import `libtmux`:
 
 ## Server context manager
 
+Exiting a {class}`~libtmux.Server` context calls `kill-server`, which kills
+every session on that socket. Use a socket you own for disposable work rather
+than the default server holding your interactive sessions.
+
+Here `Server` is this repository's isolated {fixture}`TestServer` factory;
+each call gets a unique socket and registered cleanup. In application code,
+use `libtmux.Server(socket_path=...)` with a socket inside a
+`tempfile.TemporaryDirectory`. Nest the server context inside the directory
+context so the server stops before its socket is removed.
+
 You create a temporary server that will be killed when you're done:
 
 ```python

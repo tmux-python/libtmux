@@ -83,6 +83,27 @@ dependencies = ["libtmux>=0.62,<0.63"]
 
 ## 🚀 Quickstart
 
+Create a server on a temporary socket. The context managers stop the server
+and remove the temporary directory when the block exits:
+
+```python
+>>> import tempfile
+>>> import libtmux
+>>> with tempfile.TemporaryDirectory() as directory:
+...     with libtmux.Server(socket_path=f"{directory}/tmux.sock") as server:
+...         session = server.new_session(session_name="demo")
+...         window = session.active_window
+...         pane = window.active_pane
+...         pane.send_keys("echo hello")
+...         print(session.session_name)
+demo
+```
+
+The shorter reference examples below use `server`, `session`, `window`,
+`pane`, and imported classes supplied by this repository's doctest setup.
+In your own code, create those objects as above or select them from an
+existing server. `monkeypatch` in the environment example is a pytest fixture.
+
 ### Open a tmux session
 
 First, start a tmux session to connect to:
