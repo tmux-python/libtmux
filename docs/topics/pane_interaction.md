@@ -87,7 +87,10 @@ True
 
 Both tmux and your shell interpret certain characters. Pass `literal=True` to
 send them through untouched, so a tab or escape arrives as the literal byte
-rather than a key tmux acts on:
+rather than a key tmux acts on.
+
+Literal mode bypasses tmux's key-name parsing; the shell still interprets
+the resulting text.
 
 ```python
 >>> import time
