@@ -47,6 +47,11 @@ doctests against a live tmux server; in your own scripts you create them yoursel
 {meth}`~libtmux.Server.new_session`). Each example builds its own window or pane and
 tears it down at the end, so the snippets stand alone and don't depend on each other.
 
+Completion checks match complete output lines so the echoed command cannot
+satisfy its own marker. Use a fresh pane or markers unique to each invocation;
+an old marker in scrollback is not evidence about a new command. These checks
+observe output, not the command's exit status.
+
 ## Process control
 
 ### Starting long-running processes
@@ -78,30 +83,36 @@ going in the pane. The pane object stays your handle on that running work.
 Because {meth}`send_keys() <libtmux.Pane.send_keys>` doesn't wait, you find out
 whether a command is still running the same way a person would: by reading
 what's on screen. Capture the pane and look for a marker your command prints
-when it reaches a known state.
+when it reaches a known state. A progress marker remains in scrollback after
+the process finishes; its presence alone does not show that it is still running.
 
 ```python
 >>> import time
 
->>> status_window = session.new_window(window_name='status-check', attach=False)
+>>> from libtmux.test.retry import retry_until
+>>> status_window = session.new_window(
+...     window_name='status-check', attach=False, window_shell='sh'
+... )
 >>> status_pane = status_window.active_pane
 
->>> def is_process_running(pane, marker='RUNNING'):
-...     """Check if a marker indicates process is still running."""
+>>> def has_output_marker(pane, marker='RUNNING'):
+...     """Check whether a complete marker line has appeared."""
 ...     output = pane.capture_pane()
-...     return marker in '\\n'.join(output)
+...     return marker in [line.strip() for line in output]
 
 >>> # Start and mark a process
->>> status_pane.send_keys('echo "RUNNING"; sleep 0.3; echo "DONE"')
->>> time.sleep(0.1)
+>>> status_pane.send_keys('echo; echo "RUNNING"; sleep 0.3; echo "DONE"')
+>>> retry_until(lambda: has_output_marker(status_pane), seconds=1)
+True
 
->>> # Check while running
->>> 'RUNNING' in '\\n'.join(status_pane.capture_pane())
+>>> # Check that progress was reported
+>>> has_output_marker(status_pane)
 True
 
 >>> # Wait for completion
->>> time.sleep(0.5)
->>> 'DONE' in '\\n'.join(status_pane.capture_pane())
+>>> retry_until(lambda: has_output_marker(status_pane, 'DONE'), seconds=1)
+True
+>>> has_output_marker(status_pane, 'DONE')
 True
 
 >>> # Clean up
@@ -126,15 +137,15 @@ the round-trips.
 
 >>> def wait_for_output(pane, text, timeout=5.0, poll_interval=0.1):
 ...     """Wait for specific text to appear in pane output."""
-...     start = time.time()
-...     while time.time() - start < timeout:
-...         output = '\\n'.join(pane.capture_pane())
+...     start = time.monotonic()
+...     while time.monotonic() - start < timeout:
+...         output = [line.strip() for line in pane.capture_pane()]
 ...         if text in output:
 ...             return True
 ...         time.sleep(poll_interval)
 ...     return False
 
->>> monitor_pane.send_keys('sleep 0.2; echo "READY"')
+>>> monitor_pane.send_keys('echo; sleep 0.2; echo "READY"')
 >>> wait_for_output(monitor_pane, 'READY', timeout=2.0)
 True
 
@@ -241,11 +252,13 @@ Window(@... ...)
 >>> for pane, cmd in tasks:
 ...     pane.send_keys(cmd)
 
->>> # Wait for all tasks
->>> time.sleep(0.5)
-
->>> # Verify all completed
->>> all('DONE' in '\\n'.join(p.capture_pane()) for p, _ in tasks)
+>>> from libtmux.test.retry import retry_until
+>>> def all_done():
+...     return all(
+...         f'DONE{i}' in [line.strip() for line in p.capture_pane()]
+...         for i, (p, _) in enumerate(tasks, 1)
+...     )
+>>> retry_until(all_done, seconds=2)
 True
 
 >>> # Clean up
@@ -273,18 +286,18 @@ Window(@... ...)
 
 >>> def wait_all_complete(panes, marker='COMPLETE', timeout=10.0):
 ...     """Wait for all panes to show completion marker."""
-...     start = time.time()
+...     start = time.monotonic()
 ...     remaining = set(range(len(panes)))
-...     while remaining and time.time() - start < timeout:
+...     while remaining and time.monotonic() - start < timeout:
 ...         for i in list(remaining):
-...             if marker in '\\n'.join(panes[i].capture_pane()):
+...             if marker in (line.strip() for line in panes[i].capture_pane()):
 ...                 remaining.remove(i)
 ...         time.sleep(0.1)
 ...     return len(remaining) == 0
 
 >>> # Start tasks with different durations
 >>> for i, pane in enumerate(panes):
-...     pane.send_keys(f'sleep 0.{i+1}; echo "COMPLETE"')
+...     pane.send_keys(f'echo; sleep 0.{i+1}; echo "COMPLETE"')
 
 >>> # Wait for all
 >>> wait_all_complete(panes, 'COMPLETE', timeout=2.0)
@@ -302,7 +315,7 @@ Cleanup is the part of automation that's easy to forget — and forgetting leave
 orphaned sessions and windows behind on the tmux server. A `with` block makes the
 cleanup automatic: the session lives for the body and is killed on the way out, even
 if an exception interrupts you. It costs a little to spin a session up and tear it
-down, but you get a guaranteed-clean slate that never leaks.
+down, but the context manager runs cleanup on both success and failure.
 
 ```python
 >>> # Create isolated session for a task
@@ -361,12 +374,12 @@ catch instead of a script that quietly stalls.
 
 >>> def run_with_timeout(pane, command, marker='__DONE__', timeout=5.0):
 ...     """Run command and wait for completion with timeout."""
-...     pane.send_keys(f'{command}; echo {marker}')
-...     start = time.time()
-...     while time.time() - start < timeout:
-...         output = '\\n'.join(pane.capture_pane())
-...         if marker in output:
-...             return output
+...     pane.send_keys(f'{command}; echo; echo {marker}')
+...     start = time.monotonic()
+...     while time.monotonic() - start < timeout:
+...         lines = pane.capture_pane()
+...         if marker in (line.strip() for line in lines):
+...             return '\n'.join(lines)
 ...         time.sleep(0.1)
 ...     raise CommandTimeout(f'Command timed out after {timeout}s')
 
@@ -389,7 +402,9 @@ up for. Tune both for how expensive the command is and how patient you can be.
 ```python
 >>> import time
 
->>> retry_window = session.new_window(window_name='retry-demo', attach=False)
+>>> retry_window = session.new_window(
+...     window_name='retry-demo', attach=False, window_shell='sh'
+... )
 >>> retry_pane = retry_window.active_pane
 
 >>> def retry_until_success(pane, command, success_marker, max_retries=3, delay=0.5):
@@ -397,14 +412,13 @@ up for. Tune both for how expensive the command is and how patient you can be.
 ...     for attempt in range(max_retries):
 ...         pane.send_keys(command)
 ...         time.sleep(delay)
-...         output = '\\n'.join(pane.capture_pane())
-...         if success_marker in output:
+...         if success_marker in (line.strip() for line in pane.capture_pane()):
 ...             return True, attempt + 1
 ...     return False, max_retries
 
 >>> # Test retry
 >>> success, attempts = retry_until_success(
-...     retry_pane, 'echo "OK"', 'OK', max_retries=3, delay=0.2
+...     retry_pane, 'echo; echo "OK"', 'OK', max_retries=3, delay=0.2
 ... )
 >>> success
 True
@@ -425,7 +439,7 @@ genuinely a pipeline of steps, not a single call.
 
 A task queue runs a list of commands in order, waiting for each to finish before
 starting the next. You tag every task with an indexed marker so you know exactly
-which step you're waiting on, and you collect a pass/fail result per task.
+which step you're waiting on, and you collect a completion/timeout result per task.
 
 ```python
 >>> import time
@@ -437,12 +451,13 @@ which step you're waiting on, and you collect a pass/fail result per task.
 ...     """Process a queue of tasks sequentially."""
 ...     results = []
 ...     for i, task in enumerate(tasks):
-...         pane.send_keys(f'{task}; echo "{completion_marker}_{i}"')
+...         pane.send_keys(f'{task}; echo; echo "{completion_marker}_{i}"')
 ...         # Wait for this task to complete
-...         start = time.time()
-...         while time.time() - start < 5.0:
-...             output = '\\n'.join(pane.capture_pane())
-...             if f'{completion_marker}_{i}' in output:
+...         start = time.monotonic()
+...         while time.monotonic() - start < 5.0:
+...             if f'{completion_marker}_{i}' in (
+...                 line.strip() for line in pane.capture_pane()
+...             ):
 ...                 results.append((i, True))
 ...                 break
 ...             time.sleep(0.1)
@@ -481,10 +496,9 @@ and the history tells you how far you got before it stopped.
 ...         state_name, command, next_marker = states[current_state]
 ...         pane.send_keys(command)
 ...
-...         start = time.time()
-...         while time.time() - start < timeout_per_state:
-...             output = '\\n'.join(pane.capture_pane())
-...             if next_marker in output:
+...         start = time.monotonic()
+...         while time.monotonic() - start < timeout_per_state:
+...             if next_marker in (line.strip() for line in pane.capture_pane()):
 ...                 history.append(state_name)
 ...                 current_state += 1
 ...                 break
@@ -495,9 +509,9 @@ and the history tells you how far you got before it stopped.
 ...     return history, True
 
 >>> states = [
-...     ('init', 'echo "INIT_DONE"', 'INIT_DONE'),
-...     ('process', 'echo "PROCESS_DONE"', 'PROCESS_DONE'),
-...     ('cleanup', 'echo "CLEANUP_DONE"', 'CLEANUP_DONE'),
+...     ('init', 'echo; echo "INIT_DONE"', 'INIT_DONE'),
+...     ('process', 'echo; echo "PROCESS_DONE"', 'PROCESS_DONE'),
+...     ('cleanup', 'echo; echo "CLEANUP_DONE"', 'CLEANUP_DONE'),
 ... ]
 
 >>> history, success = run_state_machine(state_pane, states)
@@ -523,12 +537,15 @@ then reacts to what actually happened rather than to a clock.
 >>> bp_pane = bp_window.active_pane
 
 >>> # Good: Use completion marker
->>> bp_pane.send_keys('long_command; echo "__DONE__"')
+>>> bp_pane.send_keys('true; echo; echo "__DONE__"')
 
 >>> # Then poll for marker
->>> import time
->>> time.sleep(0.2)
->>> '__DONE__' in '\\n'.join(bp_pane.capture_pane())
+>>> from libtmux.test.retry import retry_until
+>>> complete = retry_until(
+...     lambda: '__DONE__' in [line.strip() for line in bp_pane.capture_pane()],
+...     seconds=2,
+... )
+>>> complete
 True
 
 >>> bp_window.kill()
