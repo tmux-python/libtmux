@@ -45,6 +45,14 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Retained pane observations
+
+Retain immutable pane text and capture details with
+`PaneObservation.capture()`, even after the pane changes or disappears.
+These sampled values remain readable without another tmux query. (#810)
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
