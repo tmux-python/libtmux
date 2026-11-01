@@ -16,6 +16,7 @@ from .__about__ import (
 )
 from .client import Client
 from .formats import Format
+from .observation import PaneObservation
 from .pane import Pane
 from .server import Server
 from .session import Session
@@ -27,6 +28,7 @@ __all__ = (
     "Client",
     "Format",
     "Pane",
+    "PaneObservation",
     "Server",
     "Session",
     "Window",
