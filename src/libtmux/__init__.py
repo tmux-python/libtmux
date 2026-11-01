@@ -15,6 +15,7 @@ from .__about__ import (
     __version__,
 )
 from .client import Client
+from .observation import PaneObservation
 from .pane import Pane
 from .server import Server
 from .session import Session
@@ -25,6 +26,7 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 __all__ = (
     "Client",
     "Pane",
+    "PaneObservation",
     "Server",
     "Session",
     "Window",
