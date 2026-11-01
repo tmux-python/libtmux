@@ -151,20 +151,21 @@ def test_deadline_wait_slices_keep_one_client_and_its_output(
         communicate = process.communicate
 
         def sliced(
-            payload: t.Any = None, timeout: float | None = None
+            input: t.Any = None,  # noqa: A002 - mirrors subprocess.communicate's keyword.
+            timeout: float | None = None,
         ) -> tuple[str, str]:
             nonlocal calls
             calls += 1
             if calls == 1:
                 control("wait-for", "slice-ready")
                 try:
-                    return communicate(payload, timeout=0)
+                    return communicate(input, timeout=0)
                 except subprocess.TimeoutExpired:
                     control("wait-for", "-S", "slice-release")
                     raise
-            return communicate(payload, timeout=timeout)
+            return communicate(input, timeout=timeout)
 
-        process.communicate = sliced  # type: ignore[method-assign]
+        monkeypatch.setattr(process, "communicate", sliced)
         return process
 
     monkeypatch.setattr(subprocess, "Popen", record)
