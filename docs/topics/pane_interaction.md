@@ -171,6 +171,30 @@ True
 True
 ```
 
+### Capture continuity
+
+Equal captures do not prove that no output arrived between them. Repeated rows
+can fill and trim scrollback while the captured text, history size, and cursor
+position all return to the same values. A cursor built only from those fields
+must report unknown continuity when it cannot establish its anchor.
+
+The controlled case below uses a 20-column, five-row pane with five retained
+history rows. Its producer writes 64 more copies of the same row between
+captures. Both captures contain nine `same` rows; both history sizes are five
+and both cursors are at column zero, row four.
+
+Run the case against an isolated fixture:
+
+```console
+$ uv run pytest \
+    --reruns 0 \
+    tests/test_pane.py::test_repeated_output_can_preserve_capture_and_cursor
+```
+
+Where tmux provides `history_collected`, an increased value is evidence that
+history was collected. It does not recover evicted text or identify an exact
+output delta. A missing counter is unavailable evidence, not a zero count.
+
 ### Capture with ANSI escape sequences
 
 A plain capture strips color and formatting, handing you clean text. When you
