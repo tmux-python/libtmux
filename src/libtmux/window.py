@@ -463,6 +463,7 @@ class Window(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within window context.
 
@@ -486,6 +487,9 @@ class Window(
         ----------
         target : str, optional
             Optional custom target override. By default, the target is the window ID.
+        timeout : float, optional
+            Positive finite seconds for this command. None waits indefinitely.
+            Expiry raises :exc:`~libtmux.exc.TmuxTimeout` after reaping the client.
 
         Returns
         -------
@@ -494,7 +498,9 @@ class Window(
         if target is None:
             target = self.window_id
 
-        return self.server.cmd(cmd, *args, target=target)
+        if timeout is None:
+            return self.server.cmd(cmd, *args, target=target)
+        return self.server.cmd(cmd, *args, target=target, timeout=timeout)
 
     """
     Commands (tmux-like)

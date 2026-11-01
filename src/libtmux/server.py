@@ -342,6 +342,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -379,6 +380,9 @@ class Server(
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Positive finite seconds for this command. None waits indefinitely.
+            Expiry raises :exc:`~libtmux.exc.TmuxTimeout` after reaping the client.
 
         Returns
         -------
@@ -408,7 +412,9 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        if timeout is None:
+            return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin, timeout=timeout)
 
     @property
     def attached_sessions(self) -> list[Session]:
