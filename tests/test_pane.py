@@ -35,7 +35,6 @@ def test_repeated_output_can_preserve_capture_and_cursor(
     server.config_file = os.devnull
     server.new_session(session_name="setup", window_command="cat")
     server.cmd("set-option", "-g", "history-limit", "5")
-    server.cmd("set-option", "-gw", "window-size", "manual")
     producer = tmp_path / "producer.py"
     producer.write_text(
         "import subprocess, sys\n"
@@ -57,6 +56,7 @@ def test_repeated_output_can_preserve_capture_and_cursor(
     )
     pane = observed.active_pane
     assert pane is not None
+    pane.cmd("resize-window", "-x", "20", "-y", "5")
     samples = []
     for phase in range(1, 3):
         pane.send_keys("go")
