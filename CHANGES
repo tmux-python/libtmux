@@ -57,6 +57,11 @@ environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
+#### Capture continuity at history limits
+
+The pane-capture guide explains when unchanged text can hide output lost
+at the history limit and why continuity can be unknown. (#808)
+
 ### Development
 
 #### CI recovers from incompatible tmux caches (#835)
