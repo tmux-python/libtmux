@@ -8,8 +8,10 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import time
 import typing as t
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +21,7 @@ from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.common import tmux_cmd
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -1103,6 +1106,208 @@ def test_wait_for_set_flag(server: Server) -> None:
     server.new_session(session_name="wait_test")
     # Just set the flag — should not block or error
     server.wait_for("test_channel_set", set_flag=True)
+
+
+def test_wait_for_deadline_reaps_only_its_client(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing signal expires without leaving a client or destroying its server."""
+    server.new_session(session_name="bounded-wait", window_command="cat")
+    server.new_session(session_name="gone-producer", window_command="cat")
+    server.cmd("kill-session", "-t", "gone-producer")
+    processes: list[subprocess.Popen[str]] = []
+    spawn = subprocess.Popen
+
+    def record(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[str]:
+        process = spawn(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", record)
+    with pytest.raises(exc.WaitTimeout, match="never-signalled") as caught:
+        server.wait_for("never-signalled", timeout=0.03)
+    assert isinstance(caught.value.__cause__, subprocess.TimeoutExpired)
+    assert len(processes) == 1
+    process = processes[0]
+    assert process.returncode is not None
+    assert process.stdout is not None and process.stdout.closed
+    assert process.stderr is not None and process.stderr.closed
+    assert server.cmd("display-message", "-p", "still-alive").stdout == ["still-alive"]
+
+
+@pytest.mark.parametrize("timeout", [0.5, sys.float_info.max])
+def test_wait_for_deadline_consumes_a_remembered_signal(
+    server: Server, timeout: float
+) -> None:
+    """A signal sent first is consumed with an ordinary or large finite bound."""
+    server.new_session(session_name="remembered", window_command="cat")
+    server.wait_for("remembered-signal", set_flag=True)
+    server.wait_for("remembered-signal", timeout=timeout)
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
+def test_wait_for_invalid_deadline_refuses_before_effects(
+    monkeypatch: pytest.MonkeyPatch, timeout: float
+) -> None:
+    """Invalid bounds never start a tmux client."""
+
+    def refuse_spawn(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        msg = "invalid deadline reached subprocess"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(subprocess, "Popen", refuse_spawn)
+    with pytest.raises(ValueError, match="positive finite"):
+        Server().wait_for("unused", timeout=timeout)
+
+
+@pytest.mark.parametrize("flag", ["lock", "unlock", "set_flag"])
+def test_wait_for_deadline_refuses_channel_mutation_flags(flag: str) -> None:
+    """A bounded signal wait does not pretend to cancel queued locks or signals."""
+    with pytest.raises(ValueError, match="ordinary signal wait"):
+        Server(tmux_bin="/not-an-executable").wait_for(
+            "unused", timeout=0.5, **{flag: True}
+        )
+
+
+def test_wait_for_deadline_refuses_custom_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A custom backend cannot silently become a local subprocess."""
+    server = Server(tmux_bin="/not-an-executable")
+    monkeypatch.setattr(server, "cmd", lambda *_args, **_kwargs: None)
+    with pytest.raises(NotImplementedError, match="custom"):
+        server.wait_for("unused", timeout=0.5)
+    monkeypatch.delattr(server, "cmd")
+    monkeypatch.setattr(server, "_engine", object(), raising=False)
+    with pytest.raises(NotImplementedError, match="custom"):
+        server.wait_for("unused", timeout=0.5)
+
+
+def test_wait_for_deadline_refuses_class_dispatch_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing the class dispatcher must not disguise a custom route as stock."""
+
+    def custom(*_args: t.Any, **_kwargs: t.Any) -> None:
+        return None
+
+    def refuse_spawn(*_args: t.Any, **_kwargs: t.Any) -> t.NoReturn:
+        msg = "custom dispatch reached local subprocess"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(Server, "cmd", custom)
+    monkeypatch.setattr(subprocess, "Popen", refuse_spawn)
+    with pytest.raises(NotImplementedError, match="custom"):
+        Server(tmux_bin="/not-an-executable").wait_for("unused", timeout=0.5)
+
+
+def test_wait_for_default_preserves_subclass_dispatch() -> None:
+    """The default remains synchronous and forwards no deadline keyword."""
+    calls = []
+
+    class RoutedServer(Server):
+        def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+            calls.append((cmd, args, kwargs))
+            return t.cast("tmux_cmd", SimpleNamespace(stderr=[]))
+
+    server = RoutedServer(tmux_bin="/not-an-executable")
+    server.wait_for("channel", lock=True)
+    assert calls == [("wait-for", ("-L", "channel"), {})]
+    with pytest.raises(NotImplementedError, match="custom"):
+        server.wait_for("unused", timeout=0.5)
+    assert len(calls) == 1
+
+
+def test_wait_for_deadline_receives_a_signal_after_registration(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-invocation readiness signal precedes the native blocking wait."""
+    server.new_session(session_name="registered-wait", window_command="cat")
+    spawn = subprocess.Popen
+    clients: list[subprocess.Popen[str]] = []
+
+    def record(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[str]:
+        command = args[0]
+        if command[-2:] != ["wait-for", "registered-main"]:
+            return spawn(*args, **kwargs)
+        prefix = command[:-2]
+        client = spawn(
+            [*prefix, "wait-for", "-S", "registered-armed", ";", *command[-2:]],
+            **kwargs,
+        )
+        clients.append(client)
+        try:
+            subprocess.run(
+                [
+                    *prefix,
+                    "wait-for",
+                    "registered-armed",
+                    ";",
+                    "wait-for",
+                    "-S",
+                    "registered-main",
+                ],
+                timeout=0.5,
+                check=True,
+                capture_output=True,
+            )
+        except BaseException:
+            client.kill()
+            client.wait(timeout=0.5)
+            if client.stdout is not None:
+                client.stdout.close()
+            if client.stderr is not None:
+                client.stderr.close()
+            raise
+        return client
+
+    monkeypatch.setattr(subprocess, "Popen", record)
+    server.wait_for("registered-main", timeout=0.5)
+    assert len(clients) == 1
+    assert clients[0].returncode == 0
+
+
+def test_wait_for_deadline_closes_a_pipe_held_after_client_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pipe holder cannot turn expiry cleanup into an unbounded drain."""
+    spawn = subprocess.Popen
+    clients: list[subprocess.Popen[str]] = []
+    holders: list[subprocess.Popen[bytes]] = []
+
+    def record(*_args: t.Any, **_kwargs: t.Any) -> subprocess.Popen[str]:
+        read_fd, write_fd = os.pipe()
+        try:
+            client = spawn(
+                [sys.executable, "-c", "pass"],
+                stdout=write_fd,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            )
+            clients.append(client)
+            client.stdout = os.fdopen(read_fd, encoding="utf-8")
+            holders.append(spawn(["cat"], stdin=subprocess.PIPE, stdout=write_fd))
+        finally:
+            os.close(write_fd)
+        client.wait(timeout=0.5)
+        return client
+
+    monkeypatch.setattr(subprocess, "Popen", record)
+    try:
+        with pytest.raises(exc.WaitTimeout):
+            Server(tmux_bin="unused").wait_for("absent", timeout=0.03)
+        assert clients[0].returncode == 0
+        assert clients[0].stdout is not None and clients[0].stdout.closed
+        assert clients[0].stderr is not None and clients[0].stderr.closed
+    finally:
+        for holder in holders:
+            holder.kill()
+            holder.wait(timeout=0.5)
+            if holder.stdin is not None:
+                holder.stdin.close()
 
 
 def test_run_shell_basic(server: Server) -> None:
