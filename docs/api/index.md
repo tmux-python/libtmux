@@ -90,6 +90,12 @@ Attached terminal. Read read-only state, theme, termtype.
 Base classes and command execution.
 :::
 
+:::{grid-item-card} Capture Results
+:link: libtmux.capture
+:link-type: doc
+Immutable history cursors and explicit continuity outcomes.
+:::
+
 :::{grid-item-card} Neo
 :link: libtmux.neo
 :link-type: doc
@@ -168,6 +174,7 @@ Active deprecations and migration guidance.
 :maxdepth: 1
 
 Server <libtmux.server>
+Capture Results <libtmux.capture>
 Session <libtmux.session>
 Window <libtmux.window>
 Pane <libtmux.pane>

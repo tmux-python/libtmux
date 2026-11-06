@@ -33,6 +33,7 @@ if t.TYPE_CHECKING:
     import types
 
     from libtmux._internal.types import StrPath
+    from libtmux.capture import CaptureCursor, CaptureSince
 
     from .server import Server
     from .session import Session
@@ -345,6 +346,55 @@ class Pane(
     """
     Commands (tmux-like)
     """
+
+    def capture_since(
+        self,
+        cursor: CaptureCursor | None = None,
+        *,
+        grid: t.Literal["history"] = "history",
+    ) -> CaptureSince:
+        """Capture a counter-aligned suffix of retained main-grid history.
+
+        Parameters
+        ----------
+        cursor : CaptureCursor, optional
+            The cursor from the previous result. Omit it to start an anchor.
+        grid : {"history"}
+            Capture physical history rows, excluding the visible screen.
+            Other selections are rejected before dispatch.
+
+        Returns
+        -------
+        CaptureSince
+            Immutable text, a fresh cursor, and ``continuous``, ``reset``,
+            ``gap``, or ``unknown`` evidence. A first anchor has reason
+            ``initial``. Custom dispatch retains captured history with
+            ``unknown`` status because local endpoint identity cannot qualify it.
+
+        Raises
+        ------
+        ValueError
+            If the grid selection is unsupported.
+        libtmux.exc.VersionTooLow
+            If the connected daemon predates tmux 3.8.
+        libtmux.exc.LibTmuxException
+            If a command fails or the pane is unavailable.
+
+        Notes
+        -----
+        ``continuous`` describes counter and row agreement between sampled
+        histories, not an atomic snapshot or a lossless output interval.
+        Transient resize/alternate-screen visits and whole 32-bit counter
+        cycles can be unobservable. See :class:`libtmux.capture.CaptureSince`.
+        Native capture pins the resolved endpoint, pane, and executable for
+        the call. Unverified custom routing remains ``unknown``.
+        Each call reads the retained history in full; the returned delta is
+        incremental, not the transport cost. Commands retain ordinary blocking
+        dispatch behavior.
+        """
+        from libtmux.capture import _capture_since
+
+        return _capture_since(self, cursor, grid=grid)
 
     def resize(
         self,
