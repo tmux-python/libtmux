@@ -266,58 +266,96 @@ True
 flags (`start`, `end`, `escape_sequences`, etc.) — tmux ignores them when
 `-P` is set.
 
-## Waiting for output
+(visible-text-waits)=
 
-tmux runs commands asynchronously: {meth}`~libtmux.Pane.send_keys` returns the
-moment the keystrokes are sent, not when the command finishes. So when a later
-step depends on a command completing, you wait for proof in the output rather
-than guessing at a fixed delay.
+## Waiting for visible text
 
-The honest cost is that this means polling — capturing the pane on a short
-interval until a marker you control appears. It's a busy wait, not an event, but
-it's reliable across shells and commands because you're checking the one thing
-that matters: what actually printed.
-
-### Polling for completion marker
+Use {meth}`~libtmux.Pane.wait_for_text` for literal presence or absence in a
+selected capture. The return value retains the satisfying text and its provenance:
 
 ```python
->>> import time
-
->>> pane.send_keys('sleep 0.2; echo "TASK_COMPLETE"')
-
->>> # Poll for completion
->>> for _ in range(30):
-...     output = pane.capture_pane()
-...     if 'TASK_COMPLETE' in '\\n'.join(output):
-...         break
-...     time.sleep(0.1)
-
->>> 'TASK_COMPLETE' in '\\n'.join(output)
+>>> waiting_pane = window.split(shell='sh')
+>>> waiting_pane.send_keys("printf 'VISIBLE_ONLY'", enter=False)
+>>> observation = waiting_pane.wait_for_text('VISIBLE_ONLY', timeout=0.5)
+>>> 'VISIBLE_ONLY' in observation.text
+True
+>>> waiting_pane.kill()
+>>> 'VISIBLE_ONLY' in observation.text
 True
 ```
 
-### Helper function for waiting
-
-Wrapping that loop in a helper keeps the pattern out of the way of your actual
-logic:
+The command above was typed without Enter. Its echo satisfies the predicate;
+this is evidence of visible text, not command execution or success. Text already
+on screen can match the first capture, and output erased between captures can be
+missed. `present=False` means absent in one selected sample:
 
 ```python
->>> import time
-
->>> def wait_for_text(pane, text, timeout=5.0):
-...     """Wait for text to appear in pane output."""
-...     start = time.time()
-...     while time.time() - start < timeout:
-...         output = pane.capture_pane()
-...         if text in '\\n'.join(output):
-...             return True
-...         time.sleep(0.1)
-...     return False
-
->>> pane.send_keys('echo "READY"')
->>> wait_for_text(pane, 'READY', timeout=2.0)
-True
+>>> empty_pane = window.split(shell='cat')
+>>> observation = empty_pane.wait_for_text('missing', present=False, timeout=0.5)
+>>> observation.lines
+()
+>>> observation.text
+''
+>>> empty_pane.kill()
 ```
+
+### Retained evidence and failures
+
+The immutable value exposes `pane_id`, tuple `lines`, `text`, the actual tuple
+`command` argv, `start`, `end`, `join_wrapped`, and monotonic `started_ns` and
+`finished_ns`. It retains no live pane/server reference and stays readable after
+removal. Its `target_lifetime_verified` field is `None`: a legacy pane ID cannot
+attest that the daemon or pane has not been replaced.
+
+A deadline raises {exc}`~libtmux.exc.WaitTimeout`. Other capture failures raise
+{exc}`~libtmux.exc.LibTmuxException`. Both retain `last_observation` and the
+original exception in `__cause__`; failure never triggers a later diagnostic
+capture. `None` means no successful sample, while an observation with empty
+`text` is a successful empty capture:
+
+```python
+>>> from libtmux.exc import WaitTimeout
+>>> empty_pane = window.split(shell='cat')
+>>> try:
+...     empty_pane.wait_for_text('missing', timeout=0)
+... except WaitTimeout as error:
+...     no_sample = getattr(error, 'last_observation', 'unavailable')
+>>> no_sample is None
+True
+>>> empty_pane.kill()
+```
+
+Pass a `threading.Event` as `cancel_event` to cancel a synchronous wait. A set
+event raises `concurrent.futures.CancelledError` with the same retained fields.
+`KeyboardInterrupt` keeps its original identity and receives `last_observation`.
+Cancellation and timeout close pipes and reap the wait's owned client; they leave
+the pane program and borrowed server running. Cancelling an unrelated worker
+future does not set this event.
+
+### Bounds and scope
+
+`timeout` is finite and nonnegative; zero expires before sampling. `interval`
+is a finite sampling delay in `(0, 1]` seconds, default 0.05. Native pipe reads
+check cancellation and deadline at most 0.05 seconds apart. OS scheduling and
+cleanup can add latency. The adapter resolves one endpoint for the wait and
+refuses custom `Pane.cmd`, `Server.cmd`, and injected engines before starting a
+client, since it cannot guarantee their routing and bounds.
+
+`max_text_codepoints` admits at most 1,048,576 decoded Unicode code points,
+including joined LF; a caller may choose a smaller positive limit. The literal
+must fit this limit. Raw stdout retention has a separate byte cap of four times
+the configured limit plus 65,536 bytes; stderr is capped at 16,384 bytes. An
+oversized capture fails without becoming a successful empty sample. These caps
+bound this client's retained data, not tmux daemon memory.
+
+The capture flags used here are available in
+[tmux 3.2a](https://github.com/tmux/tmux/blob/3.2a/cmd-capture-pane.c#L38-L49).
+`start`, `end`, and `join_wrapped` select the sampled text as in
+{meth}`~libtmux.Pane.capture_pane`. This API supports literal matching only.
+Future-only bytes, subscription readiness, gap detection, sampled quiet/stability,
+regex, and process-exit status require separate contracts. Cooperative channel
+signals continue to use {meth}`~libtmux.Server.wait_for`; a signal alone carries
+no application exit status.
 
 ## Querying pane state
 
