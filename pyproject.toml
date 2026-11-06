@@ -40,6 +40,7 @@ include = [
   { path = ".tmuxp.yaml", format = "sdist" },
   { path = "tests", format = "sdist" },
   { path = "docs", format = "sdist" },
+  { path = "examples", format = "sdist" },
   { path = "conftest.py", format = "sdist" },
 ]
 
