@@ -225,13 +225,37 @@ def test_options_grid(server: Server) -> None:
                         assert objglobal__options.pane_base_index == 0
 
 
+@pytest.mark.parametrize(
+    ("scope", "global_"),
+    [
+        (OptionScope.Server, False),
+        (OptionScope.Session, False),
+        (OptionScope.Session, True),
+        (OptionScope.Window, False),
+        (OptionScope.Window, True),
+        (OptionScope.Pane, False),
+    ],
+)
 def test_custom_options(
-    server: Server,
+    session: Session,
+    scope: OptionScope,
+    global_: bool,
 ) -> None:
-    """Test tmux's user (custom) options."""
-    session = server.new_session(session_name="test")
-    session.set_option("@custom-option", "test")
-    assert session._show_option("@custom-option") == "test"
+    """Preserve user-option strings in both read methods and inherited values."""
+    window = session.active_window
+    obj = {
+        OptionScope.Server: session.server,
+        OptionScope.Session: session,
+        OptionScope.Window: window,
+        OptionScope.Pane: window.active_pane,
+    }[scope]
+    assert obj is not None
+    for value in ["123", "on", "off", ""]:
+        obj.set_option("@custom-option", value, global_=global_)
+        assert obj.show_option("@custom-option", global_=global_) == value
+        assert obj.show_options(global_=global_)["@custom-option"] == value
+        if global_:
+            assert obj.show_option("@custom-option", include_inherited=True) == value
 
 
 MOCKED_GLOBAL_OPTIONS: list[LiteralString] = """
