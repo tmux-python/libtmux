@@ -37,6 +37,43 @@ WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
 
 
+def _prepare_program_args(
+    shell: str | None,
+    argv: t.Sequence[str] | None,
+    *,
+    empty: bool | None = False,
+) -> tuple[str, ...]:
+    """Validate program arguments and escape tmux's command-separator syntax."""
+    if argv is None:
+        return (shell,) if shell else ()
+    if shell is not None:
+        msg = "argv cannot be combined with a shell-command string"
+        raise ValueError(msg)
+    if empty:
+        msg = "argv cannot be combined with empty=True"
+        raise ValueError(msg)
+    if isinstance(argv, (str, bytes)) or not isinstance(argv, t.Sequence):
+        msg = "argv must be a sequence of strings"
+        raise TypeError(msg)
+    values = tuple(argv)
+    if any(not isinstance(value, str) for value in values):
+        msg = "argv must contain only strings"
+        raise TypeError(msg)
+    if len(values) < 2:
+        msg = (
+            "argv requires a program and at least one argument; "
+            "tmux runs a single argument through a shell"
+        )
+        raise ValueError(msg)
+    if not values[0] or any("\0" in value for value in values):
+        msg = "argv requires a nonempty program and must not contain NUL"
+        raise ValueError(msg)
+    return (
+        "--",
+        *(value[:-1] + "\\;" if value.endswith(";") else value for value in values),
+    )
+
+
 class CmdProtocol(t.Protocol):
     """Command protocol for tmux command."""
 
