@@ -21,6 +21,23 @@ class PaneObservation:
     monotonic nanoseconds around one command; it is not a server timestamp.
     ``pane_id`` records the requested target. Its daemon/object lifetime remains
     unknown with the legacy pane handle, so ``target_lifetime_verified`` is None.
+
+    Attributes
+    ----------
+    pane_id : str
+        Requested tmux pane ID.
+    lines : tuple[str, ...]
+        Owned decoded text, preserving the command's trailing-empty-line policy.
+    command : tuple[str, ...]
+        Actual command argv reported by the selected backend.
+    start, end : int | "-" | None
+        Requested capture range; None leaves that endpoint at tmux's default.
+    join_wrapped : bool
+        Whether the capture requested joined physical lines with ``-J``.
+    started_ns, finished_ns : int
+        Controller monotonic nanoseconds immediately before and after the command.
+    target_lifetime_verified : bool | None
+        None: the legacy pane handle supplies no daemon or pane lifetime proof.
     """
 
     pane_id: str
@@ -116,13 +133,14 @@ class PaneObservation:
         if result.returncode != 0:
             msg = f"command exited with status {result.returncode}"
             raise exc.LibTmuxException(msg, subcommand="capture-pane")
-        text_size = sum(map(len, result.stdout)) + max(0, len(result.stdout) - 1)
+        lines = tuple(result.stdout)
+        text_size = sum(map(len, lines)) + max(0, len(lines) - 1)
         if text_size > max_text_codepoints:
             msg = "captured text exceeds max_text_codepoints"
             raise ValueError(msg)
         return cls(
             pane_id=pane_id,
-            lines=tuple(result.stdout),
+            lines=lines,
             command=tuple(result.cmd),
             start=start,
             end=end,

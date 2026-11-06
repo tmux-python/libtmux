@@ -12,11 +12,8 @@ import typing as t
 
 import pytest
 
-from libtmux import Pane, PaneObservation, exc
+from libtmux import Pane, PaneObservation, Server, exc
 from libtmux.common import tmux_cmd
-
-if t.TYPE_CHECKING:
-    from libtmux.server import Server
 
 
 def test_observation_owns_text_and_actual_command(
@@ -77,6 +74,16 @@ def test_observation_bounds_and_backend_failures(
         PaneObservation.capture(pane, start=t.cast("int", "invalid"))
     assert not calls
     assert PaneObservation.capture(pane).lines == ()
+
+    class MutableLines(list[str]):
+        """Simulate a backend replacing its buffer after a reader traverses it."""
+
+        def __iter__(self) -> t.Iterator[str]:
+            yield from super().__iter__()
+            self[:] = ["oversized"]
+
+    result.stdout = MutableLines(["x"])
+    assert PaneObservation.capture(pane, max_text_codepoints=1).text == "x"
     result.stdout = ["😀", "e\u0301"]
     assert PaneObservation.capture(pane, max_text_codepoints=4).text == "😀\ne\u0301"
     with pytest.raises(ValueError, match="exceeds"):
@@ -84,9 +91,11 @@ def test_observation_bounds_and_backend_failures(
     result.stderr = ["no such pane"]
     with pytest.raises(exc.LibTmuxException, match="no such pane"):
         PaneObservation.capture(pane)
-    result.stderr, result.returncode = [], 1
-    with pytest.raises(exc.LibTmuxException, match="status 1"):
-        PaneObservation.capture(pane)
+    result.stdout, result.stderr = [], []
+    for status in (1, None):
+        result.returncode = status
+        with pytest.raises(exc.LibTmuxException, match=f"status {status}"):
+            PaneObservation.capture(pane)
 
     def failed(*args: object, **kwargs: object) -> tmux_cmd:
         raise failure
@@ -103,8 +112,9 @@ def test_observation_bounds_and_backend_failures(
 def test_observation_retains_cooperative_producer_after_removal(
     server: Server,
     tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A signalled producer supplies text without requiring shell startup control."""
+    """Retain an actual routed capture through redraw and native teardown."""
     server.config_file = os.devnull
     server.new_session(session_name="keeper", window_command="cat")
     producer = tmp_path / "observation.py"
@@ -114,6 +124,11 @@ def test_observation_retains_cooperative_producer_after_removal(
         "sys.stdout.flush()\n"
         "subprocess.run(['tmux', '-L' + sys.argv[1], 'wait-for', '-S', "
         "'observation-ready'], check=True, timeout=0.5)\n"
+        "sys.stdin.readline()\n"
+        "sys.stdout.write('\\x1b[2J\\x1b[Hreplacement\\n')\n"
+        "sys.stdout.flush()\n"
+        "subprocess.run(['tmux', '-L' + sys.argv[1], 'wait-for', '-S', "
+        "'observation-redrawn'], check=True, timeout=0.5)\n"
         "sys.stdin.readline()\n",
     )
     observed = server.new_session(
@@ -130,13 +145,39 @@ def test_observation_retains_cooperative_producer_after_removal(
         capture_output=True,
         timeout=0.5,
     )
-    value = PaneObservation.capture(pane, start=-20)
+    facade = Pane(
+        server=Server(socket_path=str(tmp_path / "unused-socket")),
+        pane_id=pane.pane_id,
+    )
+    monkeypatch.setattr(facade, "cmd", pane.cmd)
+    assert not facade.server.is_alive()
+    value = PaneObservation.capture(facade, start=-20)
     assert "界 e\u0301 😀" in value.lines
     assert "retained" in value.lines
-    before = value.lines
+    with pytest.raises(ValueError, match="exceeds"):
+        PaneObservation.capture(facade, max_text_codepoints=1)
+    before = dataclasses.astuple(value)
     assert f"-L{server.socket_name}" in value.command
+    assert str(tmp_path / "unused-socket") not in value.command
+    pane.send_keys("", enter=True)
+    subprocess.run(
+        ["tmux", f"-L{server.socket_name}", "wait-for", "observation-redrawn"],
+        check=True,
+        capture_output=True,
+        timeout=0.5,
+    )
+    later = PaneObservation.capture(facade, start=-20)
+    assert "replacement" in later.lines
+    assert "replacement" not in value.lines
+    assert later.started_ns >= value.finished_ns
+    assert dataclasses.astuple(value) == before
     pane.kill()
-    assert value.lines == before and "retained" in value.text
+    assert dataclasses.astuple(value) == before and "retained" in value.text
     with pytest.raises(exc.LibTmuxException):
-        PaneObservation.capture(pane)
+        PaneObservation.capture(facade)
     assert server.is_alive()
+    server.kill()
+    assert not server.is_alive()
+    assert dataclasses.astuple(value) == before and "retained" in value.text
+    with pytest.raises(exc.LibTmuxException):
+        PaneObservation.capture(facade)
