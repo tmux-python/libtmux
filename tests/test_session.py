@@ -10,7 +10,7 @@ from contextlib import nullcontext as does_not_raise
 
 import pytest
 
-from libtmux import exc
+from libtmux import common, exc
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -671,6 +671,110 @@ def test_new_window_select_existing(session: Session) -> None:
         select_existing=True,
     )
     assert w.window_name == "selexist_new"
+
+
+@pytest.mark.parametrize("attach", [False, True])
+@pytest.mark.parametrize("name", ["logs", "reuse:logs"])
+def test_new_window_reuses_existing_window(
+    session: Session,
+    attach: bool,
+    name: str,
+) -> None:
+    """Reuse returns the same live window and honors selection."""
+    existing = session.new_window(
+        window_name=name,
+        window_shell="exec /bin/cat",
+    )
+    pane = existing.active_pane
+    assert pane is not None
+    before = [(window.window_id, window.window_name) for window in session.windows]
+    active_id = session.active_window.window_id
+
+    reused = session.new_window(window_name=name, select_existing=True, attach=attach)
+
+    assert reused.window_id == existing.window_id
+    reused_pane = reused.active_pane
+    assert reused_pane is not None
+    assert reused_pane.pane_id == pane.pane_id
+    assert reused_pane.pane_pid == pane.pane_pid
+    assert reused_pane.pane_dead == "0"
+    assert [
+        (window.window_id, window.window_name) for window in session.windows
+    ] == before
+    assert session.active_window.window_id == (
+        existing.window_id if attach else active_id
+    )
+
+
+@pytest.mark.skipif(
+    not common.has_gte_version("3.8"), reason="Index reuse needs tmux 3.8"
+)
+@pytest.mark.parametrize("attach", [False, True])
+@pytest.mark.parametrize("target_kind", ["index", "id", "other-session"])
+def test_new_window_reuses_stable_target(
+    session: Session, attach: bool, target_kind: str
+) -> None:
+    """Absolute targets retain the native choice and its program."""
+    selected = session
+    if target_kind == "other-session":
+        selected = session.server.new_session(session_name="other-reuse")
+    existing = selected.new_window(
+        window_name="logs", window_index="5", window_shell="exec /bin/cat"
+    )
+    pane = existing.active_pane
+    assert pane is not None
+    before = {window.window_id for window in session.server.windows}
+    target_window = None
+    if target_kind == "id":
+        assert existing.window_id is not None
+        target_window = existing.window_id
+    elif target_kind == "other-session":
+        target_window = f"{selected.session_id}:"
+
+    reused = session.new_window(
+        window_name="logs",
+        select_existing=True,
+        attach=attach,
+        window_index="5" if target_kind == "index" else "",
+        target_window=target_window,
+    )
+
+    assert reused.window_id == existing.window_id
+    reused_pane = reused.active_pane
+    assert reused_pane is not None
+    assert reused_pane.pane_pid == pane.pane_pid
+    assert reused_pane.pane_dead == "0"
+    assert {window.window_id for window in session.server.windows} == before
+
+
+@pytest.mark.skipif(
+    not common.has_gte_version("3.4"), reason="Name formats need tmux 3.4"
+)
+def test_new_window_reuse_does_not_guess_format_context(session: Session) -> None:
+    """An unverifiable reply must not return a different live window."""
+    session.new_window(window_name="logs")
+    session.new_window(window_name="decoy")
+    with pytest.raises(exc.LibTmuxException, match="identity of the reused window"):
+        session.new_window(
+            window_name="#{?session_format,logs,decoy}", select_existing=True
+        )
+
+
+def test_new_window_reuse_preserves_ambiguity(session: Session) -> None:
+    """Native duplicate-name errors remain visible and preserve both windows."""
+    first = session.new_window(window_name="duplicate")
+    second = session.new_window(window_name="duplicate")
+    before = {window.window_id for window in session.windows}
+
+    with pytest.raises(exc.LibTmuxException, match="multiple windows named duplicate"):
+        session.new_window(window_name="duplicate", select_existing=True)
+
+    assert {window.window_id for window in session.windows} == before
+    assert first.window_id != second.window_id
+
+    with pytest.raises(exc.LibTmuxException, match="can't find window"):
+        session.new_window(target_window="@999999", select_existing=True)
+    assert {window.window_id for window in session.windows} == before
 
 
 def test_session_last_window_exception_tags_subcommand(session: Session) -> None:

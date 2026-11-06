@@ -45,6 +45,30 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Bug fixes
+
+#### Return existing windows from `new_window(select_existing=True)` (#821)
+
+Reusing an existing window returned native success with no stdout, then raised
+`IndexError`. {meth}`~libtmux.Session.new_window` now returns the matching
+{class}`~libtmux.Window` for exact names and stable absolute targets. Its
+window ID, panes and running program remain unchanged; `attach=True` also
+selects it. Native ambiguity and other command errors remain visible.
+
+```python
+>>> original = session.new_window(window_name="reuse-changelog")
+>>> reused = session.new_window(window_name="reuse-changelog", select_existing=True)
+>>> reused.window_id == original.window_id
+True
+```
+
+[tmux 3.2a returns before printing a creation ID when a name matches](https://github.com/tmux/tmux/blob/3.2a/cmd-new-window.c#L71-L98).
+Numeric-index reuse is available in
+[tmux 3.8](https://github.com/tmux/tmux/blob/3.8/cmd-new-window.c#L94-L126).
+A successful native reuse with an unresolved formatted name or relative target
+raises {exc}`~libtmux.exc.LibTmuxException`; it does not guess the current
+window or retry the command. Those selectors remain an open part of #821.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)

@@ -805,7 +805,7 @@ class Session(
         kill_existing: bool | None = None,
         select_existing: bool | None = None,
     ) -> Window:
-        """Create new window, returns new :class:`Window`.
+        """Create a window or return an existing matching :class:`Window`.
 
         By default, this will make the window active. For the new window
         to be created and not set to current, pass in ``attach=False``.
@@ -840,8 +840,8 @@ class Session(
 
             .. versionadded:: 0.56
         select_existing : bool, optional
-            If a window with the given name already exists, select it instead
-            of creating a new one (``-S`` flag).
+            Return a window with the given name when one already exists
+            (``-S`` flag). ``attach=True`` also selects the reused window.
 
             .. versionadded:: 0.56
 
@@ -883,7 +883,31 @@ class Session(
         Returns
         -------
         :class:`Window`
-            The newly created window.
+            The created or reused window.
+
+        Raises
+        ------
+        exc.LibTmuxException
+            tmux reports an error, or a successful reuse reply has no identity
+            and its target cannot be resolved safely.
+
+        Notes
+        -----
+        Reuse accepts exact names without tmux format expressions, absolute
+        window IDs, or numeric indexes scoped to a session ID. Native tmux
+        returns no creation ID when it reuses a window. A formatted name or
+        relative target can therefore succeed natively before this method
+        raises because it cannot establish which window was reused. The
+        command is not retried. Concurrent removal can also make lookup fail.
+
+        Examples
+        --------
+        >>> original = session.new_window(window_name="reuse-example")
+        >>> reused = session.new_window(
+        ...     window_name="reuse-example", select_existing=True
+        ... )
+        >>> reused.window_id == original.window_id
+        True
         """
         window_args: tuple[str, ...] = ()
 
@@ -930,6 +954,42 @@ class Session(
         cmd = self.cmd("new-window", *window_args, target=target)
 
         raise_if_stderr(cmd, "new-window")
+
+        if select_existing and not cmd.stdout:
+            target_session = self.session_id
+            target_index = window_index or ""
+            if target_window:
+                if target_window.startswith("@") and target_window[1:].isdigit():
+                    return Window.from_window_id(
+                        server=self.server, window_id=target_window
+                    )
+                if ":" in target_window:
+                    target_session, target_index = target_window.split(":", 1)
+                else:
+                    target_session = None
+            stable_session = (
+                target_session is not None
+                and target_session.startswith("$")
+                and target_session[1:].isdigit()
+            )
+            reused = None
+            if stable_session and target_index.isdigit():
+                reused = self.server.windows.get(
+                    session_id=target_session, window_index=target_index
+                )
+            elif (
+                stable_session
+                and not target_index
+                and window_name is not None
+                and "#" not in window_name
+            ):
+                reused = self.server.windows.get(
+                    session_id=target_session, window_name=window_name
+                )
+            if reused is not None:
+                return reused
+            msg = "Could not establish the identity of the reused window"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
 
         window_output = cmd.stdout[0]
 
