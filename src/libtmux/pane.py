@@ -1471,12 +1471,16 @@ class Pane(
             Environment variables for the new pane (``-e`` flag).
         width : int, optional
             Width of the floating pane in cells (``-x`` flag).
+            Includes the border on tmux 3.8+; ``pane_width`` reports content cells.
         height : int, optional
             Height of the floating pane in cells (``-y`` flag).
+            Includes the border on tmux 3.8+; ``pane_height`` reports content cells.
         x : int, optional
             X position of the floating pane in cells (``-X`` flag).
+            Places the outer border on tmux 3.8+; ``pane_x`` reports content position.
         y : int, optional
             Y position of the floating pane in cells (``-Y`` flag).
+            Places the outer border on tmux 3.8+; ``pane_y`` reports content position.
         zoom : bool, optional
             Zoom the pane (``-Z`` flag).
         empty : bool, optional
@@ -1684,9 +1688,8 @@ class Pane(
     ) -> None:
         """Display a popup overlay via ``$ tmux display-popup``.
 
-        Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux._internal.control_mode.ControlMode` in tests to provide
-        a client.
+        Requires tmux 3.2+ and an attached terminal client. On tmux 3.8+,
+        a control client returns without opening the popup or running its command.
 
         Parameters
         ----------
@@ -1736,12 +1739,10 @@ class Pane(
 
         Examples
         --------
-        Not directly testable — popup rendering requires a TTY-backed client.
-        Control-mode provides an attached client for invocation but the popup
-        itself is not visible or verifiable.
+        Closing an absent popup is harmless, including on a control client:
 
         >>> with control_mode() as ctl:
-        ...     pane.display_popup(command='true', close_on_exit=True)
+        ...     pane.display_popup(close_existing=True)
         """
         if close_on_exit and close_on_success:
             msg = (
