@@ -1,8 +1,9 @@
 # Retained pane observations
 
-`PaneObservation.capture(pane)` keeps decoded pane text and its capture command
-in a frozen value. Read it after redraw or pane removal without querying tmux
-again. The pane and server remain borrowed.
+{meth}`PaneObservation.capture() <libtmux.PaneObservation.capture>` keeps
+decoded pane text and its capture command in a frozen value. Read it after
+redraw or pane removal without querying tmux again. The pane and server remain
+borrowed.
 
 ```python
 >>> from libtmux import PaneObservation
@@ -38,8 +39,8 @@ persistent record is supplied.
 
 A later capture can recover then-visible text, not omitted output, erased
 history, or hidden terminal state. Visible text and echoed commands do not
-prove application completion; use an explicit producer signal when your
-application cooperates.
+prove application completion. A cooperating producer can signal an
+application-defined milestone; the signal proves only that milestone.
 
 ```{eval-rst}
 .. autoclass:: libtmux.PaneObservation
