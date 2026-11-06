@@ -65,10 +65,13 @@ True
 [tmux 3.2a returns before printing a creation ID when a name matches](https://github.com/tmux/tmux/blob/3.2a/cmd-new-window.c#L71-L98).
 Numeric-index reuse is available in
 [tmux 3.8](https://github.com/tmux/tmux/blob/3.8/cmd-new-window.c#L94-L126).
+Pass `target_window=other_session.session_id` to reuse an exact name in another
+session. Both `$ID` and `$ID:` session targets work on tmux 3.2a or later.
 When scoped to an explicit session ID, attached reuse also returns the window
 selected by a formatted name. Relative numeric indexes such as `+2` and `-3`
 use the original active index, including detached reuse on tmux 3.8. Native
-snapshots in the same command queue retain the selected identity even if a
+snapshots from [list-commands](https://github.com/tmux/tmux/blob/3.2a/cmd-list-keys.c#L318-L366)
+in the same command queue retain the selected identity even if a
 selection hook immediately selects another window. Caller formats are not
 evaluated a second time by libtmux.
 
@@ -82,6 +85,8 @@ before submission because their receipt reconstruction is not qualified.
 Returned receipt windows use a separate Server pinned to the observed socket
 and executable, retaining config and color settings. They preserve window ID
 equality but not `window.server is session.server`.
+Receipt reconstruction assumes built-in `if-shell`, `list-commands`, and
+`new-window` commands; `command-alias` replacements remain unqualified.
 
 ### Documentation
 

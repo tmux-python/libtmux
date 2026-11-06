@@ -933,10 +933,12 @@ class Session(
         Notes
         -----
         Reuse accepts exact names, absolute window IDs, and numeric indexes.
-        With an explicit session ID, ``attach=True`` also resolves formatted
-        names from the window selected by native tmux. Numeric relative indexes
-        such as ``+2`` use the original active index, including detached reuse
-        on tmux 3.8 or later. Caller formats are evaluated only by ``new-window``.
+        ``target_window`` accepts a session ID with or without a trailing
+        colon. With an explicit session ID, ``attach=True`` also resolves
+        formatted names from the window selected by native tmux. Numeric
+        relative indexes such as ``+2`` use the original active index, including
+        detached reuse on tmux 3.8 or later. Caller formats are evaluated only
+        by ``new-window``.
 
         These session-scoped calls read window snapshots in the same native
         command queue. The returned handle has a separate Server pinned to the
@@ -947,8 +949,11 @@ class Session(
         commands too large to include the snapshots can still succeed natively
         before this method raises because the reused identity is unknown. The
         command is never retried.
-        Receipt reconstruction requires the stock native dispatcher; overridden
+        Receipt reconstruction requires stock native command routing; overridden
         ``cmd`` methods or injected engines are rejected before submission.
+        ``command-alias`` replacements of ``if-shell``, ``list-commands``, or
+        ``new-window`` are unqualified. On tmux 3.8, event subscribers can observe
+        the additional snapshot commands.
 
         Examples
         --------
@@ -957,6 +962,15 @@ class Session(
         ...     window_name="reuse-example", select_existing=True
         ... )
         >>> reused.window_id == original.window_id
+        True
+
+        A direct session ID supplies the reuse context:
+
+        >>> direct = session.new_window(
+        ...     target_window=session.session_id,
+        ...     window_name="reuse-example", select_existing=True
+        ... )
+        >>> direct.window_id == original.window_id
         True
 
         Attached format-name reuse uses the window selected by tmux:
@@ -1013,8 +1027,8 @@ class Session(
             window_args += (window_shell,)
 
         if select_existing and target is not None:
-            receipt_session, separator, receipt_index = target.partition(":")
-            if separator and re.fullmatch(r"\$[0-9]+", receipt_session):
+            receipt_session, _, receipt_index = target.partition(":")
+            if re.fullmatch(r"\$[0-9]+", receipt_session):
                 observed = self._new_window_with_receipt(
                     window_args,
                     target=target,
@@ -1138,20 +1152,34 @@ class Session(
         before_template = marker + "".join(
             f"#{{{field}}}" + marker for field in before_fields
         )
+
+        def snapshot_command(phase: str, row: str) -> str:
+            return (
+                "list-commands -F '#{S:#{?#{==:#{session_id},"
+                + target_session
+                + "},#{W:"
+                + marker
+                + phase
+                + row
+                + "},}}' new-window"
+            )
+
+        # list-windows and display-message run after-hooks. Nest the fixed reader
+        # so its STARTSERVER flag cannot start a missing daemon.
         queue = (
             "-F",
-            marker + "before" + before_template,
+            "1",
+            snapshot_command("before", before_template),
             ";",
             "new-window",
             "-t",
             target,
             *window_args,
             ";",
-            "list-windows",
-            "-t",
-            target_session,
+            "if-shell",
             "-F",
-            marker + "after" + template,
+            "1",
+            snapshot_command("after", template),
         )
         # Preserve the single-command path when receipt overhead would consume
         # tmux's bounded command message. No command has been submitted yet.
@@ -1169,7 +1197,7 @@ class Session(
         )
         observed.socket_name = self.server.socket_name
         observed.socket_path = self.server.socket_path
-        cmd = observed.cmd("list-windows", *queue, target=target_session)
+        cmd = observed.cmd("if-shell", *queue)
         raise_if_stderr(cmd, "new-window")
         if cmd.returncode != 0:
             msg = f"Native window creation exited with status {cmd.returncode}"

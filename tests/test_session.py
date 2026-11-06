@@ -680,7 +680,7 @@ def test_new_window_reuses_existing_window(
     attach: bool,
     name: str,
 ) -> None:
-    """Reuse returns the same live window and honors selection."""
+    """Reuse preserves the program and selection despite unrelated read hooks."""
     existing = session.new_window(
         window_name=name,
         window_shell="exec /bin/cat",
@@ -689,9 +689,13 @@ def test_new_window_reuses_existing_window(
     assert pane is not None
     before = [(window.window_id, window.window_name) for window in session.windows]
     active_id = session.active_window.window_id
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", hook, f"select-window -t {active_id}")
 
     reused = session.new_window(window_name=name, select_existing=True, attach=attach)
 
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", "-u", hook)
     assert reused.window_id == existing.window_id
     reused_pane = reused.active_pane
     assert reused_pane is not None
@@ -706,17 +710,16 @@ def test_new_window_reuses_existing_window(
     )
 
 
-@pytest.mark.skipif(
-    not common.has_gte_version("3.8"), reason="Index reuse needs tmux 3.8"
-)
 @pytest.mark.parametrize("attach", [False, True])
-@pytest.mark.parametrize("target_kind", ["index", "id", "other-session"])
+@pytest.mark.parametrize("target_kind", ["index", "id", "other-session", "session-id"])
 def test_new_window_reuses_stable_target(
     session: Session, attach: bool, target_kind: str
 ) -> None:
     """Absolute targets retain the native choice and its program."""
+    if target_kind in ("index", "id") and not common.has_gte_version("3.8"):
+        pytest.skip("Index reuse needs tmux 3.8")
     selected = session
-    if target_kind == "other-session":
+    if target_kind in ("other-session", "session-id"):
         selected = session.server.new_session(session_name="other-reuse")
     existing = selected.new_window(
         window_name="logs", window_index="5", window_shell="exec /bin/cat"
@@ -730,6 +733,8 @@ def test_new_window_reuses_stable_target(
         target_window = existing.window_id
     elif target_kind == "other-session":
         target_window = f"{selected.session_id}:"
+    elif target_kind == "session-id":
+        target_window = selected.session_id
 
     reused = session.new_window(
         window_name="logs",
@@ -801,7 +806,8 @@ def test_new_window_reuses_relative_index_from_original_selection(
     session: Session, attach: bool, offset: str
 ) -> None:
     """Index arithmetic keeps its original origin across sparse native indexes."""
-    origin = int(session.active_window.window_index or "0")
+    origin_window = session.active_window
+    origin = int(origin_window.window_index or "0")
     expected = session.new_window(
         window_name="relative",
         window_index=str(origin + 2),
@@ -810,22 +816,47 @@ def test_new_window_reuses_relative_index_from_original_selection(
     decoy = session.new_window(
         window_name="decoy", window_index=str(origin + 5), window_shell="exec /bin/cat"
     )
+    session.new_window(
+        window_name="shifted",
+        window_index=str(origin + 7),
+        window_shell="exec /bin/cat",
+    )
     if offset.startswith("-"):
         decoy.select()
     active = session.active_window.window_id
     pane = expected.active_pane
     assert pane is not None
     before = {window.window_id for window in session.windows}
+    hook_target = origin_window if offset.startswith("-") else decoy
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", hook, f"select-window -t {hook_target.window_id}")
 
     reused = session.new_window(
         window_index=offset, select_existing=True, attach=attach
     )
 
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", "-u", hook)
     assert reused.window_id == expected.window_id
     assert session.active_window.window_id == (expected.window_id if attach else active)
     reused_pane = reused.active_pane
     assert reused_pane is not None and reused_pane.pane_pid == pane.pane_pid
     assert {window.window_id for window in session.windows} == before
+
+
+def test_new_window_reuse_does_not_start_missing_server(
+    server: Server, tmp_path: pathlib.Path
+) -> None:
+    """Identity snapshots must not load config or start an absent daemon."""
+    config = tmp_path / "unexpected-server.conf"
+    config.write_text('new-session -d -s unexpected "exec /bin/cat"\n')
+    server.config_file = str(config)
+    session = Session(server=server, session_id="$0")
+
+    with pytest.raises(exc.LibTmuxException):
+        session.new_window(window_name="not-submitted", select_existing=True)
+
+    assert not server.is_alive()
 
 
 def test_new_window_reuse_rejects_failed_receipt(
@@ -857,8 +888,8 @@ def test_new_window_reuse_rejects_incomplete_identity(
 
     def corrupted(*args: t.Any, **kwargs: t.Any) -> common.tmux_cmd:
         result = native(*args, **kwargs)
-        if "list-windows" in args and "new-window" in args:
-            marker = args[args.index("-F") + 1].split("before", 1)[0]
+        if "new-window" in args:
+            marker = result.stdout[0].partition("before")[0]
             text = "\n".join(result.stdout)
             prefix, separator, suffix = text.partition(marker + "after" + marker)
             assert separator

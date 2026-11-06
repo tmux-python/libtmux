@@ -104,6 +104,46 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  window-reuse-3-8:
+    name: Window reuse (tmux 3.8)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install Python and project dependencies
+        run: |
+          uv python install 3.15
+          uv sync --all-extras --dev --python 3.15
+
+      - name: Build stable tmux 3.8
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake bison pkg-config libevent-dev libncurses-dev
+          git clone --depth 1 --branch 3.8 https://github.com/tmux/tmux.git "$RUNNER_TEMP/tmux-window-source"
+          cd "$RUNNER_TEMP/tmux-window-source"
+          test "$(git rev-parse HEAD)" = 7f2a35ad3321f9ba57a1062ca73b1f3ff26aca53
+          sh autogen.sh
+          ./configure --prefix="$RUNNER_TEMP/tmux-window"
+          make -j2
+          make install
+          echo "$RUNNER_TEMP/tmux-window/bin" >> "$GITHUB_PATH"
+
+      - name: Test window creation, reuse and runnable examples
+        run: |
+          test "$(tmux -V)" = "tmux 3.8"
+          time env -u TMUX -u TMUX_PANE uv run pytest tests/test_session.py src/libtmux/session.py -k new_window --reruns=0 --tb=short --cov=./ --cov-report=xml:coverage-window-reuse.xml
+
+      - uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-window-reuse.xml
+
   release:
     runs-on: ubuntu-latest
     needs: build

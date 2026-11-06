@@ -127,6 +127,9 @@ Session-scoped reuse requires stock native command dispatch. Overridden `cmd`
 methods and injected engines raise before submission because reconstructing
 their selected backend is not qualified. Ordinary creation with
 `select_existing=False` keeps its existing dispatch behavior.
+Receipt reconstruction also assumes the built-in `if-shell`, `list-commands`,
+and `new-window` commands; `command-alias` replacements are unqualified.
+On tmux 3.8, event subscribers can observe the additional snapshot commands.
 
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
