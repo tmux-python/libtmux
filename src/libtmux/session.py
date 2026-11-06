@@ -15,6 +15,7 @@ import warnings
 
 from libtmux._internal.query_list import QueryList
 from libtmux.common import (
+    _prepare_program_args,
     escape_trailing_separator,
     has_gte_version,
     raise_if_stderr,
@@ -1067,6 +1068,7 @@ class Session(
         target_window: str | None = None,
         kill_existing: bool | None = None,
         select_existing: bool | None = None,
+        argv: t.Sequence[str] | None = None,
     ) -> Window:
         """Create new window, returns new :class:`Window`.
 
@@ -1075,6 +1077,10 @@ class Session(
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         window_name : str or Format, optional
             A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
         start_directory : str, PathLike or Format, optional
@@ -1186,6 +1192,7 @@ class Session(
             )
             raise ValueError(msg)
 
+        program_args = _prepare_program_args(window_shell, argv)
         window_args: tuple[str, ...] = ()
 
         if not attach:
@@ -1237,8 +1244,7 @@ class Session(
             # empty string for window_index will use the first one available
             window_args += (f"-t{self.session_id}:{window_index}",)
 
-        if window_shell:
-            window_args += (escape_trailing_separator(window_shell),)
+        window_args += program_args
 
         cmd = self.cmd("new-window", *window_args, target=target)
 

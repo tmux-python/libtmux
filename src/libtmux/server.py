@@ -32,6 +32,7 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     _literal,
+    _prepare_program_args,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -2627,6 +2628,7 @@ class Server(
         detach_others: bool | None = None,
         no_size: bool | None = None,
         client_flags: str | None = None,
+        argv: t.Sequence[str] | None = None,
         **kwargs: t.Any,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
@@ -2640,6 +2642,10 @@ class Server(
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         session_name : str or Format, optional
             A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
             ::
@@ -2717,6 +2723,7 @@ class Server(
         >>> server.new_session(session_name='my session')
         Session($4 my session)
         """
+        program_args = _prepare_program_args(window_command, argv)
         if isinstance(session_name, Format) and kill_session:
             msg = (
                 "kill_session=True needs a plain session name: a Format's name "
@@ -2803,8 +2810,7 @@ class Server(
                 for k, v in environment.items():
                     tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
-            if window_command:
-                tmux_args += (escape_trailing_separator(window_command),)
+            tmux_args += program_args
 
             proc = self.cmd("new-session", *tmux_args)
 
