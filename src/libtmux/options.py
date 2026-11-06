@@ -39,15 +39,10 @@ being inherited,
 
 User options
 ------------
-There are also custom user options, preceded with @, which exist are stored to
-`Options.context.user_options` as a dictionary.
-
-> tmux set-option -w my-custom-variable my-value
-invalid option: my-custom-option
-
-> tmux set-option -w @my-custom-option my-value
-> tmux show-option -w
-@my-custom-optione my-value
+User options have names beginning with ``@``. Read and write them through
+:meth:`OptionsMixin.show_option`, :meth:`OptionsMixin.show_options`, and
+:meth:`OptionsMixin.set_option`. Their values remain strings, including
+``"123"``, ``"on"``, ``"off"``, and the empty string.
 
 Inherited options
 -----------------
@@ -214,10 +209,15 @@ def convert_value(
     return value
 
 
+def _is_user_option(name: object) -> bool:
+    """Identify user options, including tmux's inherited ``*`` marker."""
+    return isinstance(name, str) and name.startswith("@")
+
+
 def convert_values(
     value: _V | None,
 ) -> ConvertedValues | _V | None:
-    """Recursively convert values to python types via :func:`convert_value`.
+    """Convert values via :func:`convert_value`, preserving user-option strings.
 
     >>> convert_values(None)
 
@@ -236,13 +236,16 @@ def convert_values(
 
     >>> convert_values({"visual-bell": "on"})
     {'visual-bell': True}
+
+    >>> convert_values({"@count": "123", "@enabled*": "on"})
+    {'@count': '123', '@enabled*': 'on'}
     """
     if value is None:
         return None
     if isinstance(value, dict):
         # Note: SparseArray inherits from dict, so this branch handles both
         for k, v in value.items():
-            value[k] = convert_value(v)
+            value[k] = v if _is_user_option(k) else convert_value(v)
         return value
     if isinstance(value, list):
         for idx, v in enumerate(value):
@@ -1018,7 +1021,8 @@ class OptionsMixin(CmdMixin):
         Returns
         -------
         ExplodedComplexUntypedOptionsDict
-            Dictionary with all options, arrays exploded and values converted.
+            Dictionary with all options, arrays exploded and built-in values
+            converted. User options (names beginning with ``@``) remain strings.
 
         Raises
         ------
@@ -1213,6 +1217,8 @@ class OptionsMixin(CmdMixin):
         # Direct lookup for indexed queries (e.g., "status-format[0]")
         # tmux returns only that index's value, so we handle it before exploding
         if option_key in output_raw:
+            if _is_user_option(option_key):
+                return output_raw[option_key]
             return convert_value(output_raw[option_key])
 
         # For base name queries, explode arrays and return structured data
@@ -1249,6 +1255,9 @@ class OptionsMixin(CmdMixin):
         include_inherited: bool | None = None,
     ) -> t.Any | None:
         """Return option value for the target.
+
+        User options (names beginning with ``@``) remain strings. Built-in options
+        retain their numeric, boolean, or structured conversions.
 
         Parameters
         ----------
