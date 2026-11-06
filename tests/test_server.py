@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import os
@@ -367,49 +368,80 @@ def test_server_context_manager(TestServer: type[Server]) -> None:
     server.kill()
 
 
-def test_server_context_manager_spares_pre_existing_server(
+@pytest.mark.parametrize(
+    "appears_during_scope", [False, True], ids=["preexisting", "appears-during-scope"]
+)
+@pytest.mark.parametrize("raises", [False, True], ids=["normal", "exception"])
+def test_server_context_manager_spares_borrowed_server(
     TestServer: type[Server],
+    appears_during_scope: bool,
+    raises: bool,
 ) -> None:
-    """A server the ``with`` block did not start survives the block."""
-    pre_existing = TestServer()
-    pre_existing.new_session(session_name="important-work")
+    """Borrowed daemons, sessions and programs survive either exit path."""
+    owner = TestServer()
+    if not appears_during_scope:
+        owner.new_session(session_name="important-work", shell_command="exec cat")
 
-    with TestServer(socket_name=pre_existing.socket_name) as scoped:
+    failure = RuntimeError("scope failed")
+    expectation = (
+        pytest.raises(RuntimeError, match="scope failed")
+        if raises
+        else contextlib.nullcontext()
+    )
+    with expectation as caught, Server(socket_name=owner.socket_name) as scoped:
+        if appears_during_scope:
+            owner.new_session(session_name="important-work", shell_command="exec cat")
         assert scoped.is_alive()
+        session = owner.sessions.get(session_name="important-work")
+        assert session is not None
+        pane = session.active_pane
+        assert pane is not None
+        pane_pid = pane.pane_pid
+        assert pane_pid is not None
+        server_pid = owner.cmd("display-message", "-p", "#{pid}").stdout
+        if raises:
+            raise failure
 
-    assert pre_existing.is_alive()
-    assert [session.session_name for session in pre_existing.sessions] == [
-        "important-work",
-    ]
+    if raises:
+        assert caught is not None
+        assert caught.value is failure
+    assert owner.is_alive()
+    assert [item.session_id for item in owner.sessions] == [session.session_id]
+    assert owner.cmd("display-message", "-p", "#{pid}").stdout == server_pid
+    pane.refresh()
+    assert pane.pane_pid == pane_pid
+    assert pane.pane_dead == "0"
+    os.kill(int(pane_pid), 0)
 
-    pre_existing.kill()
+    owner.kill()
+    assert not owner.is_alive()
 
 
 def test_server_context_manager_spares_the_default_socket(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
 ) -> None:
-    """A bare ``Server()`` leaves the default socket's daemon alone.
-
-    The shape of the original report: no socket name, no socket path, so the
-    handle addresses whichever tmux the caller already has open. Every other
-    test here goes through the ``TestServer`` factory, which mints a private
-    socket and therefore cannot reproduce it.
-    """
+    """Use a private socket directory because TestServer always supplies a name."""
     monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path))
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
 
     already_running = Server()
-    already_running.new_session(session_name="important-work")
+    try:
+        already_running.new_session(session_name="important-work")
+        socket_path = already_running.cmd("display-message", "-p", "#{socket_path}")
+        assert pathlib.Path(socket_path.stdout[0]).parent.parent == tmp_path
 
-    with Server() as scoped:
-        assert scoped.is_alive()
+        with Server() as scoped:
+            assert scoped.is_alive()
 
-    assert already_running.is_alive()
-    assert [session.session_name for session in already_running.sessions] == [
-        "important-work",
-    ]
-
-    already_running.kill()
+        assert already_running.is_alive()
+        assert [session.session_name for session in already_running.sessions] == [
+            "important-work",
+        ]
+    finally:
+        if already_running.is_alive():
+            already_running.kill()
 
 
 def test_server_context_manager_kill_on_exit_true(

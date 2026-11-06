@@ -279,9 +279,8 @@ class Server(
     def __enter__(self) -> Self:
         """Enter the context, returning self.
 
-        Costs nothing and probes nothing: whether the block may destroy the
-        daemon is decided by :attr:`Server.kill_on_exit`, which the caller set
-        before entering.
+        Do not probe the daemon or claim ownership of it. Teardown depends on
+        :attr:`Server.kill_on_exit` when the block exits.
 
         Returns
         -------

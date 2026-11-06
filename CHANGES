@@ -47,7 +47,7 @@ _Notes on the upcoming release will go here._
 
 ### Breaking changes
 
-#### Scoping a `Server` no longer kills it (#724)
+#### Server scopes preserve running sessions (#728)
 
 Leaving a `with` block used to kill any live {class}`~libtmux.Server`, so
 `with Server() as server:` around no work at all destroyed the default tmux
@@ -55,10 +55,12 @@ daemon and every session in it. A server is a handle on a socket rather than a
 connection: the same handle addresses a daemon whether or not your process
 started it, so scoping one to a block is not grounds to destroy it.
 
-Teardown is now something you ask for, with the new
-{attr}`~libtmux.Server.kill_on_exit`. {class}`~libtmux.Session`,
-{class}`~libtmux.Window` and {class}`~libtmux.Pane` are unchanged — those you
-get by creating them. See {ref}`context_managers`.
+Set {attr}`~libtmux.Server.kill_on_exit` to request teardown. Normal and
+exceptional exits otherwise preserve the server, including a daemon started
+during the block by another client. {class}`~libtmux.Session`,
+{class}`~libtmux.Window` and {class}`~libtmux.Pane` contexts still destroy their
+selected object, including one retrieved from an existing server. See
+{ref}`context_managers` and {doc}`migration`.
 
 ```python
 # Before: killed whatever daemon was on that socket

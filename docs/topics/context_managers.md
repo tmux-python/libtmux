@@ -56,7 +56,8 @@ True
 ['important-work']
 ```
 
-When teardown *is* what you want, say so with `kill_on_exit`:
+When you intend to destroy the server and all its sessions, set
+{attr}`~libtmux.Server.kill_on_exit`:
 
 ```python
 >>> with Server(socket_name='libtmux_doctest_ctx', kill_on_exit=True) as disposable:
@@ -65,10 +66,13 @@ When teardown *is* what you want, say so with `kill_on_exit`:
 False
 ```
 
-That is the one asymmetry in this page. A session, window or pane is yours by
-construction — you called {meth}`~libtmux.Server.new_session` or
-{meth}`~libtmux.Window.split` to get it. A server was very likely already
-there.
+The default also preserves a server started during the block, including one
+started by another client, and an exception from the block propagates without
+destroying the server. Constructing a handle does not establish ownership.
+
+Session, window and pane contexts still destroy their selected object on exit,
+including objects retrieved from an existing server. Use those contexts only
+when you intend to destroy that object.
 
 ## Session context manager
 
@@ -134,10 +138,12 @@ This ensures that:
 1. The pane is killed when exiting its context
 2. The window is killed when exiting its context
 3. The session is killed when exiting its context
-4. The server is left running, unless it was built with `kill_on_exit=True`
+4. The server context sends no kill command unless `kill_on_exit=True`
 
 The pane, window and session tear down in reverse order (pane → window →
 session), which keeps tmux's own bookkeeping consistent.
+tmux may still exit after its last session ends, according to its
+[`exit-empty` option](https://github.com/tmux/tmux/blob/3.2a/tmux.1#L3413-L3417).
 
 ## Benefits
 
