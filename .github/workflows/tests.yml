@@ -136,7 +136,12 @@ jobs:
       - name: Test counter-backed history and its executable example
         run: |
           tmux -V
-          time env -u TMUX -u TMUX_PANE uv run pytest tests/test_capture.py --reruns=0 --tb=short
+          time env -u TMUX -u TMUX_PANE uv run pytest tests/test_capture.py --reruns=0 --tb=short --cov=./ --cov-report=xml:coverage-history.xml
+
+      - uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-history.xml
 
   release:
     runs-on: ubuntu-latest
