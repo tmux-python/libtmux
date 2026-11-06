@@ -388,12 +388,19 @@ class Server(
         -------
         :class:`common.tmux_cmd`
 
+        Raises
+        ------
+        NotImplementedError
+            A requested bound uses a custom dispatcher or injected engine.
+
         Notes
         -----
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
+        if timeout is not None:
+            self._raise_if_custom_dispatch()
         svr_args: list[str | int] = [cmd]
         cmd_args: list[str | int] = []
         if self.socket_name:
@@ -415,6 +422,16 @@ class Server(
         if timeout is None:
             return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
         return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin, timeout=timeout)
+
+    def _raise_if_custom_dispatch(self) -> None:
+        """Refuse command deadlines outside the native subprocess dispatcher."""
+        if (
+            type(self).cmd is not _STOCK_SERVER_CMD
+            or "cmd" in vars(self)
+            or getattr(self, "_engine", None) is not None
+        ):
+            msg = "Command deadlines cannot use a custom command backend"
+            raise NotImplementedError(msg)
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -2889,3 +2906,6 @@ class Server(
             replacement="Server.sessions property",
             version="0.17.0",
         )
+
+
+_STOCK_SERVER_CMD = Server.cmd

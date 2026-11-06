@@ -82,6 +82,65 @@ def test_object_command_accepts_optional_deadline(session: Session, scope: str) 
     assert result.returncode == 0
 
 
+@pytest.mark.parametrize("scope", ["session", "window", "pane"])
+@pytest.mark.parametrize("dispatch", ["instance", "class", "subclass"])
+def test_object_deadline_refuses_custom_dispatch(
+    monkeypatch: pytest.MonkeyPatch, scope: str, dispatch: str
+) -> None:
+    """A dispatcher accepting arbitrary keywords cannot silently discard a bound."""
+    calls: list[dict[str, t.Any]] = []
+    result = t.cast("tmux_cmd", object())
+
+    def custom(*_args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        calls.append(kwargs)
+        return result
+
+    server: libtmux.Server
+    if dispatch == "subclass":
+
+        class RoutedServer(libtmux.Server):
+            cmd = custom
+
+        server = RoutedServer(
+            socket_name="custom-deadline", tmux_bin="/not-an-executable"
+        )
+    else:
+        server = libtmux.Server(
+            socket_name="custom-deadline", tmux_bin="/not-an-executable"
+        )
+        monkeypatch.setattr(
+            server if dispatch == "instance" else type(server), "cmd", custom
+        )
+
+    target = {
+        "session": libtmux.Session(server=server, session_id="$0"),
+        "window": libtmux.Window(server=server, window_id="@0"),
+        "pane": libtmux.Pane(server=server, pane_id="%0"),
+    }[scope]
+    assert target.cmd("display-message", "-p", "unbounded", timeout=None) is result
+    assert len(calls) == 1
+    assert "timeout" not in calls[0]
+    calls.clear()
+
+    with pytest.raises(NotImplementedError, match="custom"):
+        target.cmd("new-window", timeout=0.03)
+    assert not calls
+
+
+def test_command_deadline_refuses_an_injected_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected backend must not silently fall back to a local client."""
+    server = libtmux.Server(
+        socket_name="custom-deadline", tmux_bin="/not-an-executable"
+    )
+    backend = object()
+    monkeypatch.setattr(server, "_engine", backend, raising=False)
+    with pytest.raises(NotImplementedError, match="custom"):
+        server.cmd("new-session", "-d", timeout=0.03)
+    assert getattr(server, "_engine", None) is backend
+
+
 @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
 def test_invalid_deadline_refuses_before_effects(
     server: Server, timeout: float

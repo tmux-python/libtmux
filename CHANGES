@@ -47,11 +47,13 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
-#### Optional command deadlines
+#### Optional command deadlines (#807)
 
 Set deadlines for individual tmux commands while existing calls keep
 their blocking behavior. On expiry, libtmux cleans up its client;
-operations tmux already accepted can still take effect. (#807)
+operations tmux already accepted can still take effect. Object command
+deadlines refuse custom server dispatchers and injected engines before
+effects; unbounded calls retain their existing routes.
 
 ### Documentation
 
