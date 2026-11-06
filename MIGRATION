@@ -113,6 +113,21 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+## Next release: Window reuse connections
+
+{meth}`~libtmux.Session.new_window` with `select_existing=True` can return a
+Window backed by a separate Server pinned to the observed socket and
+executable. Config and color settings are retained, but
+`window.server is session.server` is not guaranteed. Continue using the
+returned Window for commands instead of replacing its Server with a mutable
+parent facade. Window equality still compares window IDs; those IDs are not
+globally unique across servers or daemon lifetimes.
+
+Session-scoped reuse requires stock native command dispatch. Overridden `cmd`
+methods and injected engines raise before submission because reconstructing
+their selected backend is not qualified. Ordinary creation with
+`select_existing=False` keeps its existing dispatch behavior.
+
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
 {exc}`~libtmux.exc.ObjectDoesNotExist` and
