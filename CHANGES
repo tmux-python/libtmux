@@ -47,6 +47,14 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### Standalone window and pane examples (#815)
+
+Three {doc}`complete programs </topics/examples>` create a window, rename
+a window, and send text to a pane reader. Each checks its result and cleans
+up a private server. The test suite runs the files unchanged, repeats each
+program, and verifies that an unrelated session remains alive. Source
+distributions include the programs, and mypy checks their public API use.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
