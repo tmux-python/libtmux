@@ -19,6 +19,7 @@ from .formats import Format
 from .pane import Pane
 from .server import Server
 from .session import Session
+from .session_creation import FoundOrCreated, SessionIdentity
 from .window import Window
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
@@ -26,9 +27,11 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 __all__ = (
     "Client",
     "Format",
+    "FoundOrCreated",
     "Pane",
     "Server",
     "Session",
+    "SessionIdentity",
     "Window",
     "__author__",
     "__copyright__",
