@@ -5,7 +5,7 @@ tmux Hook Features
 Hooks are array options (e.g., ``session-renamed[0]``, ``session-renamed[1]``)
 with sparse index support (can have gaps: ``[0]``, ``[5]``, ``[10]``).
 
-All features available in libtmux's minimum supported version (tmux 3.2+):
+Features available on the tmux 3.3a baseline:
 
 - Session, window, and pane-level hooks
 - Window hooks via ``-w`` flag, pane hooks via ``-p`` flag
@@ -38,7 +38,7 @@ from libtmux._internal.constants import (
     Hooks,
 )
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import CmdMixin, has_lt_version
+from libtmux.common import CmdMixin
 from libtmux.constants import (
     DEFAULT_OPTION_SCOPE,
     HOOK_SCOPE_FLAG_MAP,
@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 class HooksMixin(CmdMixin):
     """Mixin for manager scoped hooks in tmux.
 
-    Requires tmux 3.1+. For older versions, use raw commands.
+    Commands share the tmux 3.3a core minimum.
     """
 
     default_hook_scope: OptionScope | None
@@ -69,13 +69,6 @@ class HooksMixin(CmdMixin):
         """When not a user (custom) hook, scope can be implied."""
         self.default_hook_scope = default_hook_scope
         self.hooks = Hooks()
-
-    @property
-    def _tmux_bin(self) -> str | None:
-        """Resolve tmux_bin from self (Server) or self.server (Session/Window/Pane)."""
-        return getattr(self, "tmux_bin", None) or getattr(
-            getattr(self, "server", None), "tmux_bin", None
-        )
 
     def run_hook(
         self,
@@ -96,13 +89,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
-                warnings.warn(
-                    "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
-                    stacklevel=2,
-                )
-            else:
-                flags += (flag,)
+            flags += (flag,)
 
         cmd = self.cmd(
             "set-hook",
@@ -175,13 +162,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
-                warnings.warn(
-                    "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
-                    stacklevel=2,
-                )
-            else:
-                flags += (flag,)
+            flags += (flag,)
 
         cmd = self.cmd(
             "set-hook",
@@ -228,13 +209,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
-                warnings.warn(
-                    "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
-                    stacklevel=2,
-                )
-            else:
-                flags += (flag,)
+            flags += (flag,)
 
         cmd = self.cmd(
             "set-hook",
@@ -293,13 +268,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
-                warnings.warn(
-                    "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
-                    stacklevel=2,
-                )
-            else:
-                flags += (flag,)
+            flags += (flag,)
 
         cmd = self.cmd("show-hooks", *flags)
         output = cmd.stdout
@@ -351,13 +320,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
-                warnings.warn(
-                    "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
-                    stacklevel=2,
-                )
-            else:
-                flags += (flag,)
+            flags += (flag,)
 
         flags += (hook,)
 

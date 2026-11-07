@@ -7,29 +7,72 @@ libtmux.common
 
 from __future__ import annotations
 
-import functools
 import logging
-import re
 import shlex
 import shutil
 import subprocess
-import sys
 import typing as t
+import warnings
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal import version as _version
+from ._internal.support import versions
+from ._internal.version import (
+    get_version,
+    get_version_str,
+    has_gt_version,
+    has_gte_version,
+    has_lt_version,
+    has_lte_version,
+    has_minimum_version,
+    has_version,
+)
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
 
+__all__ = (
+    "CmdMixin",
+    "CmdProtocol",
+    "EnvironmentMixin",
+    "PaneDict",
+    "SessionDict",
+    "WindowDict",
+    "WindowOptionDict",
+    "get_libtmux_version",
+    "get_version",
+    "get_version_str",
+    "has_gt_version",
+    "has_gte_version",
+    "has_lt_version",
+    "has_lte_version",
+    "has_minimum_version",
+    "has_version",
+    "raise_if_stderr",
+    "session_check_name",
+    "tmux_cmd",
+)
+
 logger = logging.getLogger(__name__)
 
+_DEPRECATED_CONSTANTS = frozenset({"TMUX_MIN_VERSION", "TMUX_MAX_VERSION"})
 
-#: Minimum version of tmux required to run libtmux
-TMUX_MIN_VERSION = "3.2a"
 
-#: Most recent version of tmux supported
-TMUX_MAX_VERSION = "3.7"
+def __getattr__(name: str) -> t.Any:
+    """Serve the legacy tmux version constants, warning on each access."""
+    if name in _DEPRECATED_CONSTANTS:
+        warnings.warn(
+            f"libtmux.common.{name} describes the tmux client executable's "
+            "supported range and is deprecated. Use "
+            "libtmux._internal.support.MINIMUM for the floor.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return getattr(_version, name)
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
 
 SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
@@ -309,7 +352,12 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        _version_cache: versions.VersionCache | None = None,
+    ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -319,6 +367,8 @@ class tmux_cmd:
         cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
+        cached = _version_cache is not None and bool(_version_cache)
+        dispatched, marker = versions.prepare(cmd, cache=_version_cache)
 
         if logger.isEnabledFor(logging.DEBUG):
             cmd_str = shlex.join(cmd)
@@ -328,16 +378,13 @@ class tmux_cmd:
             )
 
         try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
+            stdout, stderr, returncode = self._dispatch(dispatched)
+            if cached and versions.daemon_gone(stderr):
+                # The cached daemon vanished; nothing ran, so check its version again.
+                assert _version_cache is not None
+                _version_cache.clear()
+                dispatched, marker = versions.prepare(cmd, cache=_version_cache)
+                stdout, stderr, returncode = self._dispatch(dispatched)
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
@@ -349,6 +396,7 @@ class tmux_cmd:
             )
             raise
 
+        versions.check_result(stderr, marker, cache=_version_cache)
         self.returncode = returncode
 
         stdout_split = stdout.split("\n")
@@ -377,277 +425,17 @@ class tmux_cmd:
                 },
             )
 
-
-class _TmuxVersionUnavailable(Exception):
-    """Internal signal: this tmux predates the ``-V`` flag (pre-1.7)."""
-
-
-def _no_version_flag_fallback() -> str:
-    """Return a synthetic version string when tmux lacks ``-V``.
-
-    OpenBSD ships a ``-V``-less base tmux, so assume the maximum supported
-    version; any other platform is genuinely too old.
-    """
-    if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-        return f"{TMUX_MAX_VERSION}-openbsd"
-    msg = (
-        f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
-        " does not meet the minimum tmux version requirement."
-    )
-    raise exc.LibTmuxException(msg)
-
-
-def _query_version(tmux_bin: str | None = None) -> str:
-    """Return the raw ``tmux -V`` version token, letter suffix intact.
-
-    Runs ``tmux -V`` and extracts the version token (e.g. ``"3.7a"``,
-    ``"master"``, ``"next-3.8"``). Not memoized -- :func:`get_version` and
-    :func:`get_version_str` each cache their own result on top of this query.
-
-    Parameters
-    ----------
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    str
-        Raw version token from ``tmux -V``.
-
-    Raises
-    ------
-    _TmuxVersionUnavailable
-        tmux predates the ``-V`` flag; callers apply
-        :func:`_no_version_flag_fallback`.
-    :exc:`~libtmux.exc.VersionTooLow`
-        tmux reported another error on ``-V``.
-    """
-    proc = tmux_cmd("-V", tmux_bin=tmux_bin)
-    if proc.stderr:
-        if proc.stderr[0] == "tmux: unknown option -- V":
-            raise _TmuxVersionUnavailable
-        raise exc.VersionTooLow(proc.stderr)
-
-    return proc.stdout[0].split("tmux ")[1]
-
-
-@functools.cache
-def get_version_str(tmux_bin: str | None = None) -> str:
-    """Return the tmux version string verbatim, preserving letter suffixes.
-
-    :func:`get_version` normalizes point releases for numeric comparison
-    (``"3.7a"`` becomes ``LooseVersion("3.7")``). This helper keeps the raw
-    suffix, so callers can distinguish patch releases whose behavior differs
-    -- for example the tmux 3.7 break-pane crash, reverted in 3.7a.
-
-    Parameters
-    ----------
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    str
-        Raw tmux version, e.g. ``"3.7a"``. Git builds return ``"master"``;
-        OpenBSD base tmux returns ``"<max>-openbsd"``.
-
-    Examples
-    --------
-    >>> isinstance(get_version_str(), str)
-    True
-
-    Notes
-    -----
-    Memoized via :func:`functools.cache`, keyed on *tmux_bin*, independently of
-    :func:`get_version`. Call ``get_version_str.cache_clear()`` after swapping
-    the tmux binary.
-    """
-    try:
-        return _query_version(tmux_bin=tmux_bin)
-    except _TmuxVersionUnavailable:
-        return _no_version_flag_fallback()
-
-
-@functools.cache
-def get_version(tmux_bin: str | None = None) -> LooseVersion:
-    """Return tmux version.
-
-    If tmux is built from git master, the version returned will be the latest
-    version appended with -master, e.g. ``2.4-master``.
-
-    If using OpenBSD's base system tmux, the version will have ``-openbsd``
-    appended to the latest version, e.g. ``2.4-openbsd``.
-
-    Parameters
-    ----------
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux from
-        :func:`shutil.which`.
-
-    Returns
-    -------
-    :class:`distutils.version.LooseVersion`
-        tmux version according to *tmux_bin* if provided, otherwise the
-        system tmux from :func:`shutil.which`
-
-    Notes
-    -----
-    Memoized via :func:`functools.cache`, keyed on the *tmux_bin* argument
-    (``None`` is a distinct key from any explicit path), independently of
-    :func:`get_version_str`. The cache is sticky across ``PATH`` changes and
-    on-disk binary swaps when *tmux_bin* is ``None`` or the same path string --
-    call ``get_version.cache_clear()`` to invalidate. Tests that monkey-patch
-    :class:`tmux_cmd` should call ``cache_clear()`` before asserting
-    parsed-version behavior.
-    """
-    try:
-        version = _query_version(tmux_bin=tmux_bin)
-    except _TmuxVersionUnavailable:
-        # OpenBSD base tmux lacks ``-V``; skip letter-stripping on the synthetic.
-        return LooseVersion(_no_version_flag_fallback())
-
-    # Allow latest tmux HEAD
-    if version == "master":
-        return LooseVersion(f"{TMUX_MAX_VERSION}-master")
-
-    version = re.sub(r"[a-z-]", "", version)
-
-    return LooseVersion(version)
-
-
-def has_version(version: str, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux version installed.
-
-    Parameters
-    ----------
-    version : str
-        version number, e.g. '3.2a'
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    bool
-        True if version matches
-    """
-    return get_version(tmux_bin=tmux_bin) == LooseVersion(version)
-
-
-def has_gt_version(min_version: str, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux version greater than minimum.
-
-    Parameters
-    ----------
-    min_version : str
-        tmux version, e.g. '3.2a'
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    bool
-        True if version above min_version
-    """
-    return get_version(tmux_bin=tmux_bin) > LooseVersion(min_version)
-
-
-def has_gte_version(min_version: str, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux version greater or equal to minimum.
-
-    Parameters
-    ----------
-    min_version : str
-        tmux version, e.g. '3.2a'
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    bool
-        True if version above or equal to min_version
-    """
-    return get_version(tmux_bin=tmux_bin) >= LooseVersion(min_version)
-
-
-def has_lte_version(max_version: str, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux version less or equal to minimum.
-
-    Parameters
-    ----------
-    max_version : str
-        tmux version, e.g. '3.2a'
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    bool
-         True if version below or equal to max_version
-    """
-    return get_version(tmux_bin=tmux_bin) <= LooseVersion(max_version)
-
-
-def has_lt_version(max_version: str, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux version less than minimum.
-
-    Parameters
-    ----------
-    max_version : str
-        tmux version, e.g. '3.2a'
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    bool
-        True if version below max_version
-    """
-    return get_version(tmux_bin=tmux_bin) < LooseVersion(max_version)
-
-
-def has_minimum_version(raises: bool = True, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux meets version requirement. Version >= 3.2a.
-
-    Parameters
-    ----------
-    raises : bool
-        raise exception if below minimum version requirement
-    tmux_bin : str, optional
-        Path to tmux binary. If *None*, uses the system tmux.
-
-    Returns
-    -------
-    bool
-        True if tmux meets minimum required version.
-
-    Raises
-    ------
-    libtmux.exc.VersionTooLow
-        tmux version below minimum required for libtmux
-
-    Notes
-    -----
-    .. versionchanged:: 0.49.0
-        Minimum version bumped to 3.2a. For older tmux, use libtmux v0.48.x.
-
-    .. versionchanged:: 0.7.0
-        No longer returns version, returns True or False
-
-    .. versionchanged:: 0.1.7
-        Versions will now remove trailing letters per
-        `Issue 55 <https://github.com/tmux-python/tmuxp/issues/55>`_.
-    """
-    current_version = get_version(tmux_bin=tmux_bin)
-    if current_version < LooseVersion(TMUX_MIN_VERSION):
-        if raises:
-            msg = (
-                f"libtmux only supports tmux {TMUX_MIN_VERSION} and greater. This "
-                f"system has {current_version} installed. Upgrade your "
-                "tmux to use libtmux, or use libtmux v0.48.x for older tmux versions."
-            )
-            raise exc.VersionTooLow(msg)
-        return False
-    return True
+    def _dispatch(self, argv: list[str]) -> tuple[str, str, int]:
+        self.process = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="backslashreplace",
+        )
+        stdout, stderr = self.process.communicate()
+        return stdout, stderr, self.process.returncode
 
 
 def session_check_name(session_name: str | None) -> None:
