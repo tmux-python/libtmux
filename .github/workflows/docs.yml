@@ -1,70 +1,133 @@
 name: docs
 
 on:
+  pull_request:
+    paths: &docs-paths
+      - CHANGES
+      - README.*
+      - 'docs/**'
+      - 'examples/**'
+      - 'src/libtmux/**'
+      - uv.lock
+      - pyproject.toml
+      - '.github/workflows/docs.yml'
   push:
-    branches:
-      - master
+    branches: [master]
+    tags: ['v*']
+    paths: *docs-paths
+  workflow_dispatch:
+    inputs:
+      source-ref:
+        description: Exact source ref to build
+        required: true
+        default: master
+      version:
+        description: URL version slug
+        required: true
+        default: latest
+      version-kind:
+        description: Version policy
+        required: true
+        type: choice
+        options: [trunk, tag, alias]
+        default: trunk
+      is-default:
+        description: Make this version canonical
+        required: true
+        type: boolean
+        default: false
+      resolves-to:
+        description: Immutable target for an alias
+        required: false
+        default: ''
+      publish:
+        description: Publish the selected revision to libtmux.org
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  build:
+  build-libtmux-org:
+    uses: libtmux/docs/.github/workflows/port-docs.yml@983db91693417c1c280895377b4428259867b240
+    with:
+      port: py
+      source-ref: ${{ inputs.source-ref }}
+      version: ${{ inputs.version }}
+      version-kind: ${{ inputs.version-kind }}
+      is-default: ${{ inputs.is-default == true }}
+      resolves-to: ${{ inputs.resolves-to }}
+      publish: ${{ inputs.publish == true }}
+
+  # Both reusable workflows must move together to the same reviewed commit.
+  # Pull requests build only; dispatch publication is an explicit input.
+  publish-libtmux-org:
+    needs: build-libtmux-org
+    if: needs.build-libtmux-org.outputs.should-publish == 'true'
+    concurrency:
+      group: docs-deploy-${{ github.repository }}-py
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.build-libtmux-org.outputs.matrix) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@983db91693417c1c280895377b4428259867b240
+    with:
+      path-prefix: py/${{ matrix.version }}
+      artifact: docs-py-${{ matrix.version }}
+      version-kind: ${{ matrix.kind }}
+      port: py
+      version: ${{ matrix.version }}
+      label: ${{ matrix.version }}
+      is-default: ${{ matrix.isDefault }}
+      resolves-to: ${{ matrix.resolvesTo }}
+      environment: docs
+    secrets:
+      role-arn: ${{ secrets.LIBTMUX_ORG_ROLE_ARN }}
+      bucket: ${{ secrets.LIBTMUX_ORG_BUCKET }}
+      distribution: ${{ secrets.LIBTMUX_ORG_DISTRIBUTION }}
+
+  # The standalone site keeps its root Sphinx build and follows local symlinks.
+  # Only a default-branch push publishes it; branch dispatches target libtmux.org.
+  publish-git-pull-com:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment: docs
-    strategy:
-      matrix:
-        python-version: ['3.14']
+    env:
+      UV_FROZEN: 'true'
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: docs-git-pull-com-${{ github.repository }}
+      queue: max
     steps:
       - uses: actions/checkout@v7
 
-      - name: Filter changed file paths to outputs
-        uses: dorny/paths-filter@v4
-        id: changes
-        with:
-          filters: |
-            root_docs:
-              - CHANGES
-              - README.*
-            docs:
-              - 'docs/**'
-              - 'examples/**'
-            python_files:
-              - 'src/libtmux/**'
-              - uv.lock
-              - pyproject.toml
-
-      - name: Should publish
-        if: steps.changes.outputs.docs == 'true' || steps.changes.outputs.root_docs == 'true' || steps.changes.outputs.python_files == 'true'
-        run: echo "PUBLISH=$(echo true)" >> $GITHUB_ENV
-
       - name: Install uv
-        if: env.PUBLISH == 'true'
         uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
 
-      - name: Set up Python ${{ matrix.python-version }}
-        if: env.PUBLISH == 'true'
-        run: uv python install ${{ matrix.python-version }}
+      - name: Set up Python
+        run: uv python install 3.14
 
       - name: Install dependencies [w/ docs]
-        if: env.PUBLISH == 'true'
-        run: uv sync --all-extras --dev
+        run: uv sync --frozen --all-extras --dev
 
       - name: Install just
-        if: env.PUBLISH == 'true'
         uses: extractions/setup-just@v4
 
       - name: Print python versions
-        if: env.PUBLISH == 'true'
         run: |
           python -V
           uv run python -V
 
       - name: Cache sphinx fonts
-        if: env.PUBLISH == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/sphinx-fonts
@@ -73,44 +136,29 @@ jobs:
             sphinx-fonts-
 
       - name: Build documentation
-        if: env.PUBLISH == 'true'
         env:
-          # This tree is published to the bucket root, not nested under
-          # libtmux.org's shell, so the shell's chrome and site-wide search
-          # are not reachable from here. Keep Furo's own search page and load
-          # no chrome. See the note in docs/conf.py.
-          #
-          # Delete this when the sync below moves under libtmux.org, to a
-          # per-port prefix. Left behind, the build publishes nested and
-          # still unskinned — no chrome, and Furo's search where the site's
-          # own belongs — which reads as the shell having failed rather than
-          # as a stale flag. tests/test_docs_conf.py covers both shapes.
           LIBTMUX_DOCS_STANDALONE: '1'
         run: |
           cd docs && just html
 
-      - name: Configure AWS Credentials
-        if: env.PUBLISH == 'true'
+      - name: Configure AWS credentials for libtmux.git-pull.com
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.LIBTMUX_DOCS_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Push documentation to S3
-        if: env.PUBLISH == 'true'
         run: |
           aws s3 sync docs/_build/html "s3://${{ secrets.LIBTMUX_DOCS_BUCKET }}" \
             --delete --follow-symlinks
 
       - name: Invalidate CloudFront
-        if: env.PUBLISH == 'true'
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ secrets.LIBTMUX_DOCS_DISTRIBUTION }}" \
             --paths "/index.html" "/objects.inv" "/searchindex.js"
 
       - name: Purge cache on Cloudflare
-        if: env.PUBLISH == 'true'
         uses: jakejarvis/cloudflare-purge-action@v0.3.0
         env:
           CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
