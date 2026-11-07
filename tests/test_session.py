@@ -10,7 +10,7 @@ from contextlib import nullcontext as does_not_raise
 
 import pytest
 
-from libtmux import exc
+from libtmux import common, exc
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -671,6 +671,368 @@ def test_new_window_select_existing(session: Session) -> None:
         select_existing=True,
     )
     assert w.window_name == "selexist_new"
+
+
+@pytest.mark.parametrize("attach", [False, True])
+@pytest.mark.parametrize("name", ["logs", "reuse:logs"])
+def test_new_window_reuses_existing_window(
+    session: Session,
+    attach: bool,
+    name: str,
+) -> None:
+    """Reuse preserves the program and selection despite unrelated read hooks."""
+    existing = session.new_window(
+        window_name=name,
+        window_shell="exec /bin/cat",
+    )
+    pane = existing.active_pane
+    assert pane is not None
+    before = [(window.window_id, window.window_name) for window in session.windows]
+    active_id = session.active_window.window_id
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", hook, f"select-window -t {active_id}")
+
+    reused = session.new_window(window_name=name, select_existing=True, attach=attach)
+
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", "-u", hook)
+    assert reused.window_id == existing.window_id
+    reused_pane = reused.active_pane
+    assert reused_pane is not None
+    assert reused_pane.pane_id == pane.pane_id
+    assert reused_pane.pane_pid == pane.pane_pid
+    assert reused_pane.pane_dead == "0"
+    assert [
+        (window.window_id, window.window_name) for window in session.windows
+    ] == before
+    assert session.active_window.window_id == (
+        existing.window_id if attach else active_id
+    )
+
+
+@pytest.mark.parametrize("attach", [False, True])
+@pytest.mark.parametrize("target_kind", ["index", "id", "other-session", "session-id"])
+def test_new_window_reuses_stable_target(
+    session: Session, attach: bool, target_kind: str
+) -> None:
+    """Absolute targets retain the native choice and its program."""
+    if target_kind in ("index", "id") and not common.has_gte_version("3.8"):
+        pytest.skip("Index reuse needs tmux 3.8")
+    selected = session
+    if target_kind in ("other-session", "session-id"):
+        selected = session.server.new_session(session_name="other-reuse")
+    existing = selected.new_window(
+        window_name="logs", window_index="5", window_shell="exec /bin/cat"
+    )
+    pane = existing.active_pane
+    assert pane is not None
+    before = {window.window_id for window in session.server.windows}
+    target_window = None
+    if target_kind == "id":
+        assert existing.window_id is not None
+        target_window = existing.window_id
+    elif target_kind == "other-session":
+        target_window = f"{selected.session_id}:"
+    elif target_kind == "session-id":
+        target_window = selected.session_id
+
+    reused = session.new_window(
+        window_name="logs",
+        select_existing=True,
+        attach=attach,
+        window_index="5" if target_kind == "index" else "",
+        target_window=target_window,
+    )
+
+    assert reused.window_id == existing.window_id
+    reused_pane = reused.active_pane
+    assert reused_pane is not None
+    assert reused_pane.pane_pid == pane.pane_pid
+    assert reused_pane.pane_dead == "0"
+    assert {window.window_id for window in session.server.windows} == before
+
+
+@pytest.mark.skipif(
+    not common.has_gte_version("3.4"), reason="Name formats need tmux 3.4"
+)
+def test_new_window_reuse_does_not_guess_format_context(session: Session) -> None:
+    """An unverifiable reply must not return a different live window."""
+    session.new_window(window_name="logs")
+    session.new_window(window_name="decoy")
+    with pytest.raises(exc.LibTmuxException, match="identity of the reused window"):
+        session.new_window(
+            window_name="#{?session_format,logs,decoy}", select_existing=True
+        )
+
+
+@pytest.mark.skipif(
+    not common.has_gte_version("3.4"), reason="Name formats need tmux 3.4"
+)
+@pytest.mark.parametrize("name", ["#{?session_format,logs,decoy}", "#{command}"])
+def test_new_window_reuse_retains_native_selected_receipt(
+    session: Session, name: str
+) -> None:
+    """A queued receipt precedes a selection hook that changes the active window."""
+    expected = session.new_window(
+        window_name="new-window" if name == "#{command}" else "logs",
+        window_shell="exec /bin/cat",
+    )
+    decoy = session.new_window(window_name="decoy", window_shell="exec /bin/cat")
+    pane = expected.active_pane
+    assert pane is not None
+    before = {window.window_id for window in session.windows}
+    session.cmd(
+        "set-hook", "session-window-changed", f"select-window -t {decoy.window_id}"
+    )
+
+    reused = session.new_window(window_name=name, select_existing=True, attach=True)
+
+    assert reused.window_id == expected.window_id
+    assert reused.window_name == expected.window_name
+    assert reused.window_width == expected.window_width
+    assert session.active_window.window_id == decoy.window_id
+    reused_pane = reused.active_pane
+    assert reused_pane is not None and reused_pane.pane_pid == pane.pane_pid
+    assert reused_pane.pane_dead == "0"
+    assert {window.window_id for window in session.windows} == before
+
+
+@pytest.mark.skipif(
+    not common.has_gte_version("3.8"), reason="Index reuse needs tmux 3.8"
+)
+@pytest.mark.parametrize("attach", [False, True])
+@pytest.mark.parametrize("offset", ["+2", "-3"])
+def test_new_window_reuses_relative_index_from_original_selection(
+    session: Session, attach: bool, offset: str
+) -> None:
+    """Index arithmetic keeps its original origin across sparse native indexes."""
+    origin_window = session.active_window
+    origin = int(origin_window.window_index or "0")
+    expected = session.new_window(
+        window_name="relative",
+        window_index=str(origin + 2),
+        window_shell="exec /bin/cat",
+    )
+    decoy = session.new_window(
+        window_name="decoy", window_index=str(origin + 5), window_shell="exec /bin/cat"
+    )
+    session.new_window(
+        window_name="shifted",
+        window_index=str(origin + 7),
+        window_shell="exec /bin/cat",
+    )
+    if offset.startswith("-"):
+        decoy.select()
+    active = session.active_window.window_id
+    pane = expected.active_pane
+    assert pane is not None
+    before = {window.window_id for window in session.windows}
+    hook_target = origin_window if offset.startswith("-") else decoy
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", hook, f"select-window -t {hook_target.window_id}")
+
+    reused = session.new_window(
+        window_index=offset, select_existing=True, attach=attach
+    )
+
+    for hook in ("after-list-windows", "after-display-message"):
+        session.cmd("set-hook", "-u", hook)
+    assert reused.window_id == expected.window_id
+    assert session.active_window.window_id == (expected.window_id if attach else active)
+    reused_pane = reused.active_pane
+    assert reused_pane is not None and reused_pane.pane_pid == pane.pane_pid
+    assert {window.window_id for window in session.windows} == before
+
+
+def test_new_window_reuse_does_not_start_missing_server(
+    server: Server, tmp_path: pathlib.Path
+) -> None:
+    """Identity snapshots must not load config or start an absent daemon."""
+    config = tmp_path / "unexpected-server.conf"
+    config.write_text('new-session -d -s unexpected "exec /bin/cat"\n')
+    server.config_file = str(config)
+    session = Session(server=server, session_id="$0")
+
+    with pytest.raises(exc.LibTmuxException):
+        session.new_window(window_name="not-submitted", select_existing=True)
+
+    assert not server.is_alive()
+
+
+def test_new_window_reuse_rejects_failed_receipt(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed native status must not turn diagnostic stdout into a window."""
+    session.new_window(window_name="logs", window_shell="exec /bin/cat")
+    native = common.tmux_cmd
+
+    def failed(*args: t.Any, **kwargs: t.Any) -> common.tmux_cmd:
+        result = native(*args, **kwargs)
+        if "new-window" in args:
+            result.returncode = 1
+            result.stderr = []
+        return result
+
+    monkeypatch.setattr("libtmux.server.tmux_cmd", failed)
+    with pytest.raises(exc.LibTmuxException):
+        session.new_window(window_name="logs", select_existing=True, attach=True)
+
+
+@pytest.mark.parametrize("fault", ["prefix-only", "endpoint", "generation"])
+def test_new_window_reuse_rejects_incomplete_identity(
+    session: Session, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    """Incomplete output or mismatched native provenance cannot select a window."""
+    session.new_window(window_name="logs", window_shell="exec /bin/cat")
+    native = common.tmux_cmd
+
+    def corrupted(*args: t.Any, **kwargs: t.Any) -> common.tmux_cmd:
+        result = native(*args, **kwargs)
+        if "new-window" in args:
+            marker = result.stdout[0].partition("before")[0]
+            text = "\n".join(result.stdout)
+            prefix, separator, suffix = text.partition(marker + "after" + marker)
+            assert separator
+            if fault == "prefix-only":
+                text = prefix
+            else:
+                fields = suffix.split(marker)
+                fields[0 if fault == "endpoint" else 1] += "9"
+                text = prefix + separator + marker.join(fields)
+            result.stdout = text.split("\n")
+        return result
+
+    monkeypatch.setattr("libtmux.server.tmux_cmd", corrupted)
+    with pytest.raises(exc.LibTmuxException):
+        session.new_window(window_name="logs", select_existing=True, attach=True)
+
+
+def test_new_window_reuse_pins_observed_endpoint(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changing the facade after submission must not redirect the returned window."""
+    expected = session.new_window(window_name="logs", window_shell="exec /bin/cat")
+    pane = expected.active_pane
+    assert pane is not None
+    native = common.tmux_cmd
+
+    def redirected(*args: t.Any, **kwargs: t.Any) -> common.tmux_cmd:
+        result = native(*args, **kwargs)
+        if "new-window" in args:
+            patch.setattr(session.server, "socket_name", "unused-reuse-endpoint")
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(session.server, "config_file", "/dev/null")
+        patch.setattr(session.server, "colors", 256)
+        patch.setattr("libtmux.server.tmux_cmd", redirected)
+        reused = session.new_window(
+            window_name="logs", select_existing=True, attach=True
+        )
+        assert reused.window_id == expected.window_id
+        assert reused == expected and reused.server is not session.server
+        assert reused.server.config_file == "/dev/null"
+        assert reused.server.colors == 256
+        observed = reused.active_pane
+        assert observed is not None and observed.pane_pid == pane.pane_pid
+        reused.rename_window("retained-endpoint")
+        reused.refresh()
+        assert reused.window_name == "retained-endpoint"
+    retained = session.windows.get(window_id=expected.window_id)
+    assert retained is not None and retained.window_name == "retained-endpoint"
+
+
+def test_new_window_reuse_freezes_explicit_executable(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A basename resolves once, before another caller can change PATH."""
+    expected = session.new_window(window_name="logs", window_shell="exec /bin/cat")
+    native = common.tmux_cmd
+
+    def changed_path(*args: t.Any, **kwargs: t.Any) -> common.tmux_cmd:
+        if "new-window" in args:
+            patch.setenv("PATH", "/nonexistent-window-reuse-path")
+        return native(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(session.server, "tmux_bin", "tmux")
+        patch.setattr("libtmux.server.tmux_cmd", changed_path)
+        reused = session.new_window(window_name="logs", select_existing=True)
+        assert reused.window_id == expected.window_id
+        pane = reused.active_pane
+        assert pane is not None and pane.pane_dead == "0"
+
+
+def test_new_window_reuse_keeps_large_native_arguments(session: Session) -> None:
+    """Receipt overhead must not reject an otherwise valid native command."""
+    expected = session.new_window(window_name="logs", window_shell="exec /bin/cat")
+    reused = session.new_window(
+        window_name="logs", window_shell="x" * 12000, select_existing=True
+    )
+    assert reused.window_id == expected.window_id
+
+
+def test_new_window_creation_keeps_custom_dispatch(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ordinary creation keeps its existing dispatcher and successful ID output."""
+    native = session.server.cmd
+    calls: list[tuple[t.Any, ...]] = []
+
+    def dispatch(*args: t.Any, **kwargs: t.Any) -> common.tmux_cmd:
+        calls.append(args)
+        return native(*args, **kwargs)
+
+    monkeypatch.setattr(session.server, "cmd", dispatch)
+    created = session.new_window(window_name="routed", window_shell="exec /bin/cat")
+    assert created.server is session.server
+    assert created.window_name == "routed"
+    pane = created.active_pane
+    assert pane is not None and pane.pane_dead == "0"
+    assert calls and calls[0][0] == "new-window"
+
+
+@pytest.mark.parametrize(
+    "attribute", ["session-cmd", "server-cmd", "engine", "_engine"]
+)
+def test_new_window_reuse_refuses_unknown_backend_before_effects(
+    session: Session, monkeypatch: pytest.MonkeyPatch, attribute: str
+) -> None:
+    """Unknown routing must not silently become a stock native receipt."""
+    before = {window.window_id for window in session.windows}
+    calls: list[tuple[t.Any, ...]] = []
+    native = session.server.cmd if attribute == "server-cmd" else session.cmd
+
+    def dispatch(*args: t.Any, **kwargs: t.Any) -> common.tmux_cmd:
+        calls.append(args)
+        return native(*args, **kwargs)
+
+    if attribute.endswith("cmd"):
+        context = session if attribute == "session-cmd" else session.server
+        monkeypatch.setattr(context, "cmd", dispatch)
+    else:
+        monkeypatch.setattr(session.server, attribute, object(), raising=False)
+    with pytest.raises(exc.LibTmuxException, match="Window reuse receipts"):
+        session.new_window(window_name="not-submitted", select_existing=True)
+    assert calls == []
+    assert {window.window_id for window in session.windows} == before
+
+
+def test_new_window_reuse_preserves_ambiguity(session: Session) -> None:
+    """Native duplicate-name errors remain visible and preserve both windows."""
+    first = session.new_window(window_name="duplicate")
+    second = session.new_window(window_name="duplicate")
+    before = {window.window_id for window in session.windows}
+
+    with pytest.raises(exc.LibTmuxException, match="multiple windows named duplicate"):
+        session.new_window(window_name="duplicate", select_existing=True)
+
+    assert {window.window_id for window in session.windows} == before
+    assert first.window_id != second.window_id
+
+    with pytest.raises(exc.LibTmuxException, match="can't find window"):
+        session.new_window(target_window="@999999", select_existing=True)
+    assert {window.window_id for window in session.windows} == before
 
 
 def test_session_last_window_exception_tags_subcommand(session: Session) -> None:

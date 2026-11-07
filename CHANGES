@@ -45,6 +45,49 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Bug fixes
+
+#### Return existing windows from `new_window(select_existing=True)` (#821)
+
+Reusing an existing window returned native success with no stdout, then raised
+`IndexError`. {meth}`~libtmux.Session.new_window` now returns the matching
+{class}`~libtmux.Window` for exact names and stable absolute targets. Its
+window ID, panes and running program remain unchanged; `attach=True` also
+selects it. Native ambiguity and other command errors remain visible.
+
+```python
+>>> original = session.new_window(window_name="reuse-changelog")
+>>> reused = session.new_window(window_name="reuse-changelog", select_existing=True)
+>>> reused.window_id == original.window_id
+True
+```
+
+[tmux 3.2a returns before printing a creation ID when a name matches](https://github.com/tmux/tmux/blob/3.2a/cmd-new-window.c#L71-L98).
+Numeric-index reuse is available in
+[tmux 3.8](https://github.com/tmux/tmux/blob/3.8/cmd-new-window.c#L94-L126).
+Pass `target_window=other_session.session_id` to reuse an exact name in another
+session. Both `$ID` and `$ID:` session targets work on tmux 3.2a or later.
+When scoped to an explicit session ID, attached reuse also returns the window
+selected by a formatted name. Relative numeric indexes such as `+2` and `-3`
+use the original active index, including detached reuse on tmux 3.8. Native
+snapshots from [list-commands](https://github.com/tmux/tmux/blob/3.2a/cmd-list-keys.c#L318-L366)
+in the same command queue retain the selected identity even if a
+selection hook immediately selects another window. Caller formats are not
+evaluated a second time by libtmux.
+
+Detached formatted names, unresolved session contexts, and commands too large
+for the additional snapshots can still succeed natively before raising
+{exc}`~libtmux.exc.LibTmuxException`. The method does not guess the current
+window or retry the command. Those cases and globally strong lifetime
+guarantees remain open under #821.
+Session-scoped reuse rejects overridden `cmd` dispatch and injected engines
+before submission because their receipt reconstruction is not qualified.
+Returned receipt windows use a separate Server pinned to the observed socket
+and executable, retaining config and color settings. They preserve window ID
+equality but not `window.server is session.server`.
+Receipt reconstruction assumes built-in `if-shell`, `list-commands`, and
+`new-window` commands; `command-alias` replacements remain unqualified.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +101,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#827)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 

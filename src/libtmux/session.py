@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import pathlib
+import re
+import secrets
+import shutil
 import typing as t
 import warnings
 
@@ -18,7 +22,7 @@ from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
-from libtmux.neo import Obj, fetch_obj, fetch_objs
+from libtmux.neo import Obj, fetch_obj, fetch_objs, get_output_format
 from libtmux.options import OptionsMixin
 from libtmux.pane import Pane
 from libtmux.window import Window
@@ -46,6 +50,41 @@ if t.TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _window_receipt_rows(
+    stdout: t.Sequence[str],
+    marker: str,
+    fields: tuple[str, ...],
+    before_fields: tuple[str, ...],
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str]]:
+    """Separate framed native snapshots from the original creation output."""
+    parts = "\n".join(stdout).split(marker)
+    if parts[0].strip():
+        msg = "Incomplete window reuse receipt"
+        raise exc.LibTmuxException(msg, subcommand="new-window")
+    before: list[dict[str, str]] = []
+    after: list[dict[str, str]] = []
+    created: list[str] = []
+    offset = 1
+    while offset < len(parts):
+        phase = parts[offset]
+        row_fields = before_fields if phase == "before" else fields
+        width = len(row_fields) + 2
+        if offset + width > len(parts):
+            msg = "Incomplete window reuse receipt"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        row = dict(zip(row_fields, parts[offset + 1 : offset + width - 1], strict=True))
+        if phase == "before" and not after:
+            before.append(row)
+        elif phase == "after":
+            after.append(row)
+        else:
+            msg = "Invalid window reuse receipt order"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        created.extend(parts[offset + width - 1].strip().splitlines())
+        offset += width
+    return before, after, created
 
 
 @dataclasses.dataclass()
@@ -805,7 +844,7 @@ class Session(
         kill_existing: bool | None = None,
         select_existing: bool | None = None,
     ) -> Window:
-        """Create new window, returns new :class:`Window`.
+        """Create a window or return an existing matching :class:`Window`.
 
         By default, this will make the window active. For the new window
         to be created and not set to current, pass in ``attach=False``.
@@ -840,8 +879,8 @@ class Session(
 
             .. versionadded:: 0.56
         select_existing : bool, optional
-            If a window with the given name already exists, select it instead
-            of creating a new one (``-S`` flag).
+            Return a window with the given name when one already exists
+            (``-S`` flag). ``attach=True`` also selects the reused window.
 
             .. versionadded:: 0.56
 
@@ -883,7 +922,67 @@ class Session(
         Returns
         -------
         :class:`Window`
-            The newly created window.
+            The created or reused window.
+
+        Raises
+        ------
+        exc.LibTmuxException
+            tmux reports an error, or a successful reuse reply has no identity
+            and its target cannot be resolved safely.
+
+        Notes
+        -----
+        Reuse accepts exact names, absolute window IDs, and numeric indexes.
+        ``target_window`` accepts a session ID with or without a trailing
+        colon. With an explicit session ID, ``attach=True`` also resolves
+        formatted names from the window selected by native tmux. Numeric
+        relative indexes such as ``+2`` use the original active index, including
+        detached reuse on tmux 3.8 or later. Caller formats are evaluated only
+        by ``new-window``.
+
+        These session-scoped calls read window snapshots in the same native
+        command queue. The returned handle has a separate Server pinned to the
+        observed endpoint and executable, with the original config and color
+        settings. It does not preserve ``window.server is session.server``;
+        Window equality still compares window IDs. It can become stale
+        afterward. Detached formatted names, unresolved session contexts, and
+        commands too large to include the snapshots can still succeed natively
+        before this method raises because the reused identity is unknown. The
+        command is never retried.
+        Receipt reconstruction requires stock native command routing; overridden
+        ``cmd`` methods or injected engines are rejected before submission.
+        ``command-alias`` replacements of ``if-shell``, ``list-commands``, or
+        ``new-window`` are unqualified. On tmux 3.8, event subscribers can observe
+        the additional snapshot commands.
+
+        Examples
+        --------
+        >>> original = session.new_window(window_name="reuse-example")
+        >>> reused = session.new_window(
+        ...     window_name="reuse-example", select_existing=True
+        ... )
+        >>> reused.window_id == original.window_id
+        True
+
+        A direct session ID supplies the reuse context:
+
+        >>> direct = session.new_window(
+        ...     target_window=session.session_id,
+        ...     window_name="reuse-example", select_existing=True
+        ... )
+        >>> direct.window_id == original.window_id
+        True
+
+        Attached format-name reuse uses the window selected by tmux:
+
+        >>> from libtmux.common import has_gte_version
+        >>> named = session.new_window(window_name=session.session_name)
+        >>> name = "#{session_name}" if has_gte_version("3.4") else session.session_name
+        >>> reused = session.new_window(
+        ...     window_name=name, select_existing=True, attach=True
+        ... )
+        >>> reused.window_id == named.window_id
+        True
         """
         window_args: tuple[str, ...] = ()
 
@@ -927,9 +1026,62 @@ class Session(
         if window_shell:
             window_args += (window_shell,)
 
+        if select_existing and target is not None:
+            receipt_session, _, receipt_index = target.partition(":")
+            if re.fullmatch(r"\$[0-9]+", receipt_session):
+                observed = self._new_window_with_receipt(
+                    window_args,
+                    target=target,
+                    target_session=receipt_session,
+                    target_index=receipt_index,
+                    window_name=window_name,
+                    attach=attach,
+                )
+                if observed is not None:
+                    return observed
+
         cmd = self.cmd("new-window", *window_args, target=target)
 
         raise_if_stderr(cmd, "new-window")
+        if cmd.returncode != 0:
+            msg = f"Native window creation exited with status {cmd.returncode}"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+
+        if select_existing and not cmd.stdout:
+            target_session = self.session_id
+            target_index = window_index or ""
+            if target_window:
+                if target_window.startswith("@") and target_window[1:].isdigit():
+                    return Window.from_window_id(
+                        server=self.server, window_id=target_window
+                    )
+                if ":" in target_window:
+                    target_session, target_index = target_window.split(":", 1)
+                else:
+                    target_session = None
+            stable_session = (
+                target_session is not None
+                and target_session.startswith("$")
+                and target_session[1:].isdigit()
+            )
+            reused = None
+            if stable_session and target_index.isdigit():
+                reused = self.server.windows.get(
+                    session_id=target_session, window_index=target_index
+                )
+            elif (
+                stable_session
+                and not target_index
+                and window_name is not None
+                and "#" not in window_name
+            ):
+                reused = self.server.windows.get(
+                    session_id=target_session, window_name=window_name
+                )
+            if reused is not None:
+                return reused
+            msg = "Could not establish the identity of the reused window"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
 
         window_output = cmd.stdout[0]
 
@@ -954,6 +1106,177 @@ class Session(
 
         logger.info("window created", extra=extra)
 
+        return window
+
+    def _new_window_with_receipt(
+        self,
+        window_args: tuple[str, ...],
+        *,
+        target: str,
+        target_session: str,
+        target_index: str,
+        window_name: str | None,
+        attach: bool,
+    ) -> Window | None:
+        """Read native selection in its command queue without reformatting names."""
+        from libtmux.server import _NATIVE_SERVER_CMD, Server
+
+        if any(
+            getattr(context, attribute, None) is not None
+            for context in (self, self.server)
+            for attribute in ("engine", "_engine")
+        ):
+            msg = "Window reuse receipts cannot reconstruct an injected engine"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        if (
+            getattr(self.cmd, "__func__", None) is not _NATIVE_SESSION_CMD
+            or getattr(self.server.cmd, "__func__", None) is not _NATIVE_SERVER_CMD
+        ):
+            msg = "Window reuse receipts require the stock native command dispatcher"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+
+        marker = secrets.token_hex(8)
+        identity_fields = ("socket_path", "pid", "start_time", "version")
+        before_fields = (
+            *identity_fields,
+            "session_id",
+            "window_id",
+            "window_index",
+            "window_active",
+        )
+        object_fields, _ = get_output_format("list-windows", "master")
+        fields = identity_fields + tuple(
+            field for field in object_fields if field not in identity_fields
+        )
+        template = marker + "".join(f"#{{{field}}}" + marker for field in fields)
+        before_template = marker + "".join(
+            f"#{{{field}}}" + marker for field in before_fields
+        )
+
+        def snapshot_command(phase: str, row: str) -> str:
+            return (
+                "list-commands -F '#{S:#{?#{==:#{session_id},"
+                + target_session
+                + "},#{W:"
+                + marker
+                + phase
+                + row
+                + "},}}' new-window"
+            )
+
+        # list-windows and display-message run after-hooks. Nest the fixed reader
+        # so its STARTSERVER flag cannot start a missing daemon.
+        queue = (
+            "-F",
+            "1",
+            snapshot_command("before", before_template),
+            ";",
+            "new-window",
+            "-t",
+            target,
+            *window_args,
+            ";",
+            "if-shell",
+            "-F",
+            "1",
+            snapshot_command("after", template),
+        )
+        # Preserve the single-command path when receipt overhead would consume
+        # tmux's bounded command message. No command has been submitted yet.
+        if sum(len(arg.encode("utf-8")) + 1 for arg in queue) > 8192:
+            return None
+        executable = shutil.which(
+            self.server.tmux_bin or "tmux", path=os.environ.get("PATH")
+        )
+        if executable is None:
+            raise exc.TmuxCommandNotFound
+        observed = Server(
+            config_file=self.server.config_file,
+            colors=self.server.colors,
+            tmux_bin=str(pathlib.Path(executable).absolute()),
+        )
+        observed.socket_name = self.server.socket_name
+        observed.socket_path = self.server.socket_path
+        cmd = observed.cmd("if-shell", *queue)
+        raise_if_stderr(cmd, "new-window")
+        if cmd.returncode != 0:
+            msg = f"Native window creation exited with status {cmd.returncode}"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        before, after, created = _window_receipt_rows(
+            tuple(cmd.stdout), marker, fields, before_fields
+        )
+        rows = before + after
+        if not before or not after:
+            msg = "Missing window reuse identity receipt"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        identity = tuple(before[0][field] for field in identity_fields)
+        for row in rows:
+            if (
+                tuple(row[field] for field in identity_fields) != identity
+                or not pathlib.Path(row["socket_path"]).is_absolute()
+                or not re.fullmatch(r"[1-9][0-9]*", row["pid"])
+                or not re.fullmatch(r"[0-9]+", row["start_time"])
+                or not row["version"]
+                or row["session_id"] != target_session
+                or not re.fullmatch(r"@[0-9]+", row["window_id"])
+                or not re.fullmatch(r"[0-9]+", row["window_index"])
+                or row["window_active"] not in ("0", "1")
+            ):
+                msg = "Window reuse endpoint or identity changed"
+                raise exc.LibTmuxException(msg, subcommand="new-window")
+        for snapshot in (before, after):
+            if (
+                len({row["window_index"] for row in snapshot}) != len(snapshot)
+                or sum(row["window_active"] == "1" for row in snapshot) != 1
+            ):
+                msg = "Ambiguous window reuse receipt"
+                raise exc.LibTmuxException(msg, subcommand="new-window")
+
+        matches: list[dict[str, str]] = []
+        if len(created) == 1 and re.fullmatch(r"@[0-9]+", created[0]):
+            matches = [row for row in after if row["window_id"] == created[0]]
+        elif created:
+            msg = "Unexpected native window creation output"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        elif attach:
+            matches = [row for row in after if row["window_active"] == "1"]
+        elif re.fullmatch(r"[+-][0-9]*", target_index):
+            original = next(row for row in before if row["window_active"] == "1")
+            offset = int(target_index + "1" if len(target_index) == 1 else target_index)
+            index = int(original["window_index"]) + offset
+            matches = [row for row in after if int(row["window_index"]) == index]
+        elif re.fullmatch(r"[0-9]+", target_index):
+            matches = [
+                row for row in after if int(row["window_index"]) == int(target_index)
+            ]
+        elif not target_index and window_name is not None and "#" not in window_name:
+            matches = [row for row in after if row["window_name"] == window_name]
+
+        if len(matches) != 1 or (
+            not created
+            and not any(
+                (row["window_id"], row["window_index"])
+                == (matches[0]["window_id"], matches[0]["window_index"])
+                for row in before
+            )
+        ):
+            msg = "Could not establish the identity of the reused window"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        selected = matches[0]
+        observed.socket_name = None
+        observed.socket_path = selected["socket_path"]
+        supported, _ = get_output_format("list-windows", selected["version"])
+        window_data: dict[str, t.Any] = {
+            field: selected[field] for field in supported if selected[field]
+        }
+        window = Window(server=observed, **window_data)
+        if created:
+            extra = {"tmux_subcommand": "new-window", "tmux_target": target}
+            if self.session_name is not None:
+                extra["tmux_session"] = self.session_name
+            if window.window_name is not None:
+                extra["tmux_window"] = window.window_name
+            logger.info("window created", extra=extra)
         return window
 
     def kill_window(self, target_window: str | int | None = None) -> None:
@@ -1226,3 +1549,6 @@ class Session(
             replacement="Session.windows property",
             version="0.17.0",
         )
+
+
+_NATIVE_SESSION_CMD = Session.cmd
