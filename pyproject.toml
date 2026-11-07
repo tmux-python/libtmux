@@ -70,7 +70,7 @@ dev = [
   "coverage>=7.10.6",
   "pytest-cov",
   # Lint
-  "ruff>=0.17.1",
+  "ruff>=0.17.3",
   "mypy",
   # Benchmarking
   "pytest-benchmark>=5.3.0",
@@ -97,7 +97,7 @@ coverage =[
 ]
 lint = [
   "typing-extensions; python_version < '3.11'",
-  "ruff>=0.17.1",
+  "ruff>=0.17.3",
   "mypy",
 ]
 benchmark = [
