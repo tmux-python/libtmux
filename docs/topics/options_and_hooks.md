@@ -104,7 +104,8 @@ registered with tmux the instant `set_hook` returns — there's no refresh step
 before it starts firing:
 
 ```python
->>> session.set_hook('session-renamed', 'display-message "Session renamed"')  # doctest: +ELLIPSIS
+>>> hook_command = 'display-message "Session renamed"'
+>>> session.set_hook('session-renamed', hook_command)
 Session(...)
 
 >>> session.show_hook('session-renamed')  # doctest: +ELLIPSIS
@@ -136,10 +137,10 @@ each hook (`session-renamed[0]`, `session-renamed[1]`, …), so you register
 several commands against the same event and they all run:
 
 ```python
->>> session.set_hook('after-split-window[0]', 'display-message "Split 0"')  # doctest: +ELLIPSIS
+>>> session.set_hook('after-split-window[0]', 'display-message "Split 0"')
 Session(...)
 
->>> session.set_hook('after-split-window[1]', 'display-message "Split 1"')  # doctest: +ELLIPSIS
+>>> session.set_hook('after-split-window[1]', 'display-message "Split 1"')
 Session(...)
 
 >>> hooks = session.show_hook('after-split-window')

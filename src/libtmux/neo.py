@@ -1191,11 +1191,12 @@ def _is_target_not_found_error(stderr_text: str) -> bool:
 
     A server that isn't there is a different answer:
 
-    >>> _is_target_not_found_error("no server running on /tmp/tmux-1000/default")
+    >>> stderr = "no server running on /tmp/tmux-1000/default"
+    >>> _is_target_not_found_error(stderr)
     False
-    >>> _is_target_not_found_error(
-    ...     "error connecting to /tmp/tmux-1000/nope (No such file or directory)"
-    ... )
+    >>> missing = "No such file or directory"
+    >>> stderr = f"error connecting to /tmp/tmux-1000/nope ({missing})"
+    >>> _is_target_not_found_error(stderr)
     False
     """
     return "can't find " in stderr_text
@@ -1232,7 +1233,8 @@ def _best_winlink(rows: OutputsRaw) -> OutputRaw:
     One row is the whole answer:
 
     >>> from libtmux.neo import _best_winlink
-    >>> _best_winlink([{"window_id": "@0", "window_index": "1"}])["window_index"]
+    >>> rows = [{"window_id": "@0", "window_index": "1"}]
+    >>> _best_winlink(rows)["window_index"]
     '1'
 
     A window linked into one session twice gives two rows. When the session is

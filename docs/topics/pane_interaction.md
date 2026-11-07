@@ -395,11 +395,13 @@ To grow or shrink a pane relative to its current size, name a direction from
 >>> from libtmux.constants import ResizeAdjustmentDirection
 
 >>> # Increase height by 5 rows
->>> pane.resize(adjustment_direction=ResizeAdjustmentDirection.Up, adjustment=5)  # doctest: +ELLIPSIS
+>>> up = ResizeAdjustmentDirection.Up
+>>> pane.resize(adjustment_direction=up, adjustment=5)
 Pane(%... Window(@... ..., Session($... ...)))
 
 >>> # Decrease width by 10 columns
->>> pane.resize(adjustment_direction=ResizeAdjustmentDirection.Left, adjustment=10)  # doctest: +ELLIPSIS
+>>> left = ResizeAdjustmentDirection.Left
+>>> pane.resize(adjustment_direction=left, adjustment=10)
 Pane(%... Window(@... ..., Session($... ...)))
 ```
 
