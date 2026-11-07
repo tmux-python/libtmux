@@ -31,6 +31,12 @@ it is in.
 Query and filter collections by attributes.
 :::
 
+:::{grid-item-card} Runnable Examples
+:link: examples
+:link-type: doc
+Complete programs for creating and renaming windows and sending keys.
+:::
+
 :::{grid-item-card} Pane Interaction
 :link: pane_interaction
 :link-type: doc
@@ -91,6 +97,7 @@ public-vs-internal
 traversal
 self_location
 filtering
+examples
 pane_interaction
 floating_panes
 workspace_setup
