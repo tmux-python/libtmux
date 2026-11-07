@@ -38,7 +38,7 @@ Session
 
     The session has 1 or more {term}`Window`. The bottom bar in tmux
     show a list of windows. Normally they can be navigated with
-    ``Ctrl-a [0-9]``, ``Ctrl-a n`` and ``Ctrl-a p``.
+    ``Ctrl-b [0-9]``, ``Ctrl-b n`` and ``Ctrl-b p`` with tmux's default prefix.
 
     Sessions can have a ``session_name``.
 

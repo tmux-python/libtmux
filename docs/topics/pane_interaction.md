@@ -87,7 +87,10 @@ True
 
 Both tmux and your shell interpret certain characters. Pass `literal=True` to
 send them through untouched, so a tab or escape arrives as the literal byte
-rather than a key tmux acts on:
+rather than a key tmux acts on.
+
+Literal mode bypasses tmux's key-name parsing; the shell still interprets
+the resulting text.
 
 ```python
 >>> import time
@@ -278,21 +281,25 @@ interval until a marker you control appears. It's a busy wait, not an event, but
 it's reliable across shells and commands because you're checking the one thing
 that matters: what actually printed.
 
+Match complete output lines so the echoed command cannot satisfy its own
+marker. Use a fresh pane or a marker unique to the invocation, since old
+markers remain in scrollback. A completion marker does not report exit status.
+
 ### Polling for completion marker
 
 ```python
 >>> import time
 
->>> pane.send_keys('sleep 0.2; echo "TASK_COMPLETE"')
+>>> pane.send_keys('echo; sleep 0.2; echo "TASK_COMPLETE"')
 
 >>> # Poll for completion
 >>> for _ in range(30):
 ...     output = pane.capture_pane()
-...     if 'TASK_COMPLETE' in '\\n'.join(output):
+...     if 'TASK_COMPLETE' in [line.strip() for line in output]:
 ...         break
 ...     time.sleep(0.1)
 
->>> 'TASK_COMPLETE' in '\\n'.join(output)
+>>> 'TASK_COMPLETE' in [line.strip() for line in output]
 True
 ```
 
@@ -306,15 +313,15 @@ logic:
 
 >>> def wait_for_text(pane, text, timeout=5.0):
 ...     """Wait for text to appear in pane output."""
-...     start = time.time()
-...     while time.time() - start < timeout:
+...     start = time.monotonic()
+...     while time.monotonic() - start < timeout:
 ...         output = pane.capture_pane()
-...         if text in '\\n'.join(output):
+...         if text in [line.strip() for line in output]:
 ...             return True
 ...         time.sleep(0.1)
 ...     return False
 
->>> pane.send_keys('echo "READY"')
+>>> pane.send_keys('echo; echo "READY"')
 >>> wait_for_text(pane, 'READY', timeout=2.0)
 True
 ```
@@ -492,12 +499,11 @@ you've already met.
 
 >>> def run_and_capture(pane, command, marker='__DONE__', timeout=5.0):
 ...     """Run a command and return its output."""
-...     pane.send_keys(f'{command}; echo {marker}')
-...     start = time.time()
-...     while time.time() - start < timeout:
+...     pane.send_keys(f'{command}; echo; echo {marker}')
+...     start = time.monotonic()
+...     while time.monotonic() - start < timeout:
 ...         output = pane.capture_pane()
-...         output_str = '\\n'.join(output)
-...         if marker in output_str:
+...         if marker in [line.strip() for line in output]:
 ...             return output  # Return all captured output
 ...         time.sleep(0.1)
 ...     raise TimeoutError(f'Command did not complete within {timeout}s')

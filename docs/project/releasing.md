@@ -7,51 +7,15 @@ Users should pin to `>=0.x,<0.y`.
 
 ## Release Process
 
-Releases are triggered by git tags and published to [PyPI] via OIDC trusted publishing.
-
-1. Update `CHANGES` with the release notes
-
-2. Bump version in `src/libtmux/__about__.py`
-
-3. Commit:
-
-   ```console
-   $ git commit -m "libtmux <version>"
-   ```
-
-4. Tag:
-
-   ```console
-   $ git tag v<version>
-   ```
-
-5. Push:
-
-   ```console
-   $ git push && git push --tags
-   ```
-
-6. CI builds and publishes to [PyPI] automatically via trusted publishing
+Follow the [contributor release checklist] for version updates, commits, and
+publication to [PyPI]. The owner creates and pushes release tags; tags trigger
+the publishing workflow.
 
 ## Changelog Format
 
-The `CHANGES` file uses this format:
+Follow [the changelog policy] for the `CHANGES` structure, unreleased entries,
+and release-time lead paragraphs.
 
-```text
-libtmux <version> (<date>)
---------------------------
-
-### What's new
-
-- Description of feature (#issue)
-
-### Bug fixes
-
-- Description of fix (#issue)
-
-### Breaking changes
-
-- Description of break, migration path (#issue)
-```
-
+[contributor release checklist]: https://github.com/tmux-python/libtmux/blob/master/.github/CONTRIBUTING.md#releasing
+[the changelog policy]: https://github.com/tmux-python/libtmux/blob/master/.github/WRITING.md#the-changelog
 [PyPI]: https://pypi.org/project/libtmux/

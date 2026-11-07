@@ -3,13 +3,13 @@
 ## Python
 
 - **Minimum**: Python 3.10
-- **Tested**: Python 3.10, 3.11, 3.12, 3.13
+- **CI targets**: see the [CI matrix](https://github.com/tmux-python/libtmux/blob/master/.github/workflows/tests.yml)
 - **Maximum**: Python < 4.0
 
 ## tmux
 
 - **Minimum**: tmux 3.2a
-- **Tested**: latest stable tmux release
+- **CI targets**: the releases and development branch in the matrix above
 - libtmux uses tmux's format system and control mode -- older tmux versions
   may lack required format variables
 
@@ -24,6 +24,7 @@
 
 ## Known Limitations
 
-- tmux must be running and accessible via the default socket or a specified socket
+- Commands targeting existing objects need a running, accessible tmux server.
+  {meth}`~libtmux.Server.new_session` starts a server when needed.
 - Some operations require the tmux server to have at least one session
 - Format string availability depends on tmux version
