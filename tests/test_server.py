@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 import pathlib
 import shutil
 import subprocess
@@ -207,9 +206,18 @@ def test_new_session_shell(server: Server) -> None:
 
 
 def test_new_session_shell_env(server: Server) -> None:
-    """Verify ``Server.new_session`` creates valid session running w/ command (#553)."""
+    """Verify ``Server.new_session`` creates valid session running w/ command (#553).
+
+    The environment is a small explicit mapping rather than the caller's own.
+    Every variable becomes its own ``-e KEY=VAL`` argument, and tmux refuses a
+    command whose arguments exceed its message ceiling, so forwarding
+    ``os.environ`` made the outcome a function of whoever ran the suite: green
+    on a lean CI runner, ``command too long`` under a rich interactive shell.
+    :func:`test_new_session_rejects_an_environment_past_tmux_limit` covers that
+    ceiling deliberately.
+    """
     cmd = "sleep 1m"
-    env = dict(os.environ)
+    env = {"LIBTMUX_TEST_ENV": "test_value", "LIBTMUX_TEST_OTHER": "second"}
     mysession = server.new_session(
         "test_new_session_env",
         window_command=cmd,
@@ -225,6 +233,23 @@ def test_new_session_shell_env(server: Server) -> None:
     assert pane_start_command is not None
 
     assert pane_start_command.replace('"', "") == cmd
+
+
+def test_new_session_rejects_an_environment_past_tmux_limit(server: Server) -> None:
+    """An oversized environment fails loudly instead of truncating.
+
+    tmux's client sums ``strlen(argv[i]) + 1`` across every argument and
+    refuses above ``MAX_IMSGSIZE`` (16384), so a large enough ``environment``
+    cannot reach the server at all. Asserting the refusal keeps that a
+    deliberate, named behaviour rather than something a caller discovers when
+    their own shell happens to be big enough to trip it.
+    """
+    oversized = {f"LIBTMUX_BULK_{index:03d}": "x" * 512 for index in range(64)}
+
+    with pytest.raises(exc.LibTmuxException, match="command too long"):
+        server.new_session("test_new_session_oversized_env", environment=oversized)
+
+    assert not server.has_session("test_new_session_oversized_env")
 
 
 @pytest.mark.skipif(True, reason="tmux 3.2 returns wrong width - test needs rework")

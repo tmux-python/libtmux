@@ -336,6 +336,11 @@ class Pane(
         Returns
         -------
         :meth:`server.cmd`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            The server's engine is asynchronous; see :meth:`Server.cmd`.
         """
         if target is None:
             target = self.pane_id
