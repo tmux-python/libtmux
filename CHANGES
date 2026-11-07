@@ -55,6 +55,8 @@ _Notes on the upcoming release will go here._
 and frozen identity observations. Reused sessions keep their programs and never
 acquire cleanup responsibility. A created result can clean up its session after
 verifying its native creation receipt, or preserve it explicitly.
+Concurrent-creation conflicts receive one reconciliation lookup with a
+one-second client wait limit.
 See {doc}`the session acquisition guide <api/libtmux.session_creation>`.
 
 ### Documentation
