@@ -118,12 +118,21 @@ class Window(
 
     References
     ----------
-    .. [window_manual] tmux window. openbsd manpage for TMUX(1).
+    .. [window_manual] `tmux 3.7c manual, Description
+       <https://libtmux.org/en/tmux/3.7c/manual/full/#DESCRIPTION>`_.
+
            "Each session has one or more windows linked to it. A window
            occupies the entire screen and may be split into rectangular
            panes..."
 
-       https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
+       Create a window with `new-window
+       <https://libtmux.org/en/tmux/3.7c/manual/new-window/>`_ or divide
+       it into panes with `split-window
+       <https://libtmux.org/en/tmux/3.7c/manual/split-window/>`_.
+       `Upstream source
+       <https://github.com/tmux/tmux/blob/3.7c/tmux.1#L59-L63>`_;
+       `OpenBSD tmux(1) manual
+       <https://man.openbsd.org/tmux.1#DESCRIPTION>`_.
     """
 
     default_option_scope: OptionScope | None = OptionScope.Window
