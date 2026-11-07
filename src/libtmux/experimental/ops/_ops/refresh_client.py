@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class RefreshClient(Operation[AckResult]):
     """Refresh a client. Produces no output (:class:`AckResult`).
 
-    Parameters
+    Attributes
     ----------
     subscribe : str, optional
         Format spec passed to ``-B``; subscribes the control client to a
