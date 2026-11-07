@@ -13,6 +13,7 @@ import pathlib
 import typing as t
 import warnings
 
+from libtmux._internal.log_context import object_extra
 from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
@@ -738,15 +739,15 @@ class Session(
 
         raise_if_stderr(proc, "kill-session")
 
-        msg = "other sessions killed" if all_except else "session killed"
-        extra: dict[str, str] = {
-            "tmux_subcommand": "kill-session",
-        }
-        if self.session_name is not None:
-            extra["tmux_session"] = str(self.session_name)
-        if self.session_id is not None:
-            extra["tmux_target"] = str(self.session_id)
-        logger.info(msg, extra=extra)
+        logger.info(
+            "other sessions killed" if all_except else "session killed",
+            extra=object_extra(
+                "kill-session",
+                socket=self.server.socket_path or self.server.socket_name,
+                session=self.session_name,
+                target=self.session_id,
+            ),
+        )
 
     def switch_client(self) -> Session:
         """Switch client to session.
@@ -781,13 +782,15 @@ class Session(
 
         self.refresh()
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "rename-session",
-            "tmux_session": new_name,
-        }
-        if self.session_id is not None:
-            extra["tmux_target"] = str(self.session_id)
-        logger.info("session renamed", extra=extra)
+        logger.info(
+            "session renamed",
+            extra=object_extra(
+                "rename-session",
+                socket=self.server.socket_path or self.server.socket_name,
+                session=new_name,
+                target=self.session_id,
+            ),
+        )
 
         return self
 
@@ -942,17 +945,16 @@ class Session(
             window_id=window_formatters["window_id"],
         )
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "new-window",
-        }
-        if self.session_name is not None:
-            extra["tmux_session"] = str(self.session_name)
-        if window.window_name is not None:
-            extra["tmux_window"] = str(window.window_name)
-        if target is not None:
-            extra["tmux_target"] = str(target)
-
-        logger.info("window created", extra=extra)
+        logger.info(
+            "window created",
+            extra=object_extra(
+                "new-window",
+                socket=self.server.socket_path or self.server.socket_name,
+                session=self.session_name,
+                window=window.window_name,
+                target=target,
+            ),
+        )
 
         return window
 
@@ -983,14 +985,15 @@ class Session(
 
         raise_if_stderr(proc, "kill-window")
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "kill-window",
-        }
-        if self.session_name is not None:
-            extra["tmux_session"] = str(self.session_name)
-        if target is not None:
-            extra["tmux_target"] = str(target)
-        logger.info("window killed", extra=extra)
+        logger.info(
+            "window killed",
+            extra=object_extra(
+                "kill-window",
+                socket=self.server.socket_path or self.server.socket_name,
+                session=self.session_name,
+                target=target,
+            ),
+        )
 
     #
     # Dunder
