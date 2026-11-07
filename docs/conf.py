@@ -49,6 +49,8 @@ conf = merge_sphinx_config(
         ),
     },
     html_favicon="_static/favicon.ico",
+    ogp_image="_static/brand/opengraph-light.png",
+    ogp_image_alt="libtmux for Python",
     html_css_files=["css/custom.css"],
     html_extra_path=["manifest.json"],
     rediraffe_redirects="redirects.txt",
@@ -56,4 +58,8 @@ conf = merge_sphinx_config(
     # page; keep Sphinx from treating it as an orphan document.
     exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md"],
 )
+conf["html_context"] = {
+    **conf.get("html_context", {}),
+    "brand_twitter_image": f"{about['__docs__']}/_static/brand/twitter-light.png",
+}
 globals().update(conf)
