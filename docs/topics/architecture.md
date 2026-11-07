@@ -97,6 +97,17 @@ cached value indefinitely.
 4. Mutations dispatch tmux commands via the `cmd()` method
 5. Objects refresh state from tmux on demand
 
+`cmd()` sends its arguments to tmux unchanged. tmux ends a command at an
+argument whose last character is `;` and runs the next argument as a new
+command, so a bare `";"` argument chains two commands in one call. Typed
+methods such as {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`,
+{meth}`Server.new_session() <libtmux.Server.new_session>` and
+{meth}`set_option() <libtmux.Session.set_option>` pass every value they
+receive as data, including values that end in `;` or `\;`. Arguments that
+are tmux commands, such as hook commands and menu item commands, pass through
+as given. For a raw `cmd()` call, wrap a value that must stay data in
+{func}`~libtmux.common.escape_trailing_separator`.
+
 ## Module map
 
 The codebase splits along the same hierarchy: one module per tier, plus

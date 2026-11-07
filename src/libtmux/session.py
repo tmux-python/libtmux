@@ -14,7 +14,12 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    escape_trailing_separator,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
@@ -775,7 +780,7 @@ class Session(
         """
         session_check_name(new_name)
 
-        proc = self.cmd("rename-session", new_name)
+        proc = self.cmd("rename-session", escape_trailing_separator(new_name))
 
         raise_if_stderr(proc, "rename-session")
 
@@ -895,15 +900,15 @@ class Session(
         # Catch empty string and default (`None`)
         if start_directory:
             start_directory = pathlib.Path(start_directory).expanduser()
-            window_args += (f"-c{start_directory}",)
+            window_args += (escape_trailing_separator(f"-c{start_directory}"),)
 
         window_args += ("-F#{window_id}",)  # output
         if window_name is not None and isinstance(window_name, str):
-            window_args += ("-n", window_name)
+            window_args += ("-n", escape_trailing_separator(window_name))
 
         if environment:
             for k, v in environment.items():
-                window_args += (f"-e{k}={v}",)
+                window_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if direction is not None:
             window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
@@ -925,7 +930,7 @@ class Session(
             window_args += (f"-t{self.session_id}:{window_index}",)
 
         if window_shell:
-            window_args += (window_shell,)
+            window_args += (escape_trailing_separator(window_shell),)
 
         cmd = self.cmd("new-window", *window_args, target=target)
 
