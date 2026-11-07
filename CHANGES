@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Features
+
+#### Own a fresh pane program (#823)
+
+`Session.run_program(argv)` starts a program in a new retained pane on tmux 3.8+.
+Its handle separates exit observation, bounded rendered capture, explicit pane
+termination, and cleanup. Cancelling a wait leaves the program running. The
+borrowed parent session survives cleanup; unknown exit evidence stays unknown.
+The library's core tmux minimum remains 3.2a.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +68,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#833)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
