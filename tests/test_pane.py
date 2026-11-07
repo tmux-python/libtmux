@@ -613,6 +613,7 @@ PANE_FORMAT_FIELDS = (
     "pane_format",
     "pane_in_mode",
     "pane_input_off",
+    "pane_key_mode",
     "pane_last",
     "pane_marked",
     "pane_marked_set",
@@ -620,6 +621,7 @@ PANE_FORMAT_FIELDS = (
     "pane_path",
     "pane_pipe",
     "pane_synchronized",
+    "pane_unseen_changes",
 )
 
 
@@ -639,6 +641,39 @@ def test_pane_format_field_declared_and_hydrated(
     assert pane is not None
 
     # Field must be declared on the dataclass.
+    assert field_name in pane.__dataclass_fields__
+
+    pane.refresh()
+    value = getattr(pane, field_name)
+    assert value is None or isinstance(value, str)
+
+
+NEW_TMUX_FORMAT_FIELDS = (
+    # Pane-scope tokens registered in tmux master post-3.6a.
+    "pane_zoomed_flag",
+    "pane_floating_flag",
+    "pane_flags",
+    "pane_pb_state",
+    "pane_pb_progress",
+    "pane_pipe_pid",
+    # Server-scope tokens.
+    "synchronized_output_flag",
+    "bracket_paste_flag",
+)
+
+
+@pytest.mark.parametrize("field_name", NEW_TMUX_FORMAT_FIELDS)
+def test_obj_declares_post_3_6a_field(field_name: str, session: Session) -> None:
+    """Tmux's post-3.6a format tokens have typed slots on ``Obj``.
+
+    Older tmux releases that don't recognize these tokens expand them to
+    the empty string, so the wrapper hydrates the rest of the dataclass
+    normally and the new fields stay ``None``. When the user upgrades
+    tmux, ``refresh()`` populates the fields automatically — no library
+    update required.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
     assert field_name in pane.__dataclass_fields__
 
     pane.refresh()
