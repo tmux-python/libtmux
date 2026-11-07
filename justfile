@@ -40,6 +40,11 @@ watch-test:
 build-docs:
     just -f docs/justfile html
 
+# Run executable documentation examples and documentation tests
+[group: 'docs']
+test-docs:
+    just -f docs/justfile doctest
+
 # Watch files and rebuild docs on change
 [group: 'docs']
 watch-docs:
