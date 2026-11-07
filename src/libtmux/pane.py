@@ -30,9 +30,11 @@ from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import sys
+    import threading
     import types
 
     from libtmux._internal.types import StrPath
+    from libtmux._internal.visible_wait import _PaneObservation
 
     from .server import Server
     from .session import Session
@@ -446,6 +448,101 @@ class Pane(
 
         self.refresh()
         return self
+
+    def wait_for_text(
+        self,
+        text: str,
+        *,
+        present: bool = True,
+        timeout: float = 5.0,
+        interval: float = 0.05,
+        cancel_event: threading.Event | None = None,
+        start: t.Literal["-"] | int | None = None,
+        end: t.Literal["-"] | int | None = None,
+        join_wrapped: bool = False,
+        max_text_codepoints: int = 1048576,
+    ) -> _PaneObservation:
+        """Return the immutable capture satisfying a visible literal predicate.
+
+        An echoed, unexecuted command can satisfy this predicate. Absence means
+        absent in one selected sample; neither result establishes program exit,
+        future-only output, or lossless observation between captures.
+
+        Parameters
+        ----------
+        text : str
+            Nonempty literal substring, at most ``max_text_codepoints`` long.
+        present : bool, optional
+            Wait for presence (default True), or absence when False.
+        timeout : float, optional
+            Finite nonnegative seconds for the entire wait, default 5. Zero
+            expires without a sample. OS scheduling and cleanup can add latency.
+        interval : float, optional
+            Seconds between unsuccessful captures, in ``(0, 1]``, default 0.05.
+        cancel_event : threading.Event, optional
+            Setting this event cancels the wait and reaps its current client.
+            It leaves the pane, server, and pane program running.
+        start, end : int or "-", optional
+            Capture selection, as in :meth:`capture_pane`; default visible rows.
+        join_wrapped : bool, optional
+            Join wrapped rows with tmux's ``-J`` flag, default False.
+        max_text_codepoints : int, optional
+            Decoded text admission limit, including joined LF, from 1 through
+            1,048,576 (default). Separately, each client's raw stdout is capped at
+            four times this limit plus 65,536 bytes, and stderr at 16,384 bytes.
+
+        Returns
+        -------
+        immutable observation
+            ``pane_id``, tuple ``lines`` and actual ``command`` argv, ``text``,
+            ``start``, ``end``, ``join_wrapped``, and controller-clock monotonic
+            ``started_ns`` / ``finished_ns``. It holds no live facade references.
+            ``target_lifetime_verified`` is None: legacy pane IDs do not attest
+            a pane or daemon lifetime. These structural fields are the contract;
+            the private value class is not a separate public capture API.
+
+        Raises
+        ------
+        ValueError
+            Invalid bounds, literal, or capture selection, before dispatch.
+        NotImplementedError
+            A custom pane/server dispatcher or injected engine is selected.
+            The bounded adapter refuses it before creating a client.
+        :exc:`~libtmux.exc.WaitTimeout`
+            The deadline expires. ``last_observation`` retains the last admitted
+            capture or None if none succeeded; ``__cause__`` retains the timeout.
+        :exc:`~libtmux.exc.LibTmuxException`
+            Capture fails or exceeds a limit, with ``last_observation`` and the
+            original exception in ``__cause__``. No diagnostic re-query occurs.
+        concurrent.futures.CancelledError
+            Cancellation, with the same retained observation and cause fields.
+            KeyboardInterrupt instead retains its identity and receives
+            ``last_observation`` after owned-client cleanup.
+
+        Examples
+        --------
+        >>> waiting_pane = window.split(shell='cat')
+        >>> sample = waiting_pane.wait_for_text('missing', present=False, timeout=0.5)
+        >>> sample.text
+        ''
+        >>> waiting_pane.kill()
+        >>> sample.text
+        ''
+        """
+        from libtmux._internal.visible_wait import wait_for_text
+
+        return wait_for_text(
+            self,
+            text,
+            present=present,
+            timeout=timeout,
+            interval=interval,
+            cancel_event=cancel_event,
+            start=start,
+            end=end,
+            join_wrapped=join_wrapped,
+            max_text_codepoints=max_text_codepoints,
+        )
 
     @t.overload
     def capture_pane(
@@ -2853,3 +2950,6 @@ class Pane(
             replacement="Pane.resize()",
             version="0.28.0",
         )
+
+
+_STOCK_PANE_CMD = Pane.cmd

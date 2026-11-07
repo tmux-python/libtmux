@@ -45,6 +45,20 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Bounded visible-text waits (#673)
+
+{meth}`~libtmux.Pane.wait_for_text` waits for a literal to appear or disappear in
+a selected capture and returns that immutable observation. Deadlines,
+cancellation, missing panes, and capture limits retain the last successful
+observation and the original cause. The wait reaps only its own command client.
+
+An echoed command can satisfy a visible-text wait before it executes. Absence
+means absent in the selected sample. See {ref}`visible-text-waits` for examples,
+retained evidence, and limits; cooperative channels remain on
+{meth}`~libtmux.Server.wait_for`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +72,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#829)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
