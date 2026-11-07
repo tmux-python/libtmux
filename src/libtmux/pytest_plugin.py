@@ -13,7 +13,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux._internal.control_mode import ControlMode
+from libtmux._internal.control_mode import ControlMode, _require_release
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -318,7 +318,16 @@ def control_mode(
     ...     with control_mode() as ctl:
     ...         assert ctl.client_name != ''
     """
-    return functools.partial(ControlMode, server=server, session=session)
+    return functools.partial(_control_mode_for_test, server=server, session=session)
+
+
+def _control_mode_for_test(server: Server, session: Session) -> ControlMode:
+    """Skip positive control use when the daemon release is not qualified."""
+    try:
+        _require_release(server._get_version())
+    except exc.VersionTooLow as error:
+        pytest.skip(str(error))
+    return ControlMode(server=server, session=session)
 
 
 @pytest.fixture

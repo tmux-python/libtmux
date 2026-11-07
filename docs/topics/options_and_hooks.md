@@ -182,13 +182,14 @@ Session(...)
 ## tmux version compatibility
 
 Options and hooks need a reasonably recent tmux, and a few specific hooks
-arrived later still. The floor for everything on this page is tmux 3.2:
+arrived later still. The floor for everything on this page is tmux 3.3a, the
+supported minimum:
 
 | Feature | Minimum tmux |
 |---------|-------------|
-| All options/hooks features | 3.2+ |
-| Window/Pane hook scopes (`-w`, `-p`) | 3.2+ |
-| `client-active`, `window-resized` hooks | 3.3+ |
+| All options/hooks features | 3.3a+ |
+| Window/Pane hook scopes (`-w`, `-p`) | 3.3a+ |
+| `client-active`, `window-resized` hooks | 3.3a+ |
 | `pane-title-changed` hook | 3.5+ |
 
 :::{seealso}

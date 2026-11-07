@@ -50,8 +50,9 @@ session/window/pane listings do not have a client attachment to report.
 
 
 FIELD_VERSION: dict[str, str] = {
-    # Post-3.2a additions (verified against tmux's format.c at each gated
-    # release tag, e.g. https://github.com/tmux/tmux/blob/3.6a/format.c).
+    # Additions after 3.2a; the 3.3 entries sit below the 3.3a floor. Verified
+    # against tmux's format.c at each gated release tag, e.g.
+    # https://github.com/tmux/tmux/blob/3.6a/format.c.
     "pane_dead_signal": "3.3",
     "pane_dead_time": "3.3",
     # tmux 3.7 additions (verified against format.c / tmux.1 at the 3.7 tag).
@@ -69,10 +70,10 @@ FIELD_VERSION: dict[str, str] = {
 }
 """Minimum tmux version that registers each format token.
 
-Field names absent from this dict default to ``"3.2a"`` (always-safe within
-the supported tmux range). Entries here represent tokens added after 3.2a
+Field names absent from this dict default to ``"3.3a"`` (always-safe within
+the supported tmux range). Entries here represent tokens added after 3.3a
 that need explicit gating to keep the ``-F`` template compatible with older
-tmux versions.
+tmux versions; the 3.3 entries are met by every supported daemon.
 """
 
 
@@ -931,8 +932,8 @@ def get_output_format(
         The tmux list subcommand the format string is being built for.
         Determines which token scopes are reachable.
     tmux_version : str
-        The live tmux version. Used to gate post-3.2a tokens. Defaults to
-        ``"3.2a"`` (the project's minimum) for safe fallback when the
+        The live tmux version. Used to gate post-3.3a tokens. Defaults to
+        ``"3.3a"`` (the project's minimum) for safe fallback when the
         caller can't yet detect the version.
 
     Returns
