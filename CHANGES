@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Retained pane observations (#810)
+
+Retain immutable pane text and capture details with
+{meth}`PaneObservation.capture() <libtmux.PaneObservation.capture>`, even after
+the pane changes or disappears. These sampled values remain readable without
+another tmux query.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +67,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#810)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
