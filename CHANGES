@@ -47,6 +47,13 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### libtmux.org chrome and site-wide search (#755)
+
+Documentation pages carry libtmux.org's header, footer, and version switcher,
+and take their colors from the site's shared design tokens. Sphinx's own
+search page redirects to the site-wide search, which covers every libtmux
+port. Pages render as stock Furo when the shared stylesheet is unreachable.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
@@ -58,6 +65,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#755)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
