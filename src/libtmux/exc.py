@@ -7,6 +7,7 @@ libtmux.exc
 
 from __future__ import annotations
 
+import shlex
 import typing as t
 
 if t.TYPE_CHECKING:
@@ -348,6 +349,40 @@ class AmbiguousOption(OptionError):
 
 class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition."""
+
+
+class TmuxTimeout(Exception):
+    """A command exceeded its optional deadline; its client was killed and reaped.
+
+    Work already accepted by tmux may have taken effect. The server and pane
+    processes remain running. Retrying a mutation can repeat its effects.
+
+    Parameters
+    ----------
+    cmd : list[str]
+        Full command argv of the owned client.
+    timeout : float
+        Deadline in seconds.
+
+    Notes
+    -----
+    This is separate from :exc:`LibTmuxException` and :exc:`WaitTimeout`:
+    command delivery is uncertain, and lenient list accessors must not turn
+    an opted-in command deadline into an empty result.
+
+    Examples
+    --------
+    >>> err = TmuxTimeout(cmd=["tmux", "wait-for", "ready"], timeout=0.5)
+    >>> err.timeout
+    0.5
+    >>> isinstance(err, LibTmuxException)
+    False
+    """
+
+    def __init__(self, cmd: list[str], timeout: float) -> None:
+        self.cmd = cmd
+        self.timeout = timeout
+        super().__init__(f"tmux command timed out after {timeout}s: {shlex.join(cmd)}")
 
 
 class VariableUnpackingError(LibTmuxException):

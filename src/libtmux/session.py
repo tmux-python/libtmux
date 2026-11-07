@@ -418,6 +418,7 @@ class Session(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within session context.
 
@@ -439,6 +440,11 @@ class Session(
         ----------
         target : str, optional
             Optional custom target override. By default, the target is the session ID.
+        timeout : float, optional
+            Positive finite seconds for this command. None waits indefinitely.
+            Expiry raises :exc:`~libtmux.exc.TmuxTimeout` after reaping the client.
+            Custom server dispatchers raise :exc:`NotImplementedError` before
+            dispatch.
 
         Returns
         -------
@@ -456,7 +462,10 @@ class Session(
         """
         if target is None:
             target = self.session_id
-        return self.server.cmd(cmd, *args, target=target)
+        if timeout is None:
+            return self.server.cmd(cmd, *args, target=target)
+        self.server._raise_if_custom_dispatch()
+        return self.server.cmd(cmd, *args, target=target, timeout=timeout)
 
     """
     Commands (tmux-like)

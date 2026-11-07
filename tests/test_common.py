@@ -5,6 +5,7 @@ from __future__ import annotations
 import locale
 import logging
 import re
+import subprocess
 import sys
 import typing as t
 
@@ -35,9 +36,219 @@ if t.TYPE_CHECKING:
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
+def test_command_deadline_reaps_only_its_client(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Observe the real child because raising alone does not prove it was reaped."""
+    processes: list[subprocess.Popen[str]] = []
+    spawn = subprocess.Popen
+
+    def record(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[str]:
+        process = spawn(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    server.new_session(session_name="survives-deadline")
+    monkeypatch.setattr(subprocess, "Popen", record)
+    with pytest.raises(Exception, match="tmux command timed out") as caught:
+        tmux_cmd(f"-L{server.socket_name}", "wait-for", "never-signalled", timeout=0.03)
+    assert isinstance(caught.value, exc.TmuxTimeout)
+    assert caught.value.timeout == 0.03
+    assert caught.value.cmd[-2:] == ["wait-for", "never-signalled"]
+    assert len(processes) == 1
+    process = processes[0]
+    assert process.returncode is not None
+    assert process.stdout is not None and process.stdout.closed
+    assert process.stderr is not None and process.stderr.closed
+    assert server.is_alive()
+
+
+@pytest.mark.parametrize("scope", ["server", "session", "window", "pane"])
+def test_object_command_accepts_optional_deadline(session: Session, scope: str) -> None:
+    """Each command facade preserves its result and selected endpoint."""
+    window = session.active_window
+    assert window is not None
+    pane = window.active_pane
+    assert pane is not None
+    target = {
+        "server": session.server,
+        "session": session,
+        "window": window,
+        "pane": pane,
+    }[scope]
+    result = target.cmd("display-message", "-p", "deadline-result", timeout=0.5)
+    assert result.stdout == ["deadline-result"]
+    assert result.returncode == 0
+
+
+@pytest.mark.parametrize("scope", ["session", "window", "pane"])
+@pytest.mark.parametrize("dispatch", ["instance", "class", "subclass"])
+def test_object_deadline_refuses_custom_dispatch(
+    monkeypatch: pytest.MonkeyPatch, scope: str, dispatch: str
+) -> None:
+    """A dispatcher accepting arbitrary keywords cannot silently discard a bound."""
+    calls: list[dict[str, t.Any]] = []
+    result = t.cast("tmux_cmd", object())
+
+    def custom(*_args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        calls.append(kwargs)
+        return result
+
+    server: libtmux.Server
+    if dispatch == "subclass":
+
+        class RoutedServer(libtmux.Server):
+            cmd = custom
+
+        server = RoutedServer(
+            socket_name="custom-deadline", tmux_bin="/not-an-executable"
+        )
+    else:
+        server = libtmux.Server(
+            socket_name="custom-deadline", tmux_bin="/not-an-executable"
+        )
+        monkeypatch.setattr(
+            server if dispatch == "instance" else type(server), "cmd", custom
+        )
+
+    target = {
+        "session": libtmux.Session(server=server, session_id="$0"),
+        "window": libtmux.Window(server=server, window_id="@0"),
+        "pane": libtmux.Pane(server=server, pane_id="%0"),
+    }[scope]
+    assert target.cmd("display-message", "-p", "unbounded", timeout=None) is result
+    assert len(calls) == 1
+    assert "timeout" not in calls[0]
+    calls.clear()
+
+    with pytest.raises(NotImplementedError, match="custom"):
+        target.cmd("new-window", timeout=0.03)
+    assert not calls
+
+
+def test_command_deadline_refuses_an_injected_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected backend must not silently fall back to a local client."""
+    server = libtmux.Server(
+        socket_name="custom-deadline", tmux_bin="/not-an-executable"
+    )
+    backend = object()
+    monkeypatch.setattr(server, "_engine", backend, raising=False)
+    with pytest.raises(NotImplementedError, match="custom"):
+        server.cmd("new-session", "-d", timeout=0.03)
+    assert getattr(server, "_engine", None) is backend
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
+def test_invalid_deadline_refuses_before_effects(
+    server: Server, timeout: float
+) -> None:
+    """An invalid bound must not create the requested session."""
+    with pytest.raises(ValueError, match="timeout"):
+        server.cmd("new-session", "-d", "-s", "invalid-deadline", timeout=timeout)
+    assert not server.is_alive()
+
+
+def test_deadline_does_not_undo_an_accepted_mutation(server: Server) -> None:
+    """An accepted mutation remains when a later command blocks its reply."""
+    server.new_session(session_name="accepted-mutation")
+    with pytest.raises(exc.TmuxTimeout):
+        server.cmd(
+            "set-option",
+            "-g",
+            "@deadline-mutated",
+            "1",
+            ";",
+            "wait-for",
+            "never-replied",
+            timeout=0.05,
+        )
+    assert server.cmd("show-options", "-gv", "@deadline-mutated").stdout == ["1"]
+
+
 def test_has_version() -> None:
     """Test has_version()."""
     assert has_version(str(get_version()))
+
+
+@pytest.mark.parametrize("timeout", [1e10, sys.float_info.max])
+def test_large_finite_deadline_keeps_native_wait_in_range(
+    server: Server,
+    timeout: float,
+) -> None:
+    """A valid large deadline must not overflow the OS wait after spawning."""
+    server.new_session(session_name="large-deadline")
+    result = server.cmd("display-message", "-p", "large-result", timeout=timeout)
+    assert result.stdout == ["large-result"]
+
+
+def test_deadline_wait_slices_keep_one_client_and_its_output(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Force one native slice expiry while the original command remains alive."""
+    server.new_session(session_name="sliced-wait")
+    spawn = subprocess.Popen
+    calls = 0
+    clients: list[subprocess.Popen[str]] = []
+
+    def control(*args: str) -> None:
+        child = spawn(
+            ["tmux", f"-L{server.socket_name}", *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        _, error = child.communicate(timeout=0.5)
+        assert child.returncode == 0, error
+
+    def record(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[str]:
+        process = spawn(*args, **kwargs)
+        clients.append(process)
+        communicate = process.communicate
+
+        def sliced(
+            input: t.Any = None,  # noqa: A002 - mirrors subprocess.communicate's keyword.
+            timeout: float | None = None,
+        ) -> tuple[str, str]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                control("wait-for", "slice-ready")
+                try:
+                    return communicate(input, timeout=0)
+                except subprocess.TimeoutExpired:
+                    control("wait-for", "-S", "slice-release")
+                    raise
+            return communicate(input, timeout=timeout)
+
+        monkeypatch.setattr(process, "communicate", sliced)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", record)
+    result = tmux_cmd(
+        f"-L{server.socket_name}",
+        "display-message",
+        "-p",
+        "early",
+        ";",
+        "wait-for",
+        "-S",
+        "slice-ready",
+        ";",
+        "wait-for",
+        "slice-release",
+        ";",
+        "display-message",
+        "-p",
+        "late",
+        timeout=0.5,
+    )
+    assert result.stdout == ["early", "late"]
+    assert calls >= 2
+    assert len(clients) == 1
 
 
 def test_get_version_is_memoized_for_same_tmux_bin(
