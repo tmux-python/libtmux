@@ -8,6 +8,9 @@ The package centers on inert, typed tmux operation values and interchangeable
 execution engines. Operations render commands, carry result types, and
 serialize without a live tmux server; engines execute them and return the same
 typed result shapes.
+
+:mod:`libtmux.experimental.objects` provides engine-bound tmux domain objects
+with eager, lazy, and async interfaces over the shared operation spine.
 """
 
 from __future__ import annotations

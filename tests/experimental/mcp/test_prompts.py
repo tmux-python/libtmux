@@ -95,7 +95,7 @@ def test_prompt_bodies_use_engine_ops_vocabulary() -> None:
         for foreign in _FOREIGN_TOOLS:
             assert foreign not in body, f"foreign tool {foreign!r} leaked"
     # the canonical engine-ops verbs appear
-    assert "send_input" in run_and_wait("ls", "%1")
+    assert "run_in_pane" in run_and_wait("ls", "%1")
     assert "split_pane" in build_dev_workspace("dev")
     assert "wait_for_output" in interrupt_gracefully("%1")
 
@@ -111,11 +111,9 @@ def _wait_for_output_bodies() -> tuple[WaitForOutputCase, ...]:
     from libtmux.experimental.mcp.prompts import (
         diagnose_failing_pane,
         interrupt_gracefully,
-        run_and_wait,
     )
 
     return (
-        WaitForOutputCase("run_and_wait", run_and_wait("ls", "%1")),
         WaitForOutputCase("diagnose_failing_pane", diagnose_failing_pane("%1")),
         WaitForOutputCase("interrupt_gracefully", interrupt_gracefully("%1")),
     )

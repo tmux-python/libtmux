@@ -3,8 +3,8 @@
 Each function is a FastMCP prompt -- a template returning the text an MCP client
 sends to its model, packaging a few common workflows over the engine-ops
 vocabulary (``send_input`` / ``wait_for_output`` / ``capture_pane`` /
-``create_session`` / ``split_pane``). Pure string builders, engine-agnostic;
-:func:`register_prompts` picks which apply to a given server.
+``run_in_pane`` / ``create_session`` / ``split_pane``). Pure string builders,
+engine-agnostic; :func:`register_prompts` picks which apply to a given server.
 """
 
 from __future__ import annotations
@@ -20,15 +20,15 @@ def run_and_wait(command: str, pane_id: str, timeout: float = 60.0) -> str:
     return f"""Run this shell command in tmux pane {pane_id}, then wait for the
 pane to settle and inspect the result:
 
-1. send_input(target={pane_id!r}, keys={command!r}, enter=True)
-2. wait_for_output(target={pane_id!r}, timeout={timeout}) -- folds the live output
-   and returns when the pane goes quiet (needle-free: no regex, no sentinel).
-3. Read done.pane_dead / done.pane_dead_status (exit code) and captured_text.
+1. run_in_pane(target={pane_id!r}, command={command!r}, timeout={timeout}) -- sends
+   the command, folds the live output, and returns when the pane goes quiet
+   (needle-free: no regex, no sentinel).
+2. Read done.pane_dead / done.pane_dead_status (exit code) and captured_text.
    "Settled" means output stopped, not that the command succeeded -- check the
    done metadata for the exit status.
 
-Prefer this over a send_input + capture_pane retry loop: wait_for_output is
-event-backed and reports the process exit."""
+Prefer this over a send_input + capture_pane retry loop, or a separate
+send_input + wait_for_output pair when you are just running one command."""
 
 
 def diagnose_failing_pane(pane_id: str) -> str:

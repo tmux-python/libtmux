@@ -9,6 +9,7 @@ connection or ``pytest-asyncio``.
 from __future__ import annotations
 
 import asyncio
+import re
 import typing as t
 
 import pytest
@@ -62,6 +63,85 @@ def test_accumulate_settles_on_idle() -> None:
     assert out.truncated is False
     # On 'settled', idle_ms_observed is exactly the settle_ms threshold.
     assert out.idle_ms_observed == 10
+
+
+def test_accumulate_matches_needle_before_settle() -> None:
+    """A needle resolves the fold the instant it appears -- not after the idle gap."""
+
+    async def emits_then_blocks() -> AsyncGenerator[str, None]:
+        yield "starting up... "
+        yield "READY to serve"
+        await asyncio.Event().wait()  # would otherwise only settle on idle
+
+    out = asyncio.run(
+        accumulate_until_settle(
+            emits_then_blocks(),
+            settle_ms=10_000,  # long on purpose: prove we did NOT wait for idle
+            timeout_ms=2000,
+            max_bytes=4096,
+            needle="READY",
+        ),
+    )
+    assert out.reason == "matched"
+    assert "READY" in out.text
+
+
+def test_accumulate_needle_regex_pattern() -> None:
+    """A compiled pattern matches across the accumulated output."""
+
+    async def test_run() -> AsyncGenerator[str, None]:
+        yield "collecting...\n"
+        yield "3 passed in 0.10s\n"
+        await asyncio.Event().wait()
+
+    out = asyncio.run(
+        accumulate_until_settle(
+            test_run(),
+            settle_ms=10_000,
+            timeout_ms=2000,
+            max_bytes=4096,
+            needle=re.compile(r"\d+ passed"),
+        ),
+    )
+    assert out.reason == "matched"
+
+
+def test_accumulate_needle_spans_chunks() -> None:
+    """A needle split across two chunks still matches (the whole buffer is scanned)."""
+
+    async def split() -> AsyncGenerator[str, None]:
+        yield "REA"
+        yield "DY"
+        await asyncio.Event().wait()
+
+    out = asyncio.run(
+        accumulate_until_settle(
+            split(),
+            settle_ms=10_000,
+            timeout_ms=2000,
+            max_bytes=4096,
+            needle="READY",
+        ),
+    )
+    assert out.reason == "matched"
+
+
+def test_accumulate_no_needle_still_settles() -> None:
+    """Without a needle the fold still settles on idle (the default is unchanged)."""
+
+    async def quiet() -> AsyncGenerator[str, None]:
+        yield "no needle here"
+        await asyncio.Event().wait()
+
+    out = asyncio.run(
+        accumulate_until_settle(
+            quiet(),
+            settle_ms=10,
+            timeout_ms=2000,
+            max_bytes=4096,
+        ),
+    )
+    assert out.reason == "settled"
 
 
 def test_accumulate_byte_cap_keeps_tail() -> None:

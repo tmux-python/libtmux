@@ -6,7 +6,8 @@ typed :class:`~.descriptor.ToolDescriptor` (via
 :class:`~.registry.OperationToolRegistry`), resolves agent string/dict targets
 (:func:`~.target_resolver.resolve_target`), and exposes plan tools
 (:func:`~.plan_tools.preview_plan`, :func:`~.plan_tools.execute_plan`,
-:func:`~.plan_tools.result_schema`) plus :func:`~.plan_tools.build_workspace`.
+:func:`~.plan_tools.result_schema`) plus
+:func:`~.plan_tools.build_workspace` / :func:`~.plan_tools.build_workspaces`.
 
 It has **no** MCP-framework dependency (no fastmcp/pydantic at import time); a
 thin adapter in a server (e.g. libtmux-mcp) binds these descriptors at runtime.
@@ -31,9 +32,12 @@ from libtmux.experimental.mcp.plan_tools import (
     PlanOutcome,
     PlanPreview,
     ResultSchema,
+    WorkspaceSetOutcome,
     abuild_workspace,
+    abuild_workspaces,
     aexecute_plan,
     build_workspace,
+    build_workspaces,
     execute_plan,
     explain_plan,
     preview_plan,
@@ -60,6 +64,7 @@ from libtmux.experimental.mcp.vocabulary import (
     new_pane,
     rename_session,
     rename_window,
+    run_in_pane,
     select_layout,
     select_pane,
     send_input,
@@ -278,9 +283,12 @@ __all__ = (
     "SessionResult",
     "ToolDescriptor",
     "WindowResult",
+    "WorkspaceSetOutcome",
     "abuild_workspace",
+    "abuild_workspaces",
     "aexecute_plan",
     "build_workspace",
+    "build_workspaces",
     "capture_pane",
     "create_session",
     "create_window",
@@ -301,6 +309,7 @@ __all__ = (
     "rename_window",
     "resolve_target",
     "result_schema",
+    "run_in_pane",
     "schema_for_type",
     "select_layout",
     "select_pane",
