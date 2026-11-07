@@ -45,6 +45,13 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Development
+
+#### Local Node.js selection
+
+The development checkout no longer selects a Node.js version through
+`.nvmrc`. The optional Markdown formatter uses your installed Prettier.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
