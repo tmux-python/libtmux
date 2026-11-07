@@ -59,6 +59,10 @@ it.
 
 ### Development
 
+#### Ruff 0.17.3 for development (#746)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
+
 #### CI recovers from incompatible tmux caches (#835)
 
 CI rebuilds incompatible cached tmux installations before running tests.
@@ -92,6 +96,18 @@ flake8-blind-except, and flake8-bandit checks now apply; the tmux output
 parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
+
+#### tmux 3.7c joins the tested versions (#746)
+
+CI exercises tmux 3.7c. The point release needs no library change:
+{func}`~libtmux.common.get_version` strips the point-release suffix, so the
+existing `3.7` feature gates already accept it, and the tmux 3.7
+{meth}`~libtmux.Pane.break_pane` workaround keys on the raw `"3.7"` string
+through {func}`~libtmux.common.get_version_str`.
+
+One tmux-side behavior change is worth knowing: on 3.7c, creating a floating
+pane with {meth}`~libtmux.Pane.new_pane` in a zoomed window unzooms the
+window, where tmux 3.7 through 3.7b left it zoomed.
 
 ## libtmux 0.62.0 (2026-07-12)
 
