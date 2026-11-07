@@ -887,14 +887,12 @@ def test_display_message_warns_on_tmux_error(session: Session) -> None:
 
 
 def test_split_percentage(session: Session) -> None:
-    """Test Pane.split() with percentage parameter."""
-    from libtmux.common import has_gte_version
+    """Test Pane.split() with percentage parameter.
 
-    # tmux 3.4 has a regression in split-window -p; fixed in 3.5.
-    # Per CHANGES FROM 3.4 TO 3.5: "Fix split-window -p."
-    if not has_gte_version("3.5"):
-        pytest.skip("split-window -p was broken in tmux 3.4 (fixed in 3.5)")
-
+    Runs on every supported tmux. The percentage rides on ``-l``, which has
+    accepted one since tmux 3.1 and never carried ``-p``'s 3.4 regression, so
+    a version gate here would hide exactly the breakage this pins.
+    """
     window = session.new_window(window_name="test_split_pct")
     window.resize(height=40, width=80)
     pane = window.active_pane
