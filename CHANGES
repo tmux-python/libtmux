@@ -76,6 +76,10 @@ end to end, so a guide that stops working fails the build.
 
 ### Development
 
+#### Ruff 0.17.3 for development (#736)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
+
 #### CI recovers from incompatible tmux caches (#835)
 
 CI rebuilds incompatible cached tmux installations before running tests.
