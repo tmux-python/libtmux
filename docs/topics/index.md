@@ -43,6 +43,12 @@ Send keys, capture output, and interact with panes.
 Create and position floating (overlay) panes on tmux 3.7+.
 :::
 
+:::{grid-item-card} Incremental History Capture
+:link: incremental_capture
+:link-type: doc
+Read counter-aligned history rows and distinguish resets, gaps, and unknowns.
+:::
+
 :::{grid-item-card} Workspace Setup
 :link: workspace_setup
 :link-type: doc
@@ -92,6 +98,7 @@ traversal
 self_location
 filtering
 pane_interaction
+incremental_capture
 floating_panes
 workspace_setup
 automation_patterns

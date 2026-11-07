@@ -14,6 +14,7 @@ from .__about__ import (
     __title__,
     __version__,
 )
+from .capture import CaptureCursor, CaptureSince
 from .client import Client
 from .pane import Pane
 from .server import Server
@@ -23,6 +24,8 @@ from .window import Window
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __all__ = (
+    "CaptureCursor",
+    "CaptureSince",
     "Client",
     "Pane",
     "Server",

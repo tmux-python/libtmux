@@ -104,6 +104,45 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  history-capture-3-8:
+    name: History capture (tmux 3.8)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install Python and project dependencies
+        run: |
+          uv python install 3.15
+          uv sync --all-extras --dev --python 3.15
+
+      - name: Build stable tmux 3.8
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake bison pkg-config libevent-dev libncurses-dev
+          git clone --depth 1 --branch 3.8 https://github.com/tmux/tmux.git "$RUNNER_TEMP/tmux-history-source"
+          cd "$RUNNER_TEMP/tmux-history-source"
+          sh autogen.sh
+          ./configure --prefix="$RUNNER_TEMP/tmux-history"
+          make -j2
+          make install
+          echo "$RUNNER_TEMP/tmux-history/bin" >> "$GITHUB_PATH"
+
+      - name: Test counter-backed history and its executable example
+        run: |
+          tmux -V
+          time env -u TMUX -u TMUX_PANE uv run pytest tests/test_capture.py --reruns=0 --tb=short --cov=./ --cov-report=xml:coverage-history.xml
+
+      - uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-history.xml
+
   release:
     runs-on: ubuntu-latest
     needs: build
