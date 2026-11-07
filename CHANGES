@@ -59,6 +59,10 @@ it.
 
 ### Development
 
+#### Ruff 0.17.3 for development (#761)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
+
 #### CI recovers from incompatible tmux caches (#835)
 
 CI rebuilds incompatible cached tmux installations before running tests.
