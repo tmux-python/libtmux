@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import typing as t
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 from libtmux._internal.dataclasses import SkipDefaultFieldsReprMixin
 from libtmux._internal.sparse_array import SparseArray, is_sparse_array_list
@@ -793,7 +793,7 @@ class Hooks(
     after_pipe_pane : SparseArray[str]
         Runs after 'pipe-pane' completes.
     after_queue : SparseArray[str]
-        Runs after 'queue' command is processed.
+        Runs after 'queue' command is processed (removed in tmux 3.8).
     after_refresh_client : SparseArray[str]
         Runs after 'refresh-client' completes.
     after_rename_session : SparseArray[str]
@@ -834,6 +834,18 @@ class Hooks(
         Runs after 'unbind-key' completes.
     command_error : SparseArray[str]
         Runs when a command fails (tmux 3.5+).
+    after_swap_window : SparseArray[str]
+        Runs after 'swap-window' completes (tmux 3.8+).
+    client_closed : SparseArray[str]
+        Run when a client is closed (tmux 3.8+).
+    client_created : SparseArray[str]
+        Run when a client is created (tmux 3.8+).
+    marked_pane_changed : SparseArray[str]
+        Run when the marked pane changes (tmux 3.8+).
+    session_added_to_group : SparseArray[str]
+        Run when a session is added to a session group (tmux 3.8+).
+    session_removed_from_group : SparseArray[str]
+        Run when a session is removed from a session group (tmux 3.8+).
 
     Examples
     --------
@@ -1050,7 +1062,7 @@ class Hooks(
     after_paste_buffer: SparseArray[str] = field(default_factory=SparseArray)
     # Runs after 'pipe-pane' completes
     after_pipe_pane: SparseArray[str] = field(default_factory=SparseArray)
-    # Runs after 'queue' command is processed
+    # Runs after 'queue' command is processed (removed in tmux 3.8)
     after_queue: SparseArray[str] = field(default_factory=SparseArray)
     # Runs after 'refresh-client' completes
     after_refresh_client: SparseArray[str] = field(default_factory=SparseArray)
@@ -1092,6 +1104,18 @@ class Hooks(
     after_unbind_key: SparseArray[str] = field(default_factory=SparseArray)
     # Runs when a command fails (tmux 3.5+)
     command_error: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'swap-window' completes (tmux 3.8+).
+    after_swap_window: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a client is closed (tmux 3.8+).
+    client_closed: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a client is created (tmux 3.8+).
+    client_created: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when the marked pane changes (tmux 3.8+).
+    marked_pane_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a session is added to a session group (tmux 3.8+).
+    session_added_to_group: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a session is removed from a session group (tmux 3.8+).
+    session_removed_from_group: SparseArray[str] = field(default_factory=SparseArray)
 
     @classmethod
     def from_stdout(cls, value: list[str]) -> Hooks:
@@ -1135,6 +1159,12 @@ class Hooks(
         >>> sorted(hooks.after_select_window.keys())
         [0, 10]
 
+        A hook this table does not know is ignored:
+
+        >>> hooks_unknown = Hooks.from_stdout(["future-hook[0] refresh-client"])
+        >>> hooks_unknown == Hooks()
+        True
+
         Empty input returns empty SparseArrays:
 
         >>> hooks_empty = Hooks.from_stdout([])
@@ -1164,4 +1194,7 @@ class Hooks(
             k.lstrip("%").replace("-", "_"): v for k, v in output_exploded.items()
         }
 
-        return cls(**output_renamed)
+        # A newer tmux can list hooks this table predates; skip them rather
+        # than fail the whole parse.
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in output_renamed.items() if k in known})

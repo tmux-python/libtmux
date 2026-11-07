@@ -52,7 +52,7 @@ be stated twice, the file listed above is the one that governs.
 - A passing gate is evidence only once it has been shown capable of
   failing. Pair a new test with a deliberate break that proves it bites.
 
-tmux >= 3.2a is the compatibility floor (see `tests.yml`'s build
+tmux >= 3.3a is the compatibility floor (see `tests.yml`'s build
 matrix). `Server.sessions`, `Server.clients`, and
 `Server.attached_sessions` return an empty `QueryList` rather than
 raising when the underlying tmux list command fails for any reason —
@@ -60,6 +60,9 @@ list-shaped accessors are lenient by default; `Server.is_alive()` and
 `Server.raise_if_dead()` are the explicit, loud-failure primitives. See
 `src/libtmux/AGENTS.md` for the full contract and this package's
 logging conventions.
+
+An unsupported tmux version raises `VersionTooLow`, including from lenient
+list accessors and query traversal. Version refusals are not empty results.
 
 ## References
 

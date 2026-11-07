@@ -12,8 +12,8 @@ import typing as t
 
 import pytest
 
-from libtmux.common import has_gte_version
 from libtmux.test.retry import retry_until
+from tests.tmux_client import client_gte
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -329,7 +329,7 @@ def test_capture_pane_flags(
         pytest fixture providing tmux session.
     """
     # Skip if tmux version too old
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     # Find env for predictable shell
@@ -450,12 +450,10 @@ def test_capture_pane_trim_trailing_warning(
     """Test that trim_trailing issues a warning on tmux < 3.4."""
     import warnings
 
-    from libtmux import pane as pane_module
+    from libtmux import Server
 
-    # has_gte_version is imported into libtmux.pane at module import time;
-    # monkeypatching the libtmux.common attribute would not propagate, so
-    # patch the pane module's binding directly.
-    monkeypatch.setattr(pane_module, "has_gte_version", lambda v, **kw: v != "3.4")
+    # Feature flags follow the daemon's release, so patch that decision.
+    monkeypatch.setattr(Server, "_has_gte_version", lambda _self, v: v != "3.4")
 
     pane = session.active_window.split(shell="sh")
 
@@ -497,7 +495,7 @@ def test_capture_pane_flag_smoke(
     returns a list without raising. Output-pattern assertions live in
     CAPTURE_PANE_CASES for the flags whose behaviour is observable.
     """
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     pane = session.active_window.active_pane

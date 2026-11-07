@@ -287,10 +287,9 @@ def test_new_window_name_colon_period_accepted(
 
     The lone tmux 3.7 point release briefly rejected these characters before
     3.7a reverted the restriction (tmux commit 166267c8, "overly
-    pernickety"). libtmux's version helpers strip the letter suffix, so
-    :func:`~libtmux.common.get_version` cannot tell 3.7 from 3.7a -- both
-    report ``3.7`` -- so CI exercises 3.7a/3.7b rather than the superseded
-    3.7 release.
+    pernickety"). The suite's executable gate strips the letter suffix, so it
+    cannot tell 3.7 from 3.7a -- both report ``3.7`` -- so CI exercises
+    3.7a/3.7b rather than the superseded 3.7 release.
     """
     window = session.new_window(window_name=window_name)
     assert window.window_name == window_name
@@ -1163,9 +1162,9 @@ def test_window_display_message_flags(
     session: Session,
 ) -> None:
     """Window.display_message() resolves window-scoped formats."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     window = session.active_window
@@ -1191,9 +1190,9 @@ def test_window_display_message_target_client(
     session: Session,
 ) -> None:
     """``target_client`` is plumbed through as ``-c``."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if not has_gte_version("3.3"):
+    if not client_gte("3.3"):
         pytest.skip(
             "display-message -p via control-mode client unreliable on tmux 3.2a"
         )
@@ -1320,12 +1319,12 @@ def test_window_refresh_raises_when_window_id_is_none(session: Session) -> None:
 
 def test_new_pane(session: Session) -> None:
     """Window.new_pane() creates a floating pane on tmux 3.7+ (else raises)."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
     window = session.new_window(window_name="win_floating")
     window.resize(height=50, width=200)
 
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         floating = window.new_pane(width=60, height=12, shell="sleep 30")
         assert floating.pane_floating_flag == "1"
         assert floating in window.panes
