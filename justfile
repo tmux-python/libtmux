@@ -142,3 +142,50 @@ _entr-warn:
     @echo "Install entr(1) to automatically run tasks on file change."
     @echo "See https://eradman.com/entrproject/                      "
     @echo "----------------------------------------------------------"
+
+# ---- OpenTelemetry / LGTM dev workflow ----
+
+# Start the local Grafana LGTM stack the telemetry checks query against
+[group: 'otel']
+otel-up:
+    scripts/lgtm/up.sh
+
+# Stop and remove the local Grafana LGTM stack
+[group: 'otel']
+otel-down:
+    docker rm -f ${LIBTMUX_LGTM_CONTAINER:-libtmux-lgtm}
+
+# Confirm each published port reaches the container, not a host process
+[group: 'otel']
+otel-ports:
+    scripts/lgtm/verify.sh
+
+# Print an MCP client config for this stack, with its real ports and token
+[group: 'otel']
+otel-mcp:
+    scripts/lgtm/mcp-config.sh
+
+# Regenerate the provisioned Grafana dashboards from their generator
+[group: 'otel']
+otel-dashboards:
+    uv run python scripts/lgtm/generate_dashboards.py
+
+# Drive a real tmux workload through the engine seam into LGTM
+[group: 'otel']
+otel-smoke *args:
+    uv run --group otel python scripts/lgtm/smoke.py {{ args }}
+
+# Verify every dashboard panel's own queries return data
+[group: 'otel']
+otel-acceptance *args:
+    uv run --group otel python scripts/lgtm/acceptance.py {{ args }}
+
+# Start the stack, run the workload, then verify every panel end to end
+[group: 'otel']
+otel-verify:
+    uv run --group otel python scripts/lgtm/acceptance.py --start-stack --smoke
+
+# Drive the engines under a load shape (ramping arrival rate) via rampa
+[group: 'otel']
+otel-load *args:
+    uv run --group otel --group load rampa run scripts/lgtm/load_tmux.py {{ args }}
