@@ -59,11 +59,22 @@ it.
 
 ### Development
 
+#### Ruff 0.17.3 for development (#733)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
+
 #### CI recovers from incompatible tmux caches (#835)
 
 CI rebuilds incompatible cached tmux installations before running tests.
 Release downloads use checksum pins in `.github/tmux-releases.toml`,
 including tmux 3.8.
+
+#### The control-mode test no longer flakes in CI (#733)
+
+`test_control_mode_stdout_preserves_non_ascii_output` intermittently timed out
+waiting for output that had already arrived, so it failed on loaded runners and
+passed on re-run. The test now bounds its wait with a reader thread and a
+deadline. The non-ASCII decoding regression it guards is still covered.
 
 #### CI actions updated to current majors
 
