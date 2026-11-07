@@ -11,6 +11,7 @@ import typing as t
 
 if t.TYPE_CHECKING:
     from libtmux.neo import ListExtraArgs
+    from libtmux.session_creation import FoundOrCreated
 
 
 def _format_query(query: t.Mapping[str, t.Any]) -> str:
@@ -93,6 +94,31 @@ class DeprecatedError(LibTmuxException):
 
 class TmuxSessionExists(LibTmuxException):
     """Session does not exist in the server."""
+
+
+class CreationCleanupError(LibTmuxException):
+    """Retain an operation failure and the failed cleanup of its creation.
+
+    Attributes
+    ----------
+    operation_error : BaseException
+        Original setup or context-body failure, including its original cause.
+    cleanup_error : BaseException
+        Failure of the guarded cleanup attempt.
+    owner : FoundOrCreated
+        Original result, retained for inspection, explicit retry or preservation.
+    """
+
+    def __init__(
+        self,
+        operation_error: BaseException,
+        cleanup_error: BaseException,
+        owner: FoundOrCreated[t.Any],
+    ) -> None:
+        self.operation_error = operation_error
+        self.cleanup_error = cleanup_error
+        self.owner = owner
+        super().__init__("session operation and its cleanup both failed")
 
 
 class TmuxCommandNotFound(LibTmuxException):
