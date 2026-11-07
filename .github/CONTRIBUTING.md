@@ -132,9 +132,10 @@ $ uv run ptw . --now --doctest-modules
 
 The test workflow builds the versions in its existing matrix. Stable
 versions use the official release archives and SHA256 pins in
-`.github/scripts/tmux_build.py`; `master` resolves once to a commit and
+`.github/tmux-releases.toml`, including tmux 3.8. The selected release's
+checksum is part of its cache identity. `master` resolves once to a commit and
 fetches that exact commit. The build follows tmux's
-[release and source-checkout instructions](https://github.com/tmux/tmux/blob/3.7b/README#L24-L39).
+[release and source-checkout instructions](https://github.com/tmux/tmux/blob/3.8/README#L23-L37).
 Only the installed prefix is cached. Each build uses a fresh source tree
 and up to four available processors.
 
@@ -151,7 +152,9 @@ current job, but cannot overwrite that entry. A build-script change
 invalidates its key for later jobs. Never add a broad restore-key fallback
 for native binaries.
 
-Run the cache regressions against an installed tmux:
+The CI scripts require Python 3.11+ for the standard-library TOML reader;
+the library keeps its Python 3.10 floor. Run the cache regressions against
+an installed tmux:
 
 ```console
 $ uv run pytest .github/scripts/test_tmux_build.py --reruns=0

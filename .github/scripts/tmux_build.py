@@ -12,17 +12,12 @@ import re
 import shutil
 import subprocess
 import tempfile
+import tomllib
 
 _REPOSITORY = "https://github.com/tmux/tmux.git"
-_RELEASES = {
-    "3.2a": "551553a4f82beaa8dadc9256800bcc284d7c000081e47aa6ecbb6ff36eacd05f",
-    "3.3a": "e4fd347843bd0772c4f48d6dde625b0b109b7a380ff15db21e97c11a4dcdf93f",
-    "3.4": "551ab8dea0bf505c0ad6b7bb35ef567cdde0ccb84357df142c254f35a23e19aa",
-    "3.5": "2fe01942e7e7d93f524a22f2c883822c06bc258a4d61dba4b407353d7081950f",
-    "3.6": "136db80cfbfba617a103401f52874e7c64927986b65b1b700350b6058ad69607",
-    "3.7a": "8ee44ce951182845fd57ad12dd6f27fb677b1afb900e2e84df4798112ed0dbf0",
-    "3.7b": "87f2e99e3b685973f2ca002ffd6ed7e51a5744f7009daae5a15670b6d532db96",
-}
+with (pathlib.Path(__file__).parents[1] / "tmux-releases.toml").open("rb") as _pins:
+    _RELEASES: dict[str, str] = tomllib.load(_pins)["releases"]
+
 _BUILD_ENV = {
     "CC": "cc",
     "CFLAGS": "-O2",

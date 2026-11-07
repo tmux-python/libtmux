@@ -82,7 +82,9 @@ jobs:
         run: uv run ruff format . .github/scripts --check
 
       - name: Lint with mypy
-        run: uv run mypy . .github/scripts
+        run: |
+          uv run mypy .
+          uv run mypy --python-version 3.11 .github/scripts
 
       - name: Print python versions
         run: |
