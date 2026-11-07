@@ -23,6 +23,7 @@ from libtmux.constants import (
     PaneDirection,
     ResizeAdjustmentDirection,
 )
+from libtmux.engines.base import CommandSeparator
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj
@@ -2630,7 +2631,7 @@ class Pane(
             "-t",
             self.pane_id,
             "-R",
-            ";",
+            CommandSeparator(";"),
             "clear-history",
             "-t",
             self.pane_id,

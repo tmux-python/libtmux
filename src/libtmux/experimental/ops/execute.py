@@ -12,7 +12,11 @@ from __future__ import annotations
 import dataclasses
 import typing as t
 
-from libtmux.experimental.engines.base import CommandRequest, SupportsTmuxVersion
+from libtmux.experimental.engines.base import (
+    CommandRequest,
+    SupportsAsyncTmuxVersion,
+    SupportsTmuxVersion,
+)
 
 if t.TYPE_CHECKING:
     import pathlib
@@ -59,14 +63,14 @@ def _merge_follow_up(result: ResultT, follow_up: Result) -> ResultT:
 
 
 def resolve_engine_version(
-    engine: TmuxEngine | AsyncTmuxEngine,
+    engine: TmuxEngine,
     version: str | None,
 ) -> str | None:
     """Resolve the tmux version to render against.
 
     Returns *version* unchanged when the caller supplied one. Otherwise asks the
     engine via the optional
-    :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` capability,
+    :class:`~libtmux.engines.base.SupportsTmuxVersion` capability,
     so version-gated rendering (flag drops and whole-command gates) reflects the
     live tmux at runtime instead of silently assuming latest. Engines that cannot
     report a version fall back to ``None`` ("assume latest").
@@ -90,6 +94,28 @@ def resolve_engine_version(
         return version
     if isinstance(engine, SupportsTmuxVersion):
         return engine.tmux_version()
+    return None
+
+
+async def aresolve_engine_version(
+    engine: AsyncTmuxEngine,
+    version: str | None,
+) -> str | None:
+    """Resolve an async engine version without invoking sync capabilities.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> class VersionedEngine:
+    ...     async def atmux_version(self):
+    ...         return "2.9"
+    >>> asyncio.run(aresolve_engine_version(VersionedEngine(), None))
+    '2.9'
+    """
+    if version is not None:
+        return version
+    if isinstance(engine, SupportsAsyncTmuxVersion):
+        return await engine.atmux_version()
     return None
 
 
@@ -192,7 +218,7 @@ async def arun(
     >>> result.lines
     ('line-1', 'line-2')
     """
-    version = resolve_engine_version(engine, version)
+    version = await aresolve_engine_version(engine, version)
     rendered = operation.render(version=version)
     raw = await engine.run(
         CommandRequest(

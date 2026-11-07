@@ -16,8 +16,9 @@ from libtmux.experimental.engines import (
     CommandRequest,
     ControlNotification,
 )
+from libtmux.experimental.engines.base import CommandSeparator
 from libtmux.experimental.ops import (
-    FoldingPlanner,
+    BatchingPlanner,
     LazyPlan,
     RenameWindow,
     SplitWindow,
@@ -42,11 +43,37 @@ def test_notification_parse() -> None:
 
 
 def test_notification_parse_output_keeps_payload() -> None:
-    """An ``%output`` line keeps the pane id and the whole payload as args."""
-    notif = ControlNotification.parse(b"%output %1 hello world")
+    r"""An ``%output`` line exposes decoded bytes and keeps raw wire text."""
+    notif = ControlNotification.parse(b"%output %1 hello\\012world\\134")
     assert notif.kind == "output"
-    assert notif.args == ("%1", "hello", "world")
-    assert notif.raw == "%output %1 hello world"
+    assert notif.args == ("%1", r"hello\012world\134")
+    assert notif.pane_id == "%1"
+    assert notif.payload == b"hello\nworld\\"
+    assert notif.raw == r"%output %1 hello\012world\134"
+    assert notif.raw_bytes == b"%output %1 hello\\012world\\134"
+
+
+def test_notification_parse_requires_three_octal_digits() -> None:
+    r"""Short octal-looking text stays literal; tmux frames exactly three."""
+    notif = ControlNotification.parse(b"%output %1 \\1 \\12 \\123")
+    assert notif.payload == b"\\1 \\12 S"
+
+
+def test_notification_parse_extended_output_payload() -> None:
+    r"""``%extended-output`` skips metadata and decodes its pane bytes."""
+    notif = ControlNotification.parse(b"%extended-output %2 17 future : a\\011b")
+    assert notif.kind == "extended-output"
+    assert notif.pane_id == "%2"
+    assert notif.payload == b"a\tb"
+    assert notif.raw == r"%extended-output %2 17 future : a\011b"
+
+
+def test_notification_parse_preserves_non_utf8_wire_bytes() -> None:
+    r"""Raw diagnostics and decoded payloads retain bytes tmux passes through."""
+    wire = b"%output %3 \xff\\033"
+    notif = ControlNotification.parse(wire)
+    assert notif.raw_bytes == wire
+    assert notif.payload == b"\xff\x1b"
 
 
 def test_notification_parse_line_without_percent() -> None:
@@ -54,6 +81,8 @@ def test_notification_parse_line_without_percent() -> None:
     notif = ControlNotification.parse(b"window-renamed @1 new")
     assert notif.kind == "window-renamed"
     assert notif.args == ("@1", "new")
+    assert notif.pane_id is None
+    assert notif.payload is None
 
 
 def test_async_control_split_creates_real_pane(session: Session) -> None:
@@ -165,35 +194,59 @@ def test_async_control_run_batch_pipelines_one_call(session: Session) -> None:
     assert results[0].stdout[0] != results[1].stdout[0]
 
 
-def test_async_control_folds_chain_over_one_dispatch(session: Session) -> None:
-    """A folded ``;`` chain dispatches as one multi-block command; each op completes.
-
-    The other tests dispatch only single-command operations, so the reader's
-    "wait for ``expected`` blocks" correlation (``command_count`` > 1) is never
-    exercised. A ``FoldingPlanner`` chain of two renames sends one ``a ; b`` line
-    that tmux answers with two blocks, proving block accumulation and per-op
-    attribution over the async connection.
-    """
+def test_async_control_batch_continues_after_failure(session: Session) -> None:
+    """Three pipelined requests retain success, failure, success attribution."""
     server = session.server
     window_id = session.active_window.window_id
     assert window_id is not None
     plan = LazyPlan()
-    plan.add_chain(
-        RenameWindow(target=WindowId(window_id), name="first")
-        >> RenameWindow(target=WindowId(window_id), name="folded"),
-    )
+    plan.add(RenameWindow(target=WindowId(window_id), name="first"))
+    plan.add(RenameWindow(target=WindowId("@999999"), name="missing"))
+    plan.add(RenameWindow(target=WindowId(window_id), name="continued"))
 
     async def main() -> PlanResult:
         async with AsyncControlModeEngine.for_server(server) as engine:
-            return await plan.aexecute(engine, planner=FoldingPlanner())
+            return await plan.aexecute(engine, planner=BatchingPlanner())
 
     outcome = asyncio.run(main())
-    assert outcome.ok
-    assert [result.status for result in outcome.results] == ["complete", "complete"]
-    # The last rename in the folded line won, proving both sub-commands ran.
+    assert [result.status for result in outcome.results] == [
+        "complete",
+        "failed",
+        "complete",
+    ]
     renamed = server.windows.get(window_id=window_id)
     assert renamed is not None
-    assert renamed.window_name == "folded"
+    assert renamed.window_name == "continued"
+
+
+def test_async_control_correlates_semicolon_command_group(session: Session) -> None:
+    """One intentional command group waits for both control-mode blocks."""
+    server = session.server
+    window_id = session.active_window.window_id
+    assert window_id is not None
+    request = CommandRequest(
+        args=(
+            "rename-window",
+            "-t",
+            window_id,
+            "first",
+            CommandSeparator(";"),
+            "rename-window",
+            "-t",
+            window_id,
+            "grouped",
+        ),
+    )
+
+    async def main() -> CommandResult:
+        async with AsyncControlModeEngine.for_server(server) as engine:
+            return await engine.run(request)
+
+    result = asyncio.run(main())
+    assert result.returncode == 0
+    renamed = server.windows.get(window_id=window_id)
+    assert renamed is not None
+    assert renamed.window_name == "grouped"
 
 
 def test_async_control_failure_is_data_not_raised(session: Session) -> None:

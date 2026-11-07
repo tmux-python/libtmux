@@ -13,11 +13,11 @@ import socket
 import typing as t
 
 from libtmux import exc
+from libtmux._internal.tmux_argv import encode_command_argv, parse_client_options
 from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
     EngineKind,
-    encode_direct_argv,
     split_direct_argv,
 )
 from libtmux.experimental.engines.connection import ServerConnection
@@ -321,39 +321,18 @@ class ImsgEngine:
     def _parse_args(self, args: tuple[str, ...]) -> _ImsgCommandArgs:
         direct = split_direct_argv(args)
         global_args = direct.global_args
-        command_argv = encode_direct_argv(direct.command_argv)
+        command_argv = encode_command_argv(direct.command_argv)
         socket_name: str | None = None
         socket_path: str | None = None
         config_file: str | None = None
 
-        index = 0
-        while index < len(global_args):
-            arg = global_args[index]
-            if arg in {"-L", "-S", "-f"}:
-                if index + 1 >= len(global_args):
-                    break
-                value = global_args[index + 1]
-                if arg == "-L":
-                    socket_name = value
-                elif arg == "-S":
-                    socket_path = value
-                else:
-                    config_file = value
-                index += 2
-                continue
-            if arg.startswith("-L") and len(arg) > 2:
-                socket_name = arg[2:]
-                index += 1
-                continue
-            if arg.startswith("-S") and len(arg) > 2:
-                socket_path = arg[2:]
-                index += 1
-                continue
-            if arg.startswith("-f") and len(arg) > 2:
-                config_file = arg[2:]
-                index += 1
-                continue
-            index += 1
+        for option in parse_client_options(global_args):
+            if option.name == "L":
+                socket_name = option.value
+            elif option.name == "S":
+                socket_path = option.value
+            elif option.name == "f":
+                config_file = option.value
 
         command_name = command_argv[0] if command_argv else None
         return _ImsgCommandArgs(

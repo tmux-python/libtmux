@@ -37,7 +37,6 @@ class ShowBuffer(UntargetedOperation[ShowBufferResult]):
     scope = "server"
     result_cls = ShowBufferResult
     safety = "readonly"
-    chainable = False
     effects = Effects(read_only=True, idempotent=True)
 
     buffer_name: str | None = None

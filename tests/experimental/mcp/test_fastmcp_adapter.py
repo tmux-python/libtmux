@@ -105,14 +105,20 @@ def test_adapter_operations_hidden_by_default() -> None:
         async with fastmcp.Client(server) as client:
             return await client.list_tools()
 
-    names = {tool.name for tool in asyncio.run(main())}
+    by_name = {tool.name: tool for tool in asyncio.run(main())}
+    names = set(by_name)
     assert not any(name.startswith("op_") for name in names)
     assert {
         "preview_plan",
+        "explain_plan",
         "execute_plan",
         "result_schema",
         "build_workspace",
     } <= names
+    for tool_name in ("explain_plan", "execute_plan"):
+        planner = by_name[tool_name].inputSchema["properties"]["planner"]
+        assert planner["default"] == "batching"
+        assert planner["enum"] == ["batching", "sequential"]
 
 
 def test_adapter_exposes_per_op_tools() -> None:

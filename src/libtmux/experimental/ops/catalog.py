@@ -37,8 +37,8 @@ class CatalogEntry:
         Coarse safety tier.
     primitive : bool
         Whether the operation maps to one tmux command.
-    chainable : bool
-        Whether a planner may fold the operation into a shared dispatch.
+    batchable : bool
+        Whether a planner may place the operation in a shared request batch.
     result_type : str
         Name of the operation's typed result class.
     min_version : str | None
@@ -56,7 +56,7 @@ class CatalogEntry:
     scope: Scope
     safety: Safety
     primitive: bool
-    chainable: bool
+    batchable: bool
     result_type: str
     min_version: str | None
     flag_version_gates: dict[str, str]
@@ -107,7 +107,7 @@ def catalog(registry: OperationRegistry | None = None) -> list[CatalogEntry]:
             scope=spec.scope,
             safety=spec.safety,
             primitive=spec.primitive,
-            chainable=spec.chainable,
+            batchable=spec.batchable,
             result_type=spec.result_cls.__name__,
             min_version=spec.min_version,
             flag_version_gates=dict(spec.flag_version_map),

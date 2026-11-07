@@ -12,6 +12,7 @@ import pytest
 from libtmux import exc
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
+from libtmux.engines.base import CommandSeparator
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
@@ -1506,6 +1507,49 @@ def test_pane_reset_clears_history_and_sends_reset(session: Session) -> None:
     # behind because clear-history never executed.
     post = pane.capture_pane(start=-100)
     assert not any("reset_marker_" in line for line in post)
+
+
+def test_pane_reset_dispatches_a_typed_command_group(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The production command group marks its sole structural separator.
+
+    The real fixture is required because the assertion also proves that the
+    grouped request remains executable after direct-argv normalization.
+    """
+    pane = session.active_pane
+    assert pane is not None
+    real_cmd = pane.server.cmd
+    calls: list[tuple[str, tuple[t.Any, ...], str | int | None]] = []
+
+    def recording_cmd(
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> t.Any:
+        calls.append((cmd, args, target))
+        return real_cmd(cmd, *args, target=target)
+
+    monkeypatch.setattr(pane.server, "cmd", recording_cmd)
+
+    pane.reset()
+
+    assert calls == [
+        (
+            "send-keys",
+            (
+                "-t",
+                pane.pane_id,
+                "-R",
+                CommandSeparator(";"),
+                "clear-history",
+                "-t",
+                pane.pane_id,
+            ),
+            None,
+        ),
+    ]
 
 
 def test_pane_reset_targets_non_active_pane(session: Session) -> None:

@@ -37,7 +37,6 @@ class HasSession(Operation[HasSessionResult]):
     scope = "session"
     result_cls = HasSessionResult
     safety = "readonly"
-    chainable = False
     effects = Effects(read_only=True, idempotent=True)
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:

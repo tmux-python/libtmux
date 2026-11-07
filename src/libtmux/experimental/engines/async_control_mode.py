@@ -12,10 +12,10 @@ Design, informed by prior libtmux/mux control-mode work:
   the I/O layer differs from the sync engine (``await stdout.read`` instead of
   ``selectors``).
 - Command correlation is a FIFO of futures resolved in block-arrival order. A
-  block that arrives with *no* pending command is **unsolicited** (a hook-
-  triggered command, or the startup ACK) and is skipped, so correlation never
-  desyncs. The startup ACK is consumed synchronously in :meth:`_spawn` before
-  the reader runs, closing the startup race.
+  block with unsolicited flags (a hook-triggered command or startup ACK) is
+  skipped. A solicited block with no pending command is a protocol error rather
+  than a result to guess at. The startup ACK is consumed synchronously in
+  :meth:`_spawn` before the reader runs, closing the startup race.
 - A supervisor owns the process lifecycle. :meth:`start` launches it once; it
   attaches to an exact existing session without updating its environment,
   replays the desired subscriptions, and runs the reader inline (one reader at
@@ -32,7 +32,7 @@ Design, informed by prior libtmux/mux control-mode work:
 - A reader failure or EOF marks the engine *dead* and fails every pending
   command, rather than hanging; the supervisor then reconnects.
 - Notifications go to a bounded queue; on overflow the oldest is dropped and
-  counted (backpressure), mirroring control mode's own ``%pause`` philosophy.
+  counted. Producers are not slowed.
 """
 
 from __future__ import annotations
@@ -46,7 +46,11 @@ from dataclasses import dataclass, field
 
 from libtmux import exc
 from libtmux.experimental.engines.asyncio import AsyncSubprocessEngine
-from libtmux.experimental.engines.base import CommandRequest, render_control_line
+from libtmux.experimental.engines.base import (
+    CommandRequest,
+    render_control_line,
+    unescape_control_output,
+)
 from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.control_mode import (
     BlockSequenceMonitor,
@@ -71,6 +75,9 @@ _READ_CHUNK = 65536
 _DEFAULT_TIMEOUT = 30.0
 _STARTUP_TIMEOUT = 5.0
 _STOP_TIMEOUT = 2.0
+_STDERR_TAIL_LINES = 20
+_STDERR_TAIL_BYTES = 16 * 1024
+_STDERR_LOG_BYTES = 4 * 1024
 # A connection must survive at least this long to count as healthy and reset the
 # reconnect backoff; a shorter-lived one is treated as a failed attempt so a
 # persistently flapping proc escalates instead of fork-storming.
@@ -90,12 +97,20 @@ class ControlNotification:
     args : tuple[str, ...]
         Whitespace-separated notification arguments.
     raw : str
-        Decoded control-mode line before tokenization.
+        Control-mode line before tokenization and pane-output unescaping.
+    raw_bytes : bytes
+        Exact control-mode wire line for diagnostics that require byte fidelity.
+    pane_id : str or None
+        Pane identifier for an output notification, otherwise ``None``.
+    payload : bytes or None
+        Octal-unescaped pane bytes for ``%output`` and ``%extended-output``;
+        ``None`` for every other notification.
 
     Examples
     --------
-    >>> ControlNotification.parse(b"%window-add @3")
-    ControlNotification(kind='window-add', args=('@3',), raw='%window-add @3')
+    >>> notification = ControlNotification.parse(b"%window-add @3")
+    >>> notification.kind, notification.args, notification.payload
+    ('window-add', ('@3',), None)
     >>> ControlNotification.parse(b"%output %1 hello world").kind
     'output'
     """
@@ -103,15 +118,43 @@ class ControlNotification:
     kind: str
     args: tuple[str, ...]
     raw: str
+    raw_bytes: bytes = b""
+    pane_id: str | None = None
+    payload: bytes | None = None
 
     @classmethod
     def parse(cls, line: bytes) -> ControlNotification:
-        """Parse a raw ``%``-notification line."""
+        r"""Parse one notification and decode pane data at the wire boundary.
+
+        Tmux encodes every non-printable pane byte and backslash as exactly
+        three octal digits. The human-readable :attr:`raw` line remains encoded
+        for diagnostics while :attr:`payload` carries the original pane bytes.
+        """
         text = line.decode(errors="replace")
         body = text.removeprefix("%")
         parts = body.split(" ")
         kind = parts[0] if parts else ""
-        return cls(kind=kind, args=tuple(parts[1:]), raw=text)
+        pane_id: str | None = None
+        payload: bytes | None = None
+        if line.startswith(b"%output "):
+            output_parts = line.split(b" ", 2)
+            if len(output_parts) == 3:
+                pane_id = output_parts[1].decode(errors="replace")
+                payload = unescape_control_output(output_parts[2])
+        elif line.startswith(b"%extended-output "):
+            metadata, separator, payload_wire = line.partition(b" : ")
+            fields = metadata.split(b" ")
+            if separator and len(fields) >= 3:
+                pane_id = fields[1].decode(errors="replace")
+                payload = unescape_control_output(payload_wire)
+        return cls(
+            kind=kind,
+            args=tuple(parts[1:]),
+            raw=text,
+            raw_bytes=line,
+            pane_id=pane_id,
+            payload=payload,
+        )
 
 
 @dataclass(slots=True)
@@ -161,7 +204,7 @@ def _force_put(queue: asyncio.Queue[t.Any], item: t.Any) -> None:
 
     Like :func:`_offer` but drop-count-free: used to land the stream-end
     sentinel even on a queue already at ``maxsize``, so a slow consumer that hit
-    backpressure still gets closed instead of hanging on ``queue.get()``. Pulled
+    overflow still gets closed instead of hanging on ``queue.get()``. Pulled
     out of the broadcast loop so the ``try``/``except`` stays out of it.
     """
     try:
@@ -198,7 +241,7 @@ class AsyncControlModeEngine:
     timeout : float
         Seconds to await a command's result before failing it.
     event_queue_size : int
-        Bounded size of the notification queue (backpressure).
+        Bounded notification count; overflow drops the oldest item.
 
     Notes
     -----
@@ -226,6 +269,9 @@ class AsyncControlModeEngine:
         self._subscribers: set[asyncio.Queue[t.Any]] = set()
         self._dropped_notifications = 0
         self._proc: asyncio.subprocess.Process | None = None
+        self._stderr_tail = bytearray()
+        self._stderr_proc: asyncio.subprocess.Process | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
         self._start_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
         self._started = False
@@ -265,11 +311,21 @@ class AsyncControlModeEngine:
         """Report the connected server's tmux version (``tmux -V``), memoized.
 
         Implements
-        :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` so
+        :class:`~libtmux.engines.base.SupportsTmuxVersion` so
         version-gated operations render correctly over control mode; in-memory
         engines omit it and resolution assumes latest.
         """
         return self._conn.tmux_version()
+
+    async def atmux_version(self) -> str | None:
+        """Probe the connected tmux version without blocking the event loop.
+
+        Examples
+        --------
+        >>> asyncio.run(AsyncControlModeEngine().atmux_version()) is not None
+        True
+        """
+        return await self._bootstrap.atmux_version()
 
     def add_subscription(self, spec: str) -> None:
         """Record a desired ``refresh-client -B`` subscription (idempotent).
@@ -380,7 +436,7 @@ class AsyncControlModeEngine:
         # exited, so this is a no-op there.
         old = self._proc
         if old is not None:
-            await self._stop_process(old)
+            await self._stop_connection(old)
         target = self._next_attach_target
         self._next_attach_target = None
         if target is None:
@@ -398,13 +454,18 @@ class AsyncControlModeEngine:
             "-t",
             target,
         )
-        try:
-            proc = await asyncio.create_subprocess_exec(
+        creation = asyncio.create_task(
+            asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-            )
+            ),
+            name="libtmux-async-control-process-start",
+        )
+        cancelled = await self._wait_for_owned_task(creation)
+        try:
+            proc = creation.result()
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         self._proc = proc
@@ -413,11 +474,19 @@ class AsyncControlModeEngine:
         # run_batch must hit the dead guard instead of writing a reply that
         # _consume_startup would drain and discard.
         try:
-            await self._consume_startup()
-        except BaseException:
-            await self._stop_process(proc)
-            self._proc = None
+            self._start_stderr_reader(proc)
+            if not cancelled:
+                await self._consume_startup()
+        except BaseException as error:
+            await self._stop_connection(proc)
+            if isinstance(error, asyncio.CancelledError):
+                raise
+            if isinstance(error, ControlModeError):
+                raise self._died(str(error)) from error
             raise
+        if cancelled:
+            await self._stop_connection(proc)
+            raise asyncio.CancelledError
         self._dead = None
 
     async def _consume_startup(self) -> None:
@@ -542,7 +611,9 @@ class AsyncControlModeEngine:
                 # so the reader can drain any replies, but make their futures
                 # terminal so close/reconnect cannot publish unobserved errors.
                 for queued in appended:
-                    if not queued.future.done():
+                    if queued.future.done():
+                        _swallow_future(queued.future)
+                    else:
                         queued.future.cancel()
                 raise
             except (BrokenPipeError, OSError) as error:
@@ -552,7 +623,9 @@ class AsyncControlModeEngine:
                 for queued in appended:
                     with contextlib.suppress(ValueError):
                         self._pending.remove(queued)
-                    if not queued.future.done():
+                    if queued.future.done():
+                        _swallow_future(queued.future)
+                    else:
                         queued.future.cancel()
                 raise cm_error from error
 
@@ -632,20 +705,20 @@ class AsyncControlModeEngine:
             self._aclose_impl(),
             name="libtmux-async-control-close",
         )
-        cancelled = await self._wait_for_close_cleanup(cleanup)
+        cancelled = await self._wait_for_owned_task(cleanup)
         cleanup.result()
         if cancelled:
             raise asyncio.CancelledError
 
     @staticmethod
-    async def _wait_for_close_cleanup(cleanup: asyncio.Task[None]) -> bool:
+    async def _wait_for_owned_task(task: asyncio.Task[t.Any]) -> bool:
         """Wait through every caller cancellation; report whether one occurred."""
         try:
-            await asyncio.wait((cleanup,))
+            await asyncio.wait((task,))
         except asyncio.CancelledError:
             # Recursion gives each accepted ``cancel()`` its own handler without
-            # propagating cancellation into the independently owned cleanup task.
-            await AsyncControlModeEngine._wait_for_close_cleanup(cleanup)
+            # propagating cancellation into the independently owned task.
+            await AsyncControlModeEngine._wait_for_owned_task(task)
             return True
         return False
 
@@ -682,9 +755,7 @@ class AsyncControlModeEngine:
         self._fail_pending(ControlModeError("control-mode engine closed"))
         proc = self._proc
         if proc is not None:
-            await self._stop_process(proc)
-            if self._proc is proc:
-                self._proc = None
+            await self._stop_connection(proc)
 
     async def __aenter__(self) -> Self:
         """Start when a safe session exists; otherwise remain lazy to bootstrap."""
@@ -785,17 +856,18 @@ class AsyncControlModeEngine:
             proc = self._proc
             if proc is not None:
                 try:
-                    await self._stop_process(proc)
+                    await self._stop_connection(proc)
                 except Exception as cleanup_error:
                     failure = ControlModeError(
                         f"control-mode supervisor failed: {error}; "
                         f"process cleanup failed: {cleanup_error}"
                     )
-                else:
-                    if self._proc is proc:
-                        self._proc = None
             await self._finish_failed_start(first_attempt, failure)
         finally:
+            proc = self._proc
+            if proc is not None:
+                with contextlib.suppress(Exception):
+                    await self._stop_connection(proc)
             if first_attempt is not None and not first_attempt.done():
                 first_attempt.set_exception(
                     ControlModeError("control-mode engine closed before connecting"),
@@ -856,6 +928,107 @@ class AsyncControlModeEngine:
             except asyncio.TimeoutError:
                 msg = "tmux control process did not exit after kill"
                 raise ControlModeError(msg) from None
+
+    def _start_stderr_reader(self, proc: asyncio.subprocess.Process) -> None:
+        """Start the one stderr drain task owned by *proc*'s generation."""
+        if self._stderr_task is not None:
+            msg = "control-mode stderr reader already exists"
+            raise ControlModeError(msg)
+        self._stderr_tail.clear()
+        if getattr(proc, "stderr", None) is None:
+            return
+        self._stderr_proc = proc
+        self._stderr_task = asyncio.create_task(
+            self._drain_stderr(proc),
+            name="libtmux-async-control-stderr",
+        )
+
+    async def _drain_stderr(self, proc: asyncio.subprocess.Process) -> None:
+        """Continuously drain *proc* stderr into a bounded diagnostic tail."""
+        stderr = proc.stderr
+        if stderr is None:
+            return
+        try:
+            while True:
+                chunk = await stderr.read(_READ_CHUNK)
+                if not chunk:
+                    return
+                self._append_stderr(chunk)
+                preview = chunk[-_STDERR_LOG_BYTES:].decode(errors="replace")
+                logger.debug(
+                    "tmux control-mode stderr",
+                    extra={"tmux_stderr": [preview]},
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self._append_stderr(f"stderr read failed: {error}\n".encode())
+
+    def _append_stderr(self, chunk: bytes) -> None:
+        """Append stderr while retaining bounded bytes and logical lines."""
+        self._stderr_tail.extend(chunk)
+        overflow = len(self._stderr_tail) - _STDERR_TAIL_BYTES
+        if overflow > 0:
+            del self._stderr_tail[:overflow]
+        lines = self._stderr_tail.splitlines(keepends=True)
+        if len(lines) > _STDERR_TAIL_LINES:
+            self._stderr_tail[:] = b"".join(lines[-_STDERR_TAIL_LINES:])
+
+    def _stderr_lines(self) -> tuple[str, ...]:
+        """Return the retained non-empty stderr lines for diagnostics."""
+        return tuple(
+            line.decode(errors="replace")
+            for line in self._stderr_tail.splitlines()
+            if line.strip()
+        )
+
+    async def _finish_stderr_reader(
+        self,
+        proc: asyncio.subprocess.Process,
+    ) -> None:
+        """Join and forget *proc*'s stderr task without leaking on cancellation."""
+        if self._stderr_proc is not proc:
+            return
+        task = self._stderr_task
+        try:
+            if task is not None:
+                waiter = asyncio.gather(task, return_exceptions=True)
+                try:
+                    await asyncio.wait_for(waiter, timeout=_STOP_TIMEOUT)
+                except asyncio.TimeoutError:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+        except asyncio.CancelledError:
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            raise
+        finally:
+            if self._stderr_proc is proc:
+                self._stderr_proc = None
+                self._stderr_task = None
+
+    async def _stop_connection(self, proc: asyncio.subprocess.Process) -> None:
+        """Finish connection cleanup even when this caller is cancelled."""
+        cleanup = asyncio.create_task(
+            self._stop_connection_impl(proc),
+            name="libtmux-async-control-process-close",
+        )
+        cancelled = await self._wait_for_owned_task(cleanup)
+        cleanup.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    async def _stop_connection_impl(self, proc: asyncio.subprocess.Process) -> None:
+        """Terminate and reap *proc*, then join its stderr drain task."""
+        try:
+            await self._stop_process(proc)
+        finally:
+            try:
+                await self._finish_stderr_reader(proc)
+            finally:
+                if self._proc is proc:
+                    self._proc = None
 
     async def _replay_subscriptions(self) -> None:
         """Re-issue every desired subscription to the freshly connected proc.
@@ -961,7 +1134,8 @@ class AsyncControlModeEngine:
             while True:
                 chunk = await stdout.read(_READ_CHUNK)
                 if not chunk:
-                    self._mark_dead(ControlModeError("tmux -C closed stdout"))
+                    await self._stop_connection(proc)
+                    self._mark_dead(self._died("tmux -C closed stdout"))
                     return
                 self._parser.feed(chunk)
                 for block in self._parser.blocks():
@@ -971,35 +1145,28 @@ class AsyncControlModeEngine:
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            self._mark_dead(ControlModeError(f"control-mode reader failed: {error}"))
+            with contextlib.suppress(Exception):
+                await self._stop_connection(proc)
+            self._mark_dead(self._died(f"control-mode reader failed: {error}"))
 
     def _dispatch_block(self, block: ControlModeBlock) -> None:
         """Accumulate a solicited block; resolve the command once it has them all.
 
-        A ``;``-folded command emits one block per sub-command; unsolicited blocks
+        A semicolon command group emits one block per member; unsolicited blocks
         (hook-triggered commands, the startup ACK) carry flags 0 and are skipped,
         so FIFO correlation never desyncs.
         """
         if block.flags != 1:
             return  # unsolicited (hook-triggered command or startup ACK): skip
         if not self._pending:
-            # A solicited reply with no command waiting: its command's future was
-            # already resolved, cancelled, or failed. FIFO is now one block off.
-            logger.warning(
-                "control-mode dropped solicited block #%s with no pending command",
-                block.number,
-                extra={
-                    "tmux_stdout": [
-                        line.decode(errors="replace") for line in block.body
-                    ],
-                    "tmux_stdout_len": len(block.body),
-                },
-            )
-            return
+            msg = "control-mode received a solicited result with no pending request"
+            raise ControlModeError(msg)
         pending = self._pending[0]
-        self._sequence.check(block, pending.argv)
+        if not self._sequence.check(block, pending.argv):
+            msg = "control-mode command block sequence moved backwards"
+            raise ControlModeError(msg)
         pending.blocks.append(block)
-        if len(pending.blocks) < pending.expected:
+        if not block.is_error and len(pending.blocks) < pending.expected:
             return
         self._pending.popleft()
         if not pending.future.done():
@@ -1019,7 +1186,7 @@ class AsyncControlModeEngine:
         """Push the stream-end sentinel to every subscriber, then clear them.
 
         Uses :func:`_force_put` so the sentinel lands even on a queue already at
-        ``maxsize`` (a slow consumer that hit backpressure); otherwise the
+        ``maxsize`` (a slow consumer that hit overflow); otherwise the
         sentinel would be lost and the consumer would hang forever on
         ``queue.get()`` -- the exact bug this guards against.
         """
@@ -1033,6 +1200,11 @@ class AsyncControlModeEngine:
             self._dead = error
         self._fail_pending(error)
         self._broadcast_stream_end()
+
+    def _died(self, message: str) -> ControlModeError:
+        """Build a connection error carrying tmux's bounded stderr tail."""
+        tail = "; ".join(self._stderr_lines())
+        return ControlModeError(f"{message}: {tail}" if tail else message)
 
     def _fail_pending(self, error: BaseException) -> None:
         """Fail every queued command future with *error*."""

@@ -37,7 +37,6 @@ class ListSessions(UntargetedOperation[ListSessionsResult]):
     scope = "server"
     result_cls = ListSessionsResult
     safety = "readonly"
-    chainable = False
     effects = Effects(read_only=True, idempotent=True)
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:

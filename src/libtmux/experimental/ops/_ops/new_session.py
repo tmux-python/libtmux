@@ -65,7 +65,7 @@ class NewSession(Operation[CreateResult]):
     scope = "server"
     result_cls = CreateResult
     safety = "mutating"
-    chainable = False
+    batchable = False
     effects = Effects(creates="session")
     flag_version_map: t.ClassVar[Mapping[str, str]] = {"environment": "3.0"}
 

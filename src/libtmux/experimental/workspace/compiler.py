@@ -373,7 +373,7 @@ def _creator_environment(window: Window) -> dict[str, str]:
 
     The first pane reuses the window's implicit pane rather than splitting, so its
     process environment cannot ride a ``split-window -e``. Instead the window's
-    ``environment`` (and its first pane's own ``environment``) fold into the
+    ``environment`` (and its first pane's own ``environment``) merge into the
     creator -- ``new-session -e`` for window 0, ``new-window -e`` for the rest --
     applying it without an extra dispatch.
     """

@@ -151,6 +151,23 @@ def test_process_is_popen_under_default_engine(session: Session) -> None:
     assert proc.process.returncode == 0
 
 
+def test_core_subprocess_command_line_encodes_only_command_data() -> None:
+    r"""Core protects suffixes without rewriting connection option values."""
+    engine = SubprocessEngine.of("tmux", ("-Lsocket;",))
+
+    command_line = engine.command_line(
+        CommandRequest.from_args("display-message", "literal;", r"escaped\;"),
+    )
+
+    assert command_line == (
+        "tmux",
+        "-Lsocket;",
+        "display-message",
+        r"literal\;",
+        r"escaped\;",
+    )
+
+
 def test_connection_follows_socket_name_mutation() -> None:
     """A post-construction write to ``socket_name`` changes the flags used.
 
@@ -217,16 +234,13 @@ def test_engine_carrying_only_a_binary_still_adopts_the_socket() -> None:
     )
 
 
-def test_adoption_keeps_the_engines_own_binary() -> None:
-    """Adoption takes the server's flags without discarding the engine's binary."""
+def test_explicit_server_binary_conflicts_with_engine_binary() -> None:
+    """Two explicit binary values cannot be reconciled silently."""
     engine = SubprocessEngine.of(tmux_bin="/nonexistent/tmux")
     server = Server(socket_name="bin_kept", tmux_bin="/other/tmux", engine=engine)
 
-    adopted = server.engine
-
-    assert isinstance(adopted, SubprocessEngine)
-    assert adopted.tmux_bin == "/nonexistent/tmux"
-    assert adopted.server_args == ("-Lbin_kept",)
+    with pytest.raises(exc.EngineConfigurationMismatch, match="binary"):
+        _ = server.engine
 
 
 def test_server_binary_reaches_an_engine_that_declares_none() -> None:
@@ -244,12 +258,13 @@ def test_server_binary_reaches_an_engine_that_declares_none() -> None:
     assert adopted.server_args == ("-Lbin_inherited",)
 
 
-def test_engine_naming_a_server_is_left_alone() -> None:
-    """Connection flags of the engine's own win over the server's."""
+def test_engine_and_server_socket_conflict_is_explicit() -> None:
+    """Contradictory socket authorities raise before a command runs."""
     engine = SubprocessEngine.of(server_args=("-Lelsewhere",))
     server = Server(socket_name="not_elsewhere", engine=engine)
 
-    assert server.engine is engine
+    with pytest.raises(exc.EngineConfigurationMismatch, match="socket"):
+        _ = server.engine
 
 
 class ArgvRecordingEngine:
@@ -300,10 +315,11 @@ def test_flag_builders_agree() -> None:
     assert {line[1 : 1 + len(expected)] for line in engine.command_lines} == {expected}
 
 
-def test_unknown_color_raises_on_every_path() -> None:
+@pytest.mark.parametrize("colors", (16, 88))
+def test_unknown_color_raises_on_every_path(colors: int) -> None:
     """An unknown ``colors`` value raises, matching ``Server.cmd``'s contract."""
     server = Server(socket_name="bad_colors")
-    server.colors = 16
+    server.colors = colors
 
     with pytest.raises(exc.UnknownColorOption):
         server.cmd("list-sessions")
