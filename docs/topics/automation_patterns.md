@@ -223,7 +223,7 @@ lines, including their trailing spaces; the example removes those spaces only
 when displaying its result.
 
 ```python
->>> from libtmux.test.retry import retry_until
+>>> import time
 
 >>> capture_window = session.new_window(window_name='capture', attach=False, window_shell='sh')
 >>> capture_pane = capture_window.active_pane
