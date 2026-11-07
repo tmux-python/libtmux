@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import locale
 import logging
+import os
+import pathlib
 import re
+import shutil
+import subprocess
 import sys
 import typing as t
 
@@ -27,12 +32,210 @@ from libtmux.common import (
     session_check_name,
     tmux_cmd,
 )
+from libtmux.constants import WindowDirection
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
+
     from libtmux.server import Server
     from libtmux.session import Session
 
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
+
+
+@pytest.mark.parametrize(
+    "entrypoint",
+    [
+        "session",
+        "window",
+        "relative_window",
+        "pane",
+        "window_split",
+        "floating_pane",
+        "floating_window",
+        "respawn_pane",
+        "respawn_window",
+    ],
+)
+def test_program_argv_reaches_client_and_program(
+    entrypoint: str,
+    session: Session,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve argv at both boundaries across every creation/respawn facade."""
+    server = session.server
+    connected = server.cmd("display-message", "-p", "#{version}")
+    if entrypoint.startswith("floating") and LooseVersion(
+        connected.stdout[0]
+    ) < LooseVersion("3.7"):
+        pytest.skip("floating panes require tmux 3.7")
+    binary = shutil.which("tmux")
+    assert binary is not None
+    assert server.socket_name is not None
+    child_env = os.environ.copy()
+    child_env.pop("TMUX", None)
+    child_env.pop("TMUX_PANE", None)
+    prefix = [binary, "-L", server.socket_name]
+    received = tmp_path / "received.json"
+    program = tmp_path / "receiver.py"
+    program.write_text(
+        "import json,pathlib,subprocess,sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps(sys.argv[2:]))\n"
+        f"subprocess.run({[*prefix, 'wait-for', '-S', 'argv-ready']!r}, check=True)\n"
+        "sys.stdin.readline()\n",
+    )
+    (tmp_path / "-python").symlink_to(sys.executable)
+    arguments = [
+        "a b",
+        "",
+        "$HOME",
+        "$(printf expanded)",
+        "-n",
+        ";",
+        "tail;",
+        "\\;",
+        "\\\\;",
+        "mid;dle",
+        "#{pane_id}",
+        "one\ntwo",
+        "λ雪",
+    ]
+    argv = ["-python", str(program), str(received), *arguments]
+    environment = {"PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]}
+    monkeypatch.setenv("PATH", environment["PATH"])
+    calls: list[list[str]] = []
+    native_cmd = server.cmd
+
+    def record(*args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        result = native_cmd(*args, **kwargs)
+        calls.append(result.cmd)
+        return result
+
+    window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
+    monkeypatch.setattr(server, "cmd", record)
+    if entrypoint == "session":
+        created = server.new_session(
+            session_name="argv", argv=argv, environment=environment
+        )
+        target = created.active_window.active_pane
+    elif entrypoint == "window":
+        target = session.new_window(argv=argv, environment=environment).active_pane
+    elif entrypoint == "relative_window":
+        target = window.new_window(
+            argv=argv,
+            environment=environment,
+            direction=WindowDirection.After,
+        ).active_pane
+    elif entrypoint == "pane":
+        target = pane.split(argv=argv, environment=environment)
+    elif entrypoint == "window_split":
+        target = window.split(argv=argv, environment=environment)
+    elif entrypoint == "floating_pane":
+        target = pane.new_pane(argv=argv, environment=environment)
+    elif entrypoint == "floating_window":
+        target = window.new_pane(argv=argv, environment=environment)
+    elif entrypoint == "respawn_pane":
+        pane.respawn(argv=argv, environment=environment, kill=True)
+        target = pane
+    else:
+        window.respawn(argv=argv, environment=environment, kill=True)
+        target = window.active_pane
+    subprocess.run(
+        [*prefix, "wait-for", "argv-ready"],
+        env=child_env,
+        capture_output=True,
+        text=True,
+        timeout=1,
+        check=True,
+    )
+    assert json.loads(received.read_text()) == arguments
+    assert target is not None
+    target.refresh()
+    assert target.pane_dead == "0"
+    launches = [call for call in calls if "--" in call]
+    assert len(launches) == 1
+    encoded = [value[:-1] + "\\;" if value.endswith(";") else value for value in argv]
+    assert launches[0][launches[0].index("--") :] == ["--", *encoded]
+
+
+def test_program_argv_invalid_inputs_preserve_existing_program(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject invalid argv before replacement, split, or respawn can mutate."""
+    server = session.server
+    window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
+    original_pid = pane.pane_pid
+    initial = (len(server.sessions), len(session.windows), len(window.panes))
+    calls: list[str] = []
+    native_cmd = server.cmd
+
+    def record(cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        calls.append(cmd)
+        return native_cmd(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(server, "cmd", record)
+    launchers: list[tuple[Callable[..., t.Any], dict[str, t.Any], str]] = [
+        (
+            server.new_session,
+            {"session_name": session.session_name, "kill_session": True},
+            "window_command",
+        ),
+        (
+            session.new_window,
+            {"window_index": str(window.window_index), "kill_existing": True},
+            "window_shell",
+        ),
+        (window.new_window, {}, "window_shell"),
+        (pane.split, {}, "shell"),
+        (window.split, {}, "shell"),
+        (pane.new_pane, {}, "shell"),
+        (window.new_pane, {}, "shell"),
+        (pane.respawn, {"kill": True}, "shell"),
+        (window.respawn, {"kill": True}, "shell"),
+    ]
+    invalid: list[t.Any] = [
+        [],
+        ["cat"],
+        ["", "x"],
+        "cat -n",
+        b"cat",
+        ["cat", 1],
+        ["cat", "\0"],
+    ]
+    for launch, kwargs, shell_key in launchers:
+        for argv in invalid:
+            with pytest.raises((TypeError, ValueError)):
+                launch(argv=argv, **kwargs)
+        for shell_text in ["cat", ""]:
+            with pytest.raises(ValueError, match="argv"):
+                launch(argv=["cat", "-n"], **kwargs, **{shell_key: shell_text})
+    empty_launchers: list[Callable[..., t.Any]] = [
+        pane.split,
+        window.split,
+        pane.new_pane,
+        window.new_pane,
+    ]
+    for launch in empty_launchers:
+        with pytest.raises(ValueError, match="empty"):
+            launch(argv=["cat", "-n"], empty=True)
+    assert not set(calls) & {
+        "new-session",
+        "kill-session",
+        "new-window",
+        "split-window",
+        "new-pane",
+        "respawn-pane",
+        "respawn-window",
+    }
+    pane.refresh()
+    assert pane.pane_pid == original_pid
+    assert initial == (len(server.sessions), len(session.windows), len(window.panes))
 
 
 def test_has_version() -> None:

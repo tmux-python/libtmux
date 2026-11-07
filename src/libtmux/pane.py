@@ -15,7 +15,13 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    _prepare_program_args,
+    get_version_str,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -1222,11 +1228,17 @@ class Pane(
         inactive_border_style: str | None = None,
         message: str | None = None,
         keep: bool | None = None,
+        *,
+        argv: t.Sequence[str] | None = None,
     ) -> Pane:
         """Split window and return :class:`Pane`, by default beneath current pane.
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         target : optional
             Optional, custom *target-pane*, used by :meth:`Window.split`.
         attach : bool, optional
@@ -1326,6 +1338,7 @@ class Pane(
         (True, True,
         False, True)
         """
+        program_args = _prepare_program_args(shell, argv, empty=empty)
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
         tmux_args: tuple[str, ...] = ()
@@ -1392,8 +1405,7 @@ class Pane(
                     stacklevel=2,
                 )
 
-        if shell:
-            tmux_args += (shell,)
+        tmux_args += program_args
 
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
@@ -1449,6 +1461,8 @@ class Pane(
         inactive_border_style: str | None = None,
         message: str | None = None,
         keep: bool | None = None,
+        *,
+        argv: t.Sequence[str] | None = None,
     ) -> Pane:
         """Create a floating :class:`Pane` via ``$ tmux new-pane`` (tmux 3.7+).
 
@@ -1458,6 +1472,10 @@ class Pane(
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         target : int or str, optional
             Custom *target-pane*, used by :meth:`Window.new_pane`.
         start_directory : str or PathLike, optional
@@ -1515,6 +1533,7 @@ class Pane(
         >>> is_floating
         '1'
         """
+        program_args = _prepare_program_args(shell, argv, empty=empty)
         if not has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
             msg = "new_pane (floating panes) requires tmux 3.7+"
             raise exc.LibTmuxException(msg)
@@ -1560,8 +1579,7 @@ class Pane(
         if empty:
             tmux_args += ("-E",)
 
-        if shell:
-            tmux_args += (shell,)
+        tmux_args += program_args
 
         pane_cmd = self.cmd("new-pane", *tmux_args, target=target)
 
@@ -2256,11 +2274,16 @@ class Pane(
         start_directory: StrPath | None = None,
         environment: dict[str, str] | None = None,
         kill: bool | None = None,
+        argv: t.Sequence[str] | None = None,
     ) -> None:
         """Respawn the pane process via ``$ tmux respawn-pane``.
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         shell : str, optional
             Shell command to run in the respawned pane.
         start_directory : str or PathLike, optional
@@ -2276,6 +2299,7 @@ class Pane(
         >>> pane = window.split(shell='sleep 1m')
         >>> pane.respawn(kill=True, shell='sh')
         """
+        program_args = _prepare_program_args(shell, argv)
         tmux_args: tuple[str, ...] = ()
 
         if kill:
@@ -2289,8 +2313,7 @@ class Pane(
             for k, v in environment.items():
                 tmux_args += (f"-e{k}={v}",)
 
-        if shell:
-            tmux_args += (shell,)
+        tmux_args += program_args
 
         proc = self.cmd("respawn-pane", *tmux_args)
 

@@ -19,7 +19,13 @@ from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    _prepare_program_args,
+    get_version,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -2212,6 +2218,7 @@ class Server(
         detach_others: bool | None = None,
         no_size: bool | None = None,
         client_flags: str | None = None,
+        argv: t.Sequence[str] | None = None,
         **kwargs: t.Any,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
@@ -2225,6 +2232,10 @@ class Server(
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         session_name : str, optional
             ::
 
@@ -2297,6 +2308,7 @@ class Server(
         >>> server.new_session(session_name='my session')
         Session($4 my session)
         """
+        program_args = _prepare_program_args(window_command, argv)
         if session_name is not None:
             session_check_name(session_name)
 
@@ -2370,8 +2382,7 @@ class Server(
                 for k, v in environment.items():
                     tmux_args += (f"-e{k}={v}",)
 
-            if window_command:
-                tmux_args += (window_command,)
+            tmux_args += program_args
 
             proc = self.cmd("new-session", *tmux_args)
 
