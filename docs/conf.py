@@ -6,6 +6,7 @@ import pathlib
 import sys
 
 from gp_sphinx.config import make_linkcode_resolve, merge_sphinx_config
+from gp_sphinx.defaults import DEFAULT_SPHINX_FONT_PRELOAD
 
 import libtmux
 
@@ -49,7 +50,13 @@ conf = merge_sphinx_config(
         ),
     },
     html_favicon="_static/favicon.ico",
-    html_css_files=["css/custom.css"],
+    html_css_files=["css/custom.css", "css/site-header.css"],
+    html_js_files=[("js/site-header.js", {"defer": "defer"})],
+    # The top bar sets its wordmark in IBM Plex Mono 600.
+    sphinx_font_preload=[
+        *DEFAULT_SPHINX_FONT_PRELOAD,
+        ("IBM Plex Mono", 600, "normal"),
+    ],
     html_extra_path=["manifest.json"],
     rediraffe_redirects="redirects.txt",
     # AGENTS.md (+ its CLAUDE.md symlink) is agent guidance, not a site
