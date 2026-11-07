@@ -81,6 +81,11 @@ jobs:
       - name: Format with ruff format
         run: uv run ruff format . .github/scripts --check
 
+      - name: Check example width
+        run: |
+          python3 scripts/check_example_width.py --self-test
+          python3 scripts/check_example_width.py
+
       - name: Lint with mypy
         run: |
           uv run mypy .

@@ -50,6 +50,12 @@ Lint:
 $ uv run ruff check . --fix --show-fixes
 ```
 
+Example width:
+
+```console
+$ python3 scripts/check_example_width.py
+```
+
 Type-check:
 
 ```console
