@@ -1018,6 +1018,33 @@ body[data-theme="light"] .site-header .scheme-switch__option[data-scheme="dark"]
   }
 }
 
+.doc-picker-option[aria-disabled] {
+  color: var(--color-muted);
+}
+
+.doc-picker-option--unmatched {
+  position: relative;
+  padding-right: 32px;
+  color: var(--color-muted);
+}
+
+.doc-picker-home {
+  position: absolute;
+  top: 3.2px;
+  right: 2.4px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4.8px;
+  color: var(--text-color);
+}
+
+.doc-picker-home:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-link);
+}
+
 .surface-picker summary {
   cursor: pointer;
   align-items: center;
