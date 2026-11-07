@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import pathlib
+import shlex
 import shutil
+import subprocess
+import sys
 import typing as t
 
 import pytest
@@ -17,9 +21,68 @@ from libtmux.test.retry import retry_until
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
     from libtmux.pane import Pane
+    from libtmux.server import Server
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+def test_repeated_output_can_preserve_capture_and_cursor(
+    server: Server,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Capture equality cannot prove continuity after repeated rows were trimmed."""
+    server.config_file = os.devnull
+    server.new_session(session_name="setup", window_command="cat")
+    server.cmd("set-option", "-g", "history-limit", "5")
+    producer = tmp_path / "producer.py"
+    producer.write_text(
+        "import subprocess, sys\n"
+        "for phase in range(1, 3):\n"
+        "    sys.stdin.readline()\n"
+        "    sys.stdout.write('same\\n' * 64)\n"
+        "    sys.stdout.flush()\n"
+        "    subprocess.run(['tmux', '-L' + sys.argv[1], 'wait-for', '-S', "
+        "'trim-phase-' + str(phase)], check=True, timeout=0.5)\n"
+        "sys.stdin.readline()\n",
+    )
+    observed = server.new_session(
+        session_name="repeated",
+        x=20,
+        y=5,
+        window_command=shlex.join(
+            [sys.executable, str(producer), str(server.socket_name)]
+        ),
+    )
+    pane = observed.active_pane
+    assert pane is not None
+    pane.cmd("resize-window", "-x", "20", "-y", "5")
+    samples = []
+    for phase in range(1, 3):
+        pane.send_keys("go")
+        subprocess.run(
+            ["tmux", f"-L{server.socket_name}", "wait-for", f"trim-phase-{phase}"],
+            timeout=0.5,
+            check=True,
+            capture_output=True,
+        )
+        lines = pane.capture_pane(start=-100)
+        fields = (
+            pane.cmd(
+                "display-message",
+                "-p",
+                "#{history_size}|#{cursor_x}|#{cursor_y}|#{history_collected}",
+            )
+            .stdout[0]
+            .split("|")
+        )
+        samples.append((lines, fields))
+    assert samples[0][0] == ["same"] * 9
+    assert samples[0][0] == samples[1][0]
+    assert samples[0][1][:3] == samples[1][1][:3] == ["5", "0", "4"]
+    before, after = samples[0][1][3], samples[1][1][3]
+    if before.isdecimal() and after.isdecimal():
+        assert int(after) > int(before)
 
 
 def test_send_keys(session: Session) -> None:

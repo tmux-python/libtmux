@@ -57,7 +57,16 @@ environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
+#### Capture continuity at history limits
+
+The pane-capture guide explains when unchanged text can hide output lost
+at the history limit and why continuity can be unknown. (#808)
+
 ### Development
+
+#### Ruff 0.17.3 for development (#808)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
