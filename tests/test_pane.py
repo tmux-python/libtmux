@@ -79,16 +79,19 @@ def test_capture_pane(session: Session) -> None:
     )
     pane = session.active_window.active_pane
     assert pane is not None
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
+    retry_until(lambda: "\n".join(pane.capture_pane()) == "$", 2, raises=True)
     pane.send_keys(
         r'printf "\n%s\n" "Hello World !"',
         literal=True,
         suppress_history=False,
     )
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
+    expected_contents = r'$ printf "\n%s\n" "Hello World !"{}'.format(
         "\n\nHello World !\n$",
+    )
+    retry_until(
+        lambda: "\n".join(pane.capture_pane()) == expected_contents,
+        2,
+        raises=True,
     )
 
 

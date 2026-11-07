@@ -7,21 +7,39 @@ libtmux.server
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import pathlib
 import shutil
+import stat
 import subprocess
+import types
 import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux._internal.env import socket_path_from_env
+from libtmux._compat import LooseVersion
+from libtmux._internal.env import resolve_server_endpoint, socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    _no_version_flag_fallback,
+    _parse_version,
+    _query_version,
+    _TmuxVersionUnavailable,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
+from libtmux.lifecycle import (
+    FoundOrCreated,
+    _creation,
+    _creation_format,
+    _find_or_create_child,
+    _find_or_create_server,
+)
 from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -37,12 +55,12 @@ from .common import (
 from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
-    import types
     from typing import TypeAlias
 
     from typing_extensions import Self
 
     from libtmux._internal.types import StrPath
+    from libtmux.discovery import DiscoveryResult
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -97,17 +115,27 @@ class Server(
 
           - :class:`Pane`
 
-    When instantiated stores information on live, running tmux server.
+    Capture an endpoint and client environment without starting a server.
+    Explicit selectors take precedence over ``LIBTMUX_SOCKET_PATH``,
+    ``LIBTMUX_SOCKET_NAME``, ``TMUX``, and the default socket, in that order.
+    Commands retain the selected endpoint after host environment changes.
 
     Parameters
     ----------
     socket_name : str, optional
+        Nonempty leaf name. Mutually exclusive with ``socket_path``.
     socket_path : str, optional
+        Absolute path. A selected invalid path raises ``ValueError``.
     config_file : str, optional
     colors : str, optional
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
+    child_environment : Mapping[str, str], optional
+        Overrides for a captured copy of the client process environment.
+        Endpoint defaults read this copy once. Child launches omit ``TMUX``
+        and ``TMUX_PANE``; the host environment and tmux's server/session
+        environment remain unchanged.
 
     Examples
     --------
@@ -147,10 +175,21 @@ class Server(
        Accessed April 1st, 2018.
     """
 
-    socket_name = None
-    """Passthrough to ``[-L socket-name]``"""
-    socket_path = None
-    """Passthrough to ``[-S socket-path]``"""
+    @property
+    def socket_name(self) -> str | None:
+        """Return the captured socket name, or None for a path selector."""
+        return self._socket_name
+
+    @property
+    def socket_path(self) -> str:
+        """Return the captured absolute endpoint, including for named sockets."""
+        return self._socket_path
+
+    @property
+    def child_environment(self) -> t.Mapping[str, str]:
+        """Return the immutable client environment captured at construction."""
+        return self._child_environment
+
     config_file = None
     """Passthrough to ``[-f file]``"""
     colors = None
@@ -164,8 +203,6 @@ class Server(
     """For option management."""
     default_hook_scope: OptionScope | None = OptionScope.Server
     """For hook management."""
-    tmux_bin: str | None = None
-    """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
 
     def __init__(
         self,
@@ -176,19 +213,41 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
+        child_environment: t.Mapping[str, str] | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
-        self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
-        if socket_path is not None:
-            self.socket_path = socket_path
-        elif socket_name is not None:
-            self.socket_name = socket_name
-        elif socket_name_factory is not None:
-            self.socket_name = socket_name_factory()
+        client_env = dict(os.environ)
+        if child_environment is not None:
+            client_env.update(child_environment)
+        executable = str(tmux_bin) if tmux_bin is not None else "tmux"
+        resolved: str | None
+        if os.sep in executable:
+            resolved = executable
+        else:
+            resolved = shutil.which(executable, path=client_env.get("PATH", os.defpath))
+        self._captured_tmux_bin = (
+            f"{pathlib.Path.cwd()}/{resolved}"
+            if resolved is not None and not pathlib.Path(resolved).is_absolute()
+            else resolved
+        )
+        if (
+            socket_path is None
+            and socket_name is None
+            and socket_name_factory is not None
+        ):
+            socket_name = socket_name_factory()
+        self._socket_path, self._socket_name = resolve_server_endpoint(
+            socket_path,
+            socket_name,
+            client_env,
+        )
+        client_env.pop("TMUX", None)
+        client_env.pop("TMUX_PANE", None)
+        self._child_environment = types.MappingProxyType(client_env)
 
         if config_file:
             self.config_file = config_file
@@ -198,6 +257,37 @@ class Server(
 
         if on_init is not None:
             on_init(self)
+
+    @property
+    def tmux_bin(self) -> str | None:
+        """Absolute executable path captured at construction, or ``None`` if absent."""
+        return self._captured_tmux_bin
+
+    def _require_tmux_bin(self) -> str:
+        """Return the captured executable without repeating PATH lookup."""
+        if self.tmux_bin is None:
+            raise exc.TmuxCommandNotFound
+        return self.tmux_bin
+
+    @functools.cached_property
+    def _version_str(self) -> str:
+        """Probe this client's executable once with its captured environment."""
+        try:
+            return _query_version(
+                tmux_bin=self._require_tmux_bin(), env=self.child_environment
+            )
+        except _TmuxVersionUnavailable:
+            return _no_version_flag_fallback()
+
+    @functools.cached_property
+    def _version(self) -> LooseVersion:
+        """Return this client's normalized version for format and feature checks."""
+        version = self._version_str
+        return (
+            LooseVersion(version)
+            if version.endswith("-openbsd")
+            else _parse_version(version)
+        )
 
     @classmethod
     def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:
@@ -273,7 +363,7 @@ class Server(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the server if it exists.
+        """Exit the borrowed client context, leaving the remote daemon alive.
 
         Parameters
         ----------
@@ -284,8 +374,150 @@ class Server(
         exc_tb : types.TracebackType | None
             The traceback of the exception that was raised
         """
-        if self.is_alive():
-            self.kill()
+
+    def discover(
+        self,
+        roots: t.Iterable[str | pathlib.Path] = (),
+        *,
+        include_configured: bool = True,
+        max_entries: int = 1024,
+        max_probes: int = 256,
+        timeout: float = 5.0,
+        probe_timeout: float = 0.25,
+    ) -> DiscoveryResult:
+        """Find answering tmux sockets in bounded, nonrecursive directory scans.
+
+        Parameters
+        ----------
+        roots : iterable of str or Path
+            Additional directories whose direct children may be sockets. The
+            filesystem resolves path components, including symlinks and ``..``.
+        include_configured : bool
+            Include this captured endpoint, its parent directory, the captured
+            ``TMUX_TMPDIR/tmux-UID`` directory and ``/tmp/tmux-UID``.
+        max_entries : int
+            Maximum roots and directory entries inspected.
+        max_probes : int
+            Maximum tmux clients launched against current-user sockets.
+        timeout : float
+            Positive overall budget in seconds. Filesystem calls must return
+            before the budget can be checked; client timeout cleanup can add
+            up to 0.2 seconds after the last probe.
+        probe_timeout : float
+            Positive per-client budget, capped by the remaining overall budget.
+
+        Returns
+        -------
+        DiscoveryResult
+            Borrowed server handles, failed/skipped-path diagnostics, work
+            counts and a truncation flag. Probes neither start daemons nor
+            write ownership metadata. KeyboardInterrupt propagates after the
+            active client has been reaped.
+        """
+        from libtmux.discovery import _discover
+
+        return _discover(
+            self,
+            roots,
+            include_configured=include_configured,
+            max_entries=max_entries,
+            max_probes=max_probes,
+            timeout=timeout,
+            probe_timeout=probe_timeout,
+        )
+
+    def ensure_running(self, *, timeout: float = 5.0) -> Self:
+        """Start the selected daemon if needed and return this server handle.
+
+        A newly started daemon has ``exit-empty`` set to ``off``, so it remains
+        available before the first session is created. Reusing a daemon leaves
+        its sessions, options and environment unchanged. Concurrent startup
+        calls use tmux's startup lock and return handles for the same daemon.
+        No bootstrap session is created.
+
+        The daemon remains available after this handle leaves scope or is
+        collected. Use :meth:`find_or_create` when a created daemon should
+        belong to an explicit cleanup scope.
+
+        Parameters
+        ----------
+        timeout : float
+            Positive finite seconds for each startup, acceptance and failure
+            rollback operation. An interrupted startup rolls back a daemon only
+            when this call received proof that it created that daemon. Without
+            that proof, the failure reports uncertainty; inspect the endpoint
+            before retrying.
+
+        Returns
+        -------
+        Server
+            This handle, using its captured endpoint and client environment.
+        """
+        # Discarding an owner releases its local PID handle; it does not kill tmux.
+        _find_or_create_server(self, timeout)
+        return self
+
+    def find_or_create(self, *, timeout: float = 5.0) -> FoundOrCreated[Server]:
+        """Borrow the answering daemon or own a daemon whose startup this call proves.
+
+        A fresh per-call environment nonce proves startup on the connection
+        that returns the ownership generation. Only that branch sets the server
+        option ``exit-empty`` to ``off``, allowing a new daemon to have no
+        sessions until its owned scope closes. An existing daemon, including
+        one another client starts concurrently, remains borrowed and unchanged.
+
+        Parameters
+        ----------
+        timeout : float
+            Positive finite seconds for each startup, acceptance and cleanup
+            operation. An interrupted command retains any returned creation
+            receipt for rollback. Without a receipt, inspect the endpoint
+            before retrying a potentially dispatched startup.
+
+        Returns
+        -------
+        FoundOrCreated[Server]
+            ``created`` identifies the proven startup; ``owner`` retains its
+            cleanup identity. Use whole-server ownership on an explicit
+            disposable endpoint because its scope destroys that daemon.
+        """
+        return _find_or_create_server(self, timeout)
+
+    def find_or_create_session(
+        self,
+        session_name: str,
+        *,
+        start_directory: StrPath | None = None,
+        window_command: str | None = None,
+    ) -> FoundOrCreated[Session]:
+        """Borrow an exact session-name match or scope a new detached session.
+
+        Parameters
+        ----------
+        session_name : str
+            Full tmux session name. Prefixes and tmux target patterns do not
+            match. A missing daemon may start when the session is created.
+            If tmux sanitizes the name, creation rolls back and raises ValueError.
+        start_directory : str or PathLike, optional
+            Initial directory for a newly created session.
+        window_command : str, optional
+            Command for its initial pane; an existing session stays unchanged.
+
+        Returns
+        -------
+        FoundOrCreated[Session]
+            The result owns only a session created by this call. Lookup and
+            creation are separate commands: concurrent creators of the same
+            session name may receive tmux's duplicate-name error. Lookup
+            failures propagate instead of being treated as an empty server.
+        """
+        return _find_or_create_child(
+            self,
+            "session",
+            session_name,
+            start_directory,
+            window_command,
+        )
 
     def is_alive(self) -> bool:
         """Return True if tmux server alive.
@@ -317,31 +549,43 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
-            raise exc.TmuxCommandNotFound
+        resolved = self._require_tmux_bin()
 
-        cmd_args: list[str] = ["list-sessions"]
-        if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
+        self._prepare_socket_directory()
+        cmd_args: list[str] = [f"-S{self.socket_path}", "list-sessions"]
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
         try:
-            subprocess.check_call([resolved, *cmd_args])
+            subprocess.check_call([resolved, *cmd_args], env=self.child_environment)
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
 
     #
     # Command
     #
+    def _prepare_socket_directory(self) -> None:
+        """Create the private UID directory without a fallback socket root."""
+        if self.socket_name is None:
+            return
+        directory = pathlib.Path(self.socket_path).parent
+        directory.mkdir(mode=0o700, exist_ok=True)
+        metadata = directory.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_mode & 0o007
+        ):
+            msg = f"unsafe permissions or owner for tmux socket directory: {directory}"
+            raise PermissionError(msg)
+
     def cmd(
         self,
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
+        _on_completion: t.Callable[[tmux_cmd], None] | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -379,6 +623,11 @@ class Server(
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Maximum seconds for the client command. A timeout terminates and
+            reaps the client process; a dispatched remote effect may be uncertain.
+            Output draining and reaping each allow up to 0.1 additional seconds.
+            Other processes holding the client's output pipes are not terminated.
 
         Returns
         -------
@@ -390,12 +639,9 @@ class Server(
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [cmd]
+        self._prepare_socket_directory()
+        svr_args: list[str | int] = [f"-S{self.socket_path}", cmd]
         cmd_args: list[str | int] = []
-        if self.socket_name:
-            svr_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            svr_args.insert(0, f"-S{self.socket_path}")
         if self.config_file:
             svr_args.insert(0, f"-f{self.config_file}")
         if self.colors:
@@ -408,7 +654,17 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        completion: dict[str, t.Any] = {}
+        if _on_completion is not None:
+            completion["_on_completion"] = _on_completion
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self._require_tmux_bin(),
+            env=self.child_environment,
+            timeout=timeout,
+            **completion,
+        )
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -503,6 +759,38 @@ class Server(
 
         return self
 
+    def _kill_session_if_present(self, session_id: str) -> None:
+        """Destroy one retained session ID, tolerating its prior destruction."""
+        self._kill_object_if_present("session", session_id)
+
+    def _kill_object_if_present(
+        self,
+        kind: t.Literal["session", "window", "pane"],
+        object_id: str,
+    ) -> None:
+        """Destroy an exact object ID without consulting its cached parent."""
+        prefix = {"session": "$", "window": "@", "pane": "%"}[kind]
+        number = object_id.removeprefix(prefix)
+        if not object_id.startswith(prefix) or not (
+            number.isascii() and number.isdecimal()
+        ):
+            message = f"Invalid {kind} ID: {object_id!r}"
+            raise ValueError(message)
+        subcommand = f"kill-{kind}"
+        proc = self.cmd(subcommand, target=object_id)
+        if proc.returncode:
+            detail = "\n".join(proc.stderr)
+            if (
+                _is_daemon_not_up_error(detail)
+                or detail == f"can't find {kind}: {object_id}"
+            ):
+                return
+            raise exc.LibTmuxException(
+                detail or f"exit status {proc.returncode}",
+                subcommand=subcommand,
+            )
+        raise_if_stderr(proc, subcommand)
+
     def run_shell(
         self,
         command: str,
@@ -581,7 +869,7 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-c", str(cwd))
             else:
                 warnings.warn(
@@ -590,7 +878,7 @@ class Server(
                 )
 
         if show_stderr:
-            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.6"):
                 tmux_args += ("-E",)
             else:
                 warnings.warn(
@@ -601,7 +889,7 @@ class Server(
         tmux_args += (command,)
 
         if args:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.7"):
                 tmux_args += tuple(args)
             else:
                 warnings.warn(
@@ -784,7 +1072,7 @@ class Server(
             tmux_args += ("-T", key_table)
 
         if format_ is not None:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.7"):
                 tmux_args += ("-F", format_)
             else:
                 warnings.warn(
@@ -882,7 +1170,7 @@ class Server(
         ...     result = server.server_access(list_access=True)
         ...     assert isinstance(result, list)
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+        if not self._supports_version("3.3"):
             msg = "server_access requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
 
@@ -946,7 +1234,7 @@ class Server(
             tmux_args += ("-t", target_client)
 
         if request_clipboard:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.7"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1152,7 +1440,7 @@ class Server(
         >>> result
         'yes'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+        if not self._supports_version("3.3"):
             msg = "confirm_before requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
 
@@ -1162,7 +1450,7 @@ class Server(
             tmux_args += ("-p", prompt)
 
         if confirm_key is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-c", confirm_key)
             else:
                 warnings.warn(
@@ -1171,7 +1459,7 @@ class Server(
                 )
 
         if default_yes:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-y",)
             else:
                 warnings.warn(
@@ -1268,7 +1556,7 @@ class Server(
         >>> result
         'hi'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+        if not self._supports_version("3.3"):
             msg = "command_prompt requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
 
@@ -1290,7 +1578,7 @@ class Server(
             tmux_args += ("-F",)
 
         if literal:
-            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.6"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1299,7 +1587,7 @@ class Server(
                 )
 
         if bspace_exit:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.7"):
                 tmux_args += ("-e",)
             else:
                 warnings.warn(
@@ -1308,7 +1596,7 @@ class Server(
                 )
 
         if no_freeze:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.7"):
                 tmux_args += ("-C",)
             else:
                 warnings.warn(
@@ -1424,7 +1712,7 @@ class Server(
             tmux_args += ("-y", str(y))
 
         if starting_choice is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-C", str(starting_choice))
             else:
                 warnings.warn(
@@ -1433,7 +1721,7 @@ class Server(
                 )
 
         if border_lines is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-b", border_lines)
             else:
                 warnings.warn(
@@ -1442,7 +1730,7 @@ class Server(
                 )
 
         if style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-s", style)
             else:
                 warnings.warn(
@@ -1451,7 +1739,7 @@ class Server(
                 )
 
         if border_style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-S", border_style)
             else:
                 warnings.warn(
@@ -1460,7 +1748,7 @@ class Server(
                 )
 
         if selected_style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-H", selected_style)
             else:
                 warnings.warn(
@@ -1469,7 +1757,7 @@ class Server(
                 )
 
         if mouse:
-            if has_gte_version("3.5", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.5"):
                 tmux_args += ("-M",)
             else:
                 warnings.warn(
@@ -1695,7 +1983,7 @@ class Server(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._supports_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1758,7 +2046,7 @@ class Server(
         >>> isinstance(result, list)
         True
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+        if not self._supports_version("3.3"):
             msg = "show_prompt_history requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
 
@@ -1792,7 +2080,7 @@ class Server(
         >>> if has_gte_version("3.3"):
         ...     server.clear_prompt_history()
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+        if not self._supports_version("3.3"):
             msg = "clear_prompt_history requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
 
@@ -2324,75 +2612,50 @@ class Server(
             extra["tmux_session"] = str(session_name)
         logger.debug("creating session", extra=extra)
 
-        env = os.environ.get("TMUX")
+        tmux_version = str(self._version)
+        _fields, format_string = get_output_format("list-sessions", tmux_version)
 
-        if env:
-            del os.environ["TMUX"]
+        tmux_args: tuple[str | int, ...] = (
+            "-P",
+            f"-F{_creation_format('session', format_string)}",
+        )
+        if detach_others:
+            tmux_args += ("-D",)
+        if no_size:
+            tmux_args += ("-X",)
+        if client_flags is not None:
+            tmux_args += ("-f", client_flags)
+        if session_name is not None:
+            tmux_args += (f"-s{session_name}",)
+        if not attach:
+            tmux_args += ("-d",)
+        if start_directory:
+            start_directory = pathlib.Path(start_directory).expanduser()
+            tmux_args += ("-c", str(start_directory))
+        if window_name:
+            tmux_args += ("-n", window_name)
+        if x is not None:
+            tmux_args += ("-x", x)
+        if y is not None:
+            tmux_args += ("-y", y)
+        if environment:
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
+        if window_command:
+            tmux_args += (window_command,)
 
-        try:
-            tmux_version = str(get_version(tmux_bin=self.tmux_bin))
-            _fields, format_string = get_output_format("list-sessions", tmux_version)
-
-            tmux_args: tuple[str | int, ...] = (
-                "-P",
-                f"-F{format_string}",
-            )
-
-            if detach_others:
-                tmux_args += ("-D",)
-
-            if no_size:
-                tmux_args += ("-X",)
-
-            if client_flags is not None:
-                tmux_args += ("-f", client_flags)
-
-            if session_name is not None:
-                tmux_args += (f"-s{session_name}",)
-
-            if not attach:
-                tmux_args += ("-d",)
-
-            if start_directory:
-                start_directory = pathlib.Path(start_directory).expanduser()
-                tmux_args += ("-c", str(start_directory))
-
-            if window_name:
-                tmux_args += ("-n", window_name)
-
-            if x is not None:
-                tmux_args += ("-x", x)
-
-            if y is not None:
-                tmux_args += ("-y", y)
-
-            if environment:
-                for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
-
-            if window_command:
-                tmux_args += (window_command,)
-
-            proc = self.cmd("new-session", *tmux_args)
-
-            raise_if_stderr(proc, "new-session")
-
+        with _creation(self, "session", "new-session", tmux_args) as (proc, receipt):
             session_stdout = proc.stdout[0]
+            session_data = parse_output(session_stdout, "list-sessions", tmux_version)
+            session = Session(server=self, **session_data)
+            session._creation_receipt = receipt
 
-        finally:
-            if env:
-                os.environ["TMUX"] = env
-
-        session_data = parse_output(session_stdout, "list-sessions", tmux_version)
-
-        session = Session(server=self, **session_data)
-
-        info_extra: dict[str, str] = {
-            "tmux_subcommand": "new-session",
-        }
-        if session.session_name is not None:
-            info_extra["tmux_session"] = str(session.session_name)
-        logger.info("session created", extra=info_extra)
+            info_extra: dict[str, str] = {
+                "tmux_subcommand": "new-session",
+            }
+            if session.session_name is not None:
+                info_extra["tmux_session"] = str(session.session_name)
+            logger.info("session created", extra=info_extra)
 
         return session
 
@@ -2683,16 +2946,12 @@ class Server(
 
     def __repr__(self) -> str:
         """Representation of :class:`Server` object."""
-        if self.socket_name is not None:
+        if self.socket_name is not None and self.socket_name != "default":
             return (
                 f"{self.__class__.__name__}"
                 f"(socket_name={getattr(self, 'socket_name', 'default')})"
             )
-        if self.socket_path is not None:
-            return f"{self.__class__.__name__}(socket_path={self.socket_path})"
-        return (
-            f"{self.__class__.__name__}(socket_path=/tmp/tmux-{os.geteuid()}/default)"
-        )
+        return f"{self.__class__.__name__}(socket_path={self.socket_path})"
 
     #
     # Legacy: Redundant stuff we want to remove

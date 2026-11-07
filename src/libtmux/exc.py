@@ -99,6 +99,10 @@ class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
 
 
+class StaleTmuxOwner(LibTmuxException):
+    """The endpoint now names a daemon other than the one accepted by an owner."""
+
+
 class NotInsideTmux(LibTmuxException):
     """Raised when the process is not running inside a tmux pane.
 

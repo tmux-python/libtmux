@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import locale
 import logging
+import os
+import pathlib
 import re
+import subprocess
 import sys
+import time
 import typing as t
 
 import pytest
 
 import libtmux
 from libtmux import exc
-from libtmux._compat import LooseVersion
+from libtmux._compat import BaseExceptionGroup, LooseVersion
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,
@@ -33,6 +37,186 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
+
+
+@pytest.mark.parametrize("retain_completion", [False, True])
+@pytest.mark.parametrize("interrupt", [False, True])
+@pytest.mark.parametrize("detached", [False, True])
+@pytest.mark.skipif(sys.platform != "linux", reason="observes descendant exit in /proc")
+def test_failed_client_does_not_wait_for_inherited_output_pipes(
+    tmp_path: pathlib.Path,
+    retain_completion: bool,
+    interrupt: bool,
+    detached: bool,
+) -> None:
+    """Reap the client and retain receipts without waiting for another pipe owner."""
+    wrapper = tmp_path / "tmux-client"
+    client_pid = tmp_path / "client-pid"
+    child_pid = tmp_path / "child-pid"
+    wrapper.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, signal, time\n"
+        f"pathlib.Path({str(client_pid)!r}).write_text(str(os.getpid()))\n"
+        "child = os.fork()\n"
+        "if child == 0:\n"
+        f"    if {detached!r}: os.setsid()\n"
+        "    time.sleep(2)\n"
+        "    os._exit(0)\n"
+        f"pathlib.Path({str(child_pid)!r}).write_text(str(child))\n"
+        "os.write(1, b'completed receipt\\r\\n\\xe2\\x98\\x83\\xff\\r')\n"
+        "os.write(2, b'client diagnostic\\r\\n')\n"
+        f"if {interrupt!r}:\n"
+        "    time.sleep(0.05)\n"
+        "    os.kill(os.getppid(), signal.SIGINT)\n"
+        "time.sleep(30)\n"
+    )
+    wrapper.chmod(0o700)
+    observed: list[tmux_cmd] = []
+    started = time.monotonic()
+    try:
+        with pytest.raises(
+            KeyboardInterrupt if interrupt else subprocess.TimeoutExpired
+        ) as caught:
+            tmux_cmd(
+                tmux_bin=str(wrapper),
+                timeout=None if interrupt else 0.5,
+                _on_completion=observed.append if retain_completion else None,
+            )
+        elapsed = time.monotonic() - started
+        assert elapsed < 1.2, f"command waited for a pipe owner: {elapsed:.3f}s"
+        if not interrupt:
+            assert isinstance(caught.value, subprocess.TimeoutExpired)
+            assert caught.value.timeout == 0.5
+            assert b"completed receipt" in caught.value.output
+        with pytest.raises(ChildProcessError):
+            os.waitpid(int(client_pid.read_text()), os.WNOHANG)
+        if retain_completion:
+            assert len(observed) == 1
+            assert observed[0].stdout == ["completed receipt", "\u2603\\xff"]
+            assert observed[0].stderr == ["client diagnostic"]
+            assert observed[0].returncode is not None
+    finally:
+        # The finite-lived descendant owns no tmux resources. Observe its exit
+        # before pytest removes the wrapper directory, including on a red test.
+        if child_pid.exists():
+            status = pathlib.Path(f"/proc/{int(child_pid.read_text())}/stat")
+            deadline = time.monotonic() + 4
+            while status.exists():
+                try:
+                    if status.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+                        break
+                except FileNotFoundError:
+                    break
+                assert time.monotonic() < deadline, "pipe owner did not exit"
+                time.sleep(0.01)
+
+
+@pytest.mark.parametrize("stream_name", ["stdout", "stderr"])
+@pytest.mark.parametrize("interrupt", [False, True])
+@pytest.mark.parametrize(
+    ("hold_pipe", "late_output"),
+    [(False, False), (True, False), pytest.param(False, True, id="late-output")],
+)
+@pytest.mark.skipif(sys.platform != "linux", reason="observes descendant exit in /proc")
+def test_reader_close_failure_retains_receipt_and_reaps_client(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stream_name: str,
+    interrupt: bool,
+    hold_pipe: bool,
+    late_output: bool,
+) -> None:
+    """Inject a close error after a real client's timeout or interruption."""
+    wrapper = tmp_path / "tmux-client"
+    child_pid = tmp_path / "child-pid"
+    wrapper.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, signal, time\n"
+        f"if not {late_output!r}:\n"
+        "    os.write(1, b'completed receipt\\n')\n"
+        "    os.write(2, b'client diagnostic\\n')\n"
+        f"if {hold_pipe or late_output!r}:\n"
+        "    parent = os.getpid()\n"
+        "    child = os.fork()\n"
+        "    if child == 0:\n"
+        f"        if {late_output!r}:\n"
+        "            deadline = time.monotonic() + 2\n"
+        "            while os.getppid() == parent:\n"
+        "                if time.monotonic() >= deadline: os._exit(3)\n"
+        "                time.sleep(0.001)\n"
+        "            os.write(1, b'completed receipt\\n')\n"
+        "            os.write(2, b'client diagnostic\\n')\n"
+        "        else:\n"
+        "            time.sleep(1)\n"
+        "        os._exit(0)\n"
+        f"    pathlib.Path({str(child_pid)!r}).write_text(str(child))\n"
+        f"if {interrupt!r}:\n"
+        "    time.sleep(0.1)\n"
+        "    os.kill(os.getppid(), signal.SIGINT)\n"
+        "time.sleep(30)\n"
+    )
+    wrapper.chmod(0o700)
+    processes: list[subprocess.Popen[str]] = []
+    original_popen = subprocess.Popen
+    close_error = OSError("reader close failed")
+
+    def launch(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[str]:
+        process = original_popen(*args, **kwargs)
+        processes.append(process)
+        stream = getattr(process, stream_name)
+        original_close = stream.close
+        failed = False
+
+        def close() -> None:
+            nonlocal failed
+            if not failed:
+                failed = True
+                raise close_error
+            original_close()
+
+        monkeypatch.setattr(stream, "close", close)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    observed: list[tmux_cmd] = []
+    try:
+        with pytest.raises(BaseExceptionGroup) as caught:
+            tmux_cmd(
+                tmux_bin=str(wrapper),
+                timeout=None if interrupt else 0.3,
+                _on_completion=observed.append,
+            )
+        assert len(caught.value.exceptions) == 2
+        assert isinstance(
+            caught.value.exceptions[0],
+            KeyboardInterrupt if interrupt else subprocess.TimeoutExpired,
+        )
+        assert caught.value.exceptions[1] is close_error
+        assert len(observed) == 1
+        assert observed[0].stdout == ["completed receipt"]
+        assert observed[0].stderr == ["client diagnostic"]
+        assert observed[0].returncode is not None
+        with pytest.raises(ChildProcessError):
+            os.waitpid(processes[0].pid, os.WNOHANG)
+    finally:
+        for process in processes:
+            if process.returncode is None:
+                process.kill()
+                process.wait(timeout=2)
+            for stream in (process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
+        if child_pid.exists():
+            status = pathlib.Path(f"/proc/{int(child_pid.read_text())}/stat")
+            deadline = time.monotonic() + 3
+            while status.exists():
+                try:
+                    if status.read_text().rsplit(")", 1)[1].split()[0] == "Z":
+                        break
+                except FileNotFoundError:
+                    break
+                assert time.monotonic() < deadline, "pipe owner did not exit"
+                time.sleep(0.01)
 
 
 def test_has_version() -> None:

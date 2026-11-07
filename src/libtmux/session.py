@@ -14,10 +14,16 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
+from libtmux.lifecycle import (
+    FoundOrCreated,
+    _creation,
+    _creation_format,
+    _find_or_create_child,
+)
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.options import OptionsMixin
 from libtmux.pane import Pane
@@ -117,13 +123,18 @@ class Session(
     server: Server
 
     def __enter__(self) -> Self:
-        """Enter the context, returning self.
+        """Accept destruction responsibility and enter the session scope.
 
         Returns
         -------
         :class:`Session`
             The session instance
         """
+        previous = getattr(self, "_scope_owner", None)
+        if previous is not None and not previous.closed:
+            message = "this session already has an active or failed cleanup scope"
+            raise RuntimeError(message)
+        self._scope_owner = self._enter_owned()
         return self
 
     def __exit__(
@@ -132,19 +143,20 @@ class Session(
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Exit the context, killing the session if it exists.
+        """Destroy the accepted session identity and retain paired failures.
 
         Parameters
         ----------
         exc_type : type[BaseException] | None
-            The type of the exception that was raised
+            The type of the body exception, or ``None`` on normal exit.
         exc_value : BaseException | None
-            The instance of the exception that was raised
+            The body exception, retained if cleanup also raises.
         exc_tb : types.TracebackType | None
-            The traceback of the exception that was raised
+            The traceback of the body exception, or ``None``.
         """
-        if self.session_name is not None and self.server.has_session(self.session_name):
-            self.kill()
+        owner = getattr(self, "_scope_owner", None)
+        if owner is not None:
+            owner.__exit__(exc_type, exc_value, exc_tb)
 
     def refresh(self) -> None:
         """Refresh session attributes from tmux.
@@ -723,7 +735,7 @@ class Session(
             flags += ("-C",)
 
         if group:  # Kill all sessions in this session's group (tmux 3.7+)
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if self._supports_version("3.7"):
                 flags += ("-g",)
             else:
                 warnings.warn(
@@ -790,6 +802,41 @@ class Session(
         logger.info("session renamed", extra=extra)
 
         return self
+
+    def find_or_create_window(
+        self,
+        window_name: str,
+        *,
+        start_directory: StrPath | None = None,
+        window_shell: str | None = None,
+    ) -> FoundOrCreated[Window]:
+        """Borrow one exact window-name match in this session or scope a new window.
+
+        Parameters
+        ----------
+        window_name : str
+            Full name, including spaces or punctuation. Multiple matches raise
+            ``AmbiguousMatch``; a linked window counts once by its stable ID.
+        start_directory : str or PathLike, optional
+            Initial directory for a newly created window.
+        window_shell : str, optional
+            Command for its initial pane; a reused window stays unchanged.
+
+        Returns
+        -------
+        FoundOrCreated[Window]
+            The result owns only a newly created detached window. Other clients
+            may create matching names between lookup and creation; this is not
+            an atomic uniqueness operation. Serialize competing creators when
+            the application requires one window per name.
+        """
+        return _find_or_create_child(
+            self,
+            "window",
+            window_name,
+            start_directory,
+            window_shell,
+        )
 
     def new_window(
         self,
@@ -897,7 +944,7 @@ class Session(
             start_directory = pathlib.Path(start_directory).expanduser()
             window_args += (f"-c{start_directory}",)
 
-        window_args += ("-F#{window_id}",)  # output
+        window_args += (f"-F{_creation_format('window', '#{window_id}')}",)
         if window_name is not None and isinstance(window_name, str):
             window_args += ("-n", window_name)
 
@@ -927,32 +974,38 @@ class Session(
         if window_shell:
             window_args += (window_shell,)
 
-        cmd = self.cmd("new-window", *window_args, target=target)
-
-        raise_if_stderr(cmd, "new-window")
-
-        window_output = cmd.stdout[0]
-
-        window_formatters = dict(
-            zip(["window_id"], window_output.split(FORMAT_SEPARATOR), strict=False),
-        )
-
-        window = Window.from_window_id(
-            server=self.server,
-            window_id=window_formatters["window_id"],
-        )
-
-        extra: dict[str, str] = {
-            "tmux_subcommand": "new-window",
-        }
-        if self.session_name is not None:
-            extra["tmux_session"] = str(self.session_name)
-        if window.window_name is not None:
-            extra["tmux_window"] = str(window.window_name)
+        if target is None:
+            target = self.session_id
         if target is not None:
-            extra["tmux_target"] = str(target)
+            window_args = ("-t", str(target), *window_args)
+        with _creation(
+            self.server,
+            "window",
+            "new-window",
+            window_args,
+            parent=self,
+        ) as (cmd, receipt):
+            window_output = cmd.stdout[0]
+            window_formatters = dict(
+                zip(["window_id"], window_output.split(FORMAT_SEPARATOR), strict=False),
+            )
+            window = Window.from_window_id(
+                server=self.server,
+                window_id=window_formatters["window_id"],
+            )
+            window._creation_receipt = receipt
 
-        logger.info("window created", extra=extra)
+            extra: dict[str, str] = {
+                "tmux_subcommand": "new-window",
+            }
+            if self.session_name is not None:
+                extra["tmux_session"] = str(self.session_name)
+            if window.window_name is not None:
+                extra["tmux_window"] = str(window.window_name)
+            if target is not None:
+                extra["tmux_target"] = str(target)
+
+            logger.info("window created", extra=extra)
 
         return window
 

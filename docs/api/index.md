@@ -178,4 +178,5 @@ Options <libtmux.options>
 Hooks <libtmux.hooks>
 Constants <libtmux.constants>
 Exceptions <libtmux.exc>
+Ownership <libtmux.lifecycle>
 ```
