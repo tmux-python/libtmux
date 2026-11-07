@@ -171,6 +171,44 @@ True
 True
 ```
 
+### Cooperative completion through a channel
+
+For commands you control, a unique `tmux wait-for` channel can signal an
+explicit completion point. An ordinary wait accepts a positive finite
+`timeout` in seconds and raises {exc}`~libtmux.exc.WaitTimeout` if the signal
+does not arrive. Its default remains blocking. A signal sent before the wait
+is remembered; reusing channel names risks consuming an earlier signal.
+
+This example owns a noninteractive producer and addresses the waiter's server
+explicitly. Put the signal after the work in that producer.
+
+```python
+>>> import shlex, uuid
+>>> channel = "job-" + uuid.uuid4().hex
+>>> endpoint = server.cmd("display-message", "-p", "#{socket_path}").stdout[0]
+>>> signal = shlex.join([server.tmux_bin or "tmux", "-S", endpoint, "wait-for", "-S", channel])
+>>> job = session.new_window(
+...     window_name="channel-job",
+...     window_shell=shlex.join(["/bin/sh", "-c", signal + "; exec cat"]),
+... )
+>>> server.wait_for(channel, timeout=0.5)
+>>> job.kill()
+```
+
+An existing pane requires its shell to execute the submitted line and its
+`tmux` command to address the same server. A text match alone does not prove
+that the shell is ready for input. The signal means that declared point was
+reached; it does not report the producer's exit status. A timeout stops
+only the owned waiting client and does not stop the producer or undo its
+effects. Expiry does not prove that a signal remains available for another
+waiter.
+
+Bounds apply only to ordinary signal waits. `lock`, `unlock` and `set_flag`
+retain their existing unbounded behavior and refuse an added `timeout`.
+Cancelling a queued lock request cannot safely undo tmux's later lock grant.
+The bounded adapter also refuses custom command dispatchers and injected
+engines instead of silently starting a local client for them.
+
 ### Capture with ANSI escape sequences
 
 A plain capture strips color and formatting, handing you clean text. When you
