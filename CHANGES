@@ -47,6 +47,13 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### tmux manual links
+
+The references for {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, {class}`~libtmux.Pane`, and
+{class}`~libtmux.Client` link to the versioned tmux manual and the commands
+that create or attach their native objects.
+
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
@@ -58,6 +65,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#774)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
