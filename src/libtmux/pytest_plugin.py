@@ -14,6 +14,7 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
+from libtmux.engines import RecordingEngine, SubprocessEngine
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -176,6 +177,54 @@ def server(
 
     def fin() -> None:
         _reap_test_server(server.socket_name)
+
+    request.addfinalizer(fin)
+
+    return server
+
+
+@pytest.fixture
+def recording_server(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    config_file: pathlib.Path,
+) -> Server:
+    """Return a temporary :class:`libtmux.Server` that records its tmux traffic.
+
+    Behaves exactly like the :func:`server` fixture, plus a
+    :class:`~libtmux.engines.record.RecordingEngine` on
+    ``server.engine``. Use it two ways: as a spy, asserting on which tmux
+    commands your code issued, and as a recorder, keeping
+    ``server.engine.to_dict()`` as a tape a
+    :class:`~libtmux.engines.record.ReplayEngine` can serve back with no tmux
+    running.
+
+    >>> from libtmux.server import Server
+
+    >>> def test_spy(recording_server: Server) -> None:
+    ...     session = recording_server.new_session('spied')
+    ...     session.kill()
+    ...     issued = [argv[0] for argv in recording_server.engine.requests]
+    ...     assert 'kill-session' in issued
+
+    .. ::
+        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:2])
+        >>> pytester = request.getfixturevalue('pytester')
+
+        >>> pytester.makepyfile(**{'whatever.py': source})
+        PosixPath(...)
+
+        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
+        ===...
+
+        >>> result.assert_outcomes(passed=1)
+    """
+    socket_name = f"libtmux_test{next(namer)}"
+    engine = RecordingEngine(SubprocessEngine.of(server_args=(f"-L{socket_name}",)))
+    server = Server(socket_name=socket_name, engine=engine)
+
+    def fin() -> None:
+        _reap_test_server(socket_name)
 
     request.addfinalizer(fin)
 
