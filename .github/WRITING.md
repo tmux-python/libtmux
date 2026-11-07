@@ -190,7 +190,7 @@ cannot pass, fix the example or fix the code.
 doctest in the suite runs, so a block never needs an import or a setup
 preamble to reach these names: `server`, `session`, `window`, `pane`,
 `Server`, `Session`, `Window`, `Pane`, `Client`, `ControlMode`,
-`control_mode`, `monkeypatch`, `request`. It only does this inside an
+`control_mode`, `monkeypatch`, `tmp_path`, `request`. It only does this inside an
 actual doctest item and only when `tmux` is on `PATH` — a doctest that
 uses one of these names with no `tmux` binary available fails with a
 `NameError`, not a skip.
@@ -251,6 +251,34 @@ the reStructuredText `.. doctest::` directive are also registered and
 available for a case that ever needs an explicitly marked block, rather
 than a plain prompted fence. This section is where any additional
 executed-block format is documented when one is adopted.
+
+### Experimental operation examples
+
+Every operation page under `docs/experimental/operations/` owns one visible
+Python doctest before its API card. That block is the user example and the
+executable proof; do not duplicate it in hidden setup or a separate generated
+scenario.
+
+- Drive the isolated fixture server through `SubprocessEngine.for_server(server)`.
+  Mocks do not prove command rendering, target resolution, parsing, or the
+  operation's effect on tmux.
+- Show the typed result and the smallest observable outcome that distinguishes
+  success from an acknowledgement. Use one of these proof shapes: typed read,
+  creation, durable mutation, relationship change, destruction, transient
+  acknowledgement, or version-gated behavior.
+- Prefer a direct before/after query for mutations and destruction. For terminal
+  output, synchronize with tmux or `Server.wait_for`; do not add an arbitrary
+  sleep.
+- Use a live control-mode client for client operations. A server with no
+  attached client cannot demonstrate client behavior.
+- Exercise a supported version-gated operation directly. A composed plan may
+  report a skipped step, but the operation itself must expose its documented
+  version error.
+- Keep the primary proof compact. Put reusable setup, async forms, batching, and
+  transport-specific behavior in an engine tutorial and link to it.
+
+Operation examples must not contain `MockEngine`, `AsyncMockEngine`,
+`# doctest: +SKIP`, or hidden `testsetup` directives.
 
 ## Documentation pages
 
@@ -473,26 +501,41 @@ type
 """
 ```
 
-**Classes with fields** — `NamedTuple`, dataclasses — document every
-field in an `Attributes` section:
+**Structured classes** — Every first-party declarative record under
+`src/libtmux` must document its effective fields in a NumPy
+`Attributes` section. This includes dataclasses, class and functional
+`NamedTuple` declarations, `TypedDict`, and future record-style models:
 
 ```python
 @dataclasses.dataclass()
-class Pane(Obj, OptionsMixin, HooksMixin):
-    """:term:`tmux(1)` :term:`Pane`.
+class PaneRef:
+    """Identity of a pane on a server.
 
     Attributes
     ----------
     server : Server
         Server the pane belongs to.
+    pane_id : str
+        Stable tmux pane identifier.
     """
+
+    server: Server
+    pane_id: str
 ```
 
-Autodoc renders every field whether or not you describe it, so an
-undocumented `NamedTuple` field ships to the API docs as "Alias for
-field number 0" and a dataclass field ships bare. Document all of
-them — a class with three fields and two documented still ships a stub
-for the third.
+Document fields in runtime order with non-empty semantic descriptions.
+Inherited prose counts toward subclass completeness. A subclass that
+redeclares a field may provide a more specific description, and a
+multiple-inheritance composite may inherit same-named prose from
+distinct defining bases; normal MRO precedence selects the effective
+description. Autodoc renders every field whether or not it is
+described, so a partial section still ships bare fields or generated
+text such as "Alias for field number 0".
+
+Test-local parameter containers and `libtmux._vendor` records are
+exempt unless they are intentionally published through autodoc.
+Behavioral classes that are not declarative records are outside this
+rule.
 
 ## Source comments
 
