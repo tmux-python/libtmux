@@ -79,6 +79,12 @@ Attached terminals, live-attachment lookup, and the view-vs-identity model.
 Scope- and version-gated typed fields on every libtmux object.
 :::
 
+:::{grid-item-card} Examples
+:link: examples
+:link-type: doc
+Standalone scripts you run directly, executed by the test suite.
+:::
+
 ::::
 
 ```{toctree}
@@ -99,4 +105,5 @@ context_managers
 options_and_hooks
 clients
 format-tokens
+examples
 ```

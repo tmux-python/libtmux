@@ -132,6 +132,9 @@ class Pane(
     ) -> None:
         """Exit the context, killing the pane if it exists.
 
+        This also destroys a pane obtained through lookup, not only one
+        created in this process. Keep borrowed handles outside a ``with`` block.
+
         Parameters
         ----------
         exc_type : type[BaseException] | None
@@ -607,14 +610,28 @@ class Pane(
         list[str] or None
             Captured pane content, or ``None`` when *to_buffer* is set.
 
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane no longer exists
+            (``can't find pane: ...``). Pass ``quiet=True`` for tmux's own
+            ``-q`` (suppress errors silently) if that is not wanted.
+
         Examples
         --------
         >>> pane = window.split(shell='sh')
+        >>> retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2)
+        True
         >>> pane.capture_pane()
         ['$']
 
         >>> pane.send_keys('echo "Hello world"', enter=True)
 
+        >>> def command_finished():
+        ...     lines = pane.capture_pane()
+        ...     return len(lines) >= 2 and lines[-2:] == ['Hello world', '$']
+        >>> retry_until(command_finished, 2)
+        True
         >>> pane.capture_pane()
         ['$ echo "Hello world"', 'Hello world', '$']
 
@@ -687,6 +704,7 @@ class Pane(
                     stacklevel=2,
                 )
         proc = self.cmd(*cmd)
+        raise_if_stderr(proc, "capture-pane")
         if to_buffer is not None:
             return None
         return proc.stdout
@@ -770,6 +788,9 @@ class Pane(
         ValueError
             If ``cmd`` is ``None`` and no flag-only path is selected
             (``reset``, ``repeat``, or ``copy_mode_cmd``).
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane no longer exists
+            (``can't find pane: ...``).
 
         Examples
         --------
@@ -830,7 +851,8 @@ class Pane(
 
         if copy_mode_cmd is not None:
             tmux_args += ("-X",)
-            self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+            proc = self.cmd("send-keys", *tmux_args, "--", copy_mode_cmd)
+            raise_if_stderr(proc, "send-keys")
         elif cmd is None:
             # Flag-only path — tmux's cmd-send-keys.c:223-225 explicitly
             # supports count == 0 when -R or -N is set, returning
@@ -841,10 +863,12 @@ class Pane(
                     "reset=True, repeat=N, copy_mode_cmd=..."
                 )
                 raise ValueError(msg)
-            self.cmd("send-keys", *tmux_args)
+            proc = self.cmd("send-keys", *tmux_args)
+            raise_if_stderr(proc, "send-keys")
             return
         else:
-            self.cmd("send-keys", *tmux_args, prefix + cmd)
+            proc = self.cmd("send-keys", *tmux_args, "--", prefix + cmd)
+            raise_if_stderr(proc, "send-keys")
 
         if enter and copy_mode_cmd is None:
             self.enter()
@@ -1001,7 +1025,7 @@ class Pane(
             tmux_args += ("-F", format_string)
 
         if cmd:
-            tmux_args += (cmd,)
+            tmux_args += ("--", cmd)
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1393,19 +1417,11 @@ class Pane(
                 )
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
-        if pane_cmd.stderr:
-            if "pane too small" in pane_cmd.stderr:
-                raise exc.LibTmuxException(pane_cmd.stderr)
-
-            raise exc.LibTmuxException(
-                pane_cmd.stderr,
-                self.__dict__,
-                self.window.panes,
-            )
+        raise_if_stderr(pane_cmd, "split-window")
 
         pane_output = pane_cmd.stdout[0]
 
@@ -1471,12 +1487,16 @@ class Pane(
             Environment variables for the new pane (``-e`` flag).
         width : int, optional
             Width of the floating pane in cells (``-x`` flag).
+            Includes the border on tmux 3.8+; ``pane_width`` reports content cells.
         height : int, optional
             Height of the floating pane in cells (``-y`` flag).
+            Includes the border on tmux 3.8+; ``pane_height`` reports content cells.
         x : int, optional
             X position of the floating pane in cells (``-X`` flag).
+            Places the outer border on tmux 3.8+; ``pane_x`` reports content position.
         y : int, optional
             Y position of the floating pane in cells (``-Y`` flag).
+            Places the outer border on tmux 3.8+; ``pane_y`` reports content position.
         zoom : bool, optional
             Zoom the pane (``-Z`` flag).
         empty : bool, optional
@@ -1561,7 +1581,7 @@ class Pane(
             tmux_args += ("-E",)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         pane_cmd = self.cmd("new-pane", *tmux_args, target=target)
 
@@ -1656,8 +1676,14 @@ class Pane(
         """Send carriage return to pane.
 
         ``$ tmux send-keys`` send Enter to the pane.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane no longer exists.
         """
-        self.cmd("send-keys", "Enter")
+        proc = self.cmd("send-keys", "Enter")
+        raise_if_stderr(proc, "send-keys")
         return self
 
     def display_popup(
@@ -1684,9 +1710,9 @@ class Pane(
     ) -> None:
         """Display a popup overlay via ``$ tmux display-popup``.
 
-        Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux._internal.control_mode.ControlMode` in tests to provide
-        a client.
+        Requires tmux 3.2+ and an attached terminal client to display the
+        popup and run its command. A control-mode client can accept this
+        request without executing the popup command.
 
         Parameters
         ----------
@@ -1736,12 +1762,11 @@ class Pane(
 
         Examples
         --------
-        Not directly testable — popup rendering requires a TTY-backed client.
-        Control-mode provides an attached client for invocation but the popup
-        itself is not visible or verifiable.
+        This control-mode client has no popup. The close request returns
+        without changing its state:
 
         >>> with control_mode() as ctl:
-        ...     pane.display_popup(command='true', close_on_exit=True)
+        ...     pane.display_popup(close_existing=True, target_client=ctl.client_name)
         """
         if close_on_exit and close_on_success:
             msg = (
@@ -1855,7 +1880,7 @@ class Pane(
                 )
 
         if command is not None:
-            tmux_args += (command,)
+            tmux_args += ("--", command)
 
         proc = self.cmd("display-popup", *tmux_args)
 
@@ -1969,7 +1994,7 @@ class Pane(
             tmux_args += ("-o",)
 
         if command is not None:
-            tmux_args += (command,)
+            tmux_args += ("--", command)
 
         proc = self.cmd("pipe-pane", *tmux_args)
 
@@ -2222,7 +2247,7 @@ class Pane(
         if match_title:
             tmux_args += ("-T",)
 
-        tmux_args += (match_string,)
+        tmux_args += ("--", match_string)
 
         proc = self.cmd("find-window", *tmux_args)
 
@@ -2290,7 +2315,7 @@ class Pane(
                 tmux_args += (f"-e{k}={v}",)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += ("--", shell)
 
         proc = self.cmd("respawn-pane", *tmux_args)
 
@@ -2615,12 +2640,17 @@ class Pane(
         freshly-cleared grid between the terminal-state reset and the
         history clear.
 
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error, e.g. the pane is gone.
+
         Examples
         --------
         >>> pane.reset()
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
         """
-        self.server.cmd(
+        proc = self.server.cmd(
             "send-keys",
             "-t",
             self.pane_id,
@@ -2630,6 +2660,9 @@ class Pane(
             "-t",
             self.pane_id,
         )
+
+        raise_if_stderr(proc, "send-keys")
+
         return self
 
     #
@@ -2707,6 +2740,97 @@ class Pane(
         True
         """
         return self.pane_title
+
+    @property
+    def width_cells(self) -> int | None:
+        """Captured width in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`width` alias retains its raw string.
+        """
+        return int(self.pane_width) if self.pane_width is not None else None
+
+    @property
+    def height_cells(self) -> int | None:
+        """Captured height in character cells, or ``None`` when unavailable.
+
+        Reads locally. The existing :attr:`height` alias retains its raw string.
+        """
+        return int(self.pane_height) if self.pane_height is not None else None
+
+    @property
+    def left_cells(self) -> int | None:
+        """Captured left edge, as a window column, or ``None`` when unavailable.
+
+        Reads locally. :attr:`pane_left` retains the raw string.
+        """
+        return int(self.pane_left) if self.pane_left is not None else None
+
+    @property
+    def top_cells(self) -> int | None:
+        """Captured top edge, as a window row, or ``None`` when unavailable.
+
+        Reads locally. :attr:`pane_top` retains the raw string.
+        """
+        return int(self.pane_top) if self.pane_top is not None else None
+
+    @property
+    def is_active(self) -> bool | None:
+        """Captured active flag within the window, or ``None`` when unavailable.
+
+        Reads locally; zero is false and a nonzero integer is true.
+        """
+        return bool(int(self.pane_active)) if self.pane_active is not None else None
+
+    @property
+    def is_dead(self) -> bool | None:
+        """Captured pane-process exit flag, or ``None`` when unavailable.
+
+        Reads locally, like :attr:`is_active` -- never re-queries tmux. A
+        stale handle keeps reporting whatever it last captured; call
+        :meth:`refresh` first for a live answer. That answer also depends
+        on ``remain-on-exit``: without it, tmux destroys a pane outright
+        when its process exits, so there is no "dead" state to read, only
+        a handle whose :meth:`refresh` now raises
+        :exc:`~libtmux.exc.TmuxObjectDoesNotExist`.
+
+        Examples
+        --------
+        A stale handle answers from its last snapshot, not from tmux. The
+        pane exits just after :meth:`Window.split` reads it back, so the
+        read-back itself never races the exit:
+
+        >>> gone = window.split(shell="sh -c 'sleep 1; exit 0'")
+        >>> retry_until(
+        ...     lambda: len(window.panes.filter(pane_id=gone.pane_id)) == 0, 3
+        ... )
+        True
+        >>> gone.is_dead  # last snapshot said "alive"; never re-queried
+        False
+
+        Refreshing that same handle raises -- the pane wasn't merely
+        marked dead, tmux removed it (no ``remain-on-exit``):
+
+        >>> from libtmux import exc
+        >>> try:
+        ...     gone.refresh()
+        ... except exc.TmuxObjectDoesNotExist:
+        ...     print("destroyed, not merely dead")
+        destroyed, not merely dead
+
+        With ``remain-on-exit``, the pane survives and a refreshed handle
+        reports it:
+
+        >>> stays = window.split(shell="sh")
+        >>> stays.cmd("set-option", "-p", "remain-on-exit", "on")  # doctest: +HIDE
+        <libtmux.common.tmux_cmd object at ...>
+        >>> stays.send_keys("exit", enter=True)
+        >>> def _stays_dead() -> bool | None:
+        ...     stays.refresh()
+        ...     return stays.is_dead
+        >>> retry_until(_stays_dead, 2)
+        True
+        """
+        return bool(int(self.pane_dead)) if self.pane_dead is not None else None
 
     @property
     def at_top(self) -> bool:

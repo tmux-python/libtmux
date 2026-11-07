@@ -13,6 +13,7 @@ This includes:
 | {class}`~libtmux.Session` | `from libtmux.session import Session` |
 | {class}`~libtmux.Window` | `from libtmux.window import Window` |
 | {class}`~libtmux.Pane` | `from libtmux.pane import Pane` |
+| {class}`~libtmux.QueryList` | `from libtmux import QueryList` |
 | Common | `from libtmux.common import ...` |
 | Neo | `from libtmux.neo import ...` |
 | Options | `from libtmux.options import ...` |
@@ -31,6 +32,10 @@ This includes:
 
 Modules under `libtmux._internal` and `libtmux._vendor` are **not public**.
 They may change or be removed without notice between any release.
+
+`QueryList` is public through its package-root import even though its
+implementation lives in `_internal`. Use the public import rather than the
+implementation module.
 
 Do not import from:
 - `libtmux._internal.*`

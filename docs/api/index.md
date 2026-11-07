@@ -81,6 +81,10 @@ Attached terminal. Read read-only state, theme, termtype.
 
 ## Supporting Modules
 
+{class}`~libtmux.QueryList` is the ordinary list subclass returned by live
+listings. Its {doc}`public query API <libtmux.query>` filters those returned
+values locally and provides required or defaulted lookups.
+
 ::::{grid} 1 2 3 3
 :gutter: 2 2 3 3
 
@@ -173,6 +177,7 @@ Window <libtmux.window>
 Pane <libtmux.pane>
 Client <libtmux.client>
 Common <libtmux.common>
+QueryList <libtmux.query>
 Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>

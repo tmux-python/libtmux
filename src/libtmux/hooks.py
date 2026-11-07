@@ -107,6 +107,7 @@ class HooksMixin(CmdMixin):
         cmd = self.cmd(
             "set-hook",
             *flags,
+            "--",
             hook,
         )
 
@@ -186,6 +187,7 @@ class HooksMixin(CmdMixin):
         cmd = self.cmd(
             "set-hook",
             *flags,
+            "--",
             hook,
             value,
         )
@@ -239,6 +241,7 @@ class HooksMixin(CmdMixin):
         cmd = self.cmd(
             "set-hook",
             *flags,
+            "--",
             hook,
         )
 
@@ -359,7 +362,7 @@ class HooksMixin(CmdMixin):
             else:
                 flags += (flag,)
 
-        flags += (hook,)
+        flags += ("--", hook)
 
         cmd = self.cmd("show-hooks", *flags)
 

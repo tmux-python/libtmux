@@ -309,7 +309,13 @@ def control_mode(
     spawn a control-mode tmux client.
 
     While the control-mode client is active, ``Server.list_clients()``
-    will include it.
+    will include it. It decodes none of tmux's control-mode protocol --
+    only ``client_name`` and raw ``stdout`` are exposed -- so this is a
+    real attached client for tests that need one, not a streaming API. This
+    fixture is part of the public pytest plugin surface; ``ControlMode``
+    itself stays in ``libtmux._internal`` and can change without notice.
+    See :doc:`/topics/public-vs-internal` for what to use instead of a
+    streaming API.
 
     Examples
     --------
