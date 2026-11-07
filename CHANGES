@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Program arguments (#822)
+
+Session, window, and pane creation and pane/window respawn accept `argv`
+for a program plus at least one argument. Spaces, empty arguments, literal
+expansion syntax, semicolons, and leading dashes retain their meaning as
+arguments. Shell-command strings keep their existing behavior. Conflicting
+inputs and one-element argument lists are rejected before mutation. See
+{doc}`/topics/program_arguments` for examples and tmux's single-argument rule.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +67,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#830)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 

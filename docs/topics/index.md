@@ -94,6 +94,7 @@ filtering
 pane_interaction
 floating_panes
 workspace_setup
+program_arguments
 automation_patterns
 context_managers
 options_and_hooks
