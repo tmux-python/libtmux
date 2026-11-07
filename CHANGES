@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### User options retain strings (#759)
+
+{meth}`~libtmux.options.OptionsMixin.show_option` and
+{meth}`~libtmux.options.OptionsMixin.show_options` preserve `@` user-option values
+as strings. Values such as `"123"`, `"on"`, and `"off"` previously became integers
+or booleans. Built-in option conversions are unchanged. See
+{ref}`options-and-hooks` for an example and {ref}`migration` for conversion advice.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +68,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#826)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 

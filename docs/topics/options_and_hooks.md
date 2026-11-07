@@ -80,14 +80,33 @@ different level than the object in hand. Pass the `scope` parameter, drawn from
 
 ### Global options
 
-Each scope also has a global layer — the fallback tmux uses when an object
-hasn't set its own value. Reach it with `global_=True` when you want the
-server-wide default rather than what one session or window happens to override:
+Sessions and windows have global defaults. Use `global_=True` to read or set
+those defaults. Server options are already shared by the server; panes have
+no separate global layer.
 
 ```python
 >>> server.show_option('buffer-limit', global_=True)
 50
 ```
+
+### User options
+
+Names beginning with `@` are user options. Both
+{meth}`~libtmux.options.OptionsMixin.show_option` and
+{meth}`~libtmux.options.OptionsMixin.show_options` return their values as strings,
+including `"123"`, `"on"`, `"off"`, and `""`:
+
+```python
+>>> _ = session.set_option('@count', '123')
+>>> session.show_option('@count')
+'123'
+>>> session.show_options()['@count']
+'123'
+```
+
+This applies to server, session, window, and pane user options, including global
+session and window defaults. Built-in options keep their existing conversions:
+`buffer-limit` returns an integer and `automatic-rename` returns a boolean.
 
 ## Hooks
 
