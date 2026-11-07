@@ -50,8 +50,8 @@ conf = merge_sphinx_config(
         ),
     },
     html_favicon="_static/favicon.ico",
-    html_css_files=["css/custom.css", "css/site-header.css"],
-    html_js_files=[("js/site-header.js", {"defer": "defer"})],
+    html_css_files=["css/custom.css", "css/site-bars.css"],
+    html_js_files=[("js/site-bars.js", {"defer": "defer"})],
     # The top bar sets its wordmark in IBM Plex Mono 600.
     sphinx_font_preload=[
         *DEFAULT_SPHINX_FONT_PRELOAD,
