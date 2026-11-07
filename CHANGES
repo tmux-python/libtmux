@@ -45,6 +45,20 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Features
+
+#### Explicit session creation and reuse
+
+{meth}`~libtmux.Server.create_session`, {meth}`~libtmux.Server.reuse_session`, and
+{meth}`~libtmux.Server.find_or_create_session` return a
+{class}`~libtmux.FoundOrCreated` result with a session, created/reused disposition,
+and frozen identity observations. Reused sessions keep their programs and never
+acquire cleanup responsibility. A created result can clean up its session after
+verifying its native creation receipt, or preserve it explicitly.
+Concurrent-creation conflicts receive one reconciliation lookup with a
+one-second client wait limit.
+See {doc}`the session acquisition guide <api/libtmux.session_creation>`.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +72,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#831)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 

@@ -43,6 +43,7 @@ if t.TYPE_CHECKING:
     from typing_extensions import Self
 
     from libtmux._internal.types import StrPath
+    from libtmux.session_creation import FoundOrCreated
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -2395,6 +2396,157 @@ class Server(
         logger.info("session created", extra=info_extra)
 
         return session
+
+    def create_session(
+        self,
+        session_name: str,
+        *,
+        start_directory: StrPath | None = None,
+        window_name: str | None = None,
+        window_command: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> FoundOrCreated[Session]:
+        """Create a detached session and retain its explicit cleanup ownership.
+
+        Parameters
+        ----------
+        session_name : str
+            Exact literal name, without periods, colons, or control characters.
+        start_directory : str or Path, optional
+            Working directory for the initial window.
+        window_name : str, optional
+            Literal name for the initial window.
+        window_command : str, optional
+            Command run by the initial window, using tmux's command semantics.
+        environment : dict[str, str], optional
+            Session environment. ``LIBTMUX_SESSION_OWNER`` is reserved.
+
+        Returns
+        -------
+        FoundOrCreated[Session]
+            Created session, frozen identity, and explicit cleanup responsibility.
+            Use its context manager or ``close()`` to remove this creation, or
+            ``preserve()`` to keep it.
+
+        Raises
+        ------
+        TmuxSessionExists
+            A session already has this exact name.
+        LibTmuxException
+            Creation failed or returned no trustworthy identity receipt.
+        NotImplementedError
+            A custom command dispatcher or engine is installed.
+
+        Notes
+        -----
+        Requires tmux 3.2a or later and the stock native dispatcher. Transport
+        failures propagate without retry: a submitted command without a receipt
+        may have created a session, but cannot authorize automatic cleanup.
+        """
+        from libtmux.session_creation import _acquire_session
+
+        return _acquire_session(
+            self,
+            session_name,
+            "create",
+            start_directory=start_directory,
+            window_name=window_name,
+            window_command=window_command,
+            environment=environment,
+        )
+
+    def reuse_session(self, session_name: str) -> FoundOrCreated[Session]:
+        """Borrow an exact session-name match without acquiring cleanup rights.
+
+        Parameters
+        ----------
+        session_name : str
+            Exact literal name, without periods, colons, or control characters.
+
+        Returns
+        -------
+        FoundOrCreated[Session]
+            Existing session with ``created=False``. Closing this result or
+            leaving its context preserves the session and its programs.
+            Its immutable identity records native observations; incarnation
+            provenance remains unknown and grants no cleanup authority.
+
+        Raises
+        ------
+        ObjectDoesNotExist
+            No session has this exact name.
+        LibTmuxException
+            Lookup failed or the observed identity changed during acquisition.
+        NotImplementedError
+            A custom command dispatcher or engine is installed.
+        """
+        from libtmux.session_creation import _acquire_session
+
+        return _acquire_session(self, session_name, "reuse")
+
+    def find_or_create_session(
+        self,
+        session_name: str,
+        *,
+        start_directory: StrPath | None = None,
+        window_name: str | None = None,
+        window_command: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> FoundOrCreated[Session]:
+        """Borrow an exact session match or create one with explicit ownership.
+
+        Parameters
+        ----------
+        session_name : str
+            Exact literal name, without periods, colons, or control characters.
+        start_directory : str or Path, optional
+            Initial window directory, applied only when creating a session.
+        window_name : str, optional
+            Literal initial window name, applied only on creation.
+        window_command : str, optional
+            Initial window command, applied only on creation.
+        environment : dict[str, str], optional
+            Initial session environment, applied only on creation.
+            ``LIBTMUX_SESSION_OWNER`` is reserved.
+
+        Returns
+        -------
+        FoundOrCreated[Session]
+            Exact session with its created/reused disposition. Only a created
+            result takes cleanup responsibility.
+
+        Raises
+        ------
+        TmuxSessionExists
+            Another creator won, but one reconciliation read could not find it.
+        subprocess.TimeoutExpired
+            The conflict reconciliation read exceeded its one-second client wait.
+            The cause retains the original ``TmuxSessionExists`` error.
+        LibTmuxException
+            Lookup or creation failed, or identity could not be verified.
+        NotImplementedError
+            A custom command dispatcher or engine is installed.
+
+        Notes
+        -----
+        Only tmux's exact duplicate-session conflict permits one additional
+        lookup, with a one-second wait limit after its client starts. Expiry
+        reaps that client and preserves the winning session. Other acquisition
+        and cleanup commands are blocking. Unrelated failures and uncertain
+        submitted outcomes never retry creation. See :meth:`create_session`
+        for cleanup and transport behavior.
+        """
+        from libtmux.session_creation import _acquire_session
+
+        return _acquire_session(
+            self,
+            session_name,
+            "find",
+            start_directory=start_directory,
+            window_name=window_name,
+            window_command=window_command,
+            environment=environment,
+        )
 
     #
     # Relations
