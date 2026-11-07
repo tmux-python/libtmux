@@ -17,7 +17,7 @@ if t.TYPE_CHECKING:
     try:
         from _pytest.raises import RaisesExc
     except ImportError:
-        from _pytest.python_api import RaisesContext  # type: ignore[attr-defined]
+        from _pytest.python_api import RaisesContext  # type: ignore[import-not-found]
 
         RaisesExc: TypeAlias = RaisesContext[Exception]  # type: ignore[no-redef]
 
