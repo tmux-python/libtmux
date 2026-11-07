@@ -101,7 +101,7 @@ class EnvironmentMixin:
         if hidden:
             args += ["-h"]
 
-        args += [name, value]
+        args += [escape_trailing_separator(name), escape_trailing_separator(value)]
 
         cmd = self.cmd(*args)
 
@@ -280,6 +280,35 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+def escape_trailing_separator(value: str) -> str:
+    r"""Return ``value`` as one tmux argument that keeps a final ``;``.
+
+    tmux ends a command at an argument whose last character is ``;`` and
+    starts the next one there. It reads a backslash before that ``;`` as an
+    escape and passes the ``;`` through as data. Typed libtmux methods call
+    this on every free-text value they place in a command, so a value ends
+    up in tmux unchanged.
+
+    Examples
+    --------
+    >>> escape_trailing_separator("abc;")
+    'abc\\;'
+
+    A ``;`` inside the value, and a value without one, are unchanged:
+
+    >>> escape_trailing_separator("a;b")
+    'a;b'
+
+    A value that already ends in ``\;`` gets its own escape:
+
+    >>> escape_trailing_separator("abc\\;")
+    'abc\\\\;'
+    """
+    if value.endswith(";"):
+        return f"{value[:-1]}\\;"
+    return value
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
@@ -305,6 +334,10 @@ class tmux_cmd:
 
     Notes
     -----
+    Arguments are passed to tmux unchanged, so an argument ending in ``;``
+    ends the command there and starts the next. Use
+    :func:`escape_trailing_separator` for a value that must stay data.
+
     .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
     """

@@ -15,7 +15,12 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    escape_trailing_separator,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -1132,11 +1137,11 @@ class Window(
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (f"-c{start_path}",)
+            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
 
         if environment:
             for k, v in environment.items():
-                tmux_args += (f"-e{k}={v}",)
+                tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if shell:
             tmux_args += (shell,)
@@ -1340,10 +1345,10 @@ class Window(
             tmux_args += ("-d", str(delay))
 
         if format_string is not None:
-            tmux_args += ("-F", format_string)
+            tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += (cmd,)
+            tmux_args += (escape_trailing_separator(cmd),)
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1379,7 +1384,7 @@ class Window(
         lex.escape = " "
         lex.whitespace_split = False
 
-        proc = self.cmd("rename-window", new_name)
+        proc = self.cmd("rename-window", escape_trailing_separator(new_name))
         raise_if_stderr(proc, "rename-window")
 
         self.window_name = new_name

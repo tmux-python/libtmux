@@ -75,7 +75,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import CmdMixin
+from libtmux.common import CmdMixin, escape_trailing_separator
 from libtmux.constants import (
     DEFAULT_OPTION_SCOPE,
     OPTION_SCOPE_FLAG_MAP,
@@ -704,8 +704,8 @@ class OptionsMixin(CmdMixin):
         cmd = self.cmd(
             "set-option",
             *flags,
-            option,
-            value,
+            escape_trailing_separator(option),
+            escape_trailing_separator(str(value)),
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):

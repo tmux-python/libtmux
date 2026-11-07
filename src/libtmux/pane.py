@@ -15,7 +15,13 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    escape_trailing_separator,
+    get_version_str,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -844,7 +850,11 @@ class Pane(
             self.cmd("send-keys", *tmux_args)
             return
         else:
-            self.cmd("send-keys", *tmux_args, prefix + cmd)
+            self.cmd(
+                "send-keys",
+                *tmux_args,
+                escape_trailing_separator(prefix + cmd),
+            )
 
         if enter and copy_mode_cmd is None:
             self.enter()
@@ -998,10 +1008,10 @@ class Pane(
             tmux_args += ("-d", str(delay))
 
         if format_string is not None:
-            tmux_args += ("-F", format_string)
+            tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += (cmd,)
+            tmux_args += (escape_trailing_separator(cmd),)
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1355,14 +1365,14 @@ class Pane(
 
         if start_directory:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (f"-c{start_path}",)
+            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
 
         if not attach:
             tmux_args += ("-d",)
 
         if environment:
             for k, v in environment.items():
-                tmux_args += (f"-e{k}={v}",)
+                tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if empty:
             if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
@@ -1383,7 +1393,7 @@ class Pane(
             if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
                 for flag, value in styling.items():
                     if value is not None:
-                        tmux_args += (flag, value)
+                        tmux_args += (flag, escape_trailing_separator(value))
                 if keep:
                     tmux_args += ("-k",)
             else:
@@ -1393,7 +1403,7 @@ class Pane(
                 )
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += (escape_trailing_separator(shell),)
 
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
@@ -1534,13 +1544,13 @@ class Pane(
         if zoom:
             tmux_args += ("-Z",)
         if style is not None:
-            tmux_args += ("-s", style)
+            tmux_args += ("-s", escape_trailing_separator(style))
         if active_border_style is not None:
-            tmux_args += ("-S", active_border_style)
+            tmux_args += ("-S", escape_trailing_separator(active_border_style))
         if inactive_border_style is not None:
-            tmux_args += ("-R", inactive_border_style)
+            tmux_args += ("-R", escape_trailing_separator(inactive_border_style))
         if message is not None:
-            tmux_args += ("-m", message)
+            tmux_args += ("-m", escape_trailing_separator(message))
         if keep:
             tmux_args += ("-k",)
 
@@ -1548,20 +1558,20 @@ class Pane(
 
         if start_directory:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (f"-c{start_path}",)
+            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
 
         if not attach:
             tmux_args += ("-d",)
 
         if environment:
             for k, v in environment.items():
-                tmux_args += (f"-e{k}={v}",)
+                tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if empty:
             tmux_args += ("-E",)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += (escape_trailing_separator(shell),)
 
         pane_cmd = self.cmd("new-pane", *tmux_args, target=target)
 
@@ -1647,7 +1657,7 @@ class Pane(
         >>> pane.pane_title
         'my-title'
         """
-        proc = self.cmd("select-pane", "-T", title)
+        proc = self.cmd("select-pane", "-T", escape_trailing_separator(title))
         raise_if_stderr(proc, "select-pane")
         self.refresh()
         return self
@@ -1779,11 +1789,11 @@ class Pane(
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += ("-d", str(start_path))
+            tmux_args += ("-d", escape_trailing_separator(str(start_path)))
 
         if title is not None:
             if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-T", title)
+                tmux_args += ("-T", escape_trailing_separator(title))
             else:
                 warnings.warn(
                     "title requires tmux 3.3+, ignoring",
@@ -1792,7 +1802,7 @@ class Pane(
 
         if border_lines is not None:
             if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-b", border_lines)
+                tmux_args += ("-b", escape_trailing_separator(border_lines))
             else:
                 warnings.warn(
                     "border_lines requires tmux 3.3+, ignoring",
@@ -1801,7 +1811,7 @@ class Pane(
 
         if style is not None:
             if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-s", style)
+                tmux_args += ("-s", escape_trailing_separator(style))
             else:
                 warnings.warn(
                     "style requires tmux 3.3+, ignoring",
@@ -1810,7 +1820,7 @@ class Pane(
 
         if border_style is not None:
             if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-S", border_style)
+                tmux_args += ("-S", escape_trailing_separator(border_style))
             else:
                 warnings.warn(
                     "border_style requires tmux 3.3+, ignoring",
@@ -1820,7 +1830,7 @@ class Pane(
         if environment:
             if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
                 for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
+                    tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
             else:
                 warnings.warn(
                     "environment requires tmux 3.3+, ignoring",
@@ -1855,7 +1865,7 @@ class Pane(
                 )
 
         if command is not None:
-            tmux_args += (command,)
+            tmux_args += (escape_trailing_separator(command),)
 
         proc = self.cmd("display-popup", *tmux_args)
 
@@ -1969,7 +1979,7 @@ class Pane(
             tmux_args += ("-o",)
 
         if command is not None:
-            tmux_args += (command,)
+            tmux_args += (escape_trailing_separator(command),)
 
         proc = self.cmd("pipe-pane", *tmux_args)
 
@@ -2151,7 +2161,7 @@ class Pane(
             tmux_args += ("-r",)
 
         if format_string is not None:
-            tmux_args += ("-F", format_string)
+            tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if filter_expression is not None:
             tmux_args += ("-f", filter_expression)
@@ -2283,14 +2293,14 @@ class Pane(
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (f"-c{start_path}",)
+            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
 
         if environment:
             for k, v in environment.items():
-                tmux_args += (f"-e{k}={v}",)
+                tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if shell:
-            tmux_args += (shell,)
+            tmux_args += (escape_trailing_separator(shell),)
 
         proc = self.cmd("respawn-pane", *tmux_args)
 

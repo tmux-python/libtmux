@@ -45,6 +45,37 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### Values ending in `;` reach tmux as data (#844)
+
+tmux ends a command at an argument whose last character is `;` and runs the
+next argument as a new command. A value such as an option name, environment
+value, window name or start directory that ended in `;` could therefore run
+the following argument: `server.set_option("mouse;", "kill-server",
+global_=True)` stopped the tmux server. Other values lost the `;` or made the
+call fail with `unknown command`.
+
+{meth}`Server.set_option() <libtmux.Server.set_option>` and its session,
+window and pane siblings, `set_environment()`,
+{meth}`Server.new_session() <libtmux.Server.new_session>`,
+{meth}`Session.new_window() <libtmux.Session.new_window>`,
+{meth}`Pane.split() <libtmux.Pane.split>`, `respawn()`, `display_popup()`,
+`display_menu()`, `new_pane()`,
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>`,
+{meth}`Window.rename_window() <libtmux.Window.rename_window>`,
+{meth}`Session.rename_session() <libtmux.Session.rename_session>`,
+{meth}`Pane.set_title() <libtmux.Pane.set_title>` and `display_message()` now
+pass the value to tmux unchanged, including values that end in `\;` or are a
+lone `;`.
+
+Hook commands, menu item commands and `command-prompt` templates are tmux
+command strings and pass through as given.
+
+`cmd()` still sends its arguments as given, so a bare `";"` argument keeps
+separating commands. {func}`~libtmux.common.escape_trailing_separator` escapes
+a value for a raw `cmd()` call.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
