@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "types": ["astro/client"],
+    "rootDir": "../../",
+    "paths": {}
+  },
+  "include": ["src", "tests"],
+  "references": []
+}
