@@ -113,6 +113,25 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+### User-option values remain strings (#759)
+
+`show_option()` and `show_options()` now preserve the strings stored in tmux
+user options, whose names begin with `@`. Previously, `"123"` became `123`,
+`"on"` became `True`, and `"off"` became `False`. Empty strings remain empty
+strings. Built-in option conversions are unchanged.
+
+If your code needs a number or boolean from a user option, convert it explicitly
+according to the values your application stores:
+
+```python
+>>> _ = session.set_option('@count', '123')
+>>> int(session.show_option('@count'))
+123
+>>> _ = session.set_option('@enabled', 'off')
+>>> session.show_option('@enabled') == 'on'
+False
+```
+
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
 {exc}`~libtmux.exc.ObjectDoesNotExist` and
