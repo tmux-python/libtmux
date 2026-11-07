@@ -45,6 +45,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Features
+
+#### Incremental retained history (#740)
+
+{meth}`Pane.capture_since() <libtmux.Pane.capture_since>` returns immutable
+history text and a cursor with an explicit `continuous`, `reset`, `gap`, or
+`unknown` outcome. The main-grid history selection requires a connected
+tmux 3.8+ daemon. Repeated rows remain distinguishable through native
+counters; discarded text cannot be recovered. See
+{doc}`topics/incremental_capture` for the selection and continuity limits.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +69,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#832)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
