@@ -45,6 +45,11 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+- {class}`~libtmux.Server` now reprs the socket path tmux resolves from
+  `$TMUX_TMPDIR` instead of a hard-coded `/tmp/tmux-<euid>/default` (#723)
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +63,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#727)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
