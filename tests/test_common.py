@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import locale
 import logging
+import os
 import re
 import sys
+import time
 import typing as t
 
 import pytest
@@ -29,6 +31,8 @@ from libtmux.common import (
 )
 
 if t.TYPE_CHECKING:
+    import pathlib
+
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -762,3 +766,39 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     result = parse_output(line, "list-sessions", tmux_version)
     assert isinstance(result, dict)
     assert "session_id" in result
+
+
+def test_tmux_cmd_timeout_kills_and_reaps(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """An expired command leaves no tmux process behind.
+
+    The kill is the load-bearing half. Without it a caller that gives up
+    only stops waiting, so repeated timeouts accumulate tmux processes
+    nobody is listening to.
+    """
+    binary, pid_file = hanging_tmux
+
+    with pytest.raises(exc.TmuxTimeout) as excinfo:
+        tmux_cmd("list-sessions", tmux_bin=binary, timeout=0.3)
+
+    assert excinfo.value.timeout == 0.3
+    assert "list-sessions" in str(excinfo.value)
+
+    pid = int(pid_file.read_text())
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
+def test_tmux_cmd_without_timeout_still_waits(
+    hanging_tmux: tuple[str, pathlib.Path],
+) -> None:
+    """The bound is opt-in; omitting it keeps the historical behaviour."""
+    binary, _pid_file = hanging_tmux
+    started = time.monotonic()
+
+    with pytest.raises(exc.TmuxTimeout):
+        tmux_cmd("list-sessions", tmux_bin=binary, timeout=0.3)
+
+    # A test that never waits would pass whether or not `timeout` is read.
+    assert time.monotonic() - started >= 0.3
