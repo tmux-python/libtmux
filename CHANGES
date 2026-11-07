@@ -45,6 +45,33 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Server scopes preserve running sessions (#728)
+
+Leaving a `with` block used to kill any live {class}`~libtmux.Server`, so
+`with Server() as server:` around no work at all destroyed the default tmux
+daemon and every session in it. A server is a handle on a socket rather than a
+connection: the same handle addresses a daemon whether or not your process
+started it, so scoping one to a block is not grounds to destroy it.
+
+Set {attr}`~libtmux.Server.kill_on_exit` to request teardown. Normal and
+exceptional exits otherwise preserve the server, including a daemon started
+during the block by another client. {class}`~libtmux.Session`,
+{class}`~libtmux.Window` and {class}`~libtmux.Pane` contexts still destroy their
+selected object, including one retrieved from an existing server. See
+{ref}`context_managers` and {doc}`migration`.
+
+```python
+# Before: killed whatever daemon was on that socket
+with Server(socket_name="my-work") as server:
+    pass
+
+# After: nothing is killed unless you say so
+with Server(socket_name="my-work", kill_on_exit=True) as server:
+    pass
+```
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +85,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#728)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
