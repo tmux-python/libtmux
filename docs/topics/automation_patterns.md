@@ -188,7 +188,7 @@ pane without dragging along the prompt and prior history.
 >>> capture_pane = capture_window.active_pane
 
 >>> def capture_between_markers(pane, start, end, timeout=5.0):
-...     """Return the lines printed between two marker lines, or None on timeout."""
+...     """Return lines between marker lines, or None on timeout."""
 ...     def has_both():
 ...         lines = [line.strip() for line in pane.capture_pane()]
 ...         return start in lines and end in lines
