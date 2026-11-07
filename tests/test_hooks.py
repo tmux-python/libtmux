@@ -6,6 +6,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux._internal.constants import Hooks
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
@@ -315,6 +316,7 @@ class HookTestCase(t.NamedTuple):
     hook: str  # tmux hook name (hyphenated)
     min_version: str = "3.0"  # Minimum tmux version required
     xfail_reason: str | None = None  # Mark as expected failure with reason
+    removed_version: str | None = None
 
 
 # --- Alert Hooks ---
@@ -381,7 +383,7 @@ AFTER_HOOKS: list[HookTestCase] = [
     HookTestCase("after_new_window", "after-new-window"),
     HookTestCase("after_paste_buffer", "after-paste-buffer"),
     HookTestCase("after_pipe_pane", "after-pipe-pane"),
-    HookTestCase("after_queue", "after-queue"),
+    HookTestCase("after_queue", "after-queue", removed_version="3.8"),
     HookTestCase("after_refresh_client", "after-refresh-client"),
     HookTestCase("after_rename_session", "after-rename-session"),
     HookTestCase("after_rename_window", "after-rename-window"),
@@ -416,7 +418,39 @@ NEW_HOOKS: list[HookTestCase] = [
 
 # Combine all hook test cases
 ALL_HOOK_TEST_CASES: list[HookTestCase] = (
-    ALERT_HOOKS + CLIENT_HOOKS + SESSION_HOOKS + WINDOW_HOOKS + PANE_HOOKS + AFTER_HOOKS
+    ALERT_HOOKS
+    + CLIENT_HOOKS
+    + SESSION_HOOKS
+    + WINDOW_HOOKS
+    + PANE_HOOKS
+    + AFTER_HOOKS
+    + [
+        HookTestCase(name.replace("-", "_"), name, "3.8")
+        for name in (
+            "after-swap-window",
+            "client-closed",
+            "client-created",
+            "marked-pane-changed",
+            "pane-activity",
+            "pane-bell",
+            "pane-command-finished",
+            "pane-command-started",
+            "pane-created",
+            "pane-mode-entered",
+            "pane-mode-exited",
+            "pane-moved",
+            "pane-prompt-closed",
+            "pane-prompt-opened",
+            "pane-resized",
+            "pane-shell-prompt",
+            "session-added-to-group",
+            "session-removed-from-group",
+            "window-closed",
+            "window-created",
+            "window-unzoomed",
+            "window-zoomed",
+        )
+    ]
 )
 
 
@@ -450,6 +484,11 @@ def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> N
     assert pane is not None
 
     hook_cmd = "display-message 'test hook fired'"
+
+    if test_case.removed_version and has_gte_version(test_case.removed_version):
+        with pytest.raises(exc.InvalidOption, match="invalid option"):
+            session.set_hook(f"{test_case.hook}[0]", hook_cmd)
+        return
 
     # Test set_hook (using session-level hook which works on all tmux versions)
     session.set_hook(f"{test_case.hook}[0]", hook_cmd)

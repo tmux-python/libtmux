@@ -23,6 +23,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
+          save-cache: ${{ strategy.job-index == 0 }}
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -92,14 +93,12 @@ jobs:
           uv run python -V
 
       - name: Test with pytest
-        continue-on-error: ${{ matrix.tmux-version == 'master' }}
         run: |
           tmux -V
-          uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
-        env:
-          COV_CORE_SOURCE: .
-          COV_CORE_CONFIG: .coveragerc
-          COV_CORE_DATAFILE: .coverage.eager
+          uv run coverage erase
+          uv run coverage run -m pytest -n auto --verbose
+          uv run coverage combine
+          uv run coverage xml
       - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

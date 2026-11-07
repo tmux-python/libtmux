@@ -350,6 +350,48 @@ class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition."""
 
 
+class TmuxTimeout(Exception):
+    """A tmux command did not return within its timeout.
+
+    Deliberately NOT a :exc:`LibTmuxException`. The listing accessors
+    absorb one of those as "nothing to list", which is right for a
+    daemon that has not started and wrong for a server that stopped
+    answering -- a caller told there are no sessions goes on to create
+    one on a server that already has them.
+
+    Distinct from :exc:`WaitTimeout`, which is a helper giving up on a
+    condition. This one means the tmux process was killed mid-command,
+    so nothing can be said about whether it took effect.
+    """
+
+    def __init__(self, cmd: list[str], timeout: float, *args: object) -> None:
+        self.cmd = cmd
+        self.timeout = timeout
+        # self.args must stay shaped like __init__'s signature: pickle/copy
+        # reconstruct via `type(e)(*e.args)`, which a lone message string
+        # here would mismatch and raise TypeError.
+        super().__init__(cmd, timeout, *args)
+
+    def __str__(self) -> str:
+        """Render the deadline and the command that missed it."""
+        return f"tmux did not return within {self.timeout}s: {' '.join(self.cmd)}"
+
+
+class TmuxRecordParseError(LibTmuxException):
+    """A ``list-*`` record could not be split into its fields.
+
+    Raised by ``libtmux.neo._split_records`` when a value contains the
+    field separator itself, so the output no longer divides evenly into
+    whole records.
+
+    Deliberately not absorbed by the list-returning accessors'
+    empty-by-default contract: this means libtmux received a reply it
+    cannot interpret, not that tmux was unreachable, so treating it like
+    "nothing to list" would hide real rows behind a parsing bug rather
+    than a connectivity gap.
+    """
+
+
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 

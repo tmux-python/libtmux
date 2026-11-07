@@ -2,7 +2,8 @@
 
 Note
 ----
-This is an internal API not covered by versioning policy.
+Only :class:`QueryList`, exported as ``libtmux.QueryList``, is public.
+The remaining helpers are internal and not covered by versioning policy.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ if t.TYPE_CHECKING:
 
 
 T = t.TypeVar("T")
+D = t.TypeVar("D")
 
 no_arg = object()
 
@@ -327,7 +329,8 @@ class OpNotFound(ValueError):
 class QueryList(list[T], t.Generic[T]):
     """Filter list of object/dictionaries. For small, local datasets.
 
-    *Experimental, unstable*.
+    Import the public collection with ``from libtmux import QueryList``.
+    Filtering and cardinality checks operate on the existing list without I/O.
 
     **With dictionaries**:
 
@@ -549,12 +552,36 @@ class QueryList(list[T], t.Generic[T]):
 
         return self.__class__(k for k in self if filter_(k))
 
+    @t.overload
     def get(
         self,
         matcher: Callable[[T], bool] | T | None = None,
-        default: t.Any | None = no_arg,
+        *,
+        default: D,
         **kwargs: t.Any,
-    ) -> T | None:
+    ) -> T | D: ...
+
+    @t.overload
+    def get(
+        self,
+        matcher: Callable[[T], bool] | T | None,
+        default: D,
+        **kwargs: t.Any,
+    ) -> T | D: ...
+
+    @t.overload
+    def get(
+        self,
+        matcher: Callable[[T], bool] | T | None = None,
+        **kwargs: t.Any,
+    ) -> T: ...
+
+    def get(
+        self,
+        matcher: Callable[[T], bool] | T | None = None,
+        default: object = no_arg,
+        **kwargs: t.Any,
+    ) -> object:
         """Retrieve exactly one object.
 
         Parameters
@@ -583,7 +610,7 @@ class QueryList(list[T], t.Generic[T]):
 
         Examples
         --------
-        >>> from libtmux._internal.query_list import QueryList
+        >>> from libtmux import QueryList
         >>> from libtmux import exc
         >>> qs = QueryList([{"pane_id": "%0"}, {"pane_id": "%0"}, {"pane_id": "%1"}])
 
