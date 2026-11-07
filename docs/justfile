@@ -6,7 +6,10 @@ set shell := ["bash", "-uc"]
 # Configuration
 http_port := "8023"
 builddir := "_build"
-sphinxopts := ""
+# -W: a broken cross-reference, a page in no toctree, or a bad directive
+# option is a warning Sphinx is happy to build through. Treating warnings as
+# errors is what makes the docs build a gate rather than a report.
+sphinxopts := "-W"
 sphinxbuild := "uv run sphinx-build"
 sourcedir := "."
 
