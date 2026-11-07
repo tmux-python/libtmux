@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import functools
 import logging
+import math
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import time
 import typing as t
 
 from . import exc
@@ -23,6 +25,9 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
+
+# Older selectors cannot represent a single wait longer than about 24 days.
+_COMMUNICATE_SLICE_SECONDS = 86_400
 
 
 #: Minimum version of tmux required to run libtmux
@@ -283,6 +288,18 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
+    Parameters
+    ----------
+    *args : object
+        tmux argv, stringified after the executable.
+    tmux_bin : str, optional
+        Executable path; otherwise resolve tmux on PATH.
+    timeout : float, optional
+        Positive finite seconds. None waits indefinitely. Expiry kills and
+        reaps the owned client and raises :exc:`~libtmux.exc.TmuxTimeout`.
+        Accepted server mutations remain uncertain and must not be retried
+        automatically.
+
     Examples
     --------
     Create a new session, check for error:
@@ -297,6 +314,14 @@ class tmux_cmd:
     >>> print(f'tmux command returned {" ".join(proc.stdout)}')
     tmux command returned 2
 
+    Bound a command that waits for a signal which may never arrive:
+
+    >>> try:
+    ...     server.cmd("wait-for", "deadline-example", timeout=0.01)
+    ... except exc.TmuxTimeout as error:
+    ...     error.timeout
+    0.01
+
     Equivalent to:
 
     .. code-block:: console
@@ -309,7 +334,15 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
+        if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
+            msg = "timeout must be positive finite seconds or None"
+            raise ValueError(msg)
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -336,10 +369,33 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
+            deadline = None if timeout is None else time.monotonic() + timeout
+            while True:
+                interval = (
+                    None
+                    if deadline is None
+                    else min(
+                        max(deadline - time.monotonic(), 0), _COMMUNICATE_SLICE_SECONDS
+                    )
+                )
+                try:
+                    stdout, stderr = self.process.communicate(timeout=interval)
+                    break
+                except subprocess.TimeoutExpired:
+                    if deadline is None or time.monotonic() >= deadline:
+                        raise
             returncode = self.process.returncode
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait()
+            # Draining can hang on inherited pipes held by another process.
+            for stream in (self.process.stdout, self.process.stderr):
+                if stream is not None:
+                    stream.close()
+            assert timeout is not None
+            raise exc.TmuxTimeout(cmd=cmd, timeout=timeout) from None
         except Exception:
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",

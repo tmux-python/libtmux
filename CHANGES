@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Optional command deadlines (#807)
+
+Set deadlines for individual tmux commands while existing calls keep
+their blocking behavior. On expiry, libtmux cleans up its client;
+operations tmux already accepted can still take effect. Object command
+deadlines refuse custom server dispatchers and injected engines before
+effects; unbounded calls retain their existing routes.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +68,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#807)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
