@@ -21,86 +21,65 @@ from inside a live tmux session.
 
 ## Installation
 
-Next, ensure `libtmux` is installed:
+Install `libtmux` into your project's Python environment:
 
 ```console
-$ pip install --user libtmux
+$ python -m pip install libtmux
 ```
 
 (developmental-releases)=
 
 ### Developmental releases
 
-New versions of libtmux are published to [PyPI] as alpha, beta, or release
-candidates. In their versions you will see notifications like `a1`, `b1`, and
-`rc1`, respectively. `1.10.0b4` would mean the 4th beta release of `1.10.0`
-before general availability.
+Prerelease versions on [PyPI] use suffixes such as `a1`, `b1`, and `rc1`
+for alpha, beta, and release candidates. Opt into them with your package
+manager:
 
-- [pip]\:
+- [pip]:
 
   ```console
-  $ pip install --user --upgrade --pre libtmux
+  $ python -m pip install \
+      --upgrade \
+      --pre \
+      libtmux
   ```
 
-- [pipx]\:
+- [uv] in a project:
 
   ```console
-  $ pipx install \
-      --suffix=@next \
-      --pip-args '\--pre' \
-      --force \
-      'libtmux'
+  $ uv add \
+      --prerelease allow \
+      libtmux
   ```
 
-  Usage: `libtmux@next [command]`
-
-- [uv tool install][uv-tools]\:
+- An ad hoc Python REPL with [uv]:
 
   ```console
-  $ uv tool install --prerelease=allow libtmux
+  $ uv run \
+      --prerelease allow \
+      --with libtmux \
+      python
   ```
 
-- [uv]\:
+To install unreleased changes from trunk:
+
+- [pip]:
 
   ```console
-  $ uv add libtmux --prerelease allow
-  ```
-
-- [uvx]\:
-
-  ```console
-  $ uvx --from 'libtmux' --prerelease allow python
-  ```
-
-via trunk (can break easily):
-
-- [pip]\:
-
-  ```console
-  $ pip install --user -e git+https://github.com/tmux-python/libtmux.git#egg=libtmux
-  ```
-
-- [pipx]\:
-
-  ```console
-  $ pipx install \
-      --suffix=@master \
-      --force \
+  $ python -m pip install \
       'libtmux @ git+https://github.com/tmux-python/libtmux.git@master'
   ```
 
-- [uv]\:
+- [uv] in a project:
 
   ```console
-  $ uv tool install libtmux --from git+https://github.com/tmux-python/libtmux.git
+  $ uv add 'libtmux @ git+https://github.com/tmux-python/libtmux.git@master'
   ```
 
 [pip]: https://pip.pypa.io/en/stable/
-[pipx]: https://pypa.github.io/pipx/docs/
 [PyPI]: https://pypi.org/project/libtmux/
 [uv]: https://docs.astral.sh/uv/
-[uv-tools]: https://docs.astral.sh/uv/concepts/tools/
-[uvx]: https://docs.astral.sh/uv/guides/tools/
+
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 
 ## Start a tmux session
@@ -405,14 +384,14 @@ window.
 
 You have two ways you can move your cursor to new sessions, windows and panes.
 
-For one, arguments such as `attach=False` can be omittted.
+Pass `attach=True` to select the new pane. The default is `attach=False`.
 
 ```python
->>> pane = window.split()
+>>> pane = window.split(attach=True)
 ```
 
 This gives you the {class}`~libtmux.Pane` along with moving the cursor to a new
-window. You can also use the `.select_*` available on the object; in this case
+pane. You can also use the `.select_*` available on the object; in this case
 the pane has {meth}`Pane.select() <libtmux.Pane.select>`.
 
 ```python
@@ -458,17 +437,17 @@ Pane(%1 ...)
 
 ### Avoid cluttering shell history
 
-`suppress_history=True` can send commands to pane windows and sessions **without**
-them being visible in the history.
+`suppress_history=True` prefixes the command with a space. The shell must be
+configured to ignore commands with leading spaces for this to suppress history.
 
 ```python
 >>> pane.send_keys('echo Howdy', enter=True, suppress_history=True)
 ```
 
 In this case, {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` has
-" `echo Howdy`" written, automatically sent, the leading space character
-prevents adding it to the user's shell history. Omitting `enter=false` means the
-default behavior (sending the command) is done, without needing to use
+" `echo Howdy`" written and sent with a leading space. libtmux does not change
+the shell's history settings. The default `enter=True` sends the command without
+needing to use
 {meth}`pane.enter() <libtmux.Pane.enter>` after.
 
 ## Working with options
