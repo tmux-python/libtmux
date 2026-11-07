@@ -113,6 +113,29 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+### Server context managers preserve the daemon (#728)
+
+In libtmux 0.62.0, leaving a {class}`~libtmux.Server` context killed the
+selected tmux server and all its sessions, including servers started by other
+processes. The default now preserves the server on normal and exceptional
+exit. A daemon that appears during the block also survives.
+
+For a server you intend to destroy, opt in with
+{attr}`~libtmux.Server.kill_on_exit`:
+
+```python
+>>> with Server(socket_name="libtmux_doctest_migration", kill_on_exit=True) as disposable:
+...     _ = disposable.new_session()
+>>> disposable.is_alive()
+False
+```
+
+This flag authorizes destruction of whichever daemon uses that endpoint; it
+does not establish creation ownership. Keep it off when borrowing a server.
+You can still call {meth}`~libtmux.Server.kill` explicitly. Session, window
+and pane context managers retain their existing destruction behavior. See
+{ref}`context_managers`.
+
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
 {exc}`~libtmux.exc.ObjectDoesNotExist` and

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import os
@@ -354,15 +355,120 @@ def test_socket_name_precedence(server: Server) -> None:
 
 
 def test_server_context_manager(TestServer: type[Server]) -> None:
-    """Test Server context manager functionality."""
+    """Leaving the block does not kill the server, even one it started."""
     with TestServer() as server:
         session = server.new_session()
         assert server.is_alive()
         assert len(server.sessions) == 1
         assert session in server.sessions
 
-    # Server should be killed after exiting context
-    assert not server.is_alive()
+    assert server.is_alive()
+    assert [s.session_name for s in server.sessions] == [session.session_name]
+
+    server.kill()
+
+
+@pytest.mark.parametrize(
+    "appears_during_scope", [False, True], ids=["preexisting", "appears-during-scope"]
+)
+@pytest.mark.parametrize("raises", [False, True], ids=["normal", "exception"])
+def test_server_context_manager_spares_borrowed_server(
+    TestServer: type[Server],
+    appears_during_scope: bool,
+    raises: bool,
+) -> None:
+    """Borrowed daemons, sessions and programs survive either exit path."""
+    owner = TestServer()
+    if not appears_during_scope:
+        owner.new_session(session_name="important-work", shell_command="exec cat")
+
+    failure = RuntimeError("scope failed")
+    expectation = (
+        pytest.raises(RuntimeError, match="scope failed")
+        if raises
+        else contextlib.nullcontext()
+    )
+    with expectation as caught, Server(socket_name=owner.socket_name) as scoped:
+        if appears_during_scope:
+            owner.new_session(session_name="important-work", shell_command="exec cat")
+        assert scoped.is_alive()
+        session = owner.sessions.get(session_name="important-work")
+        assert session is not None
+        pane = session.active_pane
+        assert pane is not None
+        pane_pid = pane.pane_pid
+        assert pane_pid is not None
+        server_pid = owner.cmd("display-message", "-p", "#{pid}").stdout
+        if raises:
+            raise failure
+
+    if raises:
+        assert caught is not None
+        assert caught.value is failure
+    assert owner.is_alive()
+    assert [item.session_id for item in owner.sessions] == [session.session_id]
+    assert owner.cmd("display-message", "-p", "#{pid}").stdout == server_pid
+    pane.refresh()
+    assert pane.pane_pid == pane_pid
+    assert pane.pane_dead == "0"
+    os.kill(int(pane_pid), 0)
+
+    owner.kill()
+    assert not owner.is_alive()
+
+
+def test_server_context_manager_spares_the_default_socket(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Use a private socket directory because TestServer always supplies a name."""
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmp_path))
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+
+    already_running = Server()
+    try:
+        already_running.new_session(session_name="important-work")
+        socket_path = already_running.cmd("display-message", "-p", "#{socket_path}")
+        assert pathlib.Path(socket_path.stdout[0]).parent.parent == tmp_path
+
+        with Server() as scoped:
+            assert scoped.is_alive()
+
+        assert already_running.is_alive()
+        assert [session.session_name for session in already_running.sessions] == [
+            "important-work",
+        ]
+    finally:
+        if already_running.is_alive():
+            already_running.kill()
+
+
+def test_server_context_manager_kill_on_exit_true(
+    TestServer: type[Server],
+) -> None:
+    """``kill_on_exit=True`` kills a live server the block did not start."""
+    pre_existing = TestServer()
+    pre_existing.new_session(session_name="important-work")
+
+    with TestServer(
+        socket_name=pre_existing.socket_name,
+        kill_on_exit=True,
+    ) as scoped:
+        assert scoped.is_alive()
+
+    assert not pre_existing.is_alive()
+
+
+def test_server_context_manager_kill_on_exit_true_when_block_started_it(
+    TestServer: type[Server],
+) -> None:
+    """``kill_on_exit=True`` tears down a server the block itself started."""
+    with TestServer(kill_on_exit=True) as scoped:
+        scoped.new_session(session_name="disposable")
+        assert scoped.is_alive()
+
+    assert not scoped.is_alive()
 
 
 class StartDirectoryTestFixture(t.NamedTuple):
