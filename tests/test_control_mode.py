@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import locale
 import os
-import select
+import queue
 import sys
+import threading
+import time
 import typing as t
 
 import pytest
@@ -14,7 +16,63 @@ from libtmux._internal.control_mode import ControlMode
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from libtmux.server import Server
+
+
+def _read_lines(
+    stream: t.IO[str],
+    *,
+    limit: int,
+    timeout: float,
+) -> Iterator[str]:
+    """Yield up to *limit* lines from *stream*, giving up after *timeout*.
+
+    A reader thread owns the stream and the caller polls a queue, so the wait
+    is bounded without anything having to ask the file descriptor whether a
+    line is available.
+
+    That question has no useful answer here. ``ControlMode`` builds its
+    subprocess with ``text=True``, so ``stream`` is a ``TextIOWrapper`` over a
+    ``BufferedReader``: ``select`` would report readiness on the raw
+    descriptor while ``readline`` serves from the userspace buffer above it.
+    tmux writes a whole ``%begin``/``%end`` block in one burst, so the first
+    ``readline`` routinely drains every remaining line off the descriptor --
+    leaving ``select`` with nothing to report and the answer already in hand.
+    """
+    lines: queue.Queue[str | BaseException | None] = queue.Queue()
+
+    def pump() -> None:
+        try:
+            for line in stream:
+                lines.put(line)
+        except BaseException as e:  # noqa: BLE001
+            # Carry it across the thread boundary. Collapsing it into the
+            # ``None`` sentinel would report the reader as having reached EOF,
+            # naming the wrong cause for a decode error this test exists to
+            # catch.
+            lines.put(e)
+        finally:
+            lines.put(None)
+
+    reader = threading.Thread(target=pump, daemon=True)
+    reader.start()
+
+    deadline = time.monotonic() + timeout
+    for _ in range(limit):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            pytest.fail("timed out waiting for control-mode output")
+        try:
+            line = lines.get(timeout=remaining)
+        except queue.Empty:
+            pytest.fail("timed out waiting for control-mode output")
+        if isinstance(line, BaseException):
+            raise line
+        if line is None:
+            pytest.fail("control-mode stream closed before the expected output")
+        yield line
 
 
 def test_control_mode_creates_client(
@@ -86,11 +144,7 @@ def test_control_mode_stdout_preserves_non_ascii_output(
                 f"display-message -p '{FORMAT_SEPARATOR}'\n".encode(),
             )
 
-            for _ in range(20):
-                ready, _, _ = select.select([ctl.stdout], [], [], 1)
-                assert ready, "timed out waiting for control-mode output"
-
-                line = ctl.stdout.readline()
+            for line in _read_lines(ctl.stdout, limit=20, timeout=5):
                 if FORMAT_SEPARATOR in line:
                     break
             else:

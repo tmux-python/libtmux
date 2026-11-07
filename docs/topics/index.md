@@ -55,6 +55,13 @@ Create sessions, windows, and panes programmatically.
 Common patterns for scripting and automation.
 :::
 
+:::{grid-item-card} Logging
+:link: logging
+:link-type: doc
+Structured log records, the `tmux_` field schema, and application-owned
+handlers.
+:::
+
 :::{grid-item-card} Context Managers
 :link: context_managers
 :link-type: doc
@@ -96,6 +103,7 @@ floating_panes
 workspace_setup
 automation_patterns
 context_managers
+logging
 options_and_hooks
 clients
 format-tokens

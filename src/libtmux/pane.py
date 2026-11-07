@@ -15,7 +15,13 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux._internal.log_context import object_extra
+from libtmux.common import (
+    get_version_str,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -1070,14 +1076,15 @@ class Pane(
 
         raise_if_stderr(proc, "kill-pane")
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "kill-pane",
-        }
-        if self.pane_id is not None:
-            extra["tmux_pane"] = str(self.pane_id)
-            extra["tmux_target"] = str(self.pane_id)
-        msg = "other panes killed" if all_except else "pane killed"
-        logger.info(msg, extra=extra)
+        logger.info(
+            "other panes killed" if all_except else "pane killed",
+            extra=object_extra(
+                "kill-pane",
+                socket=self.server.socket_path or self.server.socket_name,
+                pane=self.pane_id,
+                target=self.pane_id,
+            ),
+        )
 
     """
     Commands ("climber"-helpers)
@@ -1415,18 +1422,17 @@ class Pane(
 
         pane = self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "split-window",
-            "tmux_pane": str(pane.pane_id),
-        }
-        if self.session.session_name is not None:
-            extra["tmux_session"] = str(self.session.session_name)
-        if self.window.window_name is not None:
-            extra["tmux_window"] = str(self.window.window_name)
-        if target is not None:
-            extra["tmux_target"] = str(target)
-
-        logger.info("pane created", extra=extra)
+        logger.info(
+            "pane created",
+            extra=object_extra(
+                "split-window",
+                socket=self.server.socket_path or self.server.socket_name,
+                session=self.session.session_name,
+                window=self.window.window_name,
+                pane=pane.pane_id,
+                target=target,
+            ),
+        )
 
         return pane
 
@@ -1575,18 +1581,17 @@ class Pane(
 
         pane = self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
 
-        extra: dict[str, str] = {
-            "tmux_subcommand": "new-pane",
-            "tmux_pane": str(pane.pane_id),
-        }
-        if self.session.session_name is not None:
-            extra["tmux_session"] = str(self.session.session_name)
-        if self.window.window_name is not None:
-            extra["tmux_window"] = str(self.window.window_name)
-        if target is not None:
-            extra["tmux_target"] = str(target)
-
-        logger.info("floating pane created", extra=extra)
+        logger.info(
+            "floating pane created",
+            extra=object_extra(
+                "new-pane",
+                socket=self.server.socket_path or self.server.socket_name,
+                session=self.session.session_name,
+                window=self.window.window_name,
+                pane=pane.pane_id,
+                target=target,
+            ),
+        )
 
         return pane
 
