@@ -32,8 +32,10 @@ from .common import (
 
 if t.TYPE_CHECKING:
     import sys
+    import threading
     import types
 
+    from libtmux._internal.program import _Program
     from libtmux._internal.types import StrPath
     from libtmux.common import tmux_cmd
 
@@ -791,6 +793,57 @@ class Session(
 
         return self
 
+    def run_program(
+        self,
+        argv: t.Sequence[str],
+        *,
+        timeout: float = 5,
+        cancel_event: threading.Event | None = None,
+    ) -> _Program:
+        """Start a fresh program and return its owned handle on tmux 3.8+.
+
+        The handle separates waiting for exit, collecting rendered output,
+        explicitly terminating the pane, and cleanup. The parent session stays
+        borrowed. This call returns after launch; it does not wait for exit.
+
+        Parameters
+        ----------
+        argv : sequence of str
+            Program and at least one argument, passed without shell expansion.
+            Use an explicit shell invocation when shell syntax is intended.
+        timeout : float
+            Finite, nonnegative deadline for creation, retention and observer
+            readiness. An uncertain submitted creation is never retried.
+        cancel_event : threading.Event, optional
+            Cancellation during setup cleans up a positively identified pane.
+            Cancelling the returned handle's wait leaves the program running.
+
+        Returns
+        -------
+        owned program handle
+            ``wait()`` returns immutable ``pane_id``, ``exit_status`` and
+            ``exit_signal`` fields. ``collect()`` returns a retained rendered
+            observation. Call ``cleanup()`` after completion, or explicitly
+            ``terminate()`` before cleaning up a live program.
+
+        Raises
+        ------
+        ValueError
+            Invalid arguments or deadline.
+        NotImplementedError
+            The selected dispatcher cannot provide bounded native observation.
+        libtmux.exc.LibTmuxException
+            Setup, observation or ownership fails; original causes and the
+            cleanup owner remain available on the exception.
+
+        See Also
+        --------
+        Session.new_window : Create an ordinary window without lifecycle ownership.
+        """
+        from libtmux._internal.program import start_program
+
+        return start_program(self, argv, timeout, cancel_event)
+
     def new_window(
         self,
         window_name: str | None = None,
@@ -1226,3 +1279,6 @@ class Session(
             replacement="Session.windows property",
             version="0.17.0",
         )
+
+
+_STOCK_SESSION_CMD = Session.cmd
