@@ -345,23 +345,15 @@ def test_capture_pane_flags(
     pane = window.active_pane
     assert pane is not None
 
-    # Wait for shell prompt
-    def prompt_ready() -> bool:
-        return "$" in "\n".join(pane.capture_pane())
-
-    retry_until(prompt_ready, 2, raises=True)
-
-    # Send command with a unique marker to detect completion
+    # Build the marker from separate arguments so echoed input cannot satisfy it.
     marker = f"__DONE_{test_id}__"
-    full_command = f'{command}; echo "{marker}"'
+    full_command = f"{command}; printf '\\n%s%s\\n' '__DONE_' '{test_id}__'"
     pane.send_keys(full_command, literal=False, suppress_history=False)
 
-    # Wait for marker to appear
     def command_complete() -> bool:
-        output = "\n".join(pane.capture_pane())
-        return marker in output
+        return marker in pane.capture_pane()
 
-    retry_until(command_complete, 5, raises=True)
+    retry_until(command_complete, 1, raises=True)
 
     # Capture with specified flags
     output = pane.capture_pane(
