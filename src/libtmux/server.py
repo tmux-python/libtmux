@@ -2952,6 +2952,9 @@ class Server(
         ------
         TmuxSessionExists
             Another creator won, but one reconciliation read could not find it.
+        subprocess.TimeoutExpired
+            The conflict reconciliation read exceeded its one-second client wait.
+            The cause retains the original ``TmuxSessionExists`` error.
         LibTmuxException
             Lookup or creation failed, or identity could not be verified.
         NotImplementedError
@@ -2960,8 +2963,11 @@ class Server(
         Notes
         -----
         Only tmux's exact duplicate-session conflict permits one additional
-        lookup. Unrelated failures and uncertain submitted outcomes never retry
-        creation. See :meth:`create_session` for cleanup and transport behavior.
+        lookup, with a one-second wait limit after its client starts. Expiry
+        reaps that client and preserves the winning session. Other acquisition
+        and cleanup commands are blocking. Unrelated failures and uncertain
+        submitted outcomes never retry creation. See :meth:`create_session`
+        for cleanup and transport behavior.
         """
         from libtmux.session_creation import _acquire_session
 

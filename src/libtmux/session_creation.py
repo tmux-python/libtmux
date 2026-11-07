@@ -23,6 +23,7 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 _OWNER_ENV = "LIBTMUX_SESSION_OWNER"
+_CONFLICT_READ_TIMEOUT = 1.0
 _STOCK_SERVER_CMD = Server.cmd
 _Resource = t.TypeVar("_Resource")
 
@@ -70,6 +71,7 @@ class _Connection:
     environment: dict[str, str] = dataclasses.field(repr=False)
     marker: str
     cwd: str
+    timeout: float | None = None
 
     @classmethod
     def capture(cls, server: Server) -> _Connection:
@@ -122,6 +124,7 @@ class _Connection:
             cwd=self.cwd,
             capture_output=True,
             check=False,
+            timeout=self.timeout,
         )
 
     @property
@@ -502,7 +505,10 @@ def _acquire_session(
         )
         if mode == "find":
             try:
-                match = _match(connection.list_sessions(), name)
+                reconciliation = dataclasses.replace(
+                    connection, timeout=_CONFLICT_READ_TIMEOUT
+                )
+                match = _match(reconciliation.list_sessions(), name)
                 if match is not None:
                     if observed is not None and (
                         match.identity.socket_path,

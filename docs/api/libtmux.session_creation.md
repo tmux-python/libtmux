@@ -85,11 +85,15 @@ session on the observed daemon closes successfully. An unreachable daemon,
 replacement, or changed nonce raises an error instead of authorizing destruction.
 
 After an exact duplicate-session creation conflict,
-{meth}`~libtmux.Server.find_or_create_session` makes one reconciliation lookup.
+{meth}`~libtmux.Server.find_or_create_session` makes one reconciliation lookup,
+with a one-second wait limit after its client starts. Expiry reaps that client
+and raises {exc}`subprocess.TimeoutExpired`, whose cause retains the original
+{exc}`~libtmux.exc.TmuxSessionExists`. The winning session remains alive.
 Other native errors retain their raw subprocess cause. Transport errors propagate
 without retry. A submitted operation without a trustworthy creation receipt has
 an unknown outcome; the library neither retries creation nor destroys by name.
-These calls use blocking native subprocesses and do not provide a deadline.
+Other acquisition and cleanup commands are blocking; the read limit is not a
+whole-operation deadline.
 
 A failure after a trustworthy creation receipt triggers cleanup of only that
 creation. If cleanup also fails, {exc}`~libtmux.exc.CreationCleanupError` retains

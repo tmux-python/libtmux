@@ -435,6 +435,86 @@ def test_session_conflict_reconciliation_stops_after_one_read(
     assert not server.has_session("build") and server.has_session("keeper")
 
 
+def test_session_conflict_reconciliation_expires(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stalled conflict read must reap its client and preserve the winner.
+
+    Wrap the real lookup to schedule a competing creator between lookup and
+    creation, and observe real subprocesses to verify client cleanup.
+    """
+    from libtmux import session_creation
+
+    server.config_file = os.devnull
+    server.new_session(session_name="keeper", window_command="cat")
+    connection = session_creation._Connection.capture(server)
+    original = session_creation._Connection.list_sessions
+    popen = subprocess.Popen
+    clients: list[subprocess.Popen[t.Any]] = []
+    winner_pids: list[int] = []
+    reads = 0
+
+    def observe_client(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[t.Any]:
+        process = popen(*args, **kwargs)
+        if "list-sessions" in args[0] and not kwargs.get("text"):
+            clients.append(process)
+        return process
+
+    def competing(
+        captured: session_creation._Connection,
+    ) -> list[session_creation._Record]:
+        nonlocal reads
+        reads += 1
+        records = original(captured)
+        if reads == 1:
+            winner = server.new_session(session_name="build", window_command="cat")
+            pane = winner.active_pane
+            assert pane is not None and pane.pane_pid is not None
+            winner_pids.append(int(pane.pane_pid))
+            server.cmd(
+                "set-hook",
+                "-g",
+                "after-list-sessions",
+                "wait-for -S conflict-read-ready; wait-for conflict-read-release",
+            )
+        return records
+
+    monkeypatch.setattr(subprocess, "Popen", observe_client)
+    monkeypatch.setattr(session_creation._Connection, "list_sessions", competing)
+    monkeypatch.setattr(session_creation, "_CONFLICT_READ_TIMEOUT", 0.05)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(
+            server.find_or_create_session, "build", window_command="cat"
+        )
+        try:
+            subprocess.run(
+                [*connection.prefix, "wait-for", "conflict-read-ready"],
+                env=connection.environment,
+                cwd=connection.cwd,
+                check=True,
+                timeout=0.5,
+            )
+            with pytest.raises(subprocess.TimeoutExpired) as raised:
+                future.result(timeout=0.5)
+            assert isinstance(raised.value.__cause__, exc.TmuxSessionExists)
+            assert isinstance(
+                raised.value.__cause__.__cause__, subprocess.CalledProcessError
+            )
+            assert reads == 2 and len(clients) == 2
+            assert all(process.returncode is not None for process in clients)
+            assert all(
+                stream is not None and stream.closed
+                for process in clients
+                for stream in (process.stdout, process.stderr)
+            )
+        finally:
+            server.cmd("set-hook", "-gu", "after-list-sessions")
+            server.cmd("wait-for", "-S", "conflict-read-release")
+    assert server.has_session("build") and server.has_session("keeper")
+    os.kill(winner_pids[0], 0)
+
+
 def test_session_cleanup_freezes_relative_socket_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
