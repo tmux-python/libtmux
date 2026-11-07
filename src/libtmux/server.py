@@ -35,6 +35,7 @@ from .common import (
     PaneDict,
     SessionDict,
     WindowDict,
+    escape_trailing_separator,
     session_check_name,
 )
 from .options import OptionsMixin
@@ -503,6 +504,17 @@ class Server(
 
         Notes
         -----
+        Arguments reach tmux unchanged. tmux ends a command at an argument
+        whose last character is ``;`` and runs the following arguments as the
+        next command, so ``server.cmd("display-message", "-p", "a", ";",
+        "display-message", "-p", "b")`` runs two commands. To pass a value
+        that ends in ``;`` as data, escape it with
+        :func:`~libtmux.common.escape_trailing_separator`. The typed methods
+        (:meth:`new_session`, :meth:`Pane.send_keys`, ``set_option`` and
+        others) escape the values they receive. Arguments that are tmux
+        commands (hook commands, menu item commands, ``command-prompt``
+        templates) pass through as given.
+
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
@@ -1526,7 +1538,7 @@ class Server(
         tmux_args: tuple[str, ...] = ()
 
         if title is not None:
-            tmux_args += ("-T", title)
+            tmux_args += ("-T", escape_trailing_separator(title))
 
         if target_client is not None:
             tmux_args += ("-c", target_client)
@@ -1551,7 +1563,7 @@ class Server(
 
         if border_lines is not None:
             if has_gte_version("3.4", tmux_bin=self.tmux_bin):
-                tmux_args += ("-b", border_lines)
+                tmux_args += ("-b", escape_trailing_separator(border_lines))
             else:
                 warnings.warn(
                     "border_lines requires tmux 3.4+, ignoring",
@@ -1560,7 +1572,7 @@ class Server(
 
         if style is not None:
             if has_gte_version("3.4", tmux_bin=self.tmux_bin):
-                tmux_args += ("-s", style)
+                tmux_args += ("-s", escape_trailing_separator(style))
             else:
                 warnings.warn(
                     "style requires tmux 3.4+, ignoring",
@@ -1569,7 +1581,7 @@ class Server(
 
         if border_style is not None:
             if has_gte_version("3.4", tmux_bin=self.tmux_bin):
-                tmux_args += ("-S", border_style)
+                tmux_args += ("-S", escape_trailing_separator(border_style))
             else:
                 warnings.warn(
                     "border_style requires tmux 3.4+, ignoring",
@@ -1578,7 +1590,7 @@ class Server(
 
         if selected_style is not None:
             if has_gte_version("3.4", tmux_bin=self.tmux_bin):
-                tmux_args += ("-H", selected_style)
+                tmux_args += ("-H", escape_trailing_separator(selected_style))
             else:
                 warnings.warn(
                     "selected_style requires tmux 3.4+, ignoring",
@@ -1597,7 +1609,12 @@ class Server(
         if stay_open:
             tmux_args += ("-O",)
 
-        tmux_args += items
+        # Items are (name, key, command) triples. A command is a tmux command
+        # string and passes through; the name and key are labels.
+        tmux_args += tuple(
+            escape_trailing_separator(item) if index % 3 != 2 else item
+            for index, item in enumerate(items)
+        )
 
         proc = self.cmd("display-menu", *tmux_args)
 
@@ -1830,10 +1847,10 @@ class Server(
             tmux_args += ("-d", str(delay))
 
         if format_string is not None:
-            tmux_args += ("-F", format_string)
+            tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += ("--", cmd)
+            tmux_args += ("--", escape_trailing_separator(cmd))
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -2157,7 +2174,7 @@ class Server(
         tmux_args: tuple[str, ...] = ()
 
         if format_string is not None:
-            tmux_args += ("-F", format_string)
+            tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if filter is not None:
             tmux_args += ("-f", filter)
@@ -2465,17 +2482,20 @@ class Server(
                 tmux_args += ("-f", client_flags)
 
             if session_name is not None:
-                tmux_args += (f"-s{session_name}",)
+                tmux_args += (escape_trailing_separator(f"-s{session_name}"),)
 
             if not attach:
                 tmux_args += ("-d",)
 
             if start_directory:
                 start_directory = pathlib.Path(start_directory).expanduser()
-                tmux_args += ("-c", str(start_directory))
+                tmux_args += (
+                    "-c",
+                    escape_trailing_separator(str(start_directory)),
+                )
 
             if window_name:
-                tmux_args += ("-n", window_name)
+                tmux_args += ("-n", escape_trailing_separator(window_name))
 
             if x is not None:
                 tmux_args += ("-x", x)
@@ -2485,10 +2505,10 @@ class Server(
 
             if environment:
                 for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
+                    tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
             if window_command:
-                tmux_args += (window_command,)
+                tmux_args += (escape_trailing_separator(window_command),)
 
             proc = self.cmd("new-session", *tmux_args)
 
