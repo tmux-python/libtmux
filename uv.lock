@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.10, <4.0"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -13,23 +13,23 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P3D"
 
 [options.exclude-newer-package]
-gp-furo-theme = false
-gp-libs = false
 gp-sphinx = false
+sphinx-autodoc-sphinx = false
 sphinx-autodoc-api-style = false
-sphinx-autodoc-argparse = false
-sphinx-autodoc-docutils = false
 sphinx-autodoc-fastmcp = false
 sphinx-autodoc-pytest-fixtures = false
-sphinx-autodoc-sphinx = false
-sphinx-autodoc-typehints-gp = false
-sphinx-fonts = false
 sphinx-gp-llms = false
-sphinx-gp-opengraph = false
-sphinx-gp-sitemap = false
-sphinx-gp-theme = false
+sphinx-autodoc-argparse = false
 sphinx-ux-autodoc-layout = false
 sphinx-ux-badges = false
+gp-libs = false
+sphinx-autodoc-docutils = false
+gp-furo-theme = false
+sphinx-gp-sitemap = false
+sphinx-fonts = false
+sphinx-autodoc-typehints-gp = false
+sphinx-gp-opengraph = false
+sphinx-gp-theme = false
 
 [[package]]
 name = "accessible-pygments"
@@ -790,6 +790,7 @@ dev = [
     { name = "sphinx-autobuild", version = "2025.8.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-autodoc-api-style" },
     { name = "sphinx-autodoc-pytest-fixtures" },
+    { name = "syrupy" },
     { name = "types-docutils" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -840,6 +841,7 @@ dev = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style", specifier = "==0.1.0a39" },
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.1.0a39" },
+    { name = "syrupy" },
     { name = "types-docutils" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -1879,6 +1881,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ad/eb/4e197bf26b023abafc5e9043ec8710d7de0fcb032d0969045236d72aa0b1/starlette-1.9.0.tar.gz", hash = "sha256:3d931de246ed870e35ce605974440816ef895e592f255d1396cfdf191d4c4318", size = 2732466, upload-time = "2026-10-18T15:50:33.189Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/93/181df62699d9b5aca1d87e5cfda131dac87e3cdaebf668662f7206ca3470/starlette-1.9.0-py3-none-any.whl", hash = "sha256:fd3f159936e882d06c1108f84688f7cda2cf85fc6a592a50edbd175e882c2ddc", size = 80335, upload-time = "2026-10-18T15:50:31.526Z" },
+]
+
+[[package]]
+name = "syrupy"
+version = "6.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/74/2c/8ffc1414d1951895d0d5b7dc83c0b079ebc48c3bf27ffbb0064646367500/syrupy-6.1.1.tar.gz", hash = "sha256:7e584a8df4ede6dd3c1c44a77f9edc46186b6767a73dea6f0083044946839a59", size = 109705, upload-time = "2026-09-13T20:25:21.599Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/b5/bf2a8a335a6a813869dd482cedbcde252f582b5afbfe50eb78ec09962800/syrupy-6.1.1-py3-none-any.whl", hash = "sha256:6ac9ac6a42d70ae44156f5f157a9563b9bb8cc96dcf9364327f330463bff889a", size = 63436, upload-time = "2026-09-13T20:25:20.294Z" },
 ]
 
 [[package]]
