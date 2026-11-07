@@ -45,6 +45,14 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Bounded channel waits
+
+Set a deadline for ordinary channel waits while existing calls keep
+blocking by default. On timeout, libtmux cleans up the waiting client
+and preserves the producer and shared server. (#809)
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -58,6 +66,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#809)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 

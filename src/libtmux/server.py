@@ -8,10 +8,12 @@ libtmux.server
 from __future__ import annotations
 
 import logging
+import math
 import os
 import pathlib
 import shutil
 import subprocess
+import time
 import typing as t
 import warnings
 
@@ -47,6 +49,59 @@ if t.TYPE_CHECKING:
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+
+def _bounded_channel_wait(server: Server, channel: str, timeout: float) -> None:
+    """Use one owned client for an ordinary signal wait."""
+    resolved = server.tmux_bin or shutil.which("tmux")
+    if not resolved:
+        raise exc.TmuxCommandNotFound
+    flags = []
+    if server.config_file:
+        flags.append(f"-f{server.config_file}")
+    if server.socket_path:
+        flags.append(f"-S{server.socket_path}")
+    if server.socket_name:
+        flags.append(f"-L{server.socket_name}")
+    command = [resolved, *flags, "wait-for", channel]
+    deadline = time.monotonic() + timeout
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="backslashreplace",
+        )
+    except FileNotFoundError:
+        raise exc.TmuxCommandNotFound from None
+    try:
+        while True:
+            try:
+                # Large finite public bounds can overflow a native selector.
+                _, stderr = process.communicate(
+                    timeout=min(max(deadline - time.monotonic(), 0), 86_400),
+                )
+                break
+            except subprocess.TimeoutExpired as error:
+                if time.monotonic() < deadline:
+                    continue
+                msg = f"Channel {channel!r} was not signalled within {timeout} seconds"
+                raise exc.WaitTimeout(msg) from error
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        raise
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+    errors = list(filter(None, stderr.split("\n")))
+    if errors:
+        raise exc.LibTmuxException("\n".join(errors), subcommand="wait-for")
 
 
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
@@ -624,6 +679,7 @@ class Server(
         lock: bool | None = None,
         unlock: bool | None = None,
         set_flag: bool | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Wait for, signal, or lock a channel via ``$ tmux wait-for``.
 
@@ -637,6 +693,25 @@ class Server(
             Unlock the channel (``-U`` flag).
         set_flag : bool, optional
             Set the channel flag and wake waiters (``-S`` flag).
+        timeout : float, optional
+            Positive finite seconds for an ordinary signal wait. Defaults to
+            blocking. Cannot be combined with channel mutation flags.
+
+        Raises
+        ------
+        exc.WaitTimeout
+            The owned waiting client did not observe a signal within its bound.
+        ValueError
+            The bound is invalid or combined with lock, unlock, or set_flag.
+        NotImplementedError
+            A custom command dispatcher or injected engine cannot be bounded
+            by this subprocess adapter.
+
+        Notes
+        -----
+        A signal sent before the wait is remembered. Use a unique channel per
+        operation to avoid consuming stale state. Expiry stops only this
+        waiting client; it does not stop the producer or undo its effects.
 
         Examples
         --------
@@ -644,6 +719,22 @@ class Server(
         Session(...)
         >>> server.wait_for('test_channel', set_flag=True)
         """
+        if timeout is not None:
+            if not math.isfinite(timeout) or timeout <= 0:
+                msg = "timeout must be a positive finite number of seconds"
+                raise ValueError(msg)
+            if lock or unlock or set_flag:
+                msg = "timeout bounds only an ordinary signal wait"
+                raise ValueError(msg)
+            if (
+                type(self).cmd is not _STOCK_SERVER_CMD
+                or "cmd" in vars(self)
+                or getattr(self, "_engine", None) is not None
+            ):
+                msg = "Bounded channel waits cannot use a custom command backend"
+                raise NotImplementedError(msg)
+            _bounded_channel_wait(self, channel, timeout)
+            return
         tmux_args: tuple[str, ...] = ()
 
         if lock:
@@ -2883,3 +2974,6 @@ class Server(
             replacement="Server.sessions property",
             version="0.17.0",
         )
+
+
+_STOCK_SERVER_CMD = Server.cmd
