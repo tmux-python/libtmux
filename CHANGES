@@ -47,10 +47,22 @@ _Notes on the upcoming release will go here._
 
 ### Fixes
 
+#### tmux 3.8 hooks and terminal examples (#775)
+
+{meth}`~libtmux.hooks.HooksMixin.show_hook` reads hooks added in tmux 3.8,
+including `pane-created` and `window-zoomed`, with their sparse indices
+intact. tmux 3.8 rejects the removed `after-queue` hook.
+
+{meth}`~libtmux.Pane.display_popup` requires a terminal client to execute
+its command on tmux 3.8. Floating-pane examples account for the border
+included in native size and position arguments; pane formats report the
+content area. See {doc}`/topics/floating_panes`.
+
 #### Flaky `test_capture_pane_flags[join_wrapped_numbers]` (#655)
 
 Marker detection now skips the shell command echo line to avoid
 false-positive completion.
+
 ### Documentation
 
 #### libtmux.org top and documentation bars
@@ -73,6 +85,10 @@ demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
 ### Development
+
+#### Ruff 0.17.3 for development (#825)
+
+Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
 #### CI recovers from incompatible tmux caches (#835)
 
