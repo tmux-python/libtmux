@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import string
-import sys
 import typing as t
 
 import pytest
@@ -250,10 +249,6 @@ def test_get_test_window_name_requires_prefix() -> None:
         get_test_window_name(session=t.cast("Session", object()), prefix=None)
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 11),
-    reason="Self type only available in Python 3.11+",
-)
 def test_random_str_sequence_self_type() -> None:
     """Test that RandomStrSequence works with Self type annotation."""
     rng = RandomStrSequence()

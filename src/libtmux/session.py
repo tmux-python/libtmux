@@ -31,16 +31,11 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
-    import sys
     import types
+    from typing import Self
 
     from libtmux._internal.types import StrPath
     from libtmux.common import tmux_cmd
-
-    if sys.version_info >= (3, 11):
-        from typing import Self
-    else:
-        from typing_extensions import Self
 
     from .server import Server
 

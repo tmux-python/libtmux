@@ -38,9 +38,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
-    from typing import TypeAlias
-
-    from typing_extensions import Self
+    from typing import Self, TypeAlias
 
     from libtmux._internal.types import StrPath
 
