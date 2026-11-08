@@ -29,19 +29,14 @@ from libtmux.neo import Obj, fetch_obj
 from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
-    import sys
     import types
+    from typing import Self
 
     from libtmux._internal.types import StrPath
 
     from .server import Server
     from .session import Session
     from .window import Window
-
-    if sys.version_info >= (3, 11):
-        from typing import Self
-    else:
-        from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 

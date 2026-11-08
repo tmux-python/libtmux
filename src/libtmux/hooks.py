@@ -48,7 +48,7 @@ from libtmux.constants import (
 from libtmux.options import handle_option_error
 
 if t.TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
 HookDict = dict[str, t.Any]
 HookValues = dict[int, str] | SparseArray[str] | list[str]
