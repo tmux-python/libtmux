@@ -51,7 +51,7 @@ permissions:
 
 jobs:
   build-libtmux-org:
-    uses: libtmux/docs/.github/workflows/port-docs.yml@8245169584882f09e302881f136512df41aba2a4
+    uses: libtmux/docs/.github/workflows/port-docs.yml@30af469ec547f55bd6121fdd7bcd1259928f81b0
     with:
       port: py
       source-ref: ${{ inputs.source-ref }}
@@ -75,7 +75,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@8245169584882f09e302881f136512df41aba2a4
+    uses: libtmux/docs/.github/workflows/reusable-deploy.yml@30af469ec547f55bd6121fdd7bcd1259928f81b0
     with:
       path-prefix: py/${{ matrix.version }}
       artifact: docs-py-${{ matrix.version }}
