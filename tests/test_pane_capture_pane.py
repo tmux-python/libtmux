@@ -351,17 +351,16 @@ def test_capture_pane_flags(
 
     retry_until(prompt_ready, 2, raises=True)
 
-    # Send command with a unique marker to detect completion
-    marker = f"__DONE_{test_id}__"
-    full_command = f'{command}; echo "{marker}"'
+    # The shell computes the marker's last digits, so the echoed command line
+    # holds "$((6*7))" and never the marker itself. A wrapped echo row cannot
+    # satisfy the wait either; only the command's output can.
+    marker = f"__DONE_{test_id}_42__"
+    full_command = f'{command}; echo "__DONE_{test_id}_$((6*7))__"'
     pane.send_keys(full_command, literal=False, suppress_history=False)
 
-    # Wait for marker to appear as command output (not in the command echo line)
+    # Wait for the marker to appear as command output
     def command_complete() -> bool:
-        lines = pane.capture_pane()
-        return any(
-            marker in line and not line.lstrip().startswith("$") for line in lines
-        )
+        return marker in "\n".join(pane.capture_pane())
 
     retry_until(command_complete, 5, raises=True)
 
