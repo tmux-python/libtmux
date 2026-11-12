@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`parseInventory > parses a minimal intersphinx inventory 1`] = `
+{
+  "baseUrl": "https://libtmux.git-pull.com/",
+  "items": [
+    {
+      "baseUrl": "https://libtmux.git-pull.com/",
+      "displayName": "libtmux",
+      "domain": "py",
+      "name": "libtmux",
+      "priority": 1,
+      "role": "module",
+      "uri": "api.html#module-libtmux",
+      "url": "https://libtmux.git-pull.com/api.html#module-libtmux",
+    },
+    {
+      "baseUrl": "https://libtmux.git-pull.com/",
+      "displayName": "libtmux.Server",
+      "domain": "py",
+      "name": "libtmux.Server",
+      "priority": 1,
+      "role": "class",
+      "uri": "api.html#libtmux.Server",
+      "url": "https://libtmux.git-pull.com/api.html#libtmux.Server",
+    },
+  ],
+  "project": "libtmux",
+  "version": "0.36.0",
+}
+`;

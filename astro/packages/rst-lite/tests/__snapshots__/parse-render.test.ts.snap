@@ -1,0 +1,351 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`rst-lite parser > parses admonition > admonition-ast 1`] = `
+{
+  "children": [
+    {
+      "body": [
+        {
+          "items": [
+            {
+              "body": [],
+              "name": "Use",
+              "typeText": "meth:\`Foo.old\` instead.",
+            },
+          ],
+          "type": "field_list",
+        },
+      ],
+      "name": "deprecated",
+      "title": "Deprecated: 0.17",
+      "type": "admonition",
+    },
+  ],
+  "type": "document",
+}
+`;
+
+exports[`rst-lite parser > parses heading-field-list > heading-field-list-ast 1`] = `
+{
+  "children": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "value": "Parameters",
+        },
+      ],
+      "level": 2,
+      "type": "heading",
+    },
+    {
+      "items": [
+        {
+          "body": [
+            {
+              "content": [
+                {
+                  "type": "text",
+                  "value": "Foo line.",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+          "name": "foo",
+          "typeText": "int",
+        },
+        {
+          "body": [
+            {
+              "content": [
+                {
+                  "type": "text",
+                  "value": "Bar line.",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+          "name": "bar",
+          "typeText": "str",
+        },
+      ],
+      "type": "field_list",
+    },
+  ],
+  "type": "document",
+}
+`;
+
+exports[`rst-lite parser > parses literal-block > literal-block-ast 1`] = `
+{
+  "children": [
+    {
+      "items": [
+        {
+          "body": [],
+          "name": "Example",
+          "typeText": ":",
+        },
+      ],
+      "type": "field_list",
+    },
+  ],
+  "type": "document",
+}
+`;
+
+exports[`rst-lite parser > parses mixed-blocks > mixed-blocks-ast 1`] = `
+{
+  "children": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "value": "Notes",
+        },
+      ],
+      "level": 2,
+      "type": "heading",
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "value": "This is a paragraph.",
+        },
+      ],
+      "type": "paragraph",
+    },
+    {
+      "body": [
+        {
+          "content": [
+            {
+              "type": "text",
+              "value": "A note with ",
+            },
+            {
+              "role": "class",
+              "type": "role",
+              "value": "Thing",
+            },
+            {
+              "type": "text",
+              "value": ".",
+            },
+          ],
+          "type": "paragraph",
+        },
+      ],
+      "name": "note",
+      "title": "Note",
+      "type": "admonition",
+    },
+    {
+      "items": [
+        {
+          "children": [
+            {
+              "content": [
+                {
+                  "type": "text",
+                  "value": "Ordered",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+          "type": "list_item",
+        },
+        {
+          "children": [
+            {
+              "content": [
+                {
+                  "type": "text",
+                  "value": "List",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+          "type": "list_item",
+        },
+      ],
+      "ordered": true,
+      "type": "list",
+    },
+  ],
+  "type": "document",
+}
+`;
+
+exports[`rst-lite parser > parses nested-lists > nested-lists-ast 1`] = `
+{
+  "children": [
+    {
+      "items": [
+        {
+          "children": [
+            {
+              "content": [
+                {
+                  "type": "text",
+                  "value": "Item one",
+                },
+              ],
+              "type": "paragraph",
+            },
+            {
+              "items": [
+                {
+                  "children": [
+                    {
+                      "content": [
+                        {
+                          "type": "text",
+                          "value": "Sub a",
+                        },
+                      ],
+                      "type": "paragraph",
+                    },
+                    {
+                      "items": [
+                        {
+                          "children": [
+                            {
+                              "content": [
+                                {
+                                  "type": "text",
+                                  "value": "Deep item",
+                                },
+                              ],
+                              "type": "paragraph",
+                            },
+                          ],
+                          "type": "list_item",
+                        },
+                      ],
+                      "ordered": false,
+                      "type": "list",
+                    },
+                  ],
+                  "type": "list_item",
+                },
+                {
+                  "children": [
+                    {
+                      "content": [
+                        {
+                          "type": "text",
+                          "value": "Sub b",
+                        },
+                      ],
+                      "type": "paragraph",
+                    },
+                  ],
+                  "type": "list_item",
+                },
+              ],
+              "ordered": false,
+              "type": "list",
+            },
+          ],
+          "type": "list_item",
+        },
+        {
+          "children": [
+            {
+              "content": [
+                {
+                  "type": "text",
+                  "value": "Item two",
+                },
+              ],
+              "type": "paragraph",
+            },
+          ],
+          "type": "list_item",
+        },
+      ],
+      "ordered": false,
+      "type": "list",
+    },
+  ],
+  "type": "document",
+}
+`;
+
+exports[`rst-lite parser > parses paragraph-inline > paragraph-inline-ast 1`] = `
+{
+  "children": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "value": "Hello ",
+        },
+        {
+          "type": "emphasis",
+          "value": [
+            {
+              "type": "text",
+              "value": "world",
+            },
+          ],
+        },
+        {
+          "type": "text",
+          "value": " ",
+        },
+        {
+          "type": "strong",
+          "value": [
+            {
+              "type": "text",
+              "value": "bold",
+            },
+          ],
+        },
+        {
+          "type": "text",
+          "value": " ",
+        },
+        {
+          "type": "literal",
+          "value": "code",
+        },
+        {
+          "type": "text",
+          "value": " and ",
+        },
+        {
+          "role": "class",
+          "type": "role",
+          "value": "Foo",
+        },
+        {
+          "type": "text",
+          "value": ".",
+        },
+      ],
+      "type": "paragraph",
+    },
+  ],
+  "type": "document",
+}
+`;
+
+exports[`rst-lite parser > renders admonition > admonition-html 1`] = `"<aside class="admonition admonition-deprecated"><p class="admonition-title">Deprecated: 0.17</p><dl class="field-list"><dt>Use : meth:\`Foo.old\` instead.</dt><dd></dd></dl></aside>"`;
+
+exports[`rst-lite parser > renders heading-field-list > heading-field-list-html 1`] = `"<h2>Parameters</h2><dl class="field-list"><dt>foo : int</dt><dd><p>Foo line.</p></dd><dt>bar : str</dt><dd><p>Bar line.</p></dd></dl>"`;
+
+exports[`rst-lite parser > renders literal-block > literal-block-html 1`] = `"<dl class="field-list"><dt>Example : :</dt><dd></dd></dl>"`;
+
+exports[`rst-lite parser > renders mixed-blocks > mixed-blocks-html 1`] = `"<h2>Notes</h2><p>This is a paragraph.</p><aside class="admonition admonition-note"><p class="admonition-title">Note</p><p>A note with <a href="https://example.test/Thing">Thing</a>.</p></aside><ol><li><p>Ordered</p></li><li><p>List</p></li></ol>"`;
+
+exports[`rst-lite parser > renders nested-lists > nested-lists-html 1`] = `"<ul><li><p>Item one</p><ul><li><p>Sub a</p><ul><li><p>Deep item</p></li></ul></li><li><p>Sub b</p></li></ul></li><li><p>Item two</p></li></ul>"`;
+
+exports[`rst-lite parser > renders paragraph-inline > paragraph-inline-html 1`] = `"<p>Hello <em>world</em> <strong>bold</strong> <code>code</code> and <a href="https://example.test/Foo">Foo</a>.</p>"`;

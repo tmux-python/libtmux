@@ -1,0 +1,16 @@
+---
+import '../styles.css'
+import { formatSignature, slugify } from '../utils'
+import Docstring from './Docstring.astro'
+
+const { fn, label } = Astro.props
+const anchor = slugify(fn.qualname)
+const title = label ?? fn.name
+const signature = formatSignature(fn.signature, fn.returns)
+---
+
+<section id={anchor} class="autodoc-card autodoc">
+  <div class="autodoc-title">{title}</div>
+  <div class="autodoc-signature">{signature}</div>
+  <Docstring value={fn.docstring} html={fn.docstringHtml} />
+</section>
