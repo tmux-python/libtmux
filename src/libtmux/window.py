@@ -55,6 +55,86 @@ class Window(
 
     Holds :class:`Pane` objects.
 
+    **Reading it.** Every field is a tmux format token read when the window was
+    listed or last refreshed, and is ``None`` when tmux gave no value.
+    :meth:`~libtmux.Window.refresh` rewrites the fields in place and raises
+    :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when the window has gone.
+
+    - Identity: :attr:`~libtmux.Window.window_id`, :attr:`~libtmux.Window.id`
+    - Name and position: :attr:`~libtmux.Window.window_name`,
+      :attr:`~libtmux.Window.name`, :attr:`~libtmux.Window.window_index`,
+      :attr:`~libtmux.Window.index`
+    - Size: :attr:`~libtmux.Window.width`, :attr:`~libtmux.Window.height`
+    - Re-read from tmux: :meth:`~libtmux.Window.refresh`
+
+    **Finding it.** :meth:`~libtmux.Window.from_window_id` asks tmux for one window
+    and raises :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when it is not there.
+    :meth:`~libtmux.Window.from_env` resolves the window of the pane this process
+    runs inside, and raises :exc:`~libtmux.exc.NotInsideTmux` outside one.
+
+    - By ID: :meth:`~libtmux.Window.from_window_id`
+    - The window you run inside: :meth:`~libtmux.Window.from_env`
+    - From a listing: :attr:`~libtmux.Server.windows`,
+      :attr:`~libtmux.Session.windows`
+
+    **Finding its neighbours.** A window can sit in several sessions.
+    :attr:`~libtmux.Window.session` is the session recorded on this instance, and
+    :attr:`~libtmux.Window.linked_sessions` lists every one that holds the window,
+    each once, and is empty when either listing it needs fails.
+    :attr:`~libtmux.Window.active_pane` is ``None`` when no pane is active.
+
+    - Parent: :attr:`~libtmux.Window.session`
+    - Every session holding it: :attr:`~libtmux.Window.linked_sessions`
+    - Panes: :attr:`~libtmux.Window.panes`, :attr:`~libtmux.Window.active_pane`
+    - Panes filtered by tmux: :meth:`~libtmux.Window.search_panes`
+
+    **Splitting and arranging.** :meth:`~libtmux.Window.split` divides the active
+    pane, beneath it by default, and returns the new :class:`~libtmux.Pane`.
+    Passing both ``size`` and ``percentage`` raises :exc:`ValueError`, and flags
+    newer than the running tmux warn and are ignored. A layout name and a layout
+    flag together raise :exc:`ValueError` in
+    :meth:`~libtmux.Window.select_layout`. Floating panes need tmux 3.7 or later.
+
+    - Split: :meth:`~libtmux.Window.split`, :meth:`~libtmux.Window.new_pane`
+    - Apply a layout: :meth:`~libtmux.Window.select_layout`
+    - Cycle through the presets: :meth:`~libtmux.Window.next_layout`,
+      :meth:`~libtmux.Window.previous_layout`
+    - Rotate the panes: :meth:`~libtmux.Window.rotate`
+    - Resize the window: :meth:`~libtmux.Window.resize`
+    - Choose the active pane: :meth:`~libtmux.Window.select_pane`,
+      :meth:`~libtmux.Window.last_pane`
+
+    **Linking and moving.** :meth:`~libtmux.Window.link` shows the window in
+    another session as well, and :meth:`~libtmux.Window.unlink` removes it from the
+    current one. :meth:`~libtmux.Window.move_window` with ``renumber=True`` only
+    renumbers the windows and moves nothing.
+
+    - Show it in another session: :meth:`~libtmux.Window.link`
+    - Remove it from this session: :meth:`~libtmux.Window.unlink`
+    - Move it: :meth:`~libtmux.Window.move_window`
+    - Exchange two windows: :meth:`~libtmux.Window.swap`
+    - Make it current: :meth:`~libtmux.Window.select`
+    - New window next to it: :meth:`~libtmux.Window.new_window`
+
+    **Changing it.** :meth:`~libtmux.Window.rename_window` refreshes the window and
+    returns it. :meth:`~libtmux.Window.respawn` documents ``kill=True`` as required
+    if the window is still active.
+
+    - Rename: :meth:`~libtmux.Window.rename_window`
+    - Restart what it runs: :meth:`~libtmux.Window.respawn`
+    - Destroy it: :meth:`~libtmux.Window.kill`
+
+    **Options and hooks.** An option or hook call acts on the window scope by
+    default. The setters return the window, so calls chain, and an unknown or
+    invalid name raises :exc:`~libtmux.exc.OptionError` or one of its subclasses.
+
+    - Options: :meth:`~libtmux.Window.show_options`,
+      :meth:`~libtmux.Window.show_option`, :meth:`~libtmux.Window.set_option`,
+      :meth:`~libtmux.Window.unset_option`
+    - Hooks: :meth:`~libtmux.Window.show_hooks`,
+      :meth:`~libtmux.Window.show_hook`, :meth:`~libtmux.Window.set_hook`,
+      :meth:`~libtmux.Window.unset_hook`, :meth:`~libtmux.Window.run_hook`
+
     Parameters
     ----------
     session : :class:`Session`

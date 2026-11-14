@@ -97,6 +97,122 @@ class Server(
 
     When instantiated stores information on live, running tmux server.
 
+    **Connecting.** Constructing a :class:`~libtmux.Server` runs no tmux command
+    of its own; it records the socket and settings every later call uses.
+    :meth:`~libtmux.Server.from_env` reads ``$TMUX`` without a subprocess, raises
+    :exc:`~libtmux.exc.NotInsideTmux` when it is unset, and does not check that the
+    server is alive. :meth:`~libtmux.Server.is_alive` answers a bool and never
+    raises, where :meth:`~libtmux.Server.raise_if_dead` raises
+    :exc:`~libtmux.exc.TmuxCommandNotFound` or
+    :class:`subprocess.CalledProcessError`.
+
+    - Name a server: :class:`~libtmux.Server`, :meth:`~libtmux.Server.from_env`
+    - Is anything listening: :meth:`~libtmux.Server.is_alive`,
+      :meth:`~libtmux.Server.raise_if_dead`
+    - Start the daemon: :meth:`~libtmux.Server.start_server`
+
+    **Finding one thing.** Each ``from_*_id`` constructor asks tmux for one object
+    and raises :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when it is not there.
+    ``get`` on a listing returns exactly one match, and raises
+    :exc:`~libtmux.exc.ObjectDoesNotExist` for none unless a default is passed,
+    and :exc:`~libtmux.exc.MultipleObjectsReturned` for several.
+    :meth:`~libtmux.Server.has_session` answers a bool, matches the name exactly
+    unless ``exact=False``, and raises :exc:`~libtmux.exc.BadSessionName` for an
+    empty name or one holding a period or colon.
+
+    - By ID: :meth:`~libtmux.Session.from_session_id`,
+      :meth:`~libtmux.Window.from_window_id`, :meth:`~libtmux.Pane.from_pane_id`
+    - One match from a listing:
+      :meth:`~libtmux._internal.query_list.QueryList.get`
+    - Exists, without returning it: :meth:`~libtmux.Server.has_session`
+
+    **Listing everything.** Each access reads tmux again and returns a
+    :class:`~libtmux._internal.query_list.QueryList`, so a list you keep is a
+    snapshot. :attr:`~libtmux.Server.sessions` and :attr:`~libtmux.Server.clients`
+    answer an empty list when the tmux command fails for any reason, so tell "no
+    sessions" from "tmux unreachable" with :meth:`~libtmux.Server.is_alive`.
+    :attr:`~libtmux.Server.windows` and :attr:`~libtmux.Server.panes` answer empty
+    only while the daemon is not up and raise on other tmux errors. Windows and
+    panes span every session.
+
+    - Listings: :attr:`~libtmux.Server.sessions`, :attr:`~libtmux.Server.windows`,
+      :attr:`~libtmux.Server.panes`, :attr:`~libtmux.Server.clients`
+    - With a client attached: :attr:`~libtmux.Server.attached_sessions`
+
+    **Filtering.** ``filter`` on a listing runs in Python against the full list.
+    The ``search_*`` methods hand tmux a ``-f`` format expression instead, and tmux
+    drops rows before any object is built. A malformed expression expands to empty
+    and hides every row without an error.
+
+    - In Python: :meth:`~libtmux._internal.query_list.QueryList.filter`
+    - In tmux: :meth:`~libtmux.Server.search_sessions`,
+      :meth:`~libtmux.Server.search_windows`, :meth:`~libtmux.Server.search_panes`
+
+    **Creating and destroying.** :meth:`~libtmux.Server.new_session` creates a
+    detached session and returns it. A name already in use raises
+    :exc:`~libtmux.exc.TmuxSessionExists` unless ``kill_session=True``.
+    :meth:`~libtmux.Server.kill_session` passes its target to tmux, which matches
+    it with ``fnmatch(3)``, so ``asdf`` also kills ``asdfasd``.
+    :meth:`~libtmux.Server.kill` stops the server and returns quietly when no
+    daemon is running.
+
+    - New session: :meth:`~libtmux.Server.new_session`
+    - Kill one session: :meth:`~libtmux.Server.kill_session`
+    - Stop the server: :meth:`~libtmux.Server.kill`
+
+    **Clients.** :attr:`~libtmux.Server.clients` returns typed
+    :class:`~libtmux.Client` objects and :meth:`~libtmux.Server.list_clients`
+    returns tmux's raw lines. Switching and attaching take a session name, which
+    raises :exc:`~libtmux.exc.BadSessionName` when it is empty or holds a period
+    or colon.
+
+    - Listing: :attr:`~libtmux.Server.clients`,
+      :meth:`~libtmux.Server.list_clients`
+    - Move one: :meth:`~libtmux.Server.switch_client`,
+      :meth:`~libtmux.Server.attach_session`
+    - Detach: :meth:`~libtmux.Server.detach_client`,
+      :meth:`~libtmux.Server.detach_all_clients`
+
+    **Options, hooks and environment.** These calls come from mixins and act on
+    the server scope by default. The option and hook setters return the object, so
+    calls chain, and an unknown or invalid option or hook name raises
+    :exc:`~libtmux.exc.OptionError` or one of its subclasses. The environment
+    calls act on the server's global environment, and the setters raise
+    :exc:`ValueError` when tmux reports an error.
+
+    - Options: :meth:`~libtmux.Server.show_options`,
+      :meth:`~libtmux.Server.show_option`, :meth:`~libtmux.Server.set_option`,
+      :meth:`~libtmux.Server.unset_option`
+    - Hooks: :meth:`~libtmux.Server.show_hooks`,
+      :meth:`~libtmux.Server.show_hook`, :meth:`~libtmux.Server.set_hook`,
+      :meth:`~libtmux.Server.set_hooks`, :meth:`~libtmux.Server.unset_hook`,
+      :meth:`~libtmux.Server.run_hook`
+    - Environment: :meth:`~libtmux.Server.show_environment`,
+      :meth:`~libtmux.Server.getenv`, :meth:`~libtmux.Server.set_environment`,
+      :meth:`~libtmux.Server.unset_environment`,
+      :meth:`~libtmux.Server.remove_environment`
+
+    **Buffers and key bindings.** Each wraps the tmux command of the same name and
+    raises :exc:`~libtmux.exc.LibTmuxException` when tmux writes to stderr.
+
+    - Buffers: :meth:`~libtmux.Server.list_buffers`,
+      :meth:`~libtmux.Server.show_buffer`, :meth:`~libtmux.Server.set_buffer`,
+      :meth:`~libtmux.Server.delete_buffer`, :meth:`~libtmux.Server.save_buffer`,
+      :meth:`~libtmux.Server.load_buffer`
+    - Key bindings: :meth:`~libtmux.Server.list_keys`,
+      :meth:`~libtmux.Server.bind_key`, :meth:`~libtmux.Server.unbind_key`
+
+    **Running a command.** Anything tmux can do that has no method here goes
+    through :meth:`~libtmux.Server.cmd`, which adds the socket, config file and
+    color flags and returns a :class:`~libtmux.common.tmux_cmd` holding the
+    return code, stdout and stderr. It does not check them. The shell and sourcing
+    helpers do, and raise :exc:`~libtmux.exc.LibTmuxException`.
+
+    - One command: :meth:`~libtmux.Server.cmd`
+    - Shell and conditionals: :meth:`~libtmux.Server.run_shell`,
+      :meth:`~libtmux.Server.if_shell`, :meth:`~libtmux.Server.wait_for`
+    - Configuration: :meth:`~libtmux.Server.source_file`
+
     Parameters
     ----------
     socket_name : str, optional

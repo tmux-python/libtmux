@@ -94,6 +94,14 @@ environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
+#### Task directories on Server, Session, Window and Pane
+
+The class docstrings of {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` now group their methods by
+the job a reader arrives with, such as finding one thing, listing everything,
+or sending input. Each group says what a call returns and which exception it
+raises, then lists the members that do the job.
+
 ### Development
 
 #### Ruff 0.17.3 for development (#825)

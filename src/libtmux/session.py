@@ -54,6 +54,91 @@ class Session(
 
     Holds :class:`Window` objects.
 
+    **Reading it.** Every field is a tmux format token read when the session was
+    listed or last refreshed, and is ``None`` when tmux gave no value.
+    :meth:`~libtmux.Session.refresh` rewrites the fields in place and returns
+    ``None``.
+
+    - Identity: :attr:`~libtmux.Session.session_id`,
+      :attr:`~libtmux.Session.id`
+    - Name: :attr:`~libtmux.Session.session_name`, :attr:`~libtmux.Session.name`
+    - Re-read from tmux: :meth:`~libtmux.Session.refresh`
+
+    **Finding it.** :meth:`~libtmux.Session.from_session_id` asks tmux for one
+    session and raises :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when it is gone.
+    :meth:`~libtmux.Session.from_env` resolves the session of the pane this
+    process runs inside, through ``$TMUX_PANE``, and raises
+    :exc:`~libtmux.exc.NotInsideTmux` outside one.
+
+    - By ID: :meth:`~libtmux.Session.from_session_id`
+    - The session you run inside: :meth:`~libtmux.Session.from_env`
+    - From a listing: :attr:`~libtmux.Server.sessions`
+    - By name, without returning it: :meth:`~libtmux.Server.has_session`
+
+    **Finding what is inside.** Each access reads tmux again and returns a
+    :class:`~libtmux._internal.query_list.QueryList`. Unlike
+    :attr:`~libtmux.Server.sessions`, these raise
+    :exc:`~libtmux.exc.LibTmuxException` when tmux writes to stderr.
+    :attr:`~libtmux.Session.active_window` raises
+    :exc:`~libtmux.exc.NoActiveWindow` or
+    :exc:`~libtmux.exc.MultipleActiveWindows` unless exactly one window is active.
+    :attr:`~libtmux.Session.active_pane` is the active window's active pane, or
+    ``None``.
+
+    - Windows and panes: :attr:`~libtmux.Session.windows`,
+      :attr:`~libtmux.Session.panes`
+    - The active ones: :attr:`~libtmux.Session.active_window`,
+      :attr:`~libtmux.Session.active_pane`
+    - Filtered by tmux: :meth:`~libtmux.Session.search_windows`,
+      :meth:`~libtmux.Session.search_panes`
+
+    **Moving the selection.** Each returns the window that is now active and
+    raises :exc:`~libtmux.exc.LibTmuxException` when tmux refuses.
+
+    - Relative: :meth:`~libtmux.Session.next_window`,
+      :meth:`~libtmux.Session.previous_window`,
+      :meth:`~libtmux.Session.last_window`
+    - A named window: :meth:`~libtmux.Session.select_window`
+
+    **Adding windows.** :meth:`~libtmux.Session.new_window` returns the new
+    :class:`~libtmux.Window`. It is created detached unless ``attach=True``, and
+    it takes the next free index unless ``window_index`` names one.
+
+    - New window: :meth:`~libtmux.Session.new_window`
+    - Next to a window you hold: :meth:`~libtmux.Window.new_window`
+
+    **Changing it.** :meth:`~libtmux.Session.rename_session` raises
+    :exc:`~libtmux.exc.BadSessionName` for an empty name or one holding a period
+    or colon, refreshes the session and returns it.
+    :meth:`~libtmux.Session.kill` closes the linked windows and detaches every
+    client, and ``group=True`` needs tmux 3.7 or later, below which it warns and is
+    ignored.
+
+    - Rename: :meth:`~libtmux.Session.rename_session`
+    - Destroy it: :meth:`~libtmux.Session.kill`
+    - Close one window: :meth:`~libtmux.Session.kill_window`
+    - Detach its clients: :meth:`~libtmux.Session.detach_client`
+    - Attach a terminal or switch to it: :meth:`~libtmux.Session.attach`,
+      :meth:`~libtmux.Session.switch_client`
+
+    **Options, hooks and environment.** An option or hook call leaves the scope
+    flag off by default, which tmux resolves as session scope. The setters return
+    the session, so calls chain, and an unknown or invalid name raises
+    :exc:`~libtmux.exc.OptionError` or one of its subclasses. The environment
+    calls act on this session and raise :exc:`ValueError` when tmux reports an
+    error.
+
+    - Options: :meth:`~libtmux.Session.show_options`,
+      :meth:`~libtmux.Session.show_option`, :meth:`~libtmux.Session.set_option`,
+      :meth:`~libtmux.Session.unset_option`
+    - Hooks: :meth:`~libtmux.Session.show_hooks`,
+      :meth:`~libtmux.Session.show_hook`, :meth:`~libtmux.Session.set_hook`,
+      :meth:`~libtmux.Session.unset_hook`, :meth:`~libtmux.Session.run_hook`
+    - Environment: :meth:`~libtmux.Session.show_environment`,
+      :meth:`~libtmux.Session.getenv`, :meth:`~libtmux.Session.set_environment`,
+      :meth:`~libtmux.Session.unset_environment`,
+      :meth:`~libtmux.Session.remove_environment`
+
     Parameters
     ----------
     server : :class:`Server`
