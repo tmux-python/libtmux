@@ -45,15 +45,40 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
-### Features
+### Breaking changes
 
-#### Own a fresh pane program (#823)
+#### Python 3.11+ is now required
 
-`Session.run_program(argv)` starts a program in a new retained pane on tmux 3.8+.
-Its handle separates exit observation, bounded rendered capture, explicit pane
-termination, and cleanup. Cancelling a wait leaves the program running. The
-borrowed parent session survives cleanup; unknown exit evidence stays unknown.
-The library's core tmux minimum remains 3.2a.
+libtmux 0.62.0 was the last release supporting Python 3.10. Python 3.10 reached
+end of life in October 2026.
+
+### What's new
+
+#### Own a fresh pane program (#833)
+
+{meth}`~libtmux.Session.run_program` starts a program in a retained pane on
+tmux 3.8+. Its handle separates exit observation, bounded rendered capture,
+explicit pane termination and cleanup. Cancelling a wait leaves the program
+running. The borrowed parent session survives cleanup; missing exit evidence
+stays unknown. The library's core tmux minimum remains 3.2a.
+
+### Fixes
+
+#### tmux 3.8 hooks and terminal examples (#775)
+
+{meth}`~libtmux.hooks.HooksMixin.show_hook` reads hooks added in tmux 3.8,
+including `pane-created` and `window-zoomed`, with their sparse indices
+intact. tmux 3.8 rejects the removed `after-queue` hook.
+
+{meth}`~libtmux.Pane.display_popup` requires a terminal client to execute
+its command on tmux 3.8. Floating-pane examples account for the border
+included in native size and position arguments; pane formats report the
+content area. See {doc}`/topics/floating_panes`.
+
+#### Flaky `test_capture_pane_flags[join_wrapped_numbers]` (#655)
+
+Marker detection now skips the shell command echo line to avoid
+false-positive completion.
 
 ## libtmux 0.68.0 (2026-11-24)
 
@@ -518,6 +543,8 @@ the forwarded call; runtime behaviour is unchanged.
 raised `AttributeError`.
 
 ### Documentation
+
+
 
 #### Automation patterns wait for the command to finish (#734)
 
