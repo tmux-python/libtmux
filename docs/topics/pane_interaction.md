@@ -35,8 +35,8 @@ launch; call `wait()` for its eventual exit status or signal.
 
 ```python
 >>> import sys
->>> from libtmux.common import has_gte_version
->>> if has_gte_version("3.8"):
+>>> capabilities = session.server.capabilities()
+>>> if capabilities.supports("program-owned"):
 ...     job = session.run_program([
 ...         sys.executable, "-c", "print('finished'); raise SystemExit(7)"
 ...     ])
@@ -46,6 +46,14 @@ launch; call `wait()` for its eventual exit status or signal.
 ...     assert "finished" in observation.text
 ...     job.cleanup()
 ```
+
+{meth}`~libtmux.Server.capabilities` reads the connected daemon's version and
+identity. Its {class}`~libtmux.capabilities.ServerCapabilities` report exposes
+`features` and `feature("program-owned")`, including the minimum release,
+supported/unsupported/unknown status and reason. Unknown version spellings and
+tmux 3.8 release candidates refuse program creation. A newer client executable
+does not make an older daemon capable. Discovery is synchronous and creates no
+session or pane; reports are not cached or accepted as mutation authority.
 
 The [standalone program example](https://github.com/tmux-python/libtmux/blob/master/examples/owned_program.py)
 creates a private server and session, checks status 7 and rendered output,

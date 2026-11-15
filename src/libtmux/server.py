@@ -26,6 +26,7 @@ from libtmux._internal.env import (
 )
 from libtmux._internal.query_list import QueryList
 from libtmux._internal.support.capabilities import capability_since
+from libtmux.capabilities import ServerCapabilities
 from libtmux.client import Client
 from libtmux.common import (
     _format_arg,
@@ -56,6 +57,7 @@ from .common import (
 from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
+    import threading
     import types
     from typing import Self, TypeAlias
 
@@ -389,6 +391,35 @@ class Server(
 
         if on_init is not None:
             on_init(self)
+
+    def capabilities(
+        self,
+        *,
+        timeout: float = 5,
+        cancel_event: threading.Event | None = None,
+    ) -> ServerCapabilities:
+        """Read feature decisions from the connected daemon without starting one.
+
+        Each call obtains a fresh identity/version report. Unknown versions
+        remain unknown; the selected client binary's version is not substituted.
+        This synchronous call uses the stock native dispatcher.
+
+        Parameters
+        ----------
+        timeout : float
+            Finite nonnegative deadline for the native probe, in seconds.
+        cancel_event : threading.Event, optional
+            Cancel the probe and reap its client without changing the daemon.
+
+        Returns
+        -------
+        ServerCapabilities
+            Immutable identity, version and feature decisions. Query
+            ``feature("program-owned")`` for the supported state and reason.
+        """
+        from libtmux._internal.program import inspect_capabilities
+
+        return inspect_capabilities(self, timeout, cancel_event)
 
     @classmethod
     def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:
