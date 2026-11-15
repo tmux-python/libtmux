@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import pathlib
 import sys
 import tempfile
+import threading
 import typing as t
 
 import libtmux
@@ -42,6 +44,26 @@ def main() -> None:
             assert parent.cmd("display-message", "-p", identity_format).stdout == before
             print(f"exit status: {result.exit_status}")
             print(observation.text)
+
+            job = parent.start_program(
+                [sys.executable, "-c", "print('received:' + input())"]
+            )
+            cancelled = threading.Event()
+            cancelled.set()
+            try:
+                job.wait(cancel_event=cancelled)
+            except concurrent.futures.CancelledError:
+                cancelled.clear()
+            else:
+                msg = "the observation must report cancellation"
+                raise AssertionError(msg)
+            job.send_text("literal ; $HOME", enter=True)
+            result = job.wait(cancel_event=cancelled)
+            assert result.exit_status == 0
+            assert "received:literal ; $HOME" in job.collect().text
+            job.cleanup()
+            assert parent.cmd("display-message", "-p", identity_format).stdout == before
+            print("cancelled observation; program completed after retry")
         except BaseException as error:  # noqa: BLE001
             operation_error = error
         finally:

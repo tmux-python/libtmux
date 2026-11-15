@@ -504,7 +504,10 @@ def test_standalone_program_preserves_parent(
             timeout=1,
             env=environment,
         )
-        assert result.stdout == "exit status: 7\nhello from the program\n"
+        assert result.stdout == (
+            "exit status: 7\nhello from the program\n"
+            "cancelled observation; program completed after retry\n"
+        )
         assert (
             session.cmd(
                 "display-message", "-p", "#{pid}|#{session_id}|#{pane_id}|#{pane_pid}"
