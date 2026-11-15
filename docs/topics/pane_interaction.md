@@ -28,16 +28,30 @@ $ python
 
 ## Owning a fresh program
 
-On tmux 3.8 or later, {meth}`~libtmux.Session.run_program` starts a program in a
-new detached pane and returns an owned handle. It establishes pane retention
-and exit observation before launching the program. `run_program` returns after
-launch; call `wait()` for its eventual exit status or signal.
+On tmux 3.8 or later, {meth}`~libtmux.Session.run_program` runs a command in a
+fresh PTY, waits for completion, captures its final rendered screen and removes
+the pane. The borrowed session and its existing panes survive.
+
+```python
+>>> import sys
+>>> if session.server.capabilities().supports("program-owned"):
+...     result = session.run_program([
+...         sys.executable, "-c", "print('finished'); raise SystemExit(7)"
+...     ])
+...     assert result.exit.exit_status == 7
+...     assert result.screen.text == "finished"
+```
+
+For interaction, {meth}`~libtmux.Session.start_program` returns an owned
+{class}`~libtmux.program.Program`. It establishes retention and exit observation
+before launch, then returns without waiting for completion. Working directory,
+environment overrides and initial width/height apply only to the owned window.
 
 ```python
 >>> import sys
 >>> capabilities = session.server.capabilities()
 >>> if capabilities.supports("program-owned"):
-...     job = session.run_program([
+...     job = session.start_program([
 ...         sys.executable, "-c", "print('finished'); raise SystemExit(7)"
 ...     ])
 ...     result = job.wait(timeout=1)
@@ -45,6 +59,25 @@ launch; call `wait()` for its eventual exit status or signal.
 ...     observation = job.collect(start=-100)
 ...     assert "finished" in observation.text
 ...     job.cleanup()
+```
+
+Send literal terminal input through the handle. Input can be queued before the
+application reads it; tmux's acknowledgement does not prove consumption. A
+carriage return completes a line under the terminal's usual line discipline:
+
+```python
+>>> import sys
+>>> if session.server.capabilities().supports("program-owned"):
+...     job = session.start_program([
+...         sys.executable, "-c", "print('received:' + input())"
+...     ], width=80, height=24, environment={"PROGRAM_MODE": "interactive"})
+...     try:
+...         job.send_text("literal ; $HOME", enter=True)
+...         assert job.wait(timeout=1).exit_status == 0
+...         assert "received:literal ; $HOME" in job.collect().text
+...     finally:
+...         _ = job.terminate()
+...         job.cleanup()
 ```
 
 {meth}`~libtmux.Server.capabilities` reads the connected daemon's version and
@@ -72,6 +105,7 @@ The handle's operations have separate effects:
 
 | Operation | Result and resource policy |
 | --- | --- |
+| `send_text(text, enter=False, timeout=5)` | Literal input under the current lifetime witness. `enter=True` appends a carriage return in the same command. A failed submission may have sent input; do not retry it automatically. |
 | `wait(timeout=5, cancel_event=None)` | Immutable `pane_id`, `exit_status` and `exit_signal` fields. A signal retains tmux's spelling, which can be a name or a decimal number. |
 | `collect(start=-1000, end="-", max_text_codepoints=1048576, timeout=5)` | Immutable rendered observation with `lines`, `text`, `pane_id`, actual `command`, selection fields, and monotonic `started_ns`/`finished_ns`. Wrapped rows are joined. |
 | `terminate(timeout=5)` | Closes the positively owned pane and PTY, then reaps its observer clients. Returns `pane_removed` and any exit evidence already obtained. It does not establish that all descendant processes exited. |
@@ -89,8 +123,19 @@ limit. These limits bound collection, not the tmux daemon's total memory.
 with the retained pane-observation shape and does not claim a general tmux
 object-lifetime proof.
 
+Collection uses one temporarily named paste buffer to separate rendered text
+from tmux hook output. It removes that buffer before returning successfully;
+existing buffers survive. If deletion fails, the exception retains the last
+validated capture and cleanup error. The handle retries that buffer's deletion
+before another collection, and during termination or cleanup. A controller
+crash may leave its pane and capture buffer behind; neither has a crash lease.
+
 A `threading.Event` cancels a wait without stopping the program or closing its
 handle-owned observers. Clear the event and wait again, or terminate explicitly.
+By contrast, cancelling `run_program` removes its owned pane and settles observer
+cleanup before raising. Its timeout covers launch, wait and capture; cleanup
+gets a separate bounded budget. These APIs are synchronous. They provide no
+asyncio owner, raw-byte stream or controller-crash lease.
 Cancelling a worker thread's future does not set this event. Timeouts raise
 {exc}`~libtmux.exc.WaitTimeout`; cancellation raises
 {class}`concurrent.futures.CancelledError`. Other operational failures retain
@@ -110,6 +155,11 @@ reused name or numeric ID alone, and an accepted creation with a missing receipt
 stays uncertain. Setup failure compensates only positively identified creation
 and retains cleanup failures alongside the original error. Custom dispatchers
 and injected engines are refused before native effects.
+
+Input registers a successor lifetime observer before consuming the previous
+witness and sending keys in tmux's command queue. A respawn between observation
+and dispatch therefore refuses input to the replacement. This terminal ownership
+does not confine filesystem access, networking or privileges.
 
 Deletion consumes the handle's still-pending lifetime waiter and closes its
 pane in one native command queue. A respawn or lost observer makes that

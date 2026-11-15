@@ -130,7 +130,7 @@ jobs:
         run: |
           unset TMUX TMUX_PANE
           test "$(tmux -V)" = 'tmux 3.8'
-          uv run pytest tests/test_program.py --reruns=0 --cov=./ --cov-report=xml
+          uv run pytest tests/test_program.py tests/test_capabilities.py --reruns=0 --cov=./ --cov-report=xml
       - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

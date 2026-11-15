@@ -35,9 +35,9 @@ if t.TYPE_CHECKING:
     import types
     from typing import Self
 
-    from libtmux._internal.program import _Program
     from libtmux._internal.types import StrPath
     from libtmux.common import tmux_cmd
+    from libtmux.program import Program, ProgramResult
 
     from .server import Server
 
@@ -108,6 +108,12 @@ class Session(
 
     - New window: :meth:`~libtmux.Session.new_window`
     - Next to a window you hold: :meth:`~libtmux.Window.new_window`
+
+    **Running applications.** :meth:`~libtmux.Session.run_program` returns
+    completion and rendered output after cleaning its pane.
+    :meth:`~libtmux.Session.start_program` returns an interactive
+    :class:`~libtmux.program.Program` instead. Both require a connected daemon
+    whose :meth:`~libtmux.Server.capabilities` permits ``program-owned``.
 
     **Changing it.** :meth:`~libtmux.Session.rename_session` raises
     :exc:`~libtmux.exc.BadSessionName` for an empty name or one holding a period
@@ -873,13 +879,17 @@ class Session(
 
         return self
 
-    def run_program(
+    def start_program(
         self,
         argv: t.Sequence[str],
         *,
+        start_directory: StrPath | None = None,
+        environment: t.Mapping[str, str] | None = None,
+        width: int | None = None,
+        height: int | None = None,
         timeout: float = 5,
         cancel_event: threading.Event | None = None,
-    ) -> _Program:
+    ) -> Program:
         """Start a fresh program and return its owned handle on tmux 3.8+.
 
         The handle separates waiting for exit, collecting rendered output,
@@ -891,6 +901,14 @@ class Session(
         argv : sequence of str
             Program and at least one argument, passed without shell expansion.
             Use an explicit shell invocation when shell syntax is intended.
+        start_directory : path, optional
+            Working directory for the program; the parent session is unchanged.
+        environment : mapping of str to str, optional
+            Per-program environment overrides. Values are not shell-expanded.
+        width : int, optional
+            Initial owned-window width, in columns.
+        height : int, optional
+            Initial owned-window height, in rows.
         timeout : float
             Finite, nonnegative deadline for creation, retention and observer
             readiness. An uncertain submitted creation is never retried.
@@ -920,9 +938,77 @@ class Session(
         --------
         Session.new_window : Create an ordinary window without lifecycle ownership.
         """
-        from libtmux._internal.program import start_program
+        from libtmux.program import _start_program
 
-        return start_program(self, argv, timeout, cancel_event)
+        return _start_program(
+            self,
+            argv,
+            timeout,
+            cancel_event,
+            start_directory=start_directory,
+            environment=environment,
+            width=width,
+            height=height,
+        )
+
+    def run_program(
+        self,
+        argv: t.Sequence[str],
+        *,
+        start_directory: StrPath | None = None,
+        environment: t.Mapping[str, str] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        timeout: float = 5,
+        cancel_event: threading.Event | None = None,
+    ) -> ProgramResult:
+        """Wait for a fresh program, capture its final screen and remove its pane.
+
+        This synchronous owning call uses one deadline for setup, waiting and
+        capture. Timeout, cancellation and interruption remove the owned pane;
+        cleanup has a separate bounded budget. Pane removal does not prove that
+        every descendant process has exited. Failures retain the owner and any
+        cleanup errors; a submitted launch is never retried automatically.
+
+        Parameters
+        ----------
+        argv : sequence of str
+            Program and at least one literal argument.
+        start_directory : path, optional
+            Working directory for the program.
+        environment : mapping of str to str, optional
+            Environment overrides for this program only.
+        width : int, optional
+            Initial window width, in columns.
+        height : int, optional
+            Initial window height, in rows.
+        timeout : float
+            Finite nonnegative operation deadline, in seconds.
+        cancel_event : threading.Event, optional
+            Cancel this owning run and settle its pane cleanup.
+
+        Returns
+        -------
+        ProgramResult
+            Immutable completion and bounded rendered screen. stdout and stderr
+            share the PTY; capture is neither a byte stream nor unlimited history.
+
+        See Also
+        --------
+        Session.start_program : Return an interactive handle without waiting.
+        """
+        from libtmux.program import _run_program
+
+        return _run_program(
+            self,
+            argv,
+            timeout,
+            cancel_event,
+            start_directory=start_directory,
+            environment=environment,
+            width=width,
+            height=height,
+        )
 
     def new_window(
         self,

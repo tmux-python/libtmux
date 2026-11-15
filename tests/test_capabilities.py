@@ -7,8 +7,7 @@ import typing as t
 
 import pytest
 
-from libtmux import exc
-from libtmux._internal import program
+from libtmux import exc, program
 from libtmux.capabilities import ServerCapabilities
 
 if t.TYPE_CHECKING:
@@ -62,10 +61,10 @@ def test_unsupported_version_refuses_before_creation(
     session: Session, monkeypatch: pytest.MonkeyPatch, version: str
 ) -> None:
     """A synthetic version exercises refusal while a real daemon proves no effects."""
-    original = program._Program._run
+    original = program.Program._run
 
     def version_reply(
-        owner: program._Program, args: tuple[str, ...], *rest: t.Any
+        owner: program.Program, args: tuple[str, ...], *rest: t.Any
     ) -> bytes:
         result = original(owner, args, *rest)
         if args[-1] == "#{pid}|#{start_time}|#{session_id}|#{version}":
@@ -73,7 +72,7 @@ def test_unsupported_version_refuses_before_creation(
         return result
 
     before = session.cmd("list-windows", "-F", "#{window_id}").stdout
-    monkeypatch.setattr(program._Program, "_run", version_reply)
+    monkeypatch.setattr(program.Program, "_run", version_reply)
     with pytest.raises(exc.LibTmuxException):
-        session.run_program(["/bin/echo", "not admitted"])
+        session.start_program(["/bin/echo", "not admitted"])
     assert session.cmd("list-windows", "-F", "#{window_id}").stdout == before

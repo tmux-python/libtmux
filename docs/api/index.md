@@ -169,6 +169,7 @@ Active deprecations and migration guidance.
 
 Server <libtmux.server>
 Session <libtmux.session>
+Programs <libtmux.program>
 Window <libtmux.window>
 Pane <libtmux.pane>
 Client <libtmux.client>

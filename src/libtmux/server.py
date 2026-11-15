@@ -340,9 +340,9 @@ class Server(
             Immutable identity, version and feature decisions. Query
             ``feature("program-owned")`` for the supported state and reason.
         """
-        from libtmux._internal.program import inspect_capabilities
+        from libtmux.program import _inspect_capabilities
 
-        return inspect_capabilities(self, timeout, cancel_event)
+        return _inspect_capabilities(self, timeout, cancel_event)
 
     @classmethod
     def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:
