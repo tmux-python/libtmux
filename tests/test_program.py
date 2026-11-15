@@ -10,6 +10,7 @@ import pathlib
 import subprocess
 import sys
 import threading
+import time
 import typing as t
 
 import pytest
@@ -430,7 +431,7 @@ def test_program_accepts_connected_next_version(
 def test_interrupted_collection_reaps_only_its_client(
     session: Session, monkeypatch: pytest.MonkeyPatch, interrupt: bool
 ) -> None:
-    """Block a real native client to qualify deadline and interruption cleanup."""
+    """Expire or interrupt a real capture client after acquisition completes."""
     job = session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
     before = session.cmd(
         "display-message", "-p", "#{pid}|#{pane_id}|#{pane_pid}"
@@ -439,12 +440,18 @@ def test_interrupted_collection_reaps_only_its_client(
     interrupted = KeyboardInterrupt()
     clients = []
 
-    def native_wait(client: program._Client, *args: t.Any) -> None:
+    def native_wait(
+        client: program._Client,
+        predicate: t.Callable[[], bool],
+        deadline: float,
+        cancel: threading.Event,
+    ) -> None:
         if client.command[-1] == "never-signalled-program-client":
             clients.append(client)
             if interrupt:
                 raise interrupted
-        original(client, *args)
+            deadline = time.monotonic() - 1
+        original(client, predicate, deadline, cancel)
 
     try:
         with monkeypatch.context() as patch:
@@ -457,7 +464,7 @@ def test_interrupted_collection_reaps_only_its_client(
             with pytest.raises(
                 KeyboardInterrupt if interrupt else exc.WaitTimeout
             ) as caught:
-                job.collect(timeout=0.05)
+                job.collect()
         if interrupt:
             assert caught.value is interrupted
         assert clients and all(client.closed for client in clients)
@@ -467,6 +474,8 @@ def test_interrupted_collection_reaps_only_its_client(
             == before
         )
     finally:
+        for client in clients:
+            client.close()
         job.terminate()
         job.cleanup()
 
