@@ -51,7 +51,7 @@ def main() -> None:
             for close in cleanup:
                 try:
                     close()
-                except BaseException as error:  # noqa: BLE001, PERF203
+                except BaseException as error:  # noqa: BLE001
                     cleanup_errors.append(error)
     if operation_error is not None:
         operation_error.cleanup_errors = (  # type: ignore[attr-defined]
