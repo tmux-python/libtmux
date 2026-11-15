@@ -63,17 +63,28 @@ environment overrides and initial width/height apply only to the owned window.
 
 Send literal terminal input through the handle. Input can be queued before the
 application reads it; tmux's acknowledgement does not prove consumption. A
-carriage return completes a line under the terminal's usual line discipline:
+carriage return completes a line under the terminal's usual line discipline.
+This example cancels observation, then sends input and waits again:
 
 ```python
+>>> import concurrent.futures
 >>> import sys
+>>> import threading
 >>> if session.server.capabilities().supports("program-owned"):
 ...     job = session.start_program([
 ...         sys.executable, "-c", "print('received:' + input())"
 ...     ], width=80, height=24, environment={"PROGRAM_MODE": "interactive"})
 ...     try:
+...         cancelled = threading.Event()
+...         cancelled.set()
+...         try:
+...             job.wait(timeout=1, cancel_event=cancelled)
+...         except concurrent.futures.CancelledError:
+...             cancelled.clear()
+...         else:
+...             raise AssertionError("the observation must report cancellation")
 ...         job.send_text("literal ; $HOME", enter=True)
-...         assert job.wait(timeout=1).exit_status == 0
+...         assert job.wait(timeout=1, cancel_event=cancelled).exit_status == 0
 ...         assert "received:literal ; $HOME" in job.collect().text
 ...     finally:
 ...         _ = job.terminate()
@@ -90,8 +101,9 @@ session or pane; reports are not cached or accepted as mutation authority.
 
 The [standalone program example](https://github.com/tmux-python/libtmux/blob/master/examples/owned_program.py)
 creates a private server and session, checks status 7 and rendered output,
-then removes its resources. It retains operation and cleanup failures together.
-Its parent session survives job cleanup:
+then cancels an interactive wait and retries it after sending input.
+It retains operation and cleanup failures together. Its parent session survives
+job cleanup:
 
 ```console
 $ python examples/owned_program.py
