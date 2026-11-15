@@ -45,17 +45,54 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
-### Features
+### Breaking changes
 
-#### Own a fresh pane program (#823)
+#### Python 3.11+ is now required
 
-`Session.run_program(argv)` starts a program in a new retained pane on tmux 3.8+.
-Its handle separates exit observation, bounded rendered capture, explicit pane
-termination, and cleanup. Cancelling a wait leaves the program running. The
-borrowed parent session survives cleanup; unknown exit evidence stays unknown.
-The library's core tmux minimum remains 3.2a.
+libtmux 0.62.0 was the last release supporting Python 3.10. Python 3.10 reached
+end of life in October 2026.
+
+### What's new
+
+#### Own a fresh pane program (#833)
+
+{meth}`~libtmux.Session.run_program` starts a program in a retained pane on
+tmux 3.8+. Its handle separates exit observation, bounded rendered capture,
+explicit pane termination and cleanup. Cancelling a wait leaves the program
+running. The borrowed parent session survives cleanup; missing exit evidence
+stays unknown. The library's core tmux minimum remains 3.2a.
+
+### Fixes
+
+#### tmux 3.8 hooks and terminal examples (#775)
+
+{meth}`~libtmux.hooks.HooksMixin.show_hook` reads hooks added in tmux 3.8,
+including `pane-created` and `window-zoomed`, with their sparse indices
+intact. tmux 3.8 rejects the removed `after-queue` hook.
+
+{meth}`~libtmux.Pane.display_popup` requires a terminal client to execute
+its command on tmux 3.8. Floating-pane examples account for the border
+included in native size and position arguments; pane formats report the
+content area. See {doc}`/topics/floating_panes`.
+
+#### Flaky `test_capture_pane_flags[join_wrapped_numbers]` (#655)
+
+Marker detection now skips the shell command echo line to avoid
+false-positive completion.
 
 ### Documentation
+
+#### libtmux.org top and documentation bars
+
+Every page of this site now opens with the two bars libtmux.org uses. The top
+bar holds the `libtmux` wordmark, the port picker, GitHub and PyPI links, the
+Packages menu, search, and an Auto, Light, or Dark switch. The documentation bar
+under it holds the documentation picker for this site's product, with the
+version and language selectors. The switch sets the theme this site already
+stores, so one choice covers every control.
+
+The port picker lists every libtmux.org port and links each one to its home
+page.
 
 #### Cleaner `from_env` examples (#719)
 
@@ -67,9 +104,17 @@ environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
+#### Task directories on Server, Session, Window and Pane
+
+The class docstrings of {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` now group their methods by
+the job a reader arrives with, such as finding one thing, listing everything,
+or sending input. Each group says what a call returns and which exception it
+raises, then lists the members that do the job.
+
 ### Development
 
-#### Ruff 0.17.3 for development (#833)
+#### Ruff 0.17.3 for development (#825)
 
 Minimum `ruff>=0.17.3` (was `>=0.17.1`) for development and CI lint checks.
 
