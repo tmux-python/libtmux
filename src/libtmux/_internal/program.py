@@ -20,8 +20,10 @@ import typing as t
 import uuid
 
 from libtmux import exc
+from libtmux.capabilities import ServerCapabilities
 
 if t.TYPE_CHECKING:
+    from libtmux.server import Server
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -628,42 +630,17 @@ class _Program:
             self._cleaned = True
 
 
-def start_program(
-    session: Session,
-    argv: t.Sequence[str],
-    timeout: float,
-    cancel_event: threading.Event | None,
-) -> _Program:
-    """Freeze the selected native route, then retain and observe a fresh program."""
-    from libtmux import server as server_module, session as session_module
+def _native_owner(server: Server) -> _Program:
+    from libtmux import server as server_module
 
-    deadline, cancel = _budget(timeout, cancel_event)
-    if isinstance(argv, (str, bytes)) or not isinstance(argv, t.Sequence):
-        msg = "argv must be a sequence of strings"
-        raise TypeError(msg)
-    arguments = tuple(argv)
     if (
-        len(arguments) < 2
-        or any(not isinstance(arg, str) or "\0" in arg for arg in arguments)
-        or not arguments[0]
-    ):
-        msg = "argv requires a program and at least one string argument without NUL"
-        raise ValueError(msg)
-    server = session.server
-    if (
-        type(session).cmd is not session_module._STOCK_SESSION_CMD
-        or "cmd" in vars(session)
-        or type(server).cmd is not server_module._STOCK_SERVER_CMD
+        type(server).cmd is not server_module._STOCK_SERVER_CMD
         or "cmd" in vars(server)
         or getattr(server, "_engine", None) is not None
         or getattr(server, "engine", None) is not None
     ):
-        msg = "program handles require the stock command dispatcher"
+        msg = "program capabilities require the stock command dispatcher"
         raise NotImplementedError(msg)
-    session_id = session.session_id
-    if not isinstance(session_id, str) or re.fullmatch(r"\$\d+", session_id) is None:
-        msg = "program handles require a stable session ID"
-        raise ValueError(msg)
     environment = _Environment(os.environ)
     if environment.get("TMUX_TMPDIR"):
         environment["TMUX_TMPDIR"] = str(
@@ -685,7 +662,67 @@ def start_program(
         prefix.extend(("-S", str(pathlib.Path(server.socket_path).resolve())))
     if server.socket_name:
         prefix.extend(("-L", server.socket_name))
-    job = _Program(tuple(prefix), environment)
+    return _Program(tuple(prefix), environment)
+
+
+def inspect_capabilities(
+    server: Server, timeout: float, cancel_event: threading.Event | None
+) -> ServerCapabilities:
+    """Read daemon identity and feature decisions without creating a pane."""
+    deadline, cancel = _budget(timeout, cancel_event)
+    owner = _native_owner(server)
+    try:
+        raw = owner._run(
+            ("display-message", "-p", "#{pid}|#{start_time}|#{version}"),
+            deadline,
+            cancel,
+        )
+    except subprocess.TimeoutExpired as error:
+        msg = "capability probe deadline expired"
+        raise exc.WaitTimeout(msg) from error
+    except subprocess.CalledProcessError as error:
+        msg = "cannot read connected daemon capabilities"
+        raise exc.LibTmuxException(msg) from error
+    fields = raw.decode().strip().split("|")
+    if len(fields) != 3 or not fields[0].isdigit() or not fields[1].isdigit():
+        msg = "connected daemon capability reply is invalid"
+        raise exc.LibTmuxException(msg)
+    return ServerCapabilities(int(fields[0]), int(fields[1]), fields[2])
+
+
+def start_program(
+    session: Session,
+    argv: t.Sequence[str],
+    timeout: float,
+    cancel_event: threading.Event | None,
+) -> _Program:
+    """Freeze the selected native route, then retain and observe a fresh program."""
+    from libtmux import session as session_module
+
+    deadline, cancel = _budget(timeout, cancel_event)
+    if isinstance(argv, (str, bytes)) or not isinstance(argv, t.Sequence):
+        msg = "argv must be a sequence of strings"
+        raise TypeError(msg)
+    arguments = tuple(argv)
+    if (
+        len(arguments) < 2
+        or any(not isinstance(arg, str) or "\0" in arg for arg in arguments)
+        or not arguments[0]
+    ):
+        msg = "argv requires a program and at least one string argument without NUL"
+        raise ValueError(msg)
+    server = session.server
+    if type(session).cmd is not session_module._STOCK_SESSION_CMD or "cmd" in vars(
+        session
+    ):
+        msg = "program handles require the stock command dispatcher"
+        raise NotImplementedError(msg)
+    session_id = session.session_id
+    if not isinstance(session_id, str) or re.fullmatch(r"\$\d+", session_id) is None:
+        msg = "program handles require a stable session ID"
+        raise ValueError(msg)
+    job = _native_owner(server)
+    environment = job._environment
     try:
         parent = (
             job._run(
@@ -711,11 +748,10 @@ def start_program(
         ):
             msg = "borrowed parent session could not be identified"
             raise ValueError(msg)  # noqa: TRY301
-        version = parent[3]
-        parsed = re.match(r"(\d+)\.(\d+)", version.removeprefix("next-"))
-        if parsed is None or tuple(map(int, parsed.groups())) < (3, 8):
-            msg = "program handles require a connected tmux 3.8+ server"
-            raise NotImplementedError(msg)  # noqa: TRY301
+        capabilities = ServerCapabilities(int(parent[0]), int(parent[1]), parent[3])
+        feature = capabilities.feature("program-owned")
+        if feature.status != "supported":
+            raise NotImplementedError(feature.reason)  # noqa: TRY301
         name = "libtmux-program-" + uuid.uuid4().hex
         parent_guard = (
             "#{&&:#{&&:#{==:#{pid},"

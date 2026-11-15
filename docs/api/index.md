@@ -173,6 +173,7 @@ Window <libtmux.window>
 Pane <libtmux.pane>
 Client <libtmux.client>
 Common <libtmux.common>
+Capabilities <libtmux.capabilities>
 Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
