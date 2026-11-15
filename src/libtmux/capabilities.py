@@ -12,8 +12,8 @@ _FEATURES = {"program-owned": "3.8"}
 def _release(raw: str) -> tuple[int, int, int, int] | None:
     next_release = re.fullmatch(r"next-(\d+)\.(\d+)", raw)
     if next_release is not None:
-        major, minor = map(int, next_release.groups())
-        return major, minor, 0, 0
+        next_major, next_minor = map(int, next_release.groups())
+        return next_major, next_minor, 0, 0
     release = re.fullmatch(r"(\d+)\.(\d+)(?:([a-z])|-rc(\d*))?", raw)
     if release is None:
         return None
