@@ -47,14 +47,20 @@ which is `"1"` when it floats:
 
 You set the pane's **size** with `width` and `height` (tmux's `-x` / `-y`), and
 its **position** with `x` and `y` — cells measured from the top-left of the
-window (tmux's `-X` / `-Y`). tmux reports the placement back through the
+window (tmux's `-X` / `-Y`). On tmux 3.8+, these values include the border:
+an 80-by-15 pane with a border has 78-by-13 content cells. tmux 3.7 uses
+content dimensions directly. tmux reports the content position through the
 {attr}`pane_x <libtmux.Pane.pane_x>` /
-{attr}`pane_y <libtmux.Pane.pane_y>` fields:
+{attr}`pane_y <libtmux.Pane.pane_y>` fields, one cell inside a border on
+tmux 3.8+. Disable borders when the requested position should match those
+fields exactly:
 
 ```python
 >>> from libtmux.common import has_gte_version
 
 >>> if has_gte_version("3.7"):
+...     if has_gte_version("3.8"):
+...         _ = window.set_option("pane-border-lines", "none")
 ...     placed = window.new_pane(width=20, height=5, x=2, y=1, shell="sleep 30")
 ...     position = (placed.pane_x, placed.pane_y)
 ... else:

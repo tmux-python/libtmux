@@ -12,11 +12,7 @@ from libtmux.test.constants import (
 )
 
 if t.TYPE_CHECKING:
-    import sys
     from collections.abc import Callable
-
-    if sys.version_info >= (3, 11):
-        pass
 
 
 def retry_until(

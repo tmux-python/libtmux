@@ -29,19 +29,14 @@ from libtmux.neo import Obj, fetch_obj
 from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
-    import sys
     import types
+    from typing import Self
 
     from libtmux._internal.types import StrPath
 
     from .server import Server
     from .session import Session
     from .window import Window
-
-    if sys.version_info >= (3, 11):
-        from typing import Self
-    else:
-        from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +51,99 @@ class Pane(
 
     ``Pane`` instances can send commands directly to a pane, or traverse
     between linked tmux objects.
+
+    **Reading it.** Every field is a tmux format token read when the pane was
+    listed or last refreshed, and is ``None`` when tmux gave no value.
+    :meth:`~libtmux.Pane.refresh` rewrites the fields in place and raises
+    :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when the pane has gone. The edge
+    properties convert tmux's flags to bools.
+
+    - Identity: :attr:`~libtmux.Pane.pane_id`, :attr:`~libtmux.Pane.id`
+    - Position: :attr:`~libtmux.Pane.pane_index`, :attr:`~libtmux.Pane.index`
+    - Size: :attr:`~libtmux.Pane.width`, :attr:`~libtmux.Pane.height`
+    - Edges: :attr:`~libtmux.Pane.at_top`, :attr:`~libtmux.Pane.at_bottom`,
+      :attr:`~libtmux.Pane.at_left`, :attr:`~libtmux.Pane.at_right`
+    - Title: :attr:`~libtmux.Pane.title`
+    - Re-read from tmux: :meth:`~libtmux.Pane.refresh`
+
+    **Finding it.** :meth:`~libtmux.Pane.from_pane_id` asks tmux for one pane and
+    raises :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when it is not there.
+    :meth:`~libtmux.Pane.from_env` returns the pane this process runs inside, read
+    from ``$TMUX`` and ``$TMUX_PANE``, and raises :exc:`~libtmux.exc.NotInsideTmux`
+    outside one.
+
+    - By ID: :meth:`~libtmux.Pane.from_pane_id`
+    - The pane you run inside: :meth:`~libtmux.Pane.from_env`
+    - From a listing: :attr:`~libtmux.Server.panes`,
+      :attr:`~libtmux.Window.panes`
+
+    **Finding its parents.** Each access asks tmux.
+
+    - Parents: :attr:`~libtmux.Pane.window`, :attr:`~libtmux.Pane.session`
+
+    **Sending input.** :meth:`~libtmux.Pane.send_keys` presses Enter after the
+    keys unless ``enter=False``, and sends them literally with ``literal=True``.
+    Called without keys it needs ``reset``, ``repeat`` or ``copy_mode_cmd``, and
+    raises :exc:`ValueError` otherwise.
+
+    - Send keys: :meth:`~libtmux.Pane.send_keys`
+    - Press Enter: :meth:`~libtmux.Pane.enter`
+    - Paste a buffer: :meth:`~libtmux.Pane.paste_buffer`
+    - Send the prefix key: :meth:`~libtmux.Pane.send_prefix`
+
+    **Reading output.** :meth:`~libtmux.Pane.capture_pane` returns a list with one
+    string per row. ``start`` and ``end`` count from the first visible line, with
+    negative numbers reaching into the history, ``-`` for the start of the history
+    as ``start`` and for the end of the visible pane as ``end``. With ``to_buffer``
+    it stores the capture in a tmux buffer and returns ``None``. A flag newer than
+    the running tmux warns and is ignored.
+
+    - Capture rows: :meth:`~libtmux.Pane.capture_pane`
+    - Ask tmux for a format: :meth:`~libtmux.Pane.display_message`
+
+    **Splitting and arranging.** :meth:`~libtmux.Pane.split` divides this exact
+    pane, beneath it by default, and returns the new pane. Passing both ``size``
+    and ``percentage`` raises :exc:`ValueError`. A resize takes an adjustment, a
+    height and width, or zoom, and a height or width given as text must be digits
+    or a percentage.
+
+    - Split: :meth:`~libtmux.Pane.split`, :meth:`~libtmux.Pane.new_pane`
+    - Resize: :meth:`~libtmux.Pane.resize`, :meth:`~libtmux.Pane.set_width`,
+      :meth:`~libtmux.Pane.set_height`
+    - Exchange two panes: :meth:`~libtmux.Pane.swap`
+    - Move it into another window: :meth:`~libtmux.Pane.join`,
+      :meth:`~libtmux.Pane.move`
+    - Move it into a window of its own: :meth:`~libtmux.Pane.break_pane`
+    - Make it active: :meth:`~libtmux.Pane.select`
+
+    **Modes, pipes and history.** :meth:`~libtmux.Pane.pipe` copies the pane's
+    output to a shell command, and stops piping when given no command.
+    :meth:`~libtmux.Pane.clear_history` forgets the scrollback, and
+    :meth:`~libtmux.Pane.reset` also resets the terminal state.
+
+    - Copy mode: :meth:`~libtmux.Pane.copy_mode`
+    - Pipe output: :meth:`~libtmux.Pane.pipe`
+    - Scrollback and screen: :meth:`~libtmux.Pane.clear_history`,
+      :meth:`~libtmux.Pane.clear`, :meth:`~libtmux.Pane.reset`
+    - Title: :meth:`~libtmux.Pane.set_title`
+
+    **Changing it.** :meth:`~libtmux.Pane.respawn` documents ``kill=True`` as
+    required if the pane is still active. :meth:`~libtmux.Pane.kill` takes
+    ``all_except`` to kill every other pane in the window instead.
+
+    - Restart what it runs: :meth:`~libtmux.Pane.respawn`
+    - Destroy it: :meth:`~libtmux.Pane.kill`
+
+    **Options and hooks.** An option or hook call acts on the pane scope by
+    default. The setters return the pane, so calls chain, and an unknown or
+    invalid name raises :exc:`~libtmux.exc.OptionError` or one of its subclasses.
+
+    - Options: :meth:`~libtmux.Pane.show_options`,
+      :meth:`~libtmux.Pane.show_option`, :meth:`~libtmux.Pane.set_option`,
+      :meth:`~libtmux.Pane.unset_option`
+    - Hooks: :meth:`~libtmux.Pane.show_hooks`, :meth:`~libtmux.Pane.show_hook`,
+      :meth:`~libtmux.Pane.set_hook`, :meth:`~libtmux.Pane.unset_hook`,
+      :meth:`~libtmux.Pane.run_hook`
 
     Attributes
     ----------
@@ -1471,12 +1559,16 @@ class Pane(
             Environment variables for the new pane (``-e`` flag).
         width : int, optional
             Width of the floating pane in cells (``-x`` flag).
+            Includes the border on tmux 3.8+; ``pane_width`` reports content cells.
         height : int, optional
             Height of the floating pane in cells (``-y`` flag).
+            Includes the border on tmux 3.8+; ``pane_height`` reports content cells.
         x : int, optional
             X position of the floating pane in cells (``-X`` flag).
+            Places the outer border on tmux 3.8+; ``pane_x`` reports content position.
         y : int, optional
             Y position of the floating pane in cells (``-Y`` flag).
+            Places the outer border on tmux 3.8+; ``pane_y`` reports content position.
         zoom : bool, optional
             Zoom the pane (``-Z`` flag).
         empty : bool, optional
@@ -1684,9 +1776,8 @@ class Pane(
     ) -> None:
         """Display a popup overlay via ``$ tmux display-popup``.
 
-        Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux._internal.control_mode.ControlMode` in tests to provide
-        a client.
+        Requires tmux 3.2+ and an attached terminal client. On tmux 3.8+,
+        a control client returns without opening the popup or running its command.
 
         Parameters
         ----------
@@ -1736,12 +1827,10 @@ class Pane(
 
         Examples
         --------
-        Not directly testable — popup rendering requires a TTY-backed client.
-        Control-mode provides an attached client for invocation but the popup
-        itself is not visible or verifiable.
+        Closing an absent popup is harmless, including on a control client:
 
         >>> with control_mode() as ctl:
-        ...     pane.display_popup(command='true', close_on_exit=True)
+        ...     pane.display_popup(close_existing=True)
         """
         if close_on_exit and close_on_success:
             msg = (

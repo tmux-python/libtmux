@@ -179,6 +179,21 @@ Session(...)
 Session(...)
 ```
 
+### Hooks added in tmux 3.8
+
+Events such as `pane-created`, `pane-resized`, and `window-zoomed` use the
+same indexed values:
+
+```python
+>>> from libtmux.common import has_gte_version
+>>> if has_gte_version("3.8"):
+...     _ = session.set_hook("pane-created[7]", "display-message created")
+...     assert session.show_hook("pane-created[7]") == "display-message created"
+```
+
+tmux 3.8 removes `after-queue`; setting it raises
+{exc}`~libtmux.exc.InvalidOption`. Earlier versions retain that hook.
+
 ## tmux version compatibility
 
 Options and hooks need a reasonably recent tmux, and a few specific hooks

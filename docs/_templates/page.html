@@ -1,4 +1,8 @@
 {% extends "!page.html" %}
+{%- block body %}
+  {%- include "site-header.html" %}
+  {{- super() }}
+{%- endblock body %}
 {%- block extrahead %}
   {{ super() }}
   {%- for href in font_preload_hrefs|default([]) %}
