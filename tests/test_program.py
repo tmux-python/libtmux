@@ -12,11 +12,11 @@ import sys
 import threading
 import time
 import typing as t
+import uuid
 
 import pytest
 
-from libtmux import exc
-from libtmux._internal import program
+from libtmux import exc, program
 from libtmux.common import has_gte_version
 
 if t.TYPE_CHECKING:
@@ -30,11 +30,131 @@ requires_events = pytest.mark.skipif(
 
 
 @requires_events
+def test_program_configuration_and_literal_input(
+    session: Session, tmp_path: pathlib.Path
+) -> None:
+    """Configure only the owned window and deliver literal input to its process."""
+    parent = session.cmd("display-message", "-p", "#{window_id}|#{pane_id}").stdout
+    directory = tmp_path / "work ; space"
+    directory.mkdir()
+    value = "value ; $HOME\nsecond line"
+    text = "literal ; $HOME —"
+    job = session.start_program(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json,os,sys; "
+                "print(json.dumps([os.getcwd(),os.environ['LIBTMUX_PROGRAM_VALUE'],"
+                "list(os.get_terminal_size())]),flush=True); "
+                "print(json.dumps([sys.stdin.readline(),sys.stdin.readline()]),"
+                "flush=True); sys.exit(7)"
+            ),
+        ],
+        start_directory=directory,
+        environment={"LIBTMUX_PROGRAM_VALUE": value},
+        width=81,
+        height=17,
+    )
+    try:
+        job.send_text(text, enter=True)
+        job.send_text("second input", enter=True)
+        assert job.wait(timeout=1).exit_status == 7
+        screen = job.collect()
+        assert json.dumps([str(directory), value, [81, 17]]) in screen.text
+        assert json.dumps([text + "\n", "second input\n"]) in screen.text
+        with pytest.raises(exc.LibTmuxException):
+            job.send_text("after exit")
+    finally:
+        job.terminate()
+        job.cleanup()
+    assert (
+        session.cmd("display-message", "-p", "#{window_id}|#{pane_id}").stdout == parent
+    )
+
+
+@requires_events
+def test_run_program_returns_final_result_and_cleans(session: Session) -> None:
+    """A completion helper uses the same owner and removes its finished pane."""
+    before = session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout
+    result = session.run_program(
+        [sys.executable, "-c", "print('final line',end=''); raise SystemExit(7)"]
+    )
+    assert result.exit.exit_status == 7
+    assert result.screen.text == "final line"
+    assert session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout == before
+
+
+@requires_events
+def test_run_program_cancellation_settles_owned_pane(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cancellation after real launch closes the owner without cancelling cleanup."""
+    before = session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout
+    wait = program.Program.wait
+
+    def cancel_after_launch(
+        owner: program.Program, **kwargs: t.Any
+    ) -> program.ProgramExit:
+        kwargs["cancel_event"].set()
+        return wait(owner, **kwargs)
+
+    monkeypatch.setattr(program.Program, "wait", cancel_after_launch)
+    with pytest.raises(concurrent.futures.CancelledError) as caught:
+        session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    assert not t.cast("program._FailureEvidence", caught.value).cleanup_errors
+    assert session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout == before
+
+
+@requires_events
+def test_input_refuses_respawn_between_observation_and_dispatch(
+    session: Session, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """An external replacement receives no input from the previous owner."""
+    job = session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    guarded = program.Program._guarded
+    gate, done = "input-gate-" + uuid.uuid4().hex, "input-done-" + uuid.uuid4().hex
+    report = tmp_path / "replacement-input"
+    prefix = list(job._prefix)
+    child = (
+        "import os,pathlib,select,subprocess; "
+        f"subprocess.run({[*prefix, 'wait-for', '-L', gate]!r},check=True); "
+        "data=os.read(0,4096) if select.select([0],[],[],0)[0] else b''; "
+        f"pathlib.Path({str(report)!r}).write_bytes(data); "
+        f"subprocess.run({[*prefix, 'wait-for', '-S', done]!r},check=True)"
+    )
+    session.cmd("wait-for", "-L", gate)
+
+    def replace_before_input(
+        owner: program.Program, command: str, *args: t.Any, **kwargs: t.Any
+    ) -> bytes:
+        if "send-keys" in command:
+            response = session.cmd(
+                "respawn-pane", "-k", "-t", owner.pane_id, sys.executable, "-c", child
+            )
+            assert not response.stderr
+        return guarded(owner, command, *args, **kwargs)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(program.Program, "_guarded", replace_before_input)
+            with pytest.raises(exc.LibTmuxException):
+                job.send_text("must not reach replacement", enter=True)
+        session.cmd("wait-for", "-U", gate)
+        job._run(("wait-for", done), time.monotonic() + 1, threading.Event())
+        assert report.read_bytes() == b""
+        assert job.pane_id in session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout
+    finally:
+        job._close_resources()
+        session.cmd("kill-pane", "-t", job.pane_id)
+
+
+@requires_events
 def test_program_exit_and_retained_capture(session: Session) -> None:
     """Exit status and capture survive cleanup without deleting the parent."""
     arguments = ["a b", "", "$HOME", "-n", "semi;", "line\nbreak"]
     parent = session.cmd("display-message", "-p", "#{pid}|#{session_id}").stdout
-    job = session.run_program(
+    job = session.start_program(
         [
             sys.executable,
             "-c",
@@ -60,10 +180,10 @@ def test_program_exit_and_retained_capture(session: Session) -> None:
 @requires_events
 def test_unrelated_exit_cannot_complete_program(session: Session) -> None:
     """A real status-9 exit cannot release the selected live status-7 program."""
-    job = session.run_program(
+    job = session.start_program(
         [sys.executable, "-c", "import os; os.read(0,1); raise SystemExit(7)"]
     )
-    other = session.run_program([sys.executable, "-c", "raise SystemExit(9)"])
+    other = session.start_program([sys.executable, "-c", "raise SystemExit(9)"])
     try:
         assert other.wait(timeout=1).exit_status == 9
         with pytest.raises(exc.WaitTimeout) as caught:
@@ -98,7 +218,7 @@ def test_cancel_before_launch_cleans_ready_observer(
     with monkeypatch.context() as patch:
         patch.setattr(program._Client, "until", ready_then_cancel)
         with pytest.raises(concurrent.futures.CancelledError):
-            session.run_program(
+            session.start_program(
                 [
                     sys.executable,
                     "-c",
@@ -137,7 +257,7 @@ def test_cleanup_failure_retains_original_and_owner(
         patch.setattr(program._Client, "until", fail_ready)
         patch.setattr(program._Client, "close", fail_close)
         with pytest.raises(exc.LibTmuxException) as caught:
-            session.run_program([sys.executable, "-c", "raise SystemExit(7)"])
+            session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     assert caught.value.__cause__ is original
     assert t.cast("program._FailureEvidence", caught.value).operation_error is original
     assert t.cast("program._FailureEvidence", caught.value).cleanup_errors == (cleanup,)
@@ -148,7 +268,7 @@ def test_cleanup_failure_retains_original_and_owner(
 @requires_events
 def test_program_signal_and_capture_admission(session: Session) -> None:
     """Signals stay distinct from exit codes; capture bounds preserve prior evidence."""
-    job = session.run_program(
+    job = session.start_program(
         [
             sys.executable,
             "-c",
@@ -189,24 +309,24 @@ def test_invalid_program_and_custom_routing_refuse_before_client(
         patch.setattr(subprocess, "Popen", forbidden)
         for timeout in (-1, float("inf"), float("nan"), True, 10**1000):
             with pytest.raises(ValueError):
-                session.run_program(["program", "arg"], timeout=timeout)
+                session.start_program(["program", "arg"], timeout=timeout)
         for argv in (["program"], ["", "arg"], ["program", "\0"], "program"):
             with pytest.raises((TypeError, ValueError)):
-                session.run_program(argv)
+                session.start_program(argv)
         for attribute in ("engine", "_engine"):
             patch.setattr(session.server, attribute, object(), raising=False)
             with pytest.raises(NotImplementedError):
-                session.run_program(["program", "arg"])
+                session.start_program(["program", "arg"])
             patch.delattr(session.server, attribute)
         patch.setattr(session, "cmd", forbidden)
         with pytest.raises(NotImplementedError):
-            session.run_program(["program", "arg"])
+            session.start_program(["program", "arg"])
 
 
 @requires_events
 def test_program_cancel_and_explicit_termination(session: Session) -> None:
     """Cancelling a wait preserves the live producer and its observer."""
-    job = session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    job = session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
     cancel = threading.Event()
     cancel.set()
     try:
@@ -230,7 +350,7 @@ def test_program_cancel_and_explicit_termination(session: Session) -> None:
 @requires_events
 def test_program_rejects_replacement_lifetime(session: Session) -> None:
     """A later program in the same pane cannot supply this program's status."""
-    job = session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    job = session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
     session.cmd(
         "respawn-pane",
         "-k",
@@ -259,7 +379,7 @@ def test_program_rejects_replacement_lifetime(session: Session) -> None:
 @requires_events
 def test_lost_observer_refuses_destructive_operations(session: Session) -> None:
     """Losing observation cannot authorize killing an unproved program lifetime."""
-    job = session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    job = session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
     assert job._generation is not None
     job._generation.close()
     try:
@@ -282,7 +402,7 @@ def test_completed_cleanup_preserves_cleanup_cause(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A cleanup-only failure keeps the real cause and can be retried."""
-    job = session.run_program([sys.executable, "-c", "raise SystemExit(7)"])
+    job = session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     job.wait(timeout=1)
     failure = OSError("generation cleanup failed")
     close = program._Client.close
@@ -306,10 +426,10 @@ def test_setup_rejects_replaced_server(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Replace an owned test daemon between its creation receipt and setup."""
-    guarded = program._Program._guarded
+    guarded = program.Program._guarded
     replacement: list[Pane] = []
 
-    def replace_before_setup(job: program._Program, *args: t.Any) -> bytes:
+    def replace_before_setup(job: program.Program, *args: t.Any) -> bytes:
         if not replacement:
             session.server.kill()
             session.server.new_session(session_name="foreign0")
@@ -320,9 +440,9 @@ def test_setup_rejects_replaced_server(
         return guarded(job, *args)
 
     with monkeypatch.context() as patch:
-        patch.setattr(program._Program, "_guarded", replace_before_setup)
+        patch.setattr(program.Program, "_guarded", replace_before_setup)
         with pytest.raises(exc.LibTmuxException, match="ownership") as caught:
-            session.run_program([sys.executable, "-c", "raise SystemExit(7)"])
+            session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     assert t.cast("program._FailureEvidence", caught.value).cleanup_errors
     assert replacement[0].cmd(
         "display-message", "-p", "#{pane_dead}|#{window_name}"
@@ -337,11 +457,11 @@ def test_missing_creation_receipt_stays_uncertain(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Drop a real accepted creation's receipt; do not infer ownership by name."""
-    run = program._Program._run
+    run = program.Program._run
     before = len(session.windows)
 
     def lose_receipt(
-        job: program._Program, args: tuple[str, ...], *rest: t.Any
+        job: program.Program, args: tuple[str, ...], *rest: t.Any
     ) -> bytes:
         output = run(job, args, *rest)
         if args[0] == "if-shell" and args[5].startswith("new-window "):
@@ -349,9 +469,9 @@ def test_missing_creation_receipt_stays_uncertain(
         return output
 
     with monkeypatch.context() as patch:
-        patch.setattr(program._Program, "_run", lose_receipt)
+        patch.setattr(program.Program, "_run", lose_receipt)
         with pytest.raises(exc.LibTmuxException, match="unknown") as caught:
-            session.run_program([sys.executable, "-c", "raise SystemExit(7)"])
+            session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     assert t.cast("program._FailureEvidence", caught.value).last_observation is None
     assert t.cast("program._FailureEvidence", caught.value).owner._receipt == ()
     assert len(session.windows) == before + 1
@@ -398,7 +518,7 @@ def test_program_version_gate_precedes_creation(session: Session) -> None:
     """Refuse unsupported jobs before changing the older daemon."""
     before = session.cmd("list-windows", "-F", "#{window_id}").stdout
     with pytest.raises(exc.LibTmuxException, match=r"tmux 3\.8"):
-        session.run_program([sys.executable, "-c", "raise SystemExit(7)"])
+        session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     assert session.cmd("list-windows", "-F", "#{window_id}").stdout == before
 
 
@@ -407,10 +527,10 @@ def test_program_accepts_connected_next_version(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Qualify the next-release spelling without requiring a development binary."""
-    run = program._Program._run
+    run = program.Program._run
 
     def next_version(
-        job: program._Program, args: tuple[str, ...], *rest: t.Any
+        job: program.Program, args: tuple[str, ...], *rest: t.Any
     ) -> bytes:
         output = run(job, args, *rest)
         if args[-1] == "#{pid}|#{start_time}|#{session_id}|#{version}":
@@ -418,8 +538,8 @@ def test_program_accepts_connected_next_version(
         return output
 
     with monkeypatch.context() as patch:
-        patch.setattr(program._Program, "_run", next_version)
-        job = session.run_program([sys.executable, "-c", "raise SystemExit(7)"])
+        patch.setattr(program.Program, "_run", next_version)
+        job = session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     try:
         assert job.wait(timeout=1).exit_status == 7
     finally:
@@ -432,7 +552,7 @@ def test_interrupted_collection_reaps_only_its_client(
     session: Session, monkeypatch: pytest.MonkeyPatch, interrupt: bool
 ) -> None:
     """Expire or interrupt a real capture client after acquisition completes."""
-    job = session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    job = session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
     before = session.cmd(
         "display-message", "-p", "#{pid}|#{pane_id}|#{pane_pid}"
     ).stdout
@@ -486,7 +606,7 @@ def test_cleanup_preserves_borrowed_pane_in_owned_window(session: Session) -> No
     borrowed = session.new_window(window_name="borrowed").active_pane
     assert borrowed is not None
     before = borrowed.cmd("display-message", "-p", "#{pane_id}|#{pane_pid}").stdout
-    job = session.run_program([sys.executable, "-c", "raise SystemExit(7)"])
+    job = session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     job.wait(timeout=1)
     session.cmd("join-pane", "-s", borrowed.pane_id, "-t", job.pane_id)
     job.cleanup()
@@ -501,12 +621,12 @@ def test_startup_compensation_refuses_replacement_program(
     session: Session, monkeypatch: pytest.MonkeyPatch, before_ready: bool
 ) -> None:
     """Replace the program after launch but before factory readiness returns."""
-    verify = program._Program._generation_alive
-    owners: list[program._Program] = []
+    verify = program.Program._generation_alive
+    owners: list[program.Program] = []
     until = program._Client.until
     original = subprocess.TimeoutExpired("launch readiness", 0)
 
-    def replaced(job: program._Program, *args: t.Any) -> None:
+    def replaced(job: program.Program, *args: t.Any) -> None:
         if not owners:
             owners.append(job)
             session.cmd(
@@ -542,9 +662,9 @@ def test_startup_compensation_refuses_replacement_program(
         if before_ready:
             patch.setattr(program._Client, "until", lose_readiness)
         else:
-            patch.setattr(program._Program, "_generation_alive", replaced)
+            patch.setattr(program.Program, "_generation_alive", replaced)
         with pytest.raises(exc.LibTmuxException) as caught:
-            session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+            session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
     failure = t.cast("program._FailureEvidence", caught.value)
     assert failure.cleanup_errors
     if before_ready:
@@ -564,7 +684,7 @@ def test_selector_registration_failure_reaps_started_client(
     """A failed transport constructor must reap the Popen it already started."""
     import selectors
 
-    job = session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    job = session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
     original = OSError("selector registration failed")
     cleanup = OSError("constructor cleanup failed")
     close = program._Client.close
@@ -648,7 +768,7 @@ def test_cancel_before_submission_preserves_intervening_program(
     with monkeypatch.context() as patch:
         patch.setattr(program._Client, "until", replace_empty_pane)
         with pytest.raises(concurrent.futures.CancelledError) as caught:
-            session.run_program(
+            session.start_program(
                 [sys.executable, "-c", "raise SystemExit(7)"], cancel_event=cancel
             )
     failure = t.cast("program._FailureEvidence", caught.value)
@@ -661,7 +781,7 @@ def test_cancel_before_submission_preserves_intervening_program(
 @requires_events
 def test_capture_transport_admission_keeps_exit_evidence(session: Session) -> None:
     """Bound native pipe collection before a large decoded capture can accumulate."""
-    job = session.run_program(
+    job = session.start_program(
         [sys.executable, "-c", "print('A' * 200000); raise SystemExit(7)"]
     )
     try:
@@ -689,18 +809,18 @@ def test_standalone_preserves_operation_and_cleanup_errors(
     main = runpy.run_path(str(script))["main"]
     original = OSError("example collection failed")
     cleanup = OSError("example termination cleanup failed")
-    terminate = program._Program.terminate
+    terminate = program.Program.terminate
 
     def failed_collect(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         raise original
 
-    def failed_terminate(job: program._Program, **kwargs: t.Any) -> t.NoReturn:
+    def failed_terminate(job: program.Program, **kwargs: t.Any) -> t.NoReturn:
         terminate(job, **kwargs)
         raise cleanup
 
     with monkeypatch.context() as patch:
-        patch.setattr(program._Program, "collect", failed_collect)
-        patch.setattr(program._Program, "terminate", failed_terminate)
+        patch.setattr(program.Program, "collect", failed_collect)
+        patch.setattr(program.Program, "terminate", failed_terminate)
         with pytest.raises(OSError) as caught:
             main()
     assert caught.value is original
@@ -714,7 +834,7 @@ def test_cleanup_reaps_observers_after_ownership_loss(
     session: Session, monkeypatch: pytest.MonkeyPatch, loss: str
 ) -> None:
     """Terminal identity failure reaps clients and retains paired cleanup errors."""
-    job = session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
+    job = session.start_program([sys.executable, "-c", "import os; os.read(0,1)"])
     cleanup_error = OSError("ownership-loss observer cleanup failed")
     close = program._Client.close
 
@@ -766,19 +886,83 @@ def test_cleanup_reaps_observers_after_ownership_loss(
             ).stdout == ["0"]
             assert session.server.is_alive()
     finally:
-        job._close_observers()
+        job._close_resources()
+
+
+@requires_events
+def test_capture_cleanup_failure_retains_output_and_one_buffer(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed deletion keeps output and one owned buffer for a bounded retry."""
+    job = session.start_program([sys.executable, "-c", "print('kept capture')"])
+    original = job._run
+    cleanup_error = OSError("capture cleanup unavailable")
+    before = session.server.list_buffers(format_string="#{buffer_name}")
+
+    def refuse_delete(
+        args: tuple[str, ...],
+        deadline: float,
+        cancel: threading.Event,
+        limit: int = 16384,
+    ) -> bytes:
+        if any("delete-buffer -b" in arg for arg in args):
+            raise cleanup_error
+        return original(args, deadline, cancel, limit)
+
+    try:
+        assert job.wait(timeout=1).exit_status == 0
+        with monkeypatch.context() as patch:
+            patch.setattr(job, "_run", refuse_delete)
+            with pytest.raises(exc.LibTmuxException) as caught:
+                job.collect()
+            evidence = t.cast("program._FailureEvidence", caught.value)
+            assert evidence.operation_error is cleanup_error
+            assert evidence.cleanup_errors == (cleanup_error,)
+            assert evidence.last_capture is not None
+            assert evidence.last_capture.text == "kept capture"
+            pending = session.server.list_buffers(format_string="#{buffer_name}")
+            assert len(pending) == len(before) + 1
+            with pytest.raises(exc.LibTmuxException):
+                job.collect()
+            assert (
+                session.server.list_buffers(format_string="#{buffer_name}") == pending
+            )
+    finally:
+        job.cleanup()
+    assert session.server.list_buffers(format_string="#{buffer_name}") == before
 
 
 @requires_events
 def test_capture_preserves_guard_token_text(session: Session) -> None:
-    """Rendered text equal to transport guard tokens remains ordinary text."""
-    tokens = ("LIBTMUX_PROGRAM_REFUSED", "LIBTMUX_PROGRAM_ADMITTED")
-    job = session.run_program(
+    """Keep literal rendered data separate from capture-hook output."""
+    tokens = (
+        "LIBTMUX_PROGRAM_REFUSED",
+        "LIBTMUX_PROGRAM_ADMITTED",
+        "%begin 1 2 3",
+        "%end 1 2 3",
+        r"literal ; $HOME | 'quote' \backslash —",
+    )
+    session.server.set_buffer("borrowed content", buffer_name="borrowed-program-test")
+    buffers = session.server.list_buffers(format_string="#{buffer_name}")
+    job = session.start_program(
         [sys.executable, "-c", "import sys; print(*sys.argv[1:], sep='\\n')", *tokens]
     )
     try:
         assert job.wait(timeout=1).exit_status == 0
+        hook = session.cmd(
+            "set-hook",
+            "-g",
+            "after-capture-pane",
+            "display-message -p UNRELATED_HOOK_OUTPUT",
+        )
+        assert not hook.stderr
         for row, token in enumerate(tokens):
             assert job.collect(start=row, end=row).lines == (token,)
+        assert job.collect().lines == tokens
+        assert session.server.list_buffers(format_string="#{buffer_name}") == buffers
+        assert (
+            session.server.show_buffer(buffer_name="borrowed-program-test")
+            == "borrowed content"
+        )
     finally:
         job.cleanup()

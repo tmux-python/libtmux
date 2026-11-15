@@ -26,7 +26,7 @@ def main() -> None:
             parent = server.new_session(session_name="parent")
             identity_format = "#{pid}|#{session_id}|#{window_id}|#{pane_id}|#{pane_pid}"
             before = parent.cmd("display-message", "-p", identity_format).stdout
-            job = parent.run_program(
+            job = parent.start_program(
                 [
                     sys.executable,
                     "-c",

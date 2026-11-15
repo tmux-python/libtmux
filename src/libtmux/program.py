@@ -29,17 +29,82 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _FIELDS = "#{pid}|#{start_time}|#{window_id}|#{pane_id}|#{window_name}"
 _STATE = _FIELDS + "|#{pane_dead}|#{pane_dead_status}|#{pane_dead_signal}"
+_FORMAT_ESCAPES = b"|&;<>(){}$`\\\"'*?[# =%\n\t"
+
+
+def _capture_bytes(output: bytes, marker: str) -> bytes:
+    """Read one attributed q:buffer_full field, preserving quoted newlines."""
+    rows = list(re.finditer(rb"(?m)^" + marker.encode() + rb"\|", output))
+    if len(rows) != 1:
+        msg = "capture buffer reply is missing or ambiguous"
+        raise ValueError(msg)
+    start = rows[0].end()
+    end = output.find(b"|", start)
+    size = output[start:end]
+    if end < 0 or not size.isdigit():
+        msg = "capture buffer size is invalid"
+        raise ValueError(msg)
+    decoded = bytearray()
+    offset = end + 1
+    while offset < len(output):
+        value = output[offset]
+        if value == ord("\\"):
+            offset += 1
+            if offset >= len(output) or output[offset] not in _FORMAT_ESCAPES:
+                msg = "capture buffer quote is invalid"
+                raise ValueError(msg)
+            decoded.append(output[offset])
+        elif value == ord("\n"):
+            if len(decoded) != int(size):
+                msg = "capture buffer content does not match its byte count"
+                raise ValueError(msg)
+            return bytes(decoded)
+        elif value in _FORMAT_ESCAPES:
+            msg = "capture buffer field is not quoted"
+            raise ValueError(msg)
+        else:
+            decoded.append(value)
+        offset += 1
+    msg = "capture buffer field is incomplete"
+    raise ValueError(msg)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class _ProgramExit:
+class ProgramExit:
+    """Retain completion evidence independently of the live pane.
+
+    Attributes
+    ----------
+    pane_id : str
+        Pane that held the owned program.
+    exit_status : int, optional
+        Normal exit status, or ``None`` when a signal ended the process.
+    exit_signal : str, optional
+        Signal spelling returned by tmux; numeric spellings are preserved.
+    """
+
     pane_id: str
     exit_status: int | None
     exit_signal: str | None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class _ProgramTermination:
+class ProgramTermination:
+    """Describe removal of the owned terminal.
+
+    Attributes
+    ----------
+    pane_id : str
+        Removed pane identifier.
+    pane_removed : bool
+        Whether tmux removed the pane and closed its PTY.
+    exit_status : int, optional
+        Normal status observed before removal, if available.
+    exit_signal : str, optional
+        Signal observed before removal, if available. Removal alone does not
+        establish descendant or process-group exit.
+    """
+
     pane_id: str
     pane_removed: bool
     exit_status: int | None
@@ -47,7 +112,32 @@ class _ProgramTermination:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class _PaneObservation:
+class ProgramScreen:
+    """Hold a bounded rendered screen and history selection.
+
+    Attributes
+    ----------
+    pane_id : str
+        Captured pane identifier.
+    lines : tuple of str
+        Retained rendered lines, with wrapped rows joined.
+    command : tuple of str
+        Native capture command, including its ownership guard.
+    start : int
+        Requested start line relative to the screen.
+    end : int or str
+        Requested end line, or ``-`` for the screen's end.
+    join_wrapped : bool
+        Whether capture joins wrapped physical rows.
+    started_ns : int
+        Monotonic timestamp before capture dispatch.
+    finished_ns : int
+        Monotonic timestamp after receiving the bounded response.
+    target_lifetime_verified : None
+        Capture and lifetime checks are separate observations, not one atomic
+        terminal snapshot.
+    """
+
     pane_id: str
     lines: tuple[str, ...]
     command: tuple[str, ...]
@@ -60,26 +150,43 @@ class _PaneObservation:
 
     @property
     def text(self) -> str:
+        """Join rendered lines without inventing a trailing newline."""
         return "\n".join(self.lines)
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class ProgramResult:
+    """Keep completion and rendered output after an owning run cleans up.
+
+    Attributes
+    ----------
+    exit : ProgramExit
+        Observed normal status or signal.
+    screen : ProgramScreen
+        Bounded final rendered selection; not a lossless byte stream.
+    """
+
+    exit: ProgramExit
+    screen: ProgramScreen
+
+
 class _FailureEvidence:
-    last_observation: _ProgramExit | None
-    last_capture: _PaneObservation | None
+    last_observation: ProgramExit | None
+    last_capture: ProgramScreen | None
     operation_error: BaseException
     cleanup_errors: tuple[BaseException, ...]
-    owner: _Program
+    owner: Program
 
 
-class _ProgramFailure(_FailureEvidence, exc.LibTmuxException):
+class ProgramFailure(_FailureEvidence, exc.LibTmuxException):
     """Keep existing exception catches while attaching the owned handle."""
 
 
-class _ProgramTimeout(_FailureEvidence, exc.WaitTimeout):
+class ProgramTimeout(_FailureEvidence, exc.WaitTimeout):
     """A bounded program operation expired."""
 
 
-class _ProgramCancelled(_FailureEvidence, concurrent.futures.CancelledError):
+class ProgramCancelled(_FailureEvidence, concurrent.futures.CancelledError):
     """A wait was cancelled without terminating its program."""
 
 
@@ -234,8 +341,14 @@ class _Client:
         self.closed = True
 
 
-class _Program:
-    """Own a created pane and two observers; methods never follow mutable facades."""
+class Program:
+    """Drive a fresh retained pane returned by ``Session.start_program``.
+
+    Waiting is synchronous and cancellation of a wait preserves the program.
+    Call ``cleanup`` after completion or ``terminate`` to remove a live pane.
+    Handles are single-caller and must not cross a process fork. They never
+    follow later changes to a Server or Session facade.
+    """
 
     def __init__(self, prefix: tuple[str, ...], environment: _Environment) -> None:
         self._prefix = prefix
@@ -243,8 +356,10 @@ class _Program:
         self._receipt: tuple[str, ...] = ()
         self._exit: _Client | None = None
         self._generation: _Client | None = None
-        self._result: _ProgramExit | None = None
-        self._capture: _PaneObservation | None = None
+        self._retired: list[_Client] = []
+        self._result: ProgramExit | None = None
+        self._capture: ProgramScreen | None = None
+        self._capture_buffer: str | None = None
         self._launched = False
         self._launch_submitted = False
         self._removed = False
@@ -253,6 +368,7 @@ class _Program:
 
     @property
     def pane_id(self) -> str:
+        """Return the owned pane's fixed identifier."""
         return self._receipt[3]
 
     def _run(
@@ -308,10 +424,14 @@ class _Program:
             )
         return result
 
-    def _guard(self, commands: str, *, completed_only: bool = False) -> tuple[str, ...]:
+    def _guard(
+        self, commands: str, *, completed_only: bool = False, live_only: bool = False
+    ) -> tuple[str, ...]:
         condition = self._condition()
         if completed_only:
             condition = "#{&&:" + condition + ",#{==:#{pane_dead},1}}"
+        if live_only:
+            condition = "#{&&:" + condition + ",#{==:#{pane_dead},0}}"
         return (
             "if-shell",
             "-F",
@@ -330,9 +450,10 @@ class _Program:
         limit: int = 16384,
         *,
         completed_only: bool = False,
+        live_only: bool = False,
     ) -> bytes:
         output = self._run(
-            self._guard(commands, completed_only=completed_only),
+            self._guard(commands, completed_only=completed_only, live_only=live_only),
             deadline,
             cancel,
             limit,
@@ -381,7 +502,7 @@ class _Program:
     def _raise(
         self, error: BaseException, cleanup_errors: tuple[BaseException, ...] = ()
     ) -> t.NoReturn:
-        if isinstance(error, (_ProgramFailure, _ProgramTimeout, _ProgramCancelled)):
+        if isinstance(error, (ProgramFailure, ProgramTimeout, ProgramCancelled)):
             raise error
         cleanup_errors = (*cleanup_errors, *getattr(error, "cleanup_errors", ()))
         transport_cleanup = getattr(error, "cleanup_error", None)
@@ -390,11 +511,11 @@ class _Program:
         if isinstance(error, KeyboardInterrupt):
             failure: BaseException = error
         elif isinstance(error, subprocess.TimeoutExpired):
-            failure = _ProgramTimeout("program operation deadline expired")
+            failure = ProgramTimeout("program operation deadline expired")
         elif isinstance(error, concurrent.futures.CancelledError):
-            failure = _ProgramCancelled(str(error))
+            failure = ProgramCancelled(str(error))
         else:
-            failure = _ProgramFailure(str(error))
+            failure = ProgramFailure(str(error))
         for name, value in {
             "last_observation": self._result,
             "last_capture": self._capture,
@@ -417,7 +538,7 @@ class _Program:
 
     def wait(
         self, *, timeout: float = 5, cancel_event: threading.Event | None = None
-    ) -> _ProgramExit:
+    ) -> ProgramExit:
         """Return recorded exit status or signal; cancellation preserves the program."""
         deadline, cancel = _budget(timeout, cancel_event)
         with self._errors():
@@ -465,7 +586,7 @@ class _Program:
             if (status is None) == (signal is None):
                 msg = "program exit status and signal are unknown"
                 raise ValueError(msg)
-            self._result = _ProgramExit(self.pane_id, status, signal)
+            self._result = ProgramExit(self.pane_id, status, signal)
             observer.close()
             return self._result
 
@@ -476,7 +597,7 @@ class _Program:
         end: int | t.Literal["-"] = "-",
         max_text_codepoints: int = 1048576,
         timeout: float = 5,
-    ) -> _PaneObservation:
+    ) -> ProgramScreen:
         """Capture a bounded rendered range; this is not a program byte stream."""
         deadline, cancel = _budget(timeout, None)
         if type(start) is not int or not -10000 <= start <= 10000:
@@ -492,10 +613,13 @@ class _Program:
             msg = "max_text_codepoints must be an integer in [1, 1048576]"
             raise ValueError(msg)
         with self._errors():
+            self._discard_capture()
             self._generation_alive(deadline, cancel)
+            buffer_name = "libtmux-capture-" + uuid.uuid4().hex
             args = (
                 "capture-pane",
-                "-p",
+                "-b",
+                buffer_name,
                 "-J",
                 "-t",
                 self.pane_id,
@@ -504,41 +628,185 @@ class _Program:
                 "-E",
                 str(end),
             )
+            commands = (
+                shlex.join(args)
+                + " ; "
+                + shlex.join(
+                    (
+                        "list-buffers",
+                        "-f",
+                        "#{==:#{buffer_name}," + buffer_name + "}",
+                        "-F",
+                        buffer_name + "|#{buffer_size}|#{q:buffer_full}",
+                    )
+                )
+            )
             started_ns = time.monotonic_ns()
-            output = self._guarded(
-                shlex.join(args), deadline, cancel, 4 * max_text_codepoints + 65536
-            )
-            finished_ns = time.monotonic_ns()
-            self._generation_alive(deadline, cancel)
-            text = (
-                output.decode("utf-8", "backslashreplace")
-                .replace("\r\n", "\n")
-                .replace("\r", "\n")
-                .rstrip("\n")
-            )
-            if len(text) > max_text_codepoints:
-                msg = "capture exceeds max_text_codepoints"
-                raise ValueError(msg)
-            self._capture = _PaneObservation(
-                self.pane_id,
-                tuple(text.split("\n")) if text else (),
-                (*self._prefix, *self._guard(shlex.join(args))),
-                start,
-                end,
-                True,
-                started_ns,
-                finished_ns,
-            )
+            self._capture_buffer = buffer_name
+            try:
+                wire = self._guarded(
+                    commands, deadline, cancel, 4 * max_text_codepoints + 65536
+                )
+                output = _capture_bytes(wire, buffer_name)
+                finished_ns = time.monotonic_ns()
+                self._generation_alive(deadline, cancel)
+                text = (
+                    output.decode("utf-8", "backslashreplace")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+                    .rstrip("\n")
+                )
+                if len(text) > max_text_codepoints:
+                    msg = "capture exceeds max_text_codepoints"
+                    raise ValueError(msg)  # noqa: TRY301
+                self._capture = ProgramScreen(
+                    self.pane_id,
+                    tuple(text.split("\n")) if text else (),
+                    (*self._prefix, *self._guard(commands)),
+                    start,
+                    end,
+                    True,
+                    started_ns,
+                    finished_ns,
+                )
+            except BaseException as error:
+                try:
+                    self._discard_capture()
+                except BaseException as cleanup_error:  # noqa: BLE001
+                    error.cleanup_errors = (  # type: ignore[attr-defined]
+                        *getattr(error, "cleanup_errors", ()),
+                        cleanup_error,
+                    )
+                raise
+            else:
+                try:
+                    self._discard_capture()
+                except BaseException as cleanup_error:  # noqa: BLE001
+                    self._raise(cleanup_error, (cleanup_error,))
             return self._capture
 
-    def _close_observers(self) -> tuple[BaseException, ...]:
+    def send_text(self, text: str, *, enter: bool = False, timeout: float = 5) -> None:
+        """Send literal text while transferring the pane's lifetime witness.
+
+        Input is terminal input, including ordinary terminal echo and line
+        discipline. Completion proves tmux accepted the keys, not that the
+        application consumed them. A failed submitted operation may have sent
+        input and must not be retried automatically.
+
+        Parameters
+        ----------
+        text : str
+            Literal text without NUL; shell syntax is not interpreted.
+        enter : bool
+            Append a carriage return in the same literal input command.
+        timeout : float
+            Finite nonnegative setup and dispatch deadline, in seconds.
+        """
+        if not isinstance(text, str) or "\0" in text or type(enter) is not bool:
+            msg = "input requires text without NUL and a boolean enter flag"
+            raise ValueError(msg)
+        deadline, cancel = _budget(timeout, None)
+        with self._errors():
+            self._generation_alive(deadline, cancel)
+            previous = self._generation
+            assert previous is not None
+            predicate = "#{==:#{pane}," + self.pane_id + "}"
+            successor = _Client(
+                (
+                    *self._prefix,
+                    "-C",
+                    "wait-for",
+                    "-E",
+                    "-F",
+                    predicate,
+                    "pane-created",
+                    ";",
+                    "display-message",
+                    "-p",
+                    "LIBTMUX_LIFETIME_INVALID",
+                ),
+                self._environment,
+            )
+            try:
+                successor.until(lambda: bool(successor.frames()), deadline, cancel)
+                command = (
+                    f"wait-for -E -w client-{previous.process.pid} pane-created ; "
+                    + shlex.join(
+                        (
+                            "send-keys",
+                            "-l",
+                            "-t",
+                            self.pane_id,
+                            "--",
+                            text + ("\r" if enter else ""),
+                        )
+                    )
+                )
+                self._guarded(command, deadline, cancel, live_only=True)
+            except BaseException as error:
+                try:
+                    successor.close()
+                except BaseException as cleanup_error:  # noqa: BLE001
+                    error.cleanup_errors = (cleanup_error,)  # type: ignore[attr-defined]
+                raise
+            self._generation = successor
+            self._retired.append(previous)
+            previous.close()
+            self._retired.remove(previous)
+            self._generation_alive(deadline, cancel)
+
+    def _discard_capture(self) -> None:
+        name = self._capture_buffer
+        if name is None:
+            return
+        deadline, cancel = _budget(0.5, None)
+        condition = (
+            "#{&&:#{==:#{pid},"
+            + self._receipt[0]
+            + "},#{==:#{start_time},"
+            + self._receipt[1]
+            + "}}"
+        )
+        try:
+            output = self._run(
+                (
+                    "if-shell",
+                    "-F",
+                    condition,
+                    "delete-buffer -b "
+                    + name
+                    + " ; display-message -p LIBTMUX_CAPTURE_DISCARDED",
+                    "display-message -p LIBTMUX_CAPTURE_REFUSED",
+                ),
+                deadline,
+                cancel,
+            )
+        except subprocess.CalledProcessError as error:
+            if (
+                error.returncode != 1
+                or error.stderr != f"unknown buffer: {name}\n".encode()
+                or getattr(error, "cleanup_error", None) is not None
+            ):
+                raise
+        else:
+            if b"LIBTMUX_CAPTURE_DISCARDED" not in output.splitlines():
+                msg = "capture buffer daemon changed; cleanup is refused"
+                raise ValueError(msg)
+        self._capture_buffer = None
+
+    def _close_resources(self) -> tuple[BaseException, ...]:
         errors: list[BaseException] = []
-        for client in (self._exit, self._generation):
+        try:
+            self._discard_capture()
+        except BaseException as error:  # noqa: BLE001
+            errors.append(error)
+        for client in (self._exit, self._generation, *self._retired):
             if client is not None:
                 try:
                     client.close()
                 except BaseException as error:  # noqa: BLE001
                     errors.append(error)
+        self._retired = [client for client in self._retired if not client.closed]
         return tuple(errors)
 
     def _remove(
@@ -564,22 +832,22 @@ class _Program:
                 )
             self._guarded(commands, deadline, cancel, completed_only=completed_only)
         except BaseException as error:
-            failures = self._close_observers()
+            failures = self._close_resources()
             if failures:
                 error.cleanup_errors = failures  # type: ignore[attr-defined]
             raise
         self._removed = True
 
-    def terminate(self, *, timeout: float = 5) -> _ProgramTermination:
+    def terminate(self, *, timeout: float = 5) -> ProgramTermination:
         """Close the owned pane and PTY; descendant process exit is not established."""
         deadline, cancel = _budget(timeout, None)
         with self._errors():
             if not self._removed:
                 self._remove(deadline, cancel)
-            errors = self._close_observers()
+            errors = self._close_resources()
             if errors:
                 self._raise(errors[0], errors)
-            return _ProgramTermination(
+            return ProgramTermination(
                 self.pane_id,
                 True,
                 self._result.exit_status if self._result else None,
@@ -613,7 +881,7 @@ class _Program:
                         if self._launch_submitted:
                             self._generation_alive(deadline, cancel)
                 except BaseException as error:
-                    failures = self._close_observers()
+                    failures = self._close_resources()
                     if failures:
                         error.cleanup_errors = failures  # type: ignore[attr-defined]
                     raise
@@ -624,13 +892,13 @@ class _Program:
                     self._remove(
                         deadline, cancel, completed_only=self._launch_submitted
                     )
-            errors = self._close_observers()
+            errors = self._close_resources()
             if errors:
                 self._raise(errors[0], errors)
             self._cleaned = True
 
 
-def _native_owner(server: Server) -> _Program:
+def _native_owner(server: Server) -> Program:
     from libtmux import server as server_module
 
     if (
@@ -662,10 +930,10 @@ def _native_owner(server: Server) -> _Program:
         prefix.extend(("-S", str(pathlib.Path(server.socket_path).resolve())))
     if server.socket_name:
         prefix.extend(("-L", server.socket_name))
-    return _Program(tuple(prefix), environment)
+    return Program(tuple(prefix), environment)
 
 
-def inspect_capabilities(
+def _inspect_capabilities(
     server: Server, timeout: float, cancel_event: threading.Event | None
 ) -> ServerCapabilities:
     """Read daemon identity and feature decisions without creating a pane."""
@@ -690,12 +958,17 @@ def inspect_capabilities(
     return ServerCapabilities(int(fields[0]), int(fields[1]), fields[2])
 
 
-def start_program(
+def _start_program(
     session: Session,
     argv: t.Sequence[str],
     timeout: float,
     cancel_event: threading.Event | None,
-) -> _Program:
+    *,
+    start_directory: str | os.PathLike[str] | None = None,
+    environment: t.Mapping[str, str] | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> Program:
     """Freeze the selected native route, then retain and observe a fresh program."""
     from libtmux import session as session_module
 
@@ -711,6 +984,35 @@ def start_program(
     ):
         msg = "argv requires a program and at least one string argument without NUL"
         raise ValueError(msg)
+    launch_options: list[str] = []
+    if start_directory is not None:
+        directory = os.fspath(start_directory)
+        if not isinstance(directory, str) or "\0" in directory:
+            msg = "start_directory must be a path without NUL"
+            raise ValueError(msg)
+        launch_options.extend(("-c", directory))
+    if environment is not None:
+        if not isinstance(environment, t.Mapping):
+            msg = "environment must map names to string values"
+            raise TypeError(msg)
+        for name, value in environment.items():
+            if (
+                not isinstance(name, str)
+                or not name
+                or "=" in name
+                or "\0" in name
+                or not isinstance(value, str)
+                or "\0" in value
+            ):
+                msg = "environment names and values must be strings without NUL"
+                raise ValueError(msg)
+            launch_options.extend(("-e", name + "=" + value))
+    for dimension in (width, height):
+        if dimension is not None and (
+            type(dimension) is not int or not 1 <= dimension <= 10000
+        ):
+            msg = "program dimensions must be integers in [1, 10000]"
+            raise ValueError(msg)
     server = session.server
     if type(session).cmd is not session_module._STOCK_SESSION_CMD or "cmd" in vars(
         session
@@ -722,7 +1024,7 @@ def start_program(
         msg = "program handles require a stable session ID"
         raise ValueError(msg)
     job = _native_owner(server)
-    environment = job._environment
+    client_environment = job._environment
     try:
         parent = (
             job._run(
@@ -801,12 +1103,18 @@ def start_program(
             msg = "creation receipt is missing; submitted outcome is unknown"
             raise ValueError(msg)  # noqa: TRY301
         job._receipt = fields
-        job._guarded(
+        settings = (
             f"set-option -p -t {job.pane_id} remain-on-exit on ; "
-            f"set-option -p -t {job.pane_id} remain-on-exit-format ''",
-            deadline,
-            cancel,
+            f"set-option -p -t {job.pane_id} remain-on-exit-format ''"
         )
+        if width is not None or height is not None:
+            resize = ["resize-window", "-t", fields[2]]
+            if width is not None:
+                resize.extend(("-x", str(width)))
+            if height is not None:
+                resize.extend(("-y", str(height)))
+            settings += " ; " + shlex.join(resize)
+        job._guarded(settings, deadline, cancel)
         predicate = "#{==:#{pane}," + job.pane_id + "}"
         exit_args = (
             "wait-for",
@@ -822,11 +1130,13 @@ def start_program(
             "LIBTMUX_EXIT|" + _STATE,
         )
         _check(deadline, cancel)
-        observer = _Client((*job._prefix, "-C", *exit_args), environment)
+        observer = _Client((*job._prefix, "-C", *exit_args), client_environment)
         job._exit = observer
         observer.until(lambda: bool(observer.frames()), deadline, cancel)
         _check(deadline, cancel)
-        launch = shlex.join(("respawn-pane", "-t", job.pane_id, "--", *arguments))
+        launch = shlex.join(
+            ("respawn-pane", "-t", job.pane_id, *launch_options, "--", *arguments)
+        )
         launch += " ; " + shlex.join(
             ("display-message", "-p", "-t", job.pane_id, "LIBTMUX_SPAWN|#{pane_pid}")
         )
@@ -836,7 +1146,9 @@ def start_program(
         launch += " ; display-message -p LIBTMUX_LIFETIME_INVALID"
         launch_arguments = job._guard(launch)
         job._launch_submitted = True
-        generation = _Client((*job._prefix, "-C", *launch_arguments), environment)
+        generation = _Client(
+            (*job._prefix, "-C", *launch_arguments), client_environment
+        )
         job._generation = generation
         # Admission, respawn, PID receipt and registration follow the if-shell frame.
         generation.until(lambda: len(generation.frames()) >= 5, deadline, cancel)
@@ -856,6 +1168,50 @@ def start_program(
                 job._remove(cleanup_deadline, cleanup_cancel)
             except BaseException as cleanup_error:  # noqa: BLE001
                 cleanup_errors.append(cleanup_error)
-        cleanup_errors.extend(job._close_observers())
+        cleanup_errors.extend(job._close_resources())
         job._raise(error, tuple(cleanup_errors))
     return job
+
+
+def _run_program(
+    session: Session,
+    argv: t.Sequence[str],
+    timeout: float,
+    cancel_event: threading.Event | None,
+    *,
+    start_directory: str | os.PathLike[str] | None = None,
+    environment: t.Mapping[str, str] | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> ProgramResult:
+    """Compose launch, completion, capture and cleanup with one operation budget."""
+    deadline, cancel = _budget(timeout, cancel_event)
+    job = _start_program(
+        session,
+        argv,
+        _check(deadline, cancel),
+        cancel,
+        start_directory=start_directory,
+        environment=environment,
+        width=width,
+        height=height,
+    )
+    try:
+        exit_result = job.wait(timeout=_check(deadline, cancel), cancel_event=cancel)
+        screen = job.collect(timeout=_check(deadline, cancel))
+        _check(deadline, cancel)
+    except BaseException as error:  # noqa: BLE001
+        cleanup_errors = []
+        for close in (job.terminate, job.cleanup):
+            try:
+                close(timeout=0.5)
+            except BaseException as cleanup_error:  # noqa: BLE001
+                cleanup_errors.append(cleanup_error)
+        if cleanup_errors:
+            error.cleanup_errors = (  # type: ignore[attr-defined]
+                *getattr(error, "cleanup_errors", ()),
+                *cleanup_errors,
+            )
+        job._raise(error)
+    job.cleanup(timeout=0.5)
+    return ProgramResult(exit_result, screen)
