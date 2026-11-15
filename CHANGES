@@ -56,11 +56,21 @@ end of life in October 2026.
 
 #### Own a fresh pane program (#833)
 
-{meth}`~libtmux.Session.run_program` starts a program in a retained pane on
-tmux 3.8+. Its handle separates exit observation, bounded rendered capture,
-explicit pane termination and cleanup. Cancelling a wait leaves the program
-running. The borrowed parent session survives cleanup; missing exit evidence
-stays unknown. The library's core tmux minimum remains 3.2a.
+{meth}`~libtmux.Session.run_program` launches literal arguments, waits for
+completion, captures bounded rendered output and cleans up its pane on tmux
+3.8+. It returns separate exit and screen results. Working directory,
+environment and terminal dimensions are configurable.
+
+{meth}`~libtmux.Session.start_program` returns an interactive handle with
+literal input, exit observation, capture, termination and cleanup. Cancelling
+a wait leaves the program running. Failures retain the owner, prior results
+and cleanup errors for recovery. Capture excludes hook output and preserves
+existing buffers. Cleanup preserves the borrowed parent session; removing
+the owned pane does not establish descendant exit.
+
+{attr}`~libtmux.Server.capabilities` reports the connected daemon's version
+and feature availability. Program creation refuses unsupported versions
+before creating a pane. The library's core tmux minimum remains 3.2a.
 
 ### Fixes
 
