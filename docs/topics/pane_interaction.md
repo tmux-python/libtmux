@@ -100,8 +100,8 @@ does not make an older daemon capable. Discovery is synchronous and creates no
 session or pane; reports are not cached or accepted as mutation authority.
 
 The [standalone program example](https://github.com/tmux-python/libtmux/blob/master/examples/owned_program.py)
-creates a private server and session, checks status 7 and rendered output,
-then cancels an interactive wait and retries it after sending input.
+creates a private server and session, cancels an interactive wait, and retries
+it after sending input. It checks status 7 and the rendered program reply.
 It retains operation and cleanup failures together. Its parent session survives
 job cleanup:
 

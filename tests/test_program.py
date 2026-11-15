@@ -506,6 +506,7 @@ def test_standalone_program_preserves_parent(
         )
         assert result.stdout == (
             "exit status: 7\nhello from the program\n"
+            "received:literal ; $HOME\n"
             "cancelled observation; program completed after retry\n"
         )
         assert (

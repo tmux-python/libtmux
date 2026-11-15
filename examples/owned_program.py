@@ -32,21 +32,11 @@ def main() -> None:
                 [
                     sys.executable,
                     "-c",
-                    "print('hello from the program'); raise SystemExit(7)",
+                    (
+                        "line = input(); print('hello from the program'); "
+                        "print('received:' + line); raise SystemExit(7)"
+                    ),
                 ]
-            )
-            result = job.wait()
-            observation = job.collect(start=-100)
-            assert result.exit_status == 7
-            assert result.exit_signal is None
-            assert observation.text == "hello from the program"
-            job.cleanup()
-            assert parent.cmd("display-message", "-p", identity_format).stdout == before
-            print(f"exit status: {result.exit_status}")
-            print(observation.text)
-
-            job = parent.start_program(
-                [sys.executable, "-c", "print('received:' + input())"]
             )
             cancelled = threading.Event()
             cancelled.set()
@@ -59,10 +49,17 @@ def main() -> None:
                 raise AssertionError(msg)
             job.send_text("literal ; $HOME", enter=True)
             result = job.wait(cancel_event=cancelled)
-            assert result.exit_status == 0
-            assert "received:literal ; $HOME" in job.collect().text
+            observation = job.collect(start=-100)
+            assert result.exit_status == 7
+            assert result.exit_signal is None
+            assert observation.lines[-2:] == (
+                "hello from the program",
+                "received:literal ; $HOME",
+            )
             job.cleanup()
             assert parent.cmd("display-message", "-p", identity_format).stdout == before
+            print(f"exit status: {result.exit_status}")
+            print("\n".join(observation.lines[-2:]))
             print("cancelled observation; program completed after retry")
         except BaseException as error:  # noqa: BLE001
             operation_error = error
