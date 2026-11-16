@@ -72,6 +72,7 @@ the owned pane does not establish descendant exit.
 never submitted, an unverified receipt, a recorded pane and verified removal.
 Its `cleanup_pending` flag also accounts for native clients and capture buffers.
 Failures retain unclosed clients for retry, including failures before creation.
+Capability probes also retain an owner when native client cleanup fails.
 
 {meth}`~libtmux.Server.capabilities` reports the connected daemon's version
 and feature availability. Program creation refuses unsupported versions
