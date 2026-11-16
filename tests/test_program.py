@@ -69,6 +69,9 @@ def test_native_client_errors_hide_command_payload(
                         deadline,
                         cancel,
                     )
+            assert isinstance(
+                raised.value, subprocess.CalledProcessError | subprocess.TimeoutExpired
+            )
             assert raised.value.cmd[-1] == secret
             assert secret not in str(raised.value)
             assert secret not in repr(raised.value)
