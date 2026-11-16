@@ -274,6 +274,45 @@ def test_program_rechecks_budget_after_retired_client_cleanup(
     assert retired.closed and retired.process.poll() is not None
 
 
+def test_native_client_waits_for_exit_after_pipe_eof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After pipe EOF, wait on the live child instead of an empty selector."""
+    client = program._Client(
+        (
+            sys.executable,
+            "-c",
+            "import os; os.close(1); os.close(2); os.read(0, 1); raise SystemExit(7)",
+        ),
+        program._Environment({"PATH": os.defpath, "LANG": "C.UTF-8"}),
+    )
+    cancel = threading.Event()
+
+    def empty_select(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        msg = "An empty selector cannot observe process exit"
+        raise AssertionError(msg)
+
+    try:
+        client.until(
+            lambda: not client.selector.get_map(), time.monotonic() + 1, cancel
+        )
+        assert client.process.poll() is None
+        with monkeypatch.context() as patch:
+            patch.setattr(client.selector, "select", empty_select)
+            client.pump(0)
+            assert client.process.poll() is None
+            assert client.process.stdin is not None
+            client.process.stdin.write(b"x")
+            client.process.stdin.flush()
+            client.until(
+                lambda: client.process.poll() is not None, time.monotonic() + 1, cancel
+            )
+            assert client.process.returncode == 7
+    finally:
+        client.close()
+    assert client.closed and not client.selector.get_map()
+
+
 @requires_events
 def test_program_exit_and_retained_capture(session: Session) -> None:
     """Exit status and capture survive cleanup without deleting the parent."""
