@@ -441,6 +441,7 @@ class Program:
         for pending in tuple(self._retired):
             pending.close()
             self._retired.remove(pending)
+        _check(deadline, cancel)
         try:
             client = _Client((*self._prefix, *args), self._environment, limit)
         except BaseException as error:

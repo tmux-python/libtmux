@@ -229,6 +229,51 @@ def test_input_refuses_respawn_between_observation_and_dispatch(
         session.cmd("kill-pane", "-t", job.pane_id)
 
 
+@pytest.mark.parametrize("boundary", ["cancel", "deadline"])
+def test_program_rechecks_budget_after_retired_client_cleanup(
+    session: Session, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """Closing a real retained client cannot authorize a later expired dispatch."""
+    owner = program._native_owner(session.server)
+    retired = program._Client(
+        (*owner._prefix, "wait-for", "cleanup-" + uuid.uuid4().hex),
+        owner._environment,
+    )
+    owner._retired.append(retired)
+    close = retired.close
+    clock = time.monotonic
+    deadline, cancel = clock() + 1, threading.Event()
+    expired = False
+
+    def finish_cleanup() -> None:
+        nonlocal expired
+        close()
+        if boundary == "cancel":
+            cancel.set()
+        else:
+            expired = True
+
+    def construct_after_stop(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        msg = "A new native client was constructed after cancellation or expiry"
+        raise AssertionError(msg)
+
+    failure = (
+        concurrent.futures.CancelledError
+        if boundary == "cancel"
+        else subprocess.TimeoutExpired
+    )
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(retired, "close", finish_cleanup)
+            patch.setattr(time, "monotonic", lambda: clock() + (2 if expired else 0))
+            patch.setattr(program._Client, "__init__", construct_after_stop)
+            with pytest.raises(failure):
+                owner._run(("display-message", "-p", "unexpected"), deadline, cancel)
+    finally:
+        close()
+    assert retired.closed and retired.process.poll() is not None
+
+
 @requires_events
 def test_program_exit_and_retained_capture(session: Session) -> None:
     """Exit status and capture survive cleanup without deleting the parent."""
