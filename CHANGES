@@ -76,6 +76,8 @@ Capability probes also retain an owner when native client cleanup fails. Retryin
 cleanup rechecks the deadline and cancellation before admitting another command.
 Native clients wait for process exit after both pipes reach EOF, avoiding empty
 selector delays without changing operation deadlines.
+Native error messages and debug records omit command payloads; original
+exceptions retain command elements for explicit inspection.
 
 {meth}`~libtmux.Server.capabilities` reports the connected daemon's version
 and feature availability. Program creation refuses unsupported versions
