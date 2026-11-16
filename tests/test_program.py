@@ -103,7 +103,80 @@ def test_run_program_cancellation_settles_owned_pane(
     with pytest.raises(concurrent.futures.CancelledError) as caught:
         session.run_program([sys.executable, "-c", "import os; os.read(0,1)"])
     assert not t.cast("program._FailureEvidence", caught.value).cleanup_errors
+    recovery = t.cast("program._FailureEvidence", caught.value).owner.recovery
+    assert recovery.pane_state == "removed"
+    assert recovery.cleanup_pending is False
     assert session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout == before
+
+
+@requires_events
+def test_program_recovery_before_creation(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rejected parent leaves no pane or cleanup obligation."""
+    missing = dataclasses.replace(session, session_id="$999999999")
+    before = session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout
+    with pytest.raises(program.ProgramFailure) as caught:
+        missing.start_program([sys.executable, "-c", "raise SystemExit(7)"])
+    owner = caught.value.owner
+    assert owner.recovery.pane_state == "not-submitted"
+    assert owner.recovery.pane_id is None
+    assert owner.recovery.cleanup_pending is False
+
+    def no_native_call(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        msg = "Effect-free cleanup must not query a pane"
+        raise AssertionError(msg)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "_run", no_native_call)
+        owner.cleanup()
+    assert session.cmd("list-panes", "-s", "-F", "#{pane_id}").stdout == before
+
+
+@requires_events
+@pytest.mark.parametrize("constructor_failure", [False, True])
+def test_program_recovery_retains_unclosed_client(
+    session: Session, monkeypatch: pytest.MonkeyPatch, constructor_failure: bool
+) -> None:
+    """Even an effect-free refusal retains native pipes until cleanup succeeds."""
+    import selectors
+
+    clients: list[program._Client] = []
+    selector = selectors.DefaultSelector
+
+    def cannot_close(client: program._Client) -> t.NoReturn:
+        clients.append(client)
+        msg = "Native client cleanup is temporarily unavailable"
+        raise OSError(msg)
+
+    def broken_selector() -> selectors.BaseSelector:
+        selected = selector()
+
+        def fail(*args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+            msg = "Selector registration failed before pane creation"
+            raise OSError(msg)
+
+        selected.register = fail  # type: ignore[method-assign]
+        return selected
+
+    with monkeypatch.context() as patch:
+        patch.setattr(program._Client, "close", cannot_close)
+        if constructor_failure:
+            patch.setattr(selectors, "DefaultSelector", broken_selector)
+        with pytest.raises(program.ProgramFailure) as caught:
+            session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
+    owner = caught.value.owner
+    try:
+        assert owner.recovery.pane_state == "not-submitted"
+        assert owner.recovery.cleanup_pending is True
+        assert caught.value.cleanup_errors
+        owner.cleanup()
+        assert owner.recovery.cleanup_pending is False
+        assert clients and all(client.closed for client in clients)
+        assert all(client.process.poll() is not None for client in clients)
+    finally:
+        for client in clients:
+            client.close()
 
 
 @requires_events
@@ -162,6 +235,12 @@ def test_program_exit_and_retained_capture(session: Session) -> None:
             *arguments,
         ]
     )
+    recovery = job.recovery
+    assert recovery.pane_state == "receipt-recorded"
+    assert recovery.pane_id == job.pane_id
+    assert recovery.cleanup_pending is True
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        recovery.cleanup_pending = False  # type: ignore[misc]
     try:
         result = job.wait(timeout=1)
         assert result.exit_status == 7
@@ -173,6 +252,9 @@ def test_program_exit_and_retained_capture(session: Session) -> None:
             result.exit_status = 0  # type: ignore[misc]
     finally:
         job.cleanup()
+    assert recovery.pane_state == "receipt-recorded"
+    assert job.recovery.pane_state == "removed"
+    assert job.recovery.cleanup_pending is False
     assert session.cmd("display-message", "-p", "#{pid}|#{session_id}").stdout == parent
     assert json.dumps(arguments) in observation.text
 
@@ -473,7 +555,10 @@ def test_missing_creation_receipt_stays_uncertain(
         with pytest.raises(exc.LibTmuxException, match="unknown") as caught:
             session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
     assert t.cast("program._FailureEvidence", caught.value).last_observation is None
-    assert t.cast("program._FailureEvidence", caught.value).owner._receipt == ()
+    recovery = t.cast("program._FailureEvidence", caught.value).owner.recovery
+    assert recovery.pane_state == "unverified"
+    assert recovery.pane_id is None
+    assert recovery.cleanup_pending is True
     assert len(session.windows) == before + 1
 
 
