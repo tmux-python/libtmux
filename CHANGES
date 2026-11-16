@@ -74,6 +74,8 @@ Its `cleanup_pending` flag also accounts for native clients and capture buffers.
 Failures retain unclosed clients for retry, including failures before creation.
 Capability probes also retain an owner when native client cleanup fails. Retrying client
 cleanup rechecks the deadline and cancellation before admitting another command.
+Native clients wait for process exit after both pipes reach EOF, avoiding empty
+selector delays without changing operation deadlines.
 
 {meth}`~libtmux.Server.capabilities` reports the connected daemon's version
 and feature availability. Program creation refuses unsupported versions
