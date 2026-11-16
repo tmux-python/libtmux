@@ -135,8 +135,12 @@ def test_program_recovery_before_creation(
 
 @requires_events
 @pytest.mark.parametrize("constructor_failure", [False, True])
+@pytest.mark.parametrize("operation", ["start", "capabilities"])
 def test_program_recovery_retains_unclosed_client(
-    session: Session, monkeypatch: pytest.MonkeyPatch, constructor_failure: bool
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    constructor_failure: bool,
+    operation: str,
 ) -> None:
     """Even an effect-free refusal retains native pipes until cleanup succeeds."""
     import selectors
@@ -159,14 +163,17 @@ def test_program_recovery_retains_unclosed_client(
         selected.register = fail  # type: ignore[method-assign]
         return selected
 
-    with monkeypatch.context() as patch:
-        patch.setattr(program._Client, "close", cannot_close)
-        if constructor_failure:
-            patch.setattr(selectors, "DefaultSelector", broken_selector)
-        with pytest.raises(program.ProgramFailure) as caught:
-            session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
-    owner = caught.value.owner
     try:
+        with monkeypatch.context() as patch:
+            patch.setattr(program._Client, "close", cannot_close)
+            if constructor_failure:
+                patch.setattr(selectors, "DefaultSelector", broken_selector)
+            with pytest.raises(program.ProgramFailure) as caught:
+                if operation == "capabilities":
+                    session.server.capabilities()
+                else:
+                    session.start_program([sys.executable, "-c", "raise SystemExit(7)"])
+        owner = caught.value.owner
         assert owner.recovery.pane_state == "not-submitted"
         assert owner.recovery.cleanup_pending is True
         assert caught.value.cleanup_errors
