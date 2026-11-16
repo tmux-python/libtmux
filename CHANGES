@@ -68,6 +68,11 @@ and cleanup errors for recovery. Capture excludes hook output and preserves
 existing buffers. Cleanup preserves the borrowed parent session; removing
 the owned pane does not establish descendant exit.
 
+{attr}`~libtmux.program.Program.recovery` distinguishes creation that was
+never submitted, an unverified receipt, a recorded pane and verified removal.
+Its `cleanup_pending` flag also accounts for native clients and capture buffers.
+Failures retain unclosed clients for retry, including failures before creation.
+
 {meth}`~libtmux.Server.capabilities` reports the connected daemon's version
 and feature availability. Program creation refuses unsupported versions
 before creating a pane. The library's core tmux minimum remains 3.2a.
