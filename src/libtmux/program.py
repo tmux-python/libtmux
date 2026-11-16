@@ -219,6 +219,11 @@ class _Environment(dict[str, str]):
         return "<program client environment>"
 
 
+class _Command(tuple[str, ...]):
+    def __repr__(self) -> str:
+        return "<program client command>"
+
+
 def _budget(
     timeout: float, cancel: threading.Event | None
 ) -> tuple[float, threading.Event]:
@@ -259,15 +264,15 @@ class _Client:
     def __init__(
         self, command: tuple[str, ...], env: _Environment, limit: int = 16384
     ) -> None:
-        self.command = command
+        self.command = _Command(command)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "tmux command dispatched", extra={"tmux_cmd": shlex.join(command)}
+                "tmux command dispatched", extra={"tmux_cmd": repr(self.command)}
             )
         self.selector = selectors.DefaultSelector()
         try:
             self.process = subprocess.Popen(
-                command,
+                self.command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
