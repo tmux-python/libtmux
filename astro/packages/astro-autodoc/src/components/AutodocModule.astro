@@ -1,0 +1,55 @@
+---
+import '../styles.css'
+import { slugify } from '../utils'
+import AutodocClass from './AutodocClass.astro'
+import AutodocFunction from './AutodocFunction.astro'
+import AutodocVariable from './AutodocVariable.astro'
+import Docstring from './Docstring.astro'
+
+const { module } = Astro.props
+const anchor = slugify(module.qualname)
+---
+
+<section id={anchor} class="autodoc autodoc-module">
+  <header class="autodoc-card">
+    <div class="autodoc-title">module {module.qualname}</div>
+    <Docstring value={module.docstring} html={module.docstringHtml} />
+    {module.imports.length > 0 ? (
+      <div>
+        <div class="autodoc-pill">Imports</div>
+        <ul>
+          {module.imports.map((item) => (
+            <li>{item}</li>
+          ))}
+        </ul>
+      </div>
+    ) : null}
+  </header>
+
+  {module.classes.length > 0 ? (
+    <div class="autodoc-grid">
+      <h3>Classes</h3>
+      {module.classes.map((klass) => (
+        <AutodocClass klass={klass} />
+      ))}
+    </div>
+  ) : null}
+
+  {module.functions.length > 0 ? (
+    <div class="autodoc-grid">
+      <h3>Functions</h3>
+      {module.functions.map((fn) => (
+        <AutodocFunction fn={fn} />
+      ))}
+    </div>
+  ) : null}
+
+  {module.variables.length > 0 ? (
+    <div class="autodoc-grid">
+      <h3>Variables</h3>
+      {module.variables.map((variable) => (
+        <AutodocVariable variable={variable} />
+      ))}
+    </div>
+  ) : null}
+</section>

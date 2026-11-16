@@ -1,0 +1,50 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@libtmux/schema": ["./packages/schema/src"],
+      "@libtmux/py-bridge": ["./packages/py-bridge/src"],
+      "@libtmux/py-parse": ["./packages/py-parse/src"],
+      "@libtmux/py-introspect": ["./packages/py-introspect/src"],
+      "@libtmux/api-model": ["./packages/api-model/src"],
+      "@libtmux/core": ["./packages/core/src"],
+      "@libtmux/intersphinx": ["./packages/intersphinx/src"],
+      "@libtmux/rst-lite": ["./packages/rst-lite/src"],
+      "@libtmux/astro-autodoc": ["./packages/astro-autodoc/src"],
+      "@libtmux/astro-intersphinx": ["./packages/astro-intersphinx/src"],
+      "@libtmux/docs-site": ["./apps/docs"]
+    },
+    "sourceMap": true,
+    "useDefineForClassFields": true
+  },
+  "files": [],
+  "references": [
+    { "path": "./packages/schema" },
+    { "path": "./packages/py-bridge" },
+    { "path": "./packages/py-parse" },
+    { "path": "./packages/py-introspect" },
+    { "path": "./packages/api-model" },
+    { "path": "./packages/core" },
+    { "path": "./packages/intersphinx" },
+    { "path": "./packages/rst-lite" },
+    { "path": "./packages/astro-autodoc" },
+    { "path": "./packages/astro-intersphinx" },
+    { "path": "./apps/docs" }
+  ]
+}

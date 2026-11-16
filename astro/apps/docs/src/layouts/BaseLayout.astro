@@ -1,0 +1,31 @@
+---
+import '@fontsource/space-grotesk/400.css'
+import '@fontsource/space-grotesk/600.css'
+import '@fontsource/fraunces/400.css'
+import '@fontsource/fraunces/600.css'
+import '@fontsource/ibm-plex-mono/400.css'
+import '../styles/global.css'
+import SiteFooter from '../components/SiteFooter.astro'
+import SiteNav from '../components/SiteNav.astro'
+
+const { title, description } = Astro.props
+const pageTitle = title ? `${title} | libtmux docs` : 'libtmux docs'
+const pageDescription = description ?? 'Typed Python ORM for tmux.'
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <meta name="description" content={pageDescription} />
+  </head>
+  <body class="min-h-screen">
+    <SiteNav />
+    <main class="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-16 px-6 pb-24 pt-10">
+      <slot />
+    </main>
+    <SiteFooter />
+  </body>
+</html>
