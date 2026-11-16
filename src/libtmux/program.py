@@ -1025,12 +1025,16 @@ def _inspect_capabilities(
             deadline,
             cancel,
         )
-    except subprocess.TimeoutExpired as error:
-        msg = "capability probe deadline expired"
-        raise exc.WaitTimeout(msg) from error
-    except subprocess.CalledProcessError as error:
-        msg = "cannot read connected daemon capabilities"
-        raise exc.LibTmuxException(msg) from error
+    except BaseException as error:
+        if owner.recovery.cleanup_pending:
+            owner._raise(error, owner._close_resources())
+        if isinstance(error, subprocess.TimeoutExpired):
+            msg = "capability probe deadline expired"
+            raise exc.WaitTimeout(msg) from error
+        if isinstance(error, subprocess.CalledProcessError):
+            msg = "cannot read connected daemon capabilities"
+            raise exc.LibTmuxException(msg) from error
+        raise
     fields = raw.decode().strip().split("|")
     if len(fields) != 3 or not fields[0].isdigit() or not fields[1].isdigit():
         msg = "connected daemon capability reply is invalid"

@@ -326,6 +326,8 @@ class Server(
         Each call obtains a fresh identity/version report. Unknown versions
         remain unknown; the selected client binary's version is not substituted.
         This synchronous call uses the stock native dispatcher.
+        If native client cleanup fails, the error retains an ``owner``;
+        inspect its ``recovery`` snapshot and retry ``cleanup()``.
 
         Parameters
         ----------
