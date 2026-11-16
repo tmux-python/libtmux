@@ -158,6 +158,8 @@ the {exc}`~libtmux.exc.LibTmuxException` catch contract. Exceptions expose
 `owner`, with the original cause in `__cause__`. `None` means no observation was
 obtained; an empty capture is a distinct immutable value. Keyboard interruption
 preserves the original `KeyboardInterrupt` object.
+Program client errors and debug records omit command payloads. Original native
+exceptions retain their command elements for explicit diagnostic inspection.
 Use one caller at a time for a handle; concurrent methods and reuse after a
 process fork are not supported.
 

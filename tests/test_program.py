@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 import json
+import logging
 import os
 import pathlib
 import subprocess
@@ -27,6 +28,55 @@ if t.TYPE_CHECKING:
 requires_events = pytest.mark.skipif(
     not has_gte_version("3.8"), reason="native program observers require tmux 3.8"
 )
+
+
+@pytest.mark.parametrize("failure", ["stderr", "control", "wait"])
+def test_native_client_errors_hide_command_payload(
+    failure: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Native failures retain argv for explicit inspection without rendering it."""
+    secret = "PROGRAM_CLIENT_PAYLOAD_c09b"
+    source = {
+        "stderr": "import sys; sys.stderr.write('native refusal'); sys.exit(9)",
+        "control": "print('%begin 1 1 0\\n%error 1 1 0', flush=True)",
+        "wait": "import sys; print('READY', flush=True); sys.stdin.read()",
+    }[failure]
+    expected = (
+        subprocess.TimeoutExpired
+        if failure == "wait"
+        else subprocess.CalledProcessError
+    )
+    with caplog.at_level(logging.DEBUG, logger="libtmux.program"):
+        client = program._Client(
+            (sys.executable, "-c", source, secret),
+            program._Environment(os.environ),
+        )
+        try:
+            deadline = time.monotonic() + 1
+            cancel = threading.Event()
+            with pytest.raises(expected) as raised:
+                if failure == "wait":
+                    client.until(lambda: b"READY" in client.output, deadline, cancel)
+                    client.process.wait(timeout=0)
+                elif failure == "control":
+                    client.until(lambda: bool(client.frames()), deadline, cancel)
+                else:
+                    client.until(
+                        lambda: (
+                            client.process.poll() is not None
+                            and not client.selector.get_map()
+                        ),
+                        deadline,
+                        cancel,
+                    )
+            assert raised.value.cmd[-1] == secret
+            assert secret not in str(raised.value)
+            assert secret not in repr(raised.value)
+        finally:
+            client.close()
+    records = [record for record in caplog.records if record.name == "libtmux.program"]
+    assert records
+    assert all(secret not in str(record.__dict__) for record in records)
 
 
 @requires_events
