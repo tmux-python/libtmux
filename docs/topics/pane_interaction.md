@@ -26,6 +26,193 @@ In the second, start `python` (or `ptpython`, if you have it):
 $ python
 ```
 
+## Owning a fresh program
+
+On tmux 3.8 or later, {meth}`~libtmux.Session.run_program` runs a command in a
+fresh PTY, waits for completion, captures its final rendered screen and removes
+the pane. The borrowed session and its existing panes survive.
+
+```python
+>>> import sys
+>>> if session.server.capabilities().supports("program-owned"):
+...     result = session.run_program([
+...         sys.executable, "-c", "print('finished'); raise SystemExit(7)"
+...     ])
+...     assert result.exit.exit_status == 7
+...     assert result.screen.text == "finished"
+```
+
+For interaction, {meth}`~libtmux.Session.start_program` returns an owned
+{class}`~libtmux.program.Program`. It establishes retention and exit observation
+before launch, then returns without waiting for completion. Working directory,
+environment overrides and initial width/height apply only to the owned window.
+
+```python
+>>> import sys
+>>> capabilities = session.server.capabilities()
+>>> if capabilities.supports("program-owned"):
+...     job = session.start_program([
+...         sys.executable, "-c", "print('finished'); raise SystemExit(7)"
+...     ])
+...     result = job.wait(timeout=1)
+...     assert result.exit_status == 7
+...     observation = job.collect(start=-100)
+...     assert "finished" in observation.text
+...     job.cleanup()
+...     assert job.recovery.pane_state == "removed"
+...     assert not job.recovery.cleanup_pending
+```
+
+Send literal terminal input through the handle. Input can be queued before the
+application reads it; tmux's acknowledgement does not prove consumption. A
+carriage return completes a line under the terminal's usual line discipline.
+This example cancels observation, then sends input and waits again:
+
+```python
+>>> import concurrent.futures
+>>> import sys
+>>> import threading
+>>> if session.server.capabilities().supports("program-owned"):
+...     job = session.start_program([
+...         sys.executable, "-c", "print('received:' + input())"
+...     ], width=80, height=24, environment={"PROGRAM_MODE": "interactive"})
+...     try:
+...         cancelled = threading.Event()
+...         cancelled.set()
+...         try:
+...             job.wait(timeout=1, cancel_event=cancelled)
+...         except concurrent.futures.CancelledError:
+...             cancelled.clear()
+...         else:
+...             raise AssertionError("the observation must report cancellation")
+...         job.send_text("literal ; $HOME", enter=True)
+...         assert job.wait(timeout=1, cancel_event=cancelled).exit_status == 0
+...         assert "received:literal ; $HOME" in job.collect().text
+...     finally:
+...         _ = job.terminate()
+...         job.cleanup()
+```
+
+{meth}`~libtmux.Server.capabilities` reads the connected daemon's version and
+identity. Its {class}`~libtmux.capabilities.ServerCapabilities` report exposes
+`features` and `feature("program-owned")`, including the minimum release,
+supported/unsupported/unknown status and reason. Unknown version spellings and
+tmux 3.8 release candidates refuse program creation. A newer client executable
+does not make an older daemon capable. Discovery is synchronous and creates no
+session or pane; reports are not cached or accepted as mutation authority.
+
+The [standalone program example](https://github.com/tmux-python/libtmux/blob/master/examples/owned_program.py)
+creates a private server and session, cancels an interactive wait, and retries
+it after sending input. It checks status 7 and the rendered program reply.
+It retains operation and cleanup failures together. Its parent session survives
+job cleanup:
+
+```console
+$ python examples/owned_program.py
+```
+
+Pass a program and at least one argument. Arguments keep spaces, empty strings,
+shell metacharacters and literal dollar signs. To use shell syntax, pass an
+explicit shell invocation such as `["sh", "-c", "printf hello"]`.
+
+The handle's operations have separate effects:
+
+| Operation | Result and resource policy |
+| --- | --- |
+| `send_text(text, enter=False, timeout=5)` | Literal input under the current lifetime witness. `enter=True` appends a carriage return in the same command. A failed submission may have sent input; do not retry it automatically. |
+| `wait(timeout=5, cancel_event=None)` | Immutable `pane_id`, `exit_status` and `exit_signal` fields. A signal retains tmux's spelling, which can be a name or a decimal number. |
+| `collect(start=-1000, end="-", max_text_codepoints=1048576, timeout=5)` | Immutable rendered observation with `lines`, `text`, `pane_id`, actual `command`, selection fields, and monotonic `started_ns`/`finished_ns`. Wrapped rows are joined. |
+| `terminate(timeout=5)` | Closes the positively owned pane and PTY, then reaps its observer clients. Returns `pane_removed` and any exit evidence already obtained. It does not establish that all descendant processes exited. |
+| `cleanup(timeout=5)` | Removes a completed retained pane and reaps its observer clients. A running program requires explicit `terminate()` first. The borrowed session and other panes survive. |
+
+Collect output before termination. Capture includes only the selected retained
+history and screen, not a lossless byte stream. tmux's inherited history limit
+still governs what the pane retains; this helper does not change the parent
+session's history policy. `start` and numeric `end` must lie within
+`[-10000, 10000]`. Decoded capture is admitted up to `max_text_codepoints`, which
+must lie in `[1, 1048576]`. The separate transport limit is four times that value
+plus 65536 bytes; client diagnostics and observer streams each have a 16384-byte
+limit. These limits bound collection, not the tmux daemon's total memory.
+`target_lifetime_verified` in the observation remains `None`; it is compatible
+with the retained pane-observation shape and does not claim a general tmux
+object-lifetime proof.
+
+Collection uses one temporarily named paste buffer to separate rendered text
+from tmux hook output. It removes that buffer before returning successfully;
+existing buffers survive. If deletion fails, the exception retains the last
+validated capture and cleanup error. The handle retries that buffer's deletion
+before another collection, and during termination or cleanup. A controller
+crash may leave its pane and capture buffer behind; neither has a crash lease.
+
+A `threading.Event` cancels a wait without stopping the program or closing its
+handle-owned observers. Clear the event and wait again, or terminate explicitly.
+By contrast, cancelling `run_program` removes its owned pane and settles observer
+cleanup before raising. Its timeout covers launch, wait and capture; cleanup
+gets a separate bounded budget. These APIs are synchronous. They provide no
+asyncio owner, raw-byte stream or controller-crash lease.
+Cancelling a worker thread's future does not set this event. Timeouts raise
+{exc}`~libtmux.exc.WaitTimeout`; cancellation raises
+{class}`concurrent.futures.CancelledError`. Other operational failures retain
+the {exc}`~libtmux.exc.LibTmuxException` catch contract. Exceptions expose
+`last_observation`, `last_capture`, `operation_error`, `cleanup_errors` and
+`owner`, with the original cause in `__cause__`. `None` means no observation was
+obtained; an empty capture is a distinct immutable value. Keyboard interruption
+preserves the original `KeyboardInterrupt` object.
+Program client errors and debug records omit command payloads. Original native
+exceptions retain their command elements for explicit diagnostic inspection.
+Use one caller at a time for a handle; concurrent methods and reuse after a
+process fork are not supported.
+
+Read {attr}`~libtmux.program.Program.recovery` from a handle or a failure's
+`owner` before deciding whether to retain it. Its immutable
+{class}`~libtmux.program.ProgramRecovery` snapshot distinguishes four states:
+
+| `pane_state` | What is known |
+| --- | --- |
+| `not-submitted` | Creation was not submitted. |
+| `unverified` | Creation may have run, but its receipt is unavailable. |
+| `receipt-recorded` | The original pane identity was recorded; its current lifetime is not asserted. |
+| `removed` | This owner verified removal of its pane. |
+
+`pane_id` is `None` without a receipt. `cleanup_pending` also includes capture
+buffers and native clients: it can remain true before creation or after pane
+removal. Cleanup can retry those clients without querying a nonexistent pane.
+Keep an unresolved owner; a missing receipt is not proof that creation failed.
+The snapshot grants no mutation authority, and cleanup still checks ownership.
+
+The handle freezes its selected executable, endpoint and environment. A random
+window name is installed by the original creation command and retained as
+ownership evidence. Renaming or moving the pane can invalidate this evidence;
+the helper refuses an unproved destructive operation. It never cleans up by a
+reused name or numeric ID alone, and an accepted creation with a missing receipt
+stays uncertain. Setup failure compensates only positively identified creation
+and retains cleanup failures alongside the original error. Custom dispatchers
+and injected engines are refused before native effects.
+
+Input registers a successor lifetime observer before consuming the previous
+witness and sending keys in tmux's command queue. A respawn between observation
+and dispatch therefore refuses input to the replacement. This terminal ownership
+does not confine filesystem access, networking or privileges.
+
+Deletion consumes the handle's still-pending lifetime waiter and closes its
+pane in one native command queue. A respawn or lost observer makes that
+registration unavailable, so `terminate()` and `cleanup()` refuse deletion and
+reap their owned clients. A submitted launch whose readiness was lost follows
+the same rule: missing proof can leave its pane running, with cleanup failure
+retained for explicit inspection.
+
+Calling `cleanup()` while the verified program is still running leaves its
+observers usable for another wait or explicit termination. Ownership loss or an
+unreachable daemon instead closes the owned clients and retains the failure;
+it does not authorize deleting an unproved replacement.
+
+Exit evidence comes from a selected native event and a queued retained-status
+readback. A second observer is registered in the launch command queue to detect
+later respawns of the same pane. Missing, replaced or lost evidence stays
+unknown. An unrelated pane's exit, an early control reply, or visible text cannot
+substitute for the selected program's exit. Sending commands into an existing
+interactive shell remains a separate operation.
+
 ## Sending commands
 
 {meth}`~libtmux.Pane.send_keys` types text into the pane exactly as if you had

@@ -52,6 +52,37 @@ _Notes on the upcoming release will go here._
 libtmux 0.62.0 was the last release supporting Python 3.10. Python 3.10 reached
 end of life in October 2026.
 
+### What's new
+
+#### Own a fresh pane program (#833)
+
+{meth}`~libtmux.Session.run_program` launches literal arguments, waits for
+completion, captures bounded rendered output and cleans up its pane on tmux
+3.8+. It returns separate exit and screen results. Working directory,
+environment and terminal dimensions are configurable.
+
+{meth}`~libtmux.Session.start_program` returns an interactive handle with
+literal input, exit observation, capture, termination and cleanup. Cancelling
+a wait leaves the program running. Failures retain the owner, prior results
+and cleanup errors for recovery. Capture excludes hook output and preserves
+existing buffers. Cleanup preserves the borrowed parent session; removing
+the owned pane does not establish descendant exit.
+
+{attr}`~libtmux.program.Program.recovery` distinguishes creation that was
+never submitted, an unverified receipt, a recorded pane and verified removal.
+Its `cleanup_pending` flag also accounts for native clients and capture buffers.
+Failures retain unclosed clients for retry, including failures before creation.
+Capability probes also retain an owner when native client cleanup fails. Retrying client
+cleanup rechecks the deadline and cancellation before admitting another command.
+Native clients wait for process exit after both pipes reach EOF, avoiding empty
+selector delays without changing operation deadlines.
+Native error messages and debug records omit command payloads; original
+exceptions retain command elements for explicit inspection.
+
+{meth}`~libtmux.Server.capabilities` reports the connected daemon's version
+and feature availability. Program creation refuses unsupported versions
+before creating a pane. The library's core tmux minimum remains 3.2a.
+
 ### Fixes
 
 #### tmux 3.8 hooks and terminal examples (#775)

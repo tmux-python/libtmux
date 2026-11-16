@@ -18,6 +18,7 @@ import warnings
 from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
+from libtmux.capabilities import ServerCapabilities
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
@@ -37,6 +38,7 @@ from .common import (
 from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
+    import threading
     import types
     from typing import Self, TypeAlias
 
@@ -312,6 +314,37 @@ class Server(
 
         if on_init is not None:
             on_init(self)
+
+    def capabilities(
+        self,
+        *,
+        timeout: float = 5,
+        cancel_event: threading.Event | None = None,
+    ) -> ServerCapabilities:
+        """Read feature decisions from the connected daemon without starting one.
+
+        Each call obtains a fresh identity/version report. Unknown versions
+        remain unknown; the selected client binary's version is not substituted.
+        This synchronous call uses the stock native dispatcher.
+        If native client cleanup fails, the error retains an ``owner``;
+        inspect its ``recovery`` snapshot and retry ``cleanup()``.
+
+        Parameters
+        ----------
+        timeout : float
+            Finite nonnegative deadline for the native probe, in seconds.
+        cancel_event : threading.Event, optional
+            Cancel the probe and reap its client without changing the daemon.
+
+        Returns
+        -------
+        ServerCapabilities
+            Immutable identity, version and feature decisions. Query
+            ``feature("program-owned")`` for the supported state and reason.
+        """
+        from libtmux.program import _inspect_capabilities
+
+        return _inspect_capabilities(self, timeout, cancel_event)
 
     @classmethod
     def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:
@@ -2997,3 +3030,6 @@ class Server(
             replacement="Server.sessions property",
             version="0.17.0",
         )
+
+
+_STOCK_SERVER_CMD = Server.cmd

@@ -16,6 +16,7 @@ from .__about__ import (
 )
 from .client import Client
 from .pane import Pane
+from .program import Program, ProgramExit, ProgramRecovery, ProgramResult, ProgramScreen
 from .server import Server
 from .session import Session
 from .window import Window
@@ -25,6 +26,11 @@ logging.getLogger(__name__).addHandler(logging.NullHandler())
 __all__ = (
     "Client",
     "Pane",
+    "Program",
+    "ProgramExit",
+    "ProgramRecovery",
+    "ProgramResult",
+    "ProgramScreen",
     "Server",
     "Session",
     "Window",
