@@ -16,7 +16,7 @@ from .__about__ import (
 )
 from .client import Client
 from .pane import Pane
-from .program import Program, ProgramExit, ProgramResult, ProgramScreen
+from .program import Program, ProgramExit, ProgramRecovery, ProgramResult, ProgramScreen
 from .server import Server
 from .session import Session
 from .window import Window
@@ -28,6 +28,7 @@ __all__ = (
     "Pane",
     "Program",
     "ProgramExit",
+    "ProgramRecovery",
     "ProgramResult",
     "ProgramScreen",
     "Server",

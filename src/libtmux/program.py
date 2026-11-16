@@ -170,6 +170,30 @@ class ProgramResult:
     screen: ProgramScreen
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class ProgramRecovery:
+    """Describe retained cleanup obligations without querying tmux.
+
+    Attributes
+    ----------
+    pane_state : str
+        ``not-submitted`` means creation was never submitted; ``unverified``
+        means creation may have run without a usable receipt. ``receipt-recorded``
+        preserves the original identity, without asserting its current lifetime.
+        ``removed`` means this owner verified removal of its pane.
+    pane_id : str, optional
+        Recorded pane ID, or ``None`` when no creation receipt is available.
+    cleanup_pending : bool
+        Whether a pane, capture buffer or native client still needs cleanup.
+        This can remain true after pane removal or before pane creation.
+        The snapshot grants no mutation authority; cleanup rechecks ownership.
+    """
+
+    pane_state: t.Literal["not-submitted", "unverified", "receipt-recorded", "removed"]
+    pane_id: str | None
+    cleanup_pending: bool
+
+
 class _FailureEvidence:
     last_observation: ProgramExit | None
     last_capture: ProgramScreen | None
@@ -269,6 +293,7 @@ class _Client:
                 self.close()
             except BaseException as cleanup_error:  # noqa: BLE001
                 error.cleanup_error = cleanup_error  # type: ignore[attr-defined]
+                error.cleanup_client = self  # type: ignore[attr-defined]
             raise
 
     def pump(self, seconds: float = 0) -> None:
@@ -360,6 +385,7 @@ class Program:
         self._result: ProgramExit | None = None
         self._capture: ProgramScreen | None = None
         self._capture_buffer: str | None = None
+        self._creation_submitted = False
         self._launched = False
         self._launch_submitted = False
         self._removed = False
@@ -371,6 +397,39 @@ class Program:
         """Return the owned pane's fixed identifier."""
         return self._receipt[3]
 
+    @property
+    def recovery(self) -> ProgramRecovery:
+        """Read an immutable cleanup disposition, including partial-start failures."""
+        state: t.Literal["not-submitted", "unverified", "receipt-recorded", "removed"]
+        if self._removed:
+            state = "removed"
+        elif self._receipt:
+            state = "receipt-recorded"
+        elif self._creation_submitted:
+            state = "unverified"
+        else:
+            state = "not-submitted"
+        pending = (
+            state in ("unverified", "receipt-recorded")
+            or self._capture_buffer is not None
+            or any(
+                client is not None and not client.closed
+                for client in (self._exit, self._generation, *self._retired)
+            )
+        )
+        return ProgramRecovery(
+            state, self._receipt[3] if self._receipt else None, pending
+        )
+
+    def _retain_failed_client(self, error: BaseException) -> None:
+        client = getattr(error, "cleanup_client", None)
+        if (
+            isinstance(client, _Client)
+            and not client.closed
+            and client not in self._retired
+        ):
+            self._retired.append(client)
+
     def _run(
         self,
         args: tuple[str, ...],
@@ -379,7 +438,15 @@ class Program:
         limit: int = 16384,
     ) -> bytes:
         _check(deadline, cancel)
-        client = _Client((*self._prefix, *args), self._environment, limit)
+        for pending in tuple(self._retired):
+            pending.close()
+            self._retired.remove(pending)
+        try:
+            client = _Client((*self._prefix, *args), self._environment, limit)
+        except BaseException as error:
+            self._retain_failed_client(error)
+            raise
+        self._retired.append(client)
         try:
             client.until(
                 lambda: (
@@ -405,6 +472,9 @@ class Program:
         else:
             client.close()
             return output
+        finally:
+            if client.closed:
+                self._retired.remove(client)
 
     def _condition(self) -> str:
         comparisons = [
@@ -502,6 +572,7 @@ class Program:
     def _raise(
         self, error: BaseException, cleanup_errors: tuple[BaseException, ...] = ()
     ) -> t.NoReturn:
+        self._retain_failed_client(error)
         if isinstance(error, (ProgramFailure, ProgramTimeout, ProgramCancelled)):
             raise error
         cleanup_errors = (*cleanup_errors, *getattr(error, "cleanup_errors", ()))
@@ -860,6 +931,15 @@ class Program:
         if self._cleaned:
             return
         with self._errors():
+            if not self._receipt:
+                errors = self._close_resources()
+                if errors:
+                    self._raise(errors[0], errors)
+                if self._creation_submitted:
+                    msg = "creation receipt is unavailable; cleanup remains unverified"
+                    raise ValueError(msg)
+                self._cleaned = True
+                return
             if not self._removed:
                 # An absent pane is already removed; never follow a fallback target.
                 try:
@@ -1078,6 +1158,7 @@ def _start_program(
                 _FIELDS,
             )
         )
+        job._creation_submitted = True
         receipt = job._run(
             (
                 "if-shell",

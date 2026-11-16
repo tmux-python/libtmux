@@ -59,6 +59,8 @@ environment overrides and initial width/height apply only to the owned window.
 ...     observation = job.collect(start=-100)
 ...     assert "finished" in observation.text
 ...     job.cleanup()
+...     assert job.recovery.pane_state == "removed"
+...     assert not job.recovery.cleanup_pending
 ```
 
 Send literal terminal input through the handle. Input can be queued before the
@@ -158,6 +160,23 @@ obtained; an empty capture is a distinct immutable value. Keyboard interruption
 preserves the original `KeyboardInterrupt` object.
 Use one caller at a time for a handle; concurrent methods and reuse after a
 process fork are not supported.
+
+Read {attr}`~libtmux.program.Program.recovery` from a handle or a failure's
+`owner` before deciding whether to retain it. Its immutable
+{class}`~libtmux.program.ProgramRecovery` snapshot distinguishes four states:
+
+| `pane_state` | What is known |
+| --- | --- |
+| `not-submitted` | Creation was not submitted. |
+| `unverified` | Creation may have run, but its receipt is unavailable. |
+| `receipt-recorded` | The original pane identity was recorded; its current lifetime is not asserted. |
+| `removed` | This owner verified removal of its pane. |
+
+`pane_id` is `None` without a receipt. `cleanup_pending` also includes capture
+buffers and native clients: it can remain true before creation or after pane
+removal. Cleanup can retry those clients without querying a nonexistent pane.
+Keep an unresolved owner; a missing receipt is not proof that creation failed.
+The snapshot grants no mutation authority, and cleanup still checks ownership.
 
 The handle freezes its selected executable, endpoint and environment. A random
 window name is installed by the original creation command and retained as
