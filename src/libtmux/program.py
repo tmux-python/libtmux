@@ -297,7 +297,13 @@ class _Client:
             raise
 
     def pump(self, seconds: float = 0) -> None:
-        for key, _ in self.selector.select(seconds):
+        if self.selector.get_map():
+            events = self.selector.select(seconds)
+        else:
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                self.process.wait(timeout=seconds)
+            events = []
+        for key, _ in events:
             buffer, limit = key.data
             chunk = os.read(key.fd, min(65536, limit - len(buffer) + 1))
             if not chunk:
