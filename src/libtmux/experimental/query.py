@@ -50,8 +50,7 @@ from libtmux.experimental.ops import (
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
     from libtmux.experimental.models.snapshots import PaneSnapshot
     from libtmux.experimental.ops import Planner, PlanResult

@@ -14,7 +14,7 @@ from libtmux.experimental.engines.base import (
 )
 
 if t.TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
 
 class WireCase(t.NamedTuple):

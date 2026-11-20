@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["tomlkit>=0.13"]
 # ///
 """Swap MCP server configs across every installed agent CLI.

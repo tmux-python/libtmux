@@ -44,8 +44,7 @@ from libtmux.experimental.engines.subprocess import SubprocessEngine
 if t.TYPE_CHECKING:
     import types
     from collections.abc import Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
 logger = logging.getLogger(__name__)
 
