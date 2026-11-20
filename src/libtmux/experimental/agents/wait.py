@@ -30,7 +30,7 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.agents.state import Agent
 
 
-class WaitReason(str, enum.Enum):
+class WaitReason(enum.StrEnum):
     """Why a :func:`wait_for_agent_state` returned.
 
     Examples
@@ -286,7 +286,7 @@ async def wait_for_agent_state(
     try:
         reason, settled = await asyncio.wait_for(waiter.future, timeout)
         return AgentWait(pane_id, reason, settled)
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         return AgentWait(pane_id, WaitReason.TIMEOUT, monitor.agent_for(pane_id))
     finally:
         monitor.waiters.discard(pane_id, waiter)

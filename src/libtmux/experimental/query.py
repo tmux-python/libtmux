@@ -33,8 +33,8 @@ from dataclasses import dataclass, field
 
 from libtmux._internal.query_list import QueryList
 from libtmux.experimental.agents.source import (
-    ATTENTION as ATTENTION,  # re-exported: the ladder's public home is the query layer
-    AgentSource as AgentSource,
+    ATTENTION as ATTENTION,  # noqa: PLC0414
+    AgentSource as AgentSource,  # noqa: PLC0414
     agent_rows,
 )
 from libtmux.experimental.agents.state import AgentState

@@ -120,9 +120,7 @@ def test_ensure_and_teardown_hud() -> None:
 
 def _pane_row(pane_id: str) -> str:
     """Return a tab-joined list-panes row with *pane_id* in its slot."""
-    return "\t".join(
-        ["$0", "s", "@0", "0", "w", "1", pane_id, "0", "1", "0", "", "", ""],
-    )
+    return f"$0\ts\t@0\t0\tw\t1\t{pane_id}\t0\t1\t0\t\t\t"
 
 
 def test_reconcile_excludes_hud_pane() -> None:
