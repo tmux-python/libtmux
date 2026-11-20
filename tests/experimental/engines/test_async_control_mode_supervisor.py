@@ -126,7 +126,8 @@ class _GatedReconnectEngine(AsyncControlModeEngine):
         await self.reader_hold.wait()
 
     @staticmethod
-    def _backoff(_attempt: int) -> float:
+    def _backoff(attempt: int) -> float:
+        del attempt
         return 0.0
 
 
@@ -2060,7 +2061,8 @@ def test_exit_reason_is_reset_before_replacement_generation() -> None:
                     self._closing = True
 
             @staticmethod
-            def _backoff(_attempt: int) -> float:
+            def _backoff(attempt: int) -> float:
+                del attempt
                 return 0.0
 
         engine = _Probe()

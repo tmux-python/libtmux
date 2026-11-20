@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["rich>=13"]
 # ///
 """Plan, run, validate, and render hermetic active-tmux benchmark evidence.
@@ -386,7 +386,7 @@ def _pane_epoch_overall_timeout_s(pane_count: int, watchdog_s: object) -> float:
     return float(scaled_seconds)
 
 
-class EngineLane(str, enum.Enum):
+class EngineLane(enum.StrEnum):
     """Transport family used for one live benchmark server.
 
     Examples
@@ -399,7 +399,7 @@ class EngineLane(str, enum.Enum):
     CONTROL = "control"
 
 
-class ExecutionMode(str, enum.Enum):
+class ExecutionMode(enum.StrEnum):
     """Synchronous or asynchronous operation execution.
 
     Examples
@@ -7967,7 +7967,7 @@ async def wait_capture_poll_async(
             result = (
                 await asyncio.wait_for(capture_task, timeout=remaining_s)
             ).raise_for_status()
-        except asyncio.TimeoutError as error:
+        except TimeoutError as error:
             message = f"capture wait timed out for request {request.request_id}"
             raise TimeoutError(message) from error
         finally:
@@ -8120,7 +8120,7 @@ async def wait_control_stream(
                     next_notification,
                     timeout=remaining_s,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 next_notification = None
                 break
             except StopAsyncIteration as error:
@@ -8712,7 +8712,7 @@ async def mutate_async(
     while not restoration_task.done():
         try:
             await asyncio.shield(restoration_task)
-        except asyncio.CancelledError as cancellation:  # noqa: PERF203
+        except asyncio.CancelledError as cancellation:
             if not restoration_task.cancelled() and primary_error is None:
                 primary_error = cancellation
         except BaseException:  # noqa: BLE001
@@ -11794,7 +11794,7 @@ async def _drain_task_under_repeated_cancellation(
     while not task.done():
         try:
             await asyncio.shield(task)
-        except asyncio.CancelledError as error:  # noqa: PERF203
+        except asyncio.CancelledError as error:
             if cancellation is None:
                 cancellation = error
         except BaseException:  # noqa: BLE001
