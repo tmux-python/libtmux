@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["rich>=13", "typer>=0.12", "libtmux"]
 #
 # [tool.uv.sources]

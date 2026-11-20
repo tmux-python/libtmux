@@ -39,8 +39,7 @@ from libtmux.experimental.ops.serialize import operation_from_dict, operation_to
 
 if t.TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterator
-
-    from typing_extensions import Self
+    from typing import Self
 
     from libtmux.experimental.engines.base import (
         AsyncTmuxEngine,

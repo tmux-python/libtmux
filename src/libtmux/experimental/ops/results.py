@@ -31,8 +31,7 @@ from libtmux.experimental.ops.exc import TmuxCommandError
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping
-
-    from typing_extensions import Self
+    from typing import Self
 
     from libtmux.experimental.ops._types import Status
     from libtmux.experimental.ops.operation import Operation

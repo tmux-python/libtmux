@@ -18,8 +18,7 @@ from dataclasses import dataclass
 if t.TYPE_CHECKING:
     import pathlib
     from collections.abc import Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
 #: tmux escapes a byte in ``%output`` as a backslash plus three octal digits.
 _CONTROL_OCTAL = re.compile(rb"\\([0-7]{3})")
@@ -330,7 +329,7 @@ class CommandResult:
     returncode: int = 0
 
 
-class EngineKind(str, enum.Enum):
+class EngineKind(enum.StrEnum):
     """Named engine families."""
 
     SUBPROCESS = "subprocess"
