@@ -25,7 +25,7 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import AsyncTmuxEngine
 
 
-class EngineOwnership(str, enum.Enum):
+class EngineOwnership(enum.StrEnum):
     """Whether the async MCP server borrows or owns its engine.
 
     ``BORROWED`` leaves shutdown to the caller that supplied the engine.
@@ -74,7 +74,7 @@ async def _drain_aclose(
     while not close_task.done():
         try:
             await asyncio.shield(close_task)
-        except asyncio.CancelledError as error:  # noqa: PERF203 - drain each cancel
+        except asyncio.CancelledError as error:
             if not close_task.cancelled() and cancellation is None:
                 cancellation = error
         except Exception:

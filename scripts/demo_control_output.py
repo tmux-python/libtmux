@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["libtmux"]
 #
 # [tool.uv.sources]
@@ -484,7 +484,7 @@ async def _next_notification(
         raise TimeoutError(msg)
     try:
         return await asyncio.wait_for(task, timeout=remaining)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         msg = "control-output collection timed out"
         raise TimeoutError(msg) from None
 
@@ -559,7 +559,7 @@ async def _run_overload(
     )
     try:
         notification = await asyncio.wait_for(anext(stream), timeout=0.2)
-    except (StopAsyncIteration, asyncio.TimeoutError):
+    except (TimeoutError, StopAsyncIteration):
         pass
     else:
         observed += int(notification.payload is not None)
