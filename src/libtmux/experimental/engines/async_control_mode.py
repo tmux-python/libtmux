@@ -59,8 +59,7 @@ from libtmux.experimental.engines.control_mode import (
 if t.TYPE_CHECKING:
     import types
     from collections.abc import AsyncIterator, Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
     from libtmux.experimental.engines.base import CommandResult
     from libtmux.experimental.engines.control_mode import ControlModeBlock
@@ -442,7 +441,7 @@ class AsyncControlModeEngine:
                     proc.stdout.read(_READ_CHUNK),
                     timeout=remaining,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 msg = "tmux control-mode startup timed out"
                 raise ControlModeError(msg) from None
             if not chunk:
@@ -561,7 +560,7 @@ class AsyncControlModeEngine:
                 asyncio.gather(*futures),
                 timeout=self.timeout,
             )
-        except asyncio.TimeoutError as error:
+        except TimeoutError as error:
             # The futures stay queued (now cancelled); the reader drains their
             # blocks on arrival, keeping FIFO correlation aligned.
             msg = f"tmux control-mode timed out after {self.timeout}s"
@@ -848,12 +847,12 @@ class AsyncControlModeEngine:
             proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=_STOP_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
             try:
                 await asyncio.wait_for(proc.wait(), timeout=_STOP_TIMEOUT)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 msg = "tmux control process did not exit after kill"
                 raise ControlModeError(msg) from None
 

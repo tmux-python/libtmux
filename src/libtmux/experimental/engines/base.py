@@ -241,7 +241,7 @@ def unescape_control_output(payload: str) -> bytes:
     return _CONTROL_OCTAL.sub(lambda m: bytes((int(m.group(1), 8),)), raw)
 
 
-class EngineKind(str, enum.Enum):
+class EngineKind(enum.StrEnum):
     """Named engine families."""
 
     SUBPROCESS = "subprocess"

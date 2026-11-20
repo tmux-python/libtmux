@@ -249,7 +249,7 @@ async def accumulate_until_settle(
             start = now()
             try:
                 chunk = await asyncio.wait_for(frames.__anext__(), timeout=wait_s)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if now() - deadline >= 0:  # the wall-clock cap, not the idle gap
                     reason = "time_cap"
                 else:  # idle window elapsed -> the pane went quiet

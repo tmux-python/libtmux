@@ -34,8 +34,7 @@ from libtmux.experimental.workspace.runner import (
 
 if t.TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Mapping
-
-    from typing_extensions import Self
+    from typing import Self
 
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.ops.operation import Operation
