@@ -3,12 +3,7 @@
 from __future__ import annotations
 
 import pathlib
-import sys
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib  # type: ignore[import-not-found]
+import tomllib
 
 from libtmux.experimental.agents.hooks.codex import CodexHook
 

@@ -6,7 +6,7 @@ import enum
 from dataclasses import dataclass
 
 
-class AgentState(str, enum.Enum):
+class AgentState(enum.StrEnum):
     """What a coding agent in a pane is doing.
 
     Examples

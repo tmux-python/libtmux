@@ -50,7 +50,6 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
 
     from libtmux.experimental.agents.merge import Clock
-    from libtmux.experimental.agents.signals import Reading
     from libtmux.experimental.agents.state import Agent
     from libtmux.experimental.models.snapshots import PaneSnapshot, ServerSnapshot
 
