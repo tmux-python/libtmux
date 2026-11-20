@@ -1,0 +1,412 @@
+(engines)=
+
+# Engines
+
+Every tmux command libtmux runs goes through an **engine**. An engine takes a
+rendered argv and returns a structured result — that is its whole job.
+
+By default that engine is
+{class}`~libtmux.engines.subprocess.SubprocessEngine`, which forks the tmux
+binary once per command. You never have to know it exists. But because it is a
+seam rather than hard-wired code, you can replace it — to test without tmux
+running, to record what libtmux would do, or to point one `Server` at a
+different tmux binary than another.
+
+## The default path
+
+Nothing changes if you ignore engines entirely:
+
+```python
+>>> server.cmd("display-message", "-p", "#{session_name}").stdout
+['libtmux_...']
+```
+
+Under that call, {class}`~libtmux.Server` built a
+{class}`~libtmux.engines.connection.ServerConnection` from its own
+`socket_name`, `socket_path`, `config_file`, and `colors`, handed it to a
+`SubprocessEngine`, and asked the engine to run the command:
+
+```python
+>>> from libtmux.engines import SubprocessEngine
+>>> server.connection.args
+('-L...',)
+>>> isinstance(server.engine, SubprocessEngine)
+True
+```
+
+The connection is *derived*, not frozen at construction, so moving a server to a
+different socket is picked up on the next command:
+
+```python
+>>> from libtmux.server import Server
+>>> tmux = Server(socket_name="engines_doc_a")
+>>> tmux.connection.args
+('-Lengines_doc_a',)
+>>> tmux.socket_name = "engines_doc_b"
+>>> tmux.connection.args
+('-Lengines_doc_b',)
+```
+
+## Requests and results
+
+An engine speaks two value types.
+{class}`~libtmux.engines.base.CommandRequest` is the argv *after* the binary and
+connection flags. {class}`~libtmux.engines.base.CommandResult` is what came
+back.
+
+```python
+>>> from libtmux.engines import CommandRequest
+>>> CommandRequest.from_args("kill-window", "-t", 2)
+CommandRequest(args=('kill-window', '-t', '2'), tmux_bin=None)
+```
+
+A tmux-side failure is **data**, not an exception. An engine sets `returncode`
+and `stderr`; it does not raise. Only an engine-broken condition — a missing
+binary, a dropped connection — raises:
+
+```python
+>>> from libtmux.engines import CommandResult
+>>> result = CommandResult(
+...     cmd=("tmux", "kill-window"),
+...     stderr=("no such window",),
+...     returncode=1,
+... )
+>>> result.returncode, result.stderr
+(1, ['no such window'])
+```
+
+## Writing an engine
+
+{class}`~libtmux.engines.base.TmuxEngine` is a {class}`typing.Protocol`. There
+is no base class to inherit — any object with `run()` and `run_batch()` is an
+engine.
+
+Here is a complete one that runs nothing, records everything, and answers from a
+canned script. Hand it to a server and no tmux process is involved:
+
+```python
+>>> from libtmux.engines import CommandResult
+>>> from libtmux.server import Server
+
+>>> class RecordingEngine:
+...     """Record every dispatch; answer from a canned script."""
+...
+...     def __init__(self, stdout=()):
+...         self.requests = []
+...         self._stdout = tuple(stdout)
+...
+...     def run(self, request):
+...         self.requests.append(request.args)
+...         return CommandResult(cmd=("tmux", *request.args), stdout=self._stdout)
+...
+...     def run_batch(self, requests):
+...         return [self.run(request) for request in requests]
+
+>>> recorder = RecordingEngine(stdout=("my_session",))
+>>> offline = Server(engine=recorder)
+>>> offline.cmd("display-message", "-p", "#{session_name}").stdout
+['my_session']
+>>> recorder.requests
+[('display-message', '-p', '#{session_name}')]
+```
+
+This works because the socket flags live on the *engine*, not in the request, so
+your `run()` only ever sees the tmux subcommand — never a `-L` to parse back
+out:
+
+```python
+>>> from libtmux.engines import CommandResult
+>>> from libtmux.server import Server
+
+>>> class Recorder:
+...     def __init__(self):
+...         self.requests = []
+...     def run(self, request):
+...         self.requests.append(request.args)
+...         return CommandResult(cmd=("tmux", *request.args))
+...     def run_batch(self, requests):
+...         return [self.run(request) for request in requests]
+
+>>> recorder = Recorder()
+>>> _ = Server(socket_name="engines_doc_scoped", engine=recorder).cmd("list-sessions")
+>>> recorder.requests
+[('list-sessions',)]
+```
+
+### Worked examples
+
+The engine above runs nothing. Two complete ones live in the test suite, written
+to be read and copied:
+
+`tests/examples/engines/test_control_mode_engine.py` holds one long-lived
+`tmux -C` connection instead of forking per command. It is where the traps are
+recorded — a control client must *attach* before tmux pushes it anything;
+opening it with `new-session -A` works but leaves a real session behind in
+`server.sessions`; tmux tags every reply with the command's id, and a mismatch
+means the stream has desynchronized; and a connection that never established
+answers with an error block rather than closing, so it must be raised rather
+than returned as an ordinary failed result.
+
+`tests/examples/engines/test_push_notifications.py` adds a reader thread, so a
+pane's output arrives while the caller is idle rather than the next time a
+command runs.
+
+Both implement the optional capabilities below. An engine that omits them still
+works, but quietly gives up connection adoption and version reporting, so start
+from these rather than from the minimal sketch above.
+
+## Testing without tmux
+
+Writing a fake that *simulates* tmux is a trap. A listing query asks tmux for
+its whole format-field set on every row, and that set is version-gated, so a
+hand-written fake goes stale as tmux gains fields. A fake that covers the gap by
+answering unknown commands optimistically is worse still: it reports that every
+session exists (`has-session` exits 0) while no sessions exist (`list-sessions`
+is empty).
+
+So record real traffic instead, and play it back.
+{meth}`Server.recording() <libtmux.Server.recording>` is the short way — it
+records everything the block issues, against the engine the server already uses,
+and restores that engine afterwards:
+
+```python
+>>> from libtmux.engines import ReplayEngine
+>>> from libtmux.server import Server
+
+>>> with server.recording() as tape:
+...     _ = server.cmd("display-message", "-p", "#{session_name}")
+
+>>> offline = Server(engine=ReplayEngine(tape.tape))
+>>> offline.cmd("display-message", "-p", "#{session_name}").stdout
+['libtmux_...']
+```
+
+`tape.to_dict()` serializes that for a file. The engines behind it,
+{class}`~libtmux.engines.record.RecordingEngine` and
+{class}`~libtmux.engines.record.ReplayEngine`, can also be wired by hand:
+
+```python
+>>> from libtmux.engines import RecordingEngine, ReplayEngine, SubprocessEngine
+>>> from libtmux.server import Server
+
+>>> recorder = RecordingEngine(SubprocessEngine.for_server(server))
+>>> live = Server(socket_name=server.socket_name, engine=recorder)
+>>> _ = live.cmd("display-message", "-p", "#{session_name}")
+
+>>> offline = Server(engine=ReplayEngine(recorder.tape))
+>>> offline.cmd("display-message", "-p", "#{session_name}").stdout
+['libtmux_...']
+```
+
+Because the rows came from real tmux, the whole object API works offline —
+`sessions`, `windows`, `panes` all hydrate.
+{meth}`~libtmux.engines.record.RecordingEngine.to_dict` and
+{meth}`~libtmux.engines.record.ReplayEngine.from_dict` round-trip a tape through
+JSON, so you can commit one next to the tests that replay it: recording needs
+tmux, running does not — not even the binary.
+
+That last part is why a tape carries the tmux version it was recorded on. The
+`-F` template libtmux sends is version-gated, so *something* has to name a
+version before a listing query can be built. A replay engine answers with the
+recorded one, and a miss says which version the tape came from rather than
+leaving you to guess:
+
+```python
+>>> from libtmux.engines import ReplayEngine
+>>> from libtmux.server import Server
+>>> offline = Server(
+...     tmux_bin="/nonexistent/tmux",
+...     engine=ReplayEngine({}, tmux_version="3.7"),
+... )
+>>> offline.sessions
+Traceback (most recent call last):
+...
+libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions
+<...-char arg>' (tape recorded on tmux 3.7)
+```
+
+A tape keeps every exchange in order, not one answer per command. That matters
+whenever state changes underneath a repeated query — `list-sessions` before and
+after a session is created — because a tape that remembered only the last answer
+would replay the end state for both, and a test asserting the transition would
+pass against the wrong value. Replay serves the recorded answers in order.
+
+A command whose answer never varied while recording may be replayed as often as
+you like. One that *did* vary has no defensible reply once its answers run out,
+so it raises rather than repeating the final one:
+
+```python
+>>> from libtmux.engines import CommandResult, Exchange, ReplayEngine
+>>> from libtmux.server import Server
+>>> tape = [
+...     Exchange(("list-sessions",), CommandResult(cmd=("tmux",), stdout=("one",))),
+...     Exchange(("list-sessions",), CommandResult(cmd=("tmux",), stdout=("two",))),
+... ]
+>>> replay = Server(engine=ReplayEngine(tape))
+>>> replay.cmd("list-sessions").stdout, replay.cmd("list-sessions").stdout
+(['one'], ['two'])
+>>> replay.cmd("list-sessions")
+Traceback (most recent call last):
+...
+libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions'
+(answered 2 times while recording, asked 3 times now)
+```
+
+Note that a missing command raises rather than returning an empty list.
+{attr}`Server.sessions <libtmux.Server.sessions>` is lenient by contract when
+tmux cannot be reached, but an engine that was never taught to answer is a gap
+in your fixture, not an unreachable tmux — reporting "no sessions" there would
+hide the bug.
+
+A replay engine **fails closed**. A command it never recorded raises
+{exc}`~libtmux.exc.UnscriptedCommand` rather than inventing an answer:
+
+```python
+>>> from libtmux.engines import CommandResult, ReplayEngine
+>>> from libtmux.server import Server
+>>> engine = ReplayEngine({("list-sessions",): CommandResult(cmd=("tmux",))})
+>>> Server(engine=engine).cmd("kill-server")
+Traceback (most recent call last):
+...
+libtmux.exc.UnscriptedCommand: no recorded result for 'kill-server'
+```
+
+A recorder also works as a plain spy — `requests` is every argv in order, which
+is what the `recording_server` pytest fixture is for:
+
+```python
+>>> from libtmux.engines import RecordingEngine, SubprocessEngine
+>>> from libtmux.server import Server
+>>> recorder = RecordingEngine(SubprocessEngine.for_server(server))
+>>> spy = Server(socket_name=server.socket_name, engine=recorder)
+>>> _ = spy.cmd("list-sessions")
+>>> recorder.requests
+[('list-sessions',)]
+```
+
+## Several commands at once
+
+{meth}`Server.cmd_batch() <libtmux.Server.cmd_batch>` hands a whole sequence to
+the engine instead of dispatching one command at a time:
+
+```python
+>>> results = server.cmd_batch(
+...     [("display-message", "-p", "one"), ("display-message", "-p", "two")]
+... )
+>>> [result.stdout for result in results]
+[['one'], ['two']]
+```
+
+On the default engine this is a convenience — it forks per command either way.
+Its value shows with an engine holding a persistent connection, which can write
+every command before waiting for the first reply. Measured against a
+control-mode engine, forty commands took about an eighth as long batched as
+issued one at a time.
+
+A failure does not truncate the batch; it is reported on its own result:
+
+```python
+>>> server.cmd_batch([("kill-window", "-t", "@99999")])[0].ok
+False
+```
+
+## Injected engines and sockets
+
+An engine that names no tmux server of its own **adopts** the server's
+connection. Without that rule, injecting a bare engine into a socket-scoped
+server would silently dispatch to whichever server a flagless `tmux` reaches:
+
+```python
+>>> from libtmux.engines import SubprocessEngine
+>>> from libtmux.server import Server
+>>> scoped = Server(socket_name="engines_doc_c", engine=SubprocessEngine())
+>>> scoped.engine.server_args
+('-Lengines_doc_c',)
+```
+
+An engine that *does* name a server is left exactly as you built it:
+
+```python
+>>> from libtmux.engines import SubprocessEngine
+>>> from libtmux.server import Server
+>>> pinned = SubprocessEngine.of(server_args=("-Lengines_doc_pinned",))
+>>> Server(socket_name="engines_doc_c", engine=pinned).engine.server_args
+('-Lengines_doc_pinned',)
+```
+
+An in-memory engine has no connection at all, so neither rule applies and it is
+used untouched.
+
+## Optional capabilities
+
+An engine may implement extra protocols. Each is optional; libtmux checks with
+{func}`isinstance` and degrades gracefully when absent.
+
+{class}`~libtmux.engines.base.SupportsCommandLine` renders the argv an engine
+*would* run, which is how the full command line reaches the debug log before
+dispatch. {class}`~libtmux.engines.base.SupportsTmuxVersion` reports the tmux
+version an engine targets, for version-gated behavior.
+{class}`~libtmux.engines.base.SupportsConnection` marks an engine that
+dispatches over a named server and can be rebound — the protocol behind the
+adoption rule above.
+
+```python
+>>> from libtmux.engines import (
+...     SubprocessEngine,
+...     SupportsCommandLine,
+...     SupportsConnection,
+... )
+>>> engine = SubprocessEngine()
+>>> isinstance(engine, SupportsCommandLine), isinstance(engine, SupportsConnection)
+(True, True)
+```
+
+An engine that implements neither simply is not matched:
+
+```python
+>>> from libtmux.engines import CommandResult, SupportsCommandLine
+>>> class Bare:
+...     def run(self, request):
+...         return CommandResult(cmd=("tmux", *request.args))
+...     def run_batch(self, requests):
+...         return [self.run(request) for request in requests]
+>>> isinstance(Bare(), SupportsCommandLine)
+False
+```
+
+## Separators are explicit
+
+tmux treats a trailing `;` on an argument as a command boundary. libtmux escapes
+it so your data survives, which means a `;` you *intend* as a separator must say
+so with {class}`~libtmux.engines.base.CommandSeparator`:
+
+```python
+>>> from libtmux.engines import CommandSeparator, encode_direct_argv
+>>> encode_direct_argv(("send-keys", "echo hi;"))
+('send-keys', 'echo hi\\;')
+>>> encode_direct_argv(("send-keys", CommandSeparator(";"), "clear-history"))
+('send-keys', ';', 'clear-history')
+```
+
+Connection flags are never escaped, because tmux's `getopt` removes them before
+the command parser ever sees them:
+
+```python
+>>> from libtmux.engines import encode_direct_argv
+>>> encode_direct_argv(("-Lsock;", "display-message", "text;"))
+('-Lsock;', 'display-message', 'text\\;')
+```
+
+Used against a live pane, a separator folds two tmux commands into one dispatch:
+
+```python
+>>> pane = session.active_window.active_pane
+>>> from libtmux.engines import CommandSeparator
+>>> _ = server.cmd(
+...     "send-keys", "-t", pane.pane_id, "-R",
+...     CommandSeparator(";"),
+...     "clear-history", "-t", pane.pane_id,
+... )
+```
+
+See {ref}`migration-0-63-command-separator` for migrating existing callers.

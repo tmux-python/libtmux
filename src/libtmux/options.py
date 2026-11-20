@@ -82,6 +82,7 @@ from libtmux.constants import (
     OptionScope,
     _DefaultOptionScope,
 )
+from libtmux.engines.base import CommandResult
 
 from . import exc
 
@@ -89,7 +90,6 @@ if t.TYPE_CHECKING:
     from typing import Self, TypeAlias
 
     from libtmux._internal.constants import TerminalFeatures
-    from libtmux.common import tmux_cmd
 
 
 TerminalOverride = dict[str, str | None]
@@ -807,7 +807,7 @@ class OptionsMixin(CmdMixin):
         include_inherited: bool | None = None,
         quiet: bool | None = None,
         values_only: bool | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Return a dict of options for the target.
 
         Parameters
@@ -1049,7 +1049,7 @@ class OptionsMixin(CmdMixin):
         ignore_errors: bool | None = None,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Return raw option output for target.
 
         Parameters
