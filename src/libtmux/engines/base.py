@@ -23,8 +23,7 @@ from dataclasses import dataclass, field
 if t.TYPE_CHECKING:
     import pathlib
     import subprocess
-
-    from typing_extensions import Self
+    from typing import Self
 
 # tmux parses these options with getopt before its command argv reaches
 # cmd_parse_from_arguments. Only values in the latter have structural
