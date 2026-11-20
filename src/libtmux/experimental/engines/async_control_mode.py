@@ -994,7 +994,7 @@ class AsyncControlModeEngine:
                 waiter = asyncio.gather(task, return_exceptions=True)
                 try:
                     await asyncio.wait_for(waiter, timeout=_STOP_TIMEOUT)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     task.cancel()
                     await asyncio.gather(task, return_exceptions=True)
         except asyncio.CancelledError:

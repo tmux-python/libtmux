@@ -133,7 +133,7 @@ class _AsyncProcessOwner:
             while not cleanup_task.done():
                 try:
                     await asyncio.shield(cleanup_task)
-                except asyncio.CancelledError:  # noqa: PERF203
+                except asyncio.CancelledError:
                     continue
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 cleanup_task.result()
