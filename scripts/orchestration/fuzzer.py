@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["rich>=13"]
 # ///
 """Generate deterministic append-only streams for orchestration benchmarks."""
@@ -34,7 +34,7 @@ DELAYED_ACTIVITY_RECORD_MAX_BYTES = 128
 EPOCH_PULSE_MAX_BYTES = 64
 
 
-class StreamMode(str, enum.Enum):
+class StreamMode(enum.StrEnum):
     """A deterministic active-output stream category."""
 
     EDITOR = "editor"
