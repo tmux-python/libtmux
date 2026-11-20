@@ -11,14 +11,10 @@ These tests exercise the block itself.
 from __future__ import annotations
 
 import pathlib
+import tomllib
 import typing as t
 
 import pytest
-
-# ``tomllib`` is stdlib from 3.11 onward. The package still supports 3.10, and
-# mypy type-checks against that floor, so this module skips there rather than
-# growing a dependency to parse a handful of comment lines.
-tomllib = pytest.importorskip("tomllib")
 
 _REPO_ROOT = pathlib.Path(__file__).parents[2]
 _SCRIPTS = _REPO_ROOT / "scripts"

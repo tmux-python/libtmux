@@ -16,8 +16,7 @@ if t.TYPE_CHECKING:
     import pathlib
     import subprocess
     from collections.abc import Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
 
 class CommandSeparator(str):
