@@ -16,6 +16,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
+from libtmux._internal.capabilities import capability_since
 from libtmux._internal.env import (
     resolve_ambient_socket_path,
     socket_path_from_env,
@@ -710,7 +711,9 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if has_gte_version(
+                capability_since("run-shell-start-directory"), tmux_bin=self.tmux_bin
+            ):
                 tmux_args += ("-c", str(cwd))
             else:
                 warnings.warn(
@@ -719,7 +722,9 @@ class Server(
                 )
 
         if show_stderr:
-            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+            if has_gte_version(
+                capability_since("run-shell-show-stderr"), tmux_bin=self.tmux_bin
+            ):
                 tmux_args += ("-E",)
             else:
                 warnings.warn(
@@ -730,7 +735,9 @@ class Server(
         tmux_args += ("--", command)
 
         if args:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if has_gte_version(
+                capability_since("run-shell-args"), tmux_bin=self.tmux_bin
+            ):
                 tmux_args += tuple(args)
             else:
                 warnings.warn(
@@ -913,7 +920,9 @@ class Server(
             tmux_args += ("-T", key_table)
 
         if format_ is not None:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if has_gte_version(
+                capability_since("list-keys-format"), tmux_bin=self.tmux_bin
+            ):
                 tmux_args += ("-F", format_)
             else:
                 warnings.warn(

@@ -1,0 +1,169 @@
+{
+  "schema": "libtmux-capabilities/1",
+  "port": "py",
+  "floor": {
+    "minimum": "3.2a"
+  },
+  "capabilities": [
+    {
+      "id": "run-shell-start-directory",
+      "name": "run-shell working directory",
+      "summary": "Start a run-shell job in a chosen directory.",
+      "since": "3.4",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Server.run_shell"
+      ],
+      "commands": [
+        {
+          "command": "run-shell",
+          "flags": [
+            "-c"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "run-shell-show-stderr",
+      "name": "run-shell stderr",
+      "summary": "Show a run-shell job's standard error as well as its output.",
+      "since": "3.6",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Server.run_shell"
+      ],
+      "commands": [
+        {
+          "command": "run-shell",
+          "flags": [
+            "-E"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "run-shell-args",
+      "name": "run-shell job arguments",
+      "summary": "Pass extra arguments to a run-shell job.",
+      "since": "3.7",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Server.run_shell"
+      ],
+      "commands": [
+        {
+          "command": "run-shell"
+        }
+      ]
+    },
+    {
+      "id": "list-keys-format",
+      "name": "Formatted key listing",
+      "summary": "Format each key binding with a caller-supplied template.",
+      "since": "3.7",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Server.list_keys"
+      ],
+      "commands": [
+        {
+          "command": "list-keys",
+          "flags": [
+            "-F"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "capture-trim-blank-cells",
+      "name": "Trim blank capture cells",
+      "summary": "Drop trailing positions that hold no character from a capture.",
+      "since": "3.4",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Pane.capture_pane"
+      ],
+      "commands": [
+        {
+          "command": "capture-pane",
+          "flags": [
+            "-T"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "capture-mode-screen",
+      "name": "Capture the mode screen",
+      "summary": "Capture what a pane's active mode shows instead of the pane.",
+      "since": "3.6",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Pane.capture_pane"
+      ],
+      "commands": [
+        {
+          "command": "capture-pane",
+          "flags": [
+            "-M"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "capture-line-flags",
+      "name": "Capture line numbers, flags and hyperlinks",
+      "summary": "Prefix captured lines with their number or metadata flags, or keep hyperlinks.",
+      "since": "3.7",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Pane.capture_pane"
+      ],
+      "commands": [
+        {
+          "command": "capture-pane",
+          "flags": [
+            "-F",
+            "-H",
+            "-L"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "paste-buffer-no-vis",
+      "name": "Paste raw bytes",
+      "summary": "Paste a buffer without tmux rewriting its control characters.",
+      "since": "3.7",
+      "handling": "fallback",
+      "apis": [
+        "libtmux.Pane.paste_buffer"
+      ],
+      "commands": [
+        {
+          "command": "paste-buffer",
+          "flags": [
+            "-S"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "floating-pane",
+      "name": "Floating panes",
+      "summary": "Create a floating pane with new-pane.",
+      "since": "3.7",
+      "handling": "refuse",
+      "error": "libtmux.exc.LibTmuxException",
+      "apis": [
+        "libtmux.Pane.new_pane"
+      ],
+      "commands": [
+        {
+          "command": "new-pane"
+        }
+      ]
+    }
+  ],
+  "workarounds": []
+}
