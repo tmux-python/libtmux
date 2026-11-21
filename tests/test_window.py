@@ -1332,3 +1332,32 @@ def test_new_pane(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             window.new_pane(width=40, height=10)
+
+
+def test_select_pane_index_targets_its_own_window(server: Server) -> None:
+    """A pane index selects within the window it was asked of.
+
+    tmux resolves a bare index against the most recently used session, so
+    the window under test belongs to the session that is *not* the latest.
+    """
+    first = server.new_session("first_session")
+    latest = server.new_session("latest_session")
+    window, other = first.active_window, latest.active_window
+    for each in (window, other):
+        each.split()
+        each.refresh()
+    assert window.active_pane is not None
+    assert other.active_pane is not None
+    other_before = other.active_pane.pane_id
+    wanted = next(
+        pane for pane in window.panes if pane.pane_id != window.active_pane.pane_id
+    )
+    assert wanted.pane_index is not None
+
+    selected = window.select_pane(int(wanted.pane_index))
+
+    assert selected is not None
+    assert selected.pane_id == wanted.pane_id
+    other.refresh()
+    assert other.active_pane is not None
+    assert other.active_pane.pane_id == other_before
