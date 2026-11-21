@@ -55,6 +55,13 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### `repr(Server())` names the socket tmux uses (#727)
+
+The repr of a {class}`~libtmux.Server` created without a socket name or path
+shows the socket a bare tmux client would use: the one named by `$TMUX` inside
+a pane, otherwise the default socket under `$TMUX_TMPDIR`. It previously always
+showed `/tmp/tmux-<uid>/default`.
+
 #### `retry_until` is unaffected by clock changes (#729)
 
 {func}`~libtmux.test.retry.retry_until` measures its time budget with a
