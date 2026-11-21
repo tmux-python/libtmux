@@ -441,9 +441,65 @@ def _redact_env_values(argv: Sequence[str]) -> list[str]:
     return out
 
 
+_PAYLOAD_SUBCOMMANDS: dict[str, frozenset[str]] = {
+    # subcommand -> its flags that take a value
+    "send-keys": frozenset({"-c", "-N", "-t"}),
+    "set-buffer": frozenset({"-b", "-n", "-t"}),
+}
+
+
+def _redact_payloads(argv: Sequence[str]) -> list[str]:
+    """Return *argv* with typed keys and buffer data masked.
+
+    Covers the key arguments of ``send-keys`` and the data argument of
+    ``set-buffer``. Flags, targets and buffer names are kept. A ``send-keys
+    -X`` copy-mode command is a command name, not typed text, and is kept.
+
+    Examples
+    --------
+    >>> _redact_payloads(["tmux", "send-keys", "-t", "%1", "echo hunter2", "Enter"])
+    ['tmux', 'send-keys', '-t', '%1', '***', '***']
+
+    >>> _redact_payloads(["tmux", "set-buffer", "-b", "name", "--", "hunter2"])
+    ['tmux', 'set-buffer', '-b', 'name', '--', '***']
+
+    >>> _redact_payloads(["tmux", "send-keys", "-t", "%1", "-X", "cancel"])
+    ['tmux', 'send-keys', '-t', '%1', '-X', 'cancel']
+
+    Other commands are left alone:
+
+    >>> _redact_payloads(["tmux", "-Lsock", "rename-window", "build"])
+    ['tmux', '-Lsock', 'rename-window', 'build']
+    """
+    out = list(argv)
+    sub = 1  # argv[0] is the tmux binary
+    while sub < len(out) and out[sub].startswith("-"):
+        sub += 2 if out[sub] in _GLOBAL_FLAGS_WITH_VALUE else 1
+    if sub >= len(out) or out[sub] not in _PAYLOAD_SUBCOMMANDS:
+        return out
+    value_flags = _PAYLOAD_SUBCOMMANDS[out[sub]]
+    positional: list[int] = []
+    i = sub + 1
+    while i < len(out):
+        if out[i] == "--":
+            positional.extend(range(i + 1, len(out)))
+            break
+        if out[i] in value_flags:
+            i += 2
+            continue
+        if out[i] == "-X":
+            return out
+        if not out[i].startswith("-"):
+            positional.append(i)
+        i += 1
+    for index in positional:
+        out[index] = _REDACTED
+    return out
+
+
 def _loggable_cmd(argv: Sequence[str]) -> str:
     """Render *argv* as the command line libtmux writes to its logs."""
-    return shlex.join(_redact_env_values(argv))
+    return shlex.join(_redact_payloads(_redact_env_values(argv)))
 
 
 def escape_trailing_separator(value: str) -> str:
