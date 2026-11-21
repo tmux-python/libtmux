@@ -16,12 +16,12 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux._internal.capabilities import capability_since
 from libtmux._internal.env import (
     resolve_ambient_socket_path,
     socket_path_from_env,
 )
 from libtmux._internal.query_list import QueryList
+from libtmux._internal.support.capabilities import capability_since
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope

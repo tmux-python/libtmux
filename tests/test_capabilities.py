@@ -12,7 +12,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux._internal import capabilities
+from libtmux._internal.support import capabilities
 
 if t.TYPE_CHECKING:
     from libtmux.pane import Pane

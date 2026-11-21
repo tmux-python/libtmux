@@ -14,8 +14,8 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux._internal.capabilities import capability_since
 from libtmux._internal.env import pane_id_from_env
+from libtmux._internal.support.capabilities import capability_since
 from libtmux.common import (
     escape_trailing_separator,
     get_version_str,

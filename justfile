@@ -78,7 +78,7 @@ design-docs:
 # Regenerate capabilities.json from the capability table
 [group: 'lint']
 build-capabilities:
-    uv run python -c 'from libtmux._internal import capabilities as c; print(c.render(), end="")' > capabilities.json
+    uv run python -c 'from libtmux._internal.support import capabilities as c; print(c.render(), end="")' > capabilities.json
 
 # Format code with ruff
 [group: 'lint']
