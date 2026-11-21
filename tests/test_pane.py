@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-import contextlib
-import fcntl
 import logging
-import os
 import pathlib
 import shutil
-import struct
 import subprocess
-import termios
-import threading
 import typing as t
 
 import pytest
@@ -20,6 +14,7 @@ from libtmux import exc
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
+from tests.terminal import attached_terminal
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -1125,66 +1120,9 @@ DISPLAY_POPUP_CASES: list[DisplayPopupCase] = [
 
 @pytest.fixture
 def terminal_client(server: Server, session: Session) -> t.Iterator[str]:
-    """Attach an owned terminal client and wait for its attachment hook."""
-    socket_path = server.cmd("display-message", "-p", "#{socket_path}").stdout[0]
-    prefix = [server.tmux_bin or "tmux", "-S", socket_path]
-    channel = f"popup-ready-{os.getpid()}"
-    server.set_hook("client-attached[0]", f"wait-for -S {channel}", global_=True)
-    env = {**os.environ, "TERM": "xterm-256color"}
-    env.pop("TMUX", None)
-    env.pop("TMUX_PANE", None)
-    reader: threading.Thread | None = None
-
-    try:
-        with contextlib.ExitStack() as cleanup:
-            master, slave = os.openpty()
-            cleanup.callback(os.close, master)
-            cleanup.callback(os.close, slave)
-            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
-            client = subprocess.Popen(
-                [*prefix, "attach-session", "-t", str(session.session_id)],
-                stdin=slave,
-                stdout=slave,
-                stderr=slave,
-                env=env,
-                start_new_session=True,
-            )
-
-            def drain() -> None:
-                with contextlib.suppress(OSError):
-                    while os.read(master, 65536):
-                        pass
-
-            try:
-                reader = threading.Thread(target=drain, daemon=True)
-                reader.start()
-                subprocess.run(
-                    [*prefix, "wait-for", channel],
-                    check=True,
-                    capture_output=True,
-                    timeout=1,
-                    env=env,
-                )
-                name = os.ttyname(slave)
-                clients = server.cmd(
-                    "list-clients",
-                    "-F",
-                    "#{client_pid}\t#{client_name}",
-                ).stdout
-                assert f"{client.pid}\t{name}" in clients
-                server.unset_hook("client-attached[0]", global_=True)
-                yield name
-            finally:
-                client.terminate()
-                try:
-                    client.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    client.kill()
-                    client.wait(timeout=1)
-    finally:
-        if reader is not None:
-            reader.join(timeout=1)
-            assert not reader.is_alive()
+    """Attach a terminal that consumes the popup's output."""
+    with attached_terminal(server, session, drain_output=True) as (name, _):
+        yield name
 
 
 @pytest.mark.parametrize(

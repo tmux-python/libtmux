@@ -2,17 +2,97 @@
 
 from __future__ import annotations
 
+import os
+import select
+import time
 import typing as t
 
 import pytest
 
-from libtmux.client import Client
+from libtmux import exc
+from libtmux.client import _CLIPBOARD_GATE, Client
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
+from tests.terminal import attached_terminal
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
+
+
+def _read_until(fd: int, marker: bytes) -> bytes:
+    """Wait for bytes on the attached terminal, including split reads."""
+    deadline = time.monotonic() + 1
+    data = bytearray()
+    while marker not in data:
+        remaining = max(0.0, deadline - time.monotonic())
+        assert select.select([fd], [], [], remaining)[0], f"missing {marker!r}"
+        chunk = os.read(fd, 65536)
+        assert chunk, "terminal closed"
+        data.extend(chunk)
+    return bytes(data)
+
+
+def test_clipboard_gate_orders_daemon_releases(session: Session) -> None:
+    """Evaluate release boundaries with tmux's own format parser."""
+    releases = (
+        "3.5a",
+        "3.6-rc",
+        "3.6",
+        "3.6a",
+        "3.6b",
+        "3.7-rc1",
+        "3.10",
+        "next-3.9",
+        "4.0",
+        "unknown",
+    )
+    formats = " ".join(_CLIPBOARD_GATE.replace("#{version}", v) for v in releases)
+    assert session.server.cmd("display-message", "-p", formats).stdout == [
+        "0 0 0 1 1 1 1 1 1 0"
+    ]
+
+
+def test_request_clipboard_from_selected_terminal(
+    server: Server, session: Session
+) -> None:
+    """A delayed OSC 52 reply becomes a new buffer on the requesting server."""
+    server.set_buffer("previous")
+    server.cmd("bind-key", "-n", "x", "display-message", "CLIPBOARD-REPLY-READ")
+    with (
+        attached_terminal(server, session) as (name, fd),
+        attached_terminal(server, session) as (_, other_fd),
+    ):
+        client = server.clients.get(client_name=name)
+        assert client is not None
+        version = server.cmd("display-message", "-p", "#{version}").stdout[0]
+        if version in {"3.2a", "3.3", "3.3a", "3.4", "3.5", "3.5a", "3.6"}:
+            with pytest.raises(exc.VersionTooLow, match=r"3\.6a"):
+                client.request_clipboard()
+            os.write(fd, b"x")
+            assert b"\x1b]52;" not in _read_until(fd, b"CLIPBOARD-REPLY-READ")
+            assert server.show_buffer() == "previous"
+            return
+
+        client.request_clipboard()
+        _read_until(fd, b"\x1b]52;;?")
+        os.write(other_fd, b"x")
+        assert b"\x1b]52;" not in _read_until(other_fd, b"CLIPBOARD-REPLY-READ")
+        assert server.show_buffer() == "previous"
+
+        # tmux handles the reply before the next key on the same terminal.
+        os.write(fd, b"\x1b]52;c;Y2xpcGJvYXJk\x07x")
+        _read_until(fd, b"CLIPBOARD-REPLY-READ")
+        assert server.show_buffer() == "clipboard"
+
+    with pytest.raises(exc.LibTmuxException, match="can't find client"):
+        client.request_clipboard()
+
+
+def test_request_clipboard_requires_client_name(server: Server) -> None:
+    """An unbound client cannot select another terminal implicitly."""
+    with pytest.raises(ValueError, match="client_name"):
+        Client(server=server).request_clipboard()
 
 
 def test_server_clients_returns_querylist(

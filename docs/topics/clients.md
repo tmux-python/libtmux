@@ -121,6 +121,19 @@ Calling {meth}`~libtmux.Client.refresh` directly still raises
 {exc}`~libtmux.exc.TmuxObjectDoesNotExist` on a detached client; the
 `attached_*` properties catch that case and return `None` for you.
 
+## Request a terminal’s clipboard
+
+Call {meth}`~libtmux.Client.request_clipboard` on the attached client whose
+clipboard you want. For example, `server.clients.get(client_name=tty).request_clipboard()`
+selects the terminal by its tty name. The connected tmux server must run
+3.6a or later. An older or unrecognized release raises
+{exc}`~libtmux.exc.VersionTooLow` before the request is sent.
+
+The call returns when tmux accepts the request. A terminal that permits OSC 52
+clipboard reads can reply later. tmux stores its reply in a new paste buffer.
+An immediate {meth}`~libtmux.Server.show_buffer` can still return an older
+buffer.
+
 ## See also
 
 - {doc}`/api/libtmux.client` — autodoc reference

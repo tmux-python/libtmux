@@ -1309,10 +1309,10 @@ class Server(
         target_client : str, optional
             Target client (``-t`` flag).
         request_clipboard : bool, optional
-            Request the clipboard from the terminal (``-l`` flag,
-            ``tty_clipboard_query``) — the runtime companion to the
-            ``get-clipboard`` option. Requires tmux 3.7+; warns and is
-            ignored on older tmux (where ``-l`` is the legacy forward form).
+            Request the terminal clipboard with ``-l`` on tmux 3.7+.
+            On older versions this option warns and is ignored. To request
+            the clipboard of a specific terminal on tmux 3.6a or later,
+            use :meth:`~libtmux.Client.request_clipboard`.
 
         Examples
         --------
