@@ -1013,7 +1013,8 @@ def parse_output(
     Returns
     -------
     OutputRaw
-        A dict mapping field names to non-empty string values.
+        A dict mapping every requested field name to its value. A field tmux
+        reports as empty is ``""``; a field that was not requested is absent.
 
     Examples
     --------
@@ -1029,7 +1030,15 @@ def parse_output(
     ... )
     >>> result['session_id']
     '$1'
-    >>> 'pane_id' in result
+
+    A requested field tmux left empty is an empty string:
+
+    >>> result['session_name']
+    ''
+
+    A field the listing does not request is absent:
+
+    >>> 'client_name' in result
     False
     """
     formats, _ = get_output_format(list_cmd, tmux_version)
@@ -1039,8 +1048,7 @@ def parse_output(
     if values and values[-1] == "":
         values = values[:-1]
 
-    formatter = dict(zip(formats, values, strict=True))
-    return {k: v for k, v in formatter.items() if v}
+    return dict(zip(formats, values, strict=True))
 
 
 def _split_records(stdout: list[str], field_count: int) -> list[str]:
