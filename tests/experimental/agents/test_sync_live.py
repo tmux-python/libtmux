@@ -25,7 +25,7 @@ def test_wait_for_agent_state_resolves_on_real_option(session: Session) -> None:
 
     async def main() -> WaitReason:
         engine = AsyncControlModeEngine.for_server(session.server)
-        monitor = AgentMonitor(engine)
+        monitor = AgentMonitor(engine, session=session.session_id)
         await monitor.start()
         active = session.active_window.active_pane
         assert active is not None
@@ -57,7 +57,7 @@ def test_send_to_agent_text_lands_in_pane(session: Session) -> None:
 
     async def main() -> bool:
         engine = AsyncControlModeEngine.for_server(session.server)
-        monitor = AgentMonitor(engine)
+        monitor = AgentMonitor(engine, session=session.session_id)
         await monitor.start()
         pane = session.active_window.active_pane
         assert pane is not None

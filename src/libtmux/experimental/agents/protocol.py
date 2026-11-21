@@ -96,7 +96,7 @@ class Payload:
     (:meth:`~libtmux.experimental.agents.state.AgentState.from_signal`), which
     keeps this module a pure grammar and keeps the emitter free of the enum.
 
-    Parameters
+    Attributes
     ----------
     state : str
         Raw agent state string (e.g. ``"running"``).

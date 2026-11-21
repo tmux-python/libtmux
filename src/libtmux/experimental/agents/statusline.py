@@ -83,7 +83,7 @@ def status_line_op(
     Examples
     --------
     >>> status_line_op("wait:1", global_=True).render()
-    ('set-option', '-g', 'status-right', 'wait:1')
+    ('set-option', '-g', '--', 'status-right', 'wait:1')
     """
     return SetOption(option=option, value=value, target=target, global_=global_)
 

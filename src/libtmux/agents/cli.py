@@ -46,12 +46,14 @@ DEFAULT_WINDOW_NAME = "agents"
 class AgentConsoleConfig:
     """Connection and session settings for the agent console.
 
-    Parameters
+    Attributes
     ----------
     session_name : str
         Managed tmux session name.
-    socket_name, socket_path : str or None
-        tmux server selectors. ``socket_path`` wins when both are present.
+    socket_name : str or None
+        Tmux socket name (``-L``), when no explicit socket path is set.
+    socket_path : str, pathlib.Path, or None
+        Tmux socket path (``-S``); takes precedence over ``socket_name``.
     state_path : pathlib.Path or None
         JSON store read by ``status`` and written by ``monitor``.
     detached : bool
@@ -95,6 +97,19 @@ class AgentConsoleConfig:
 @dataclass(frozen=True)
 class ConsoleResult:
     """Result data for ``start`` and ``attach``.
+
+    Attributes
+    ----------
+    created : bool
+        Whether the managed console session was created by this call.
+    session_name : str
+        Managed tmux session name.
+    state_path : pathlib.Path
+        Resolved JSON store path for the session.
+    attached : bool
+        Whether the caller's client attached or switched to the session.
+    returncode : int
+        Exit status from client attach/switch (``0`` when detached or attached).
 
     Examples
     --------
@@ -376,6 +391,7 @@ async def run_monitor(config: AgentConsoleConfig) -> int:
         engine,
         sink=JsonFile(config.resolved_state_path),
         hud=config.hud,
+        session=config.session_name,
     )
 
     redraws: set[asyncio.Task[None]] = set()
@@ -410,7 +426,11 @@ def _parse_states(raw: str) -> tuple[AgentState, ...]:
 async def _wait_command(args: argparse.Namespace, config: AgentConsoleConfig) -> int:
     """Run the ``wait`` command."""
     engine = AsyncControlModeEngine.for_server(_server(config))
-    monitor = AgentMonitor(engine, sink=JsonFile(config.resolved_state_path))
+    monitor = AgentMonitor(
+        engine,
+        sink=JsonFile(config.resolved_state_path),
+        session=config.session_name,
+    )
     try:
         await monitor.start()
         try:
@@ -444,7 +464,11 @@ async def _send_command(args: argparse.Namespace, config: AgentConsoleConfig) ->
     """Run the ``send`` command."""
     text = " ".join(args.text)
     engine = AsyncControlModeEngine.for_server(_server(config))
-    monitor = AgentMonitor(engine, sink=JsonFile(config.resolved_state_path))
+    monitor = AgentMonitor(
+        engine,
+        sink=JsonFile(config.resolved_state_path),
+        session=config.session_name,
+    )
     try:
         await monitor.start()
         try:

@@ -50,6 +50,26 @@ class AgentState(enum.StrEnum):
 class Agent:
     """A pane's coding agent and its current state.
 
+    Attributes
+    ----------
+    pane_id : str
+        Tmux pane identifier (e.g. ``"%1"``).
+    key : str
+        Store key identifying this agent record.
+    name : str or None
+        Agent name reported by the signal or process discovery, if known.
+    state : AgentState
+        Current normalized state of the agent.
+    since : float
+        Monotonic timestamp of the most recent state transition.
+    source : str
+        Signal source that produced the record (``"option"``, ``"osc"``, or
+        ``"process"``).
+    pid : int or None
+        Local process identifier when known, otherwise ``None``.
+    alive : bool
+        Whether the agent's local process was alive at the last health sweep.
+
     Examples
     --------
     >>> a = Agent(pane_id="%1", key="%1", name="claude",
@@ -102,6 +122,17 @@ class AgentTransition:
     Published by the monitor on every state change (the edge an orchestrator
     reacts to) and carried to transition observers; *before* is ``None`` for a
     pane's first observation.
+
+    Attributes
+    ----------
+    pane_id : str
+        Tmux pane identifier where the transition occurred.
+    before : AgentState or None
+        Previous state on the pane, or ``None`` on first observation.
+    after : AgentState
+        New state recorded for the pane.
+    agent : Agent
+        Updated agent record stored after the transition.
 
     Examples
     --------

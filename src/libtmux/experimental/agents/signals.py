@@ -41,7 +41,7 @@ _MAX_BUFFER = 4096
 class Reading:
     """One observed agent-state reading from a signal channel.
 
-    Parameters
+    Attributes
     ----------
     pane_id : str
         The pane identifier (e.g., ``%1``).

@@ -26,7 +26,7 @@ if t.TYPE_CHECKING:
 class Observed:
     """An observed agent-state update from a signal source.
 
-    Parameters
+    Attributes
     ----------
     pane_id : str
         The tmux pane identifier (e.g., '%1').
@@ -67,7 +67,7 @@ class Observed:
 class Vanished:
     """A pane that no longer exists (from reconcile or the health sweep).
 
-    Parameters
+    Attributes
     ----------
     pane_id : str
         The tmux pane identifier (e.g., '%1').

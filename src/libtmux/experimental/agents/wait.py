@@ -53,6 +53,15 @@ class WaitReason(enum.StrEnum):
 class AgentWait:
     """The outcome of a wait, as data (never raised).
 
+    Attributes
+    ----------
+    pane_id : str
+        Tmux pane identifier that was awaited.
+    reason : WaitReason
+        Terminal reason explaining why the wait resolved.
+    agent : Agent or None
+        Latest agent record observed for ``pane_id``, if any.
+
     Examples
     --------
     >>> AgentWait(pane_id="%1", reason=WaitReason.REACHED, agent=None).reached
@@ -125,7 +134,15 @@ def _resolve_reason(
 
 @dataclass
 class _Waiter:
-    """One parked wait: a settle predicate plus the future to resolve."""
+    """One parked wait: a settle predicate plus the future to resolve.
+
+    Attributes
+    ----------
+    predicate : Callable[[Agent], bool]
+        Condition evaluated against each updated agent record.
+    future : asyncio.Future[tuple[WaitReason, Agent | None]]
+        Future resolved once ``predicate`` matches or the agent exits/stops.
+    """
 
     predicate: Callable[[Agent], bool]
     future: asyncio.Future[tuple[WaitReason, Agent | None]]

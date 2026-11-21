@@ -450,8 +450,8 @@ def test_push_output_source_attaches_target_session() -> None:
     data = asyncio.run(main())
     assert data["count"] == 1
     assert data["events"][0]["raw"] == "%output %1 hi"
-    assert ("display-message", "-t", "%1", "-p", "#{session_id}") in engine.calls
-    assert ("attach-session", "-t", "$1") in engine.calls
+    assert ("display-message", "-t", "%1", "-p", "--", "#{session_id}") in engine.calls
+    assert ("attach-session", "-E", "-t", "$1") in engine.calls
 
 
 def test_pull_buffers_events() -> None:
@@ -499,8 +499,8 @@ def test_pull_output_source_attaches_before_drain() -> None:
 
     data = asyncio.run(main())
     assert data["events"][0]["raw"] == "%output %1 hi"
-    assert ("display-message", "-t", "%1", "-p", "#{session_id}") in engine.calls
-    assert ("attach-session", "-t", "$1") in engine.calls
+    assert ("display-message", "-t", "%1", "-p", "--", "#{session_id}") in engine.calls
+    assert ("attach-session", "-E", "-t", "$1") in engine.calls
 
 
 def test_pull_output_resource_reports_missing_attach_target() -> None:
@@ -643,8 +643,8 @@ def test_run_in_pane_sends_then_waits_for_output() -> None:
     assert result.reason == "matched"
     assert result.captured_text == "READY"
     assert result.snapshot_lines is None
-    assert engine.calls[0] == ("send-keys", "-t", "%1", "echo READY", "Enter")
-    assert ("attach-session", "-t", "$1") in engine.calls
+    assert engine.calls[0] == ("send-keys", "-t", "%1", "--", "echo READY", "Enter")
+    assert ("attach-session", "-E", "-t", "$1") in engine.calls
 
 
 def test_run_in_pane_registered_when_streaming() -> None:
@@ -676,7 +676,7 @@ def test_run_in_pane_registered_when_streaming() -> None:
     data = asyncio.run(main())
     assert data.pane_id == "%1"
     assert data.reason == "matched"
-    assert ("send-keys", "-t", "%1", "echo READY", "Enter") in engine.calls
+    assert ("send-keys", "-t", "%1", "--", "echo READY", "Enter") in engine.calls
 
 
 def test_monitor_snapshot_false_omits_grid() -> None:

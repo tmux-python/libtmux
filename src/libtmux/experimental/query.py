@@ -415,6 +415,15 @@ class AgentQuery:
     :class:`~..agents.state.Agent` records. Each method returns a new query;
     :meth:`all` / :meth:`first` resolve it.
 
+    Attributes
+    ----------
+    lookups : Mapping[str, Any]
+        Field-lookup predicates passed to :class:`QueryList.filter`.
+    order : str or None
+        Optional :class:`~..agents.state.Agent` attribute name for sorting.
+    limit_count : int or None
+        Maximum number of matched agents returned, or ``None`` for all.
+
     Examples
     --------
     >>> from libtmux.experimental.agents.state import Agent, AgentState
@@ -511,7 +520,15 @@ class AgentQuery:
 
 @dataclass(frozen=True)
 class MappedAgentQuery(t.Generic[MappedT]):
-    """An :class:`AgentQuery` whose rows are projected through a function."""
+    """An :class:`AgentQuery` whose rows are projected through a function.
+
+    Attributes
+    ----------
+    query : AgentQuery
+        Underlying agent query supplying matched records.
+    fn : Callable[[Agent], MappedT]
+        Projection applied to each matched agent record.
+    """
 
     query: AgentQuery
     fn: Callable[[Agent], MappedT]

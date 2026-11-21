@@ -120,7 +120,21 @@ def _to_outcome(result: PlanResult) -> PlanOutcome:
 
 @dataclass(frozen=True)
 class WorkspaceSetOutcome:
-    """The result of executing a workspace-set build."""
+    """The result of executing a workspace-set build.
+
+    Attributes
+    ----------
+    ok : bool
+        Whether the merged workspace-set build succeeded.
+    results : list[dict[str, Any]]
+        Serialized result for each operation executed in the merged plan.
+    bindings : dict[str, str]
+        Resolved forward-reference bindings keyed by slot.
+    sessions : list[str]
+        Session names targeted by the workspace set, in declaration order.
+    reused : list[str]
+        Existing session names kept without rebuilding under reuse policy.
+    """
 
     ok: bool
     results: list[dict[str, t.Any]]

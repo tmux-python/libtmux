@@ -17,6 +17,17 @@ _AGENT_COMMANDS = {
 class ProcessInfo:
     """One local process row used for agent discovery.
 
+    Attributes
+    ----------
+    pid : int
+        Process identifier.
+    ppid : int
+        Parent process identifier.
+    command : str
+        Short executable name read from ``comm``.
+    argv : tuple[str, ...]
+        Command-line tokens decoded from ``cmdline``.
+
     Examples
     --------
     >>> ProcessInfo(2, 1, "claude", ("claude", "--help")).command
@@ -32,6 +43,13 @@ class ProcessInfo:
 @dataclass(frozen=True)
 class AgentProcess:
     """A detected coding-agent process.
+
+    Attributes
+    ----------
+    name : str
+        Canonical coding-agent identifier (e.g. ``"claude"``, ``"codex"``).
+    pid : int or None
+        Process identifier when matched from a descendant process, else ``None``.
 
     Examples
     --------

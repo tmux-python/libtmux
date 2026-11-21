@@ -1374,7 +1374,7 @@ def test_safe_plan_and_workspace_annotations_match_capabilities() -> None:
 
 
 def test_workspace_set_compiled_plan_requires_payload_safety() -> None:
-    """Workspace-set builds gate executable payloads and replacements before dispatch."""
+    """Workspace-set builds gate executable payloads before dispatch."""
     engine = _RecordingEngine()
     server = build_server(engine)
     specs = [

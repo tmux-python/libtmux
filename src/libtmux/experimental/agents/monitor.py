@@ -90,6 +90,9 @@ class AgentMonitor:
         Show a floating HUD pane (tmux 3.7+) that repaints the agent store on
         every change. Off by default; the HUD pane is excluded from agent
         tracking and torn down on :meth:`stop`.
+    session : str or None
+        Optional session id (``"$1"``) or name to attach the control client to.
+        Defaults to the first real session when ``None``.
 
     Examples
     --------
@@ -111,10 +114,12 @@ class AgentMonitor:
         sink: Storage | None = None,
         clock: Clock | None = None,
         hud: bool = False,
+        session: str | None = None,
     ) -> None:
         self._engine = engine
         self._sink = sink
         self._clock: Clock = clock or MonotonicCounter()
+        self._session = session
         self._osc = OscSignal()
         self._prev_panes: dict[str, t.Any] = {}
         self._task: asyncio.Task[None] | None = None
@@ -421,7 +426,7 @@ class AgentMonitor:
         self._engine.add_subscription(SUBSCRIPTION)
 
         # Attach a session so per-pane %subscription-changed actually flows.
-        session_id = await self._primary_session_id()
+        session_id = await self._target_session_id()
         if session_id is not None:
             self._engine.set_attach_targets([session_id])
             try:
@@ -454,6 +459,30 @@ class AgentMonitor:
         if self._hud_enabled:
             await self._ensure_hud()
         self._task = asyncio.get_running_loop().create_task(self._run())
+
+    async def _target_session_id(self) -> str | None:
+        """Resolve :attr:`_session` to a ``$N`` id, or fall back to primary."""
+        if self._session is None:
+            return await self._primary_session_id()
+        if self._session.startswith("$"):
+            return self._session
+        from libtmux.experimental.engines.base import CommandRequest
+
+        for target in (f"={self._session}", self._session):
+            try:
+                result = await self._engine.run(
+                    CommandRequest.from_args(
+                        "display-message", "-p", "-t", target, "#{session_id}"
+                    )
+                )
+            except Exception:
+                logger.debug("session probe failed for %s", target, exc_info=True)
+                return None
+            if result.returncode == 0:
+                for line in result.stdout:
+                    if str(line).strip():
+                        return str(line).strip()
+        return None
 
     async def _primary_session_id(self) -> str | None:
         """Return the first *real* session id to attach to, or ``None``.
@@ -734,7 +763,7 @@ class AgentMonitor:
         from libtmux.experimental.ops import NewPane, arun
         from libtmux.experimental.ops._types import SessionId
 
-        session_id = await self._primary_session_id()
+        session_id = await self._target_session_id()
         if session_id is None:
             logger.debug("no session to host the agent HUD — skipping")
             return
@@ -818,7 +847,11 @@ class AgentMonitor:
             try:
                 async with contextlib.aclosing(self._engine.subscribe()) as stream:
                     async for note in stream:
-                        self.ingest(note.raw)
+                        if note.pane_id is not None and note.payload is not None:
+                            for reading in self._osc.feed(note.pane_id, note.payload):
+                                self._observe(reading)
+                        else:
+                            self.ingest(note.raw)
                         await self._repaint_hud()
             except asyncio.CancelledError:
                 raise
