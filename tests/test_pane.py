@@ -2057,3 +2057,48 @@ def test_send_keys_hex_keys_sends_enter_when_asked(session: Session) -> None:
         2,
         raises=True,
     )
+
+
+def test_capture_pane_on_a_closed_pane_raises(session: Session) -> None:
+    """Capturing a pane that no longer exists reports tmux's error."""
+    pane = session.active_window.split()
+    pane.kill()
+
+    with pytest.raises(exc.TmuxObjectDoesNotExist, match="can't find pane"):
+        pane.capture_pane()
+
+
+def test_send_keys_to_a_closed_pane_raises(session: Session) -> None:
+    """Sending keys to a pane that no longer exists reports tmux's error."""
+    pane = session.active_window.split()
+    pane.kill()
+
+    with pytest.raises(exc.TmuxObjectDoesNotExist, match="can't find pane"):
+        pane.send_keys("echo unreachable")
+
+
+def test_command_on_a_closed_pane_raises_object_does_not_exist(
+    session: Session,
+) -> None:
+    """A command whose target is gone raises the not-found error with tmux's text."""
+    pane = session.active_window.split()
+    pane.kill()
+
+    with pytest.raises(exc.TmuxObjectDoesNotExist) as excinfo:
+        pane.kill()
+
+    assert str(excinfo.value) == f"kill-pane: can't find pane: {pane.pane_id}"
+    assert excinfo.value.subcommand == "kill-pane"
+
+
+def test_command_error_other_than_a_missing_target_stays_generic(
+    session: Session,
+) -> None:
+    """A tmux error that is not a missing target keeps the base exception type."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        pane.send_keys("", copy_mode_cmd="no-such-copy-command", enter=False)
+
+    assert type(excinfo.value) is exc.LibTmuxException
