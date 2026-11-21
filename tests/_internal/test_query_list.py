@@ -320,6 +320,36 @@ def test_query_exception_annotations_resolve() -> None:
         assert "query" in t.get_type_hints(initializer)
 
 
+class _ForwardingMissing(ObjectDoesNotExist):
+    """Extend the exception the ordinary way, forwarding ``**kwargs``."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__("no session", *args, **kwargs)
+
+
+class _ForwardingMultiple(MultipleObjectsReturned):
+    """Extend the exception the ordinary way, forwarding ``**kwargs``."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__("too many sessions", *args, **kwargs)
+
+
+def test_lookup_exceptions_accept_forwarded_kwargs() -> None:
+    """A subclass that forwards ``**kwargs: object`` type-checks and works.
+
+    mypy checks this module, so the two subclasses above are the type test;
+    the assertions cover the values they forward.
+    """
+    missing = _ForwardingMissing(query={"pane_id": "%9"})
+    assert str(missing) == "no session"
+    assert missing.query == {"pane_id": "%9"}
+
+    multiple = _ForwardingMultiple(count=2, query={"pane_id": "%9"})
+    assert str(multiple) == "too many sessions"
+    assert multiple.count == 2
+    assert multiple.query == {"pane_id": "%9"}
+
+
 def test_get_default_with_broad_eq_is_returned() -> None:
     """A default whose ``__eq__`` is non-identity is returned, not raised.
 
