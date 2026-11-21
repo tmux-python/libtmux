@@ -164,6 +164,7 @@ class ObjectDoesNotExist(LibTmuxException):
         omitted, the message is built from *query*.
     query : :class:`~collections.abc.Mapping`, optional
         The lookup that matched nothing, e.g. ``{"pane_id": "%99"}``.
+        Annotated ``object`` so a subclass can forward ``**kwargs``.
 
     Examples
     --------
@@ -190,15 +191,15 @@ class ObjectDoesNotExist(LibTmuxException):
     def __init__(
         self,
         *args: object,
-        query: t.Mapping[str, t.Any] | None = None,
+        query: object = None,
     ) -> None:
-        self.query: t.Mapping[str, t.Any] | None = query
+        self.query = t.cast("t.Mapping[str, t.Any] | None", query)
         if args:
             super().__init__(*args)
             return
         msg = "No objects found"
-        if query:
-            msg += f": {_format_query(query)}"
+        if self.query:
+            msg += f": {_format_query(self.query)}"
         super().__init__(msg)
 
 
@@ -224,6 +225,7 @@ class MultipleObjectsReturned(LibTmuxException):
         How many objects the lookup matched.
     query : :class:`~collections.abc.Mapping`, optional
         The lookup that matched them, e.g. ``{"pane_id": "%0"}``.
+        Both are annotated ``object`` so a subclass can forward ``**kwargs``.
 
     Examples
     --------
@@ -251,19 +253,19 @@ class MultipleObjectsReturned(LibTmuxException):
     def __init__(
         self,
         *args: object,
-        count: int | None = None,
-        query: t.Mapping[str, t.Any] | None = None,
+        count: object = None,
+        query: object = None,
     ) -> None:
-        self.count: int | None = count
-        self.query: t.Mapping[str, t.Any] | None = query
+        self.count = t.cast("int | None", count)
+        self.query = t.cast("t.Mapping[str, t.Any] | None", query)
         if args:
             super().__init__(*args)
             return
         msg = "Multiple objects returned"
-        if count is not None:
-            msg += f" ({count})"
-        if query:
-            msg += f": {_format_query(query)}"
+        if self.count is not None:
+            msg += f" ({self.count})"
+        if self.query:
+            msg += f": {_format_query(self.query)}"
         super().__init__(msg)
 
 
