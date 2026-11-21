@@ -55,6 +55,12 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### `select_pane(index)` selects in its own window (#896)
+
+{meth}`~libtmux.Window.select_pane` with a pane index selects that pane in the
+window it was called on. The call could previously change the active pane of a
+window in another session.
+
 #### `refresh()` clears a field tmux has emptied (#895)
 
 `refresh()` on a {class}`~libtmux.Pane`, {class}`~libtmux.Window`,
