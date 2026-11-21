@@ -47,6 +47,13 @@ _Notes on the upcoming release will go here._
 
 ### Fixes
 
+#### Lookup exception subclasses type-check (#891)
+
+A subclass of {exc}`~libtmux.exc.ObjectDoesNotExist` or
+{exc}`~libtmux.exc.MultipleObjectsReturned` that forwards `**kwargs` to the
+parent constructor passes mypy. mypy previously reported an `arg-type` error on
+the forwarded call; runtime behaviour is unchanged.
+
 #### Importing libtmux when stdout has no encoding (#890)
 
 `import libtmux` works when `sys.stdout` has been replaced by an object with no
