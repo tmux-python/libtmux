@@ -45,6 +45,19 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### tmux 3.3a is now the minimum (#888)
+
+libtmux 0.64.0 was the last release supporting tmux 3.2a.
+{meth}`~libtmux.Server.server_access`, {meth}`~libtmux.Server.confirm_before`,
+{meth}`~libtmux.Server.command_prompt`,
+{meth}`~libtmux.Server.show_prompt_history`,
+{meth}`~libtmux.Server.clear_prompt_history` and
+{meth}`~libtmux.Pane.display_popup` no longer check for tmux 3.3 before
+running, and the hook methods no longer warn about window and pane scopes on
+tmux older than 3.2.
+
 ### Documentation
 
 #### Capability matrix on the compatibility page (#887)
