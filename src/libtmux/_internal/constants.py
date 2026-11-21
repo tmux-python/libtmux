@@ -398,11 +398,11 @@ class WindowOptions(
     pane_border_style : str | None
         Style of the borders around panes other than the active one.
     popup_style : str | None
-        Style of popups.
+        Style of popups (tmux < 3.9).
     popup_border_style : str | None
-        Style of popup borders.
+        Style of popup borders (tmux < 3.9).
     popup_border_lines : Literal["single", ...] | None
-        Characters used to draw popup borders.
+        Characters used to draw popup borders (tmux < 3.9).
     window_status_activity_style : str | None
         Style of a window in the status line while it has an activity alert.
     window_status_bell_style : str | None

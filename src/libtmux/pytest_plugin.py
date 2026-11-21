@@ -48,7 +48,7 @@ def _reap_test_server(socket_name: str | None) -> None:
     with contextlib.suppress(exc.LibTmuxException, OSError):
         srv = Server(socket_name=socket_name)
         if srv.is_alive():
-            srv.kill()
+            srv.kill(wait=True)
 
     # ``Server(socket_name=...)`` does not populate ``socket_path``, so
     # resolve where tmux put the socket to unlink it regardless of daemon
