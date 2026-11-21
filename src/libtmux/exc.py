@@ -101,6 +101,193 @@ class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
 
 
+class TmuxTransportError(LibTmuxException):
+    """Transport failed to communicate with the tmux client or server."""
+
+
+class TmuxCommandTooLong(TmuxTransportError):
+    """Packed command arguments exceed tmux's client message limits.
+
+    tmux packs command arguments into a single ``MSG_COMMAND`` ``imsg`` buffer
+    capped at ``16,364`` payload bytes and ``1,000`` arguments. Large payloads
+    must travel over ``stdin`` instead of ``argv``.
+
+    Parameters
+    ----------
+    packed_bytes : int
+        Total NUL-terminated UTF-8 byte length of the packed arguments.
+    argc : int
+        Number of packed arguments.
+    max_bytes : int
+        Maximum byte payload accepted by ``MSG_COMMAND``.
+    max_argc : int
+        Maximum argument count accepted by ``cmd_unpack_argv``.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.TmuxCommandTooLong(packed_bytes=20000, argc=3)
+    >>> "command too long" in str(err)
+    True
+    >>> issubclass(exc.TmuxCommandTooLong, exc.LibTmuxException)
+    True
+    """
+
+    def __init__(
+        self,
+        *,
+        packed_bytes: int,
+        argc: int,
+        max_bytes: int = 16_364,
+        max_argc: int = 1_000,
+    ) -> None:
+        self.packed_bytes = packed_bytes
+        self.argc = argc
+        self.max_bytes = max_bytes
+        self.max_argc = max_argc
+        if argc > max_argc:
+            detail = f"{argc} arguments exceeds ceiling of {max_argc}"
+        else:
+            detail = f"{packed_bytes} packed bytes exceeds ceiling of {max_bytes}"
+        super().__init__(
+            f"command too long: {detail}; pass large payloads via stdin",
+        )
+
+
+class TmuxCommandTimeout(TmuxTransportError):
+    """A tmux client invocation exceeded its wall-clock deadline.
+
+    Parameters
+    ----------
+    argv : tuple[str, ...]
+        Dispatched command vector that timed out.
+    timeout : float
+        Configured deadline in seconds.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.TmuxCommandTimeout(("tmux", "wait-for", "ch"), 0.5)
+    >>> err.timeout
+    0.5
+    """
+
+    def __init__(self, argv: tuple[str, ...], timeout: float) -> None:
+        self.argv = argv
+        self.timeout = timeout
+        super().__init__(
+            f"tmux command timed out after {timeout}s: {' '.join(argv[:3])}",
+        )
+
+
+class TmuxServerRestarted(TmuxTransportError):
+    """Target tmux server generation changed before a guarded request ran.
+
+    Parameters
+    ----------
+    expected_pid : int
+        Expected ``#{pid}`` of the target server.
+    expected_start_time : int
+        Expected ``#{start_time}`` of the target server.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.TmuxServerRestarted(1234, 1700000000)
+    >>> err.expected_pid
+    1234
+    """
+
+    def __init__(self, expected_pid: int, expected_start_time: int) -> None:
+        self.expected_pid = expected_pid
+        self.expected_start_time = expected_start_time
+        super().__init__(
+            f"tmux server generation changed (expected pid={expected_pid}, "
+            f"start_time={expected_start_time})",
+        )
+
+
+class AsyncEngineMismatch(LibTmuxException):
+    """Synchronous dispatch received an awaitable from an injected engine.
+
+    :class:`~libtmux.engine.TmuxEngine` is a :func:`typing.runtime_checkable`
+    :class:`typing.Protocol`, which checks attribute names rather than
+    coroutine signatures. Synchronous callers cannot await an asynchronous
+    ``execute()`` implementation and raise this error instead.
+
+    Parameters
+    ----------
+    engine : object
+        Engine instance whose method returned an awaitable.
+    method : str
+        Name of the method that returned an awaitable.
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> class AsyncEngine:
+    ...     endpoint = None
+    ...     async def execute(self, request): ...
+    >>> err = exc.AsyncEngineMismatch(AsyncEngine(), "execute")
+    >>> "returned an awaitable" in str(err)
+    True
+    """
+
+    def __init__(self, engine: object, method: str, *args: object) -> None:
+        self.engine = engine
+        self.method = method
+        msg = (
+            f"{type(engine).__name__}.{method}() returned an awaitable: "
+            "libtmux dispatches tmux commands synchronously and cannot "
+            "await it. Await this engine directly from async code, or pass "
+            "a synchronous engine."
+        )
+        super().__init__(msg, *args)
+
+
+class EngineConfigurationMismatch(LibTmuxException, ValueError):
+    """Injected engine connection conflicts with explicit :class:`~libtmux.Server` args.
+
+    Parameters
+    ----------
+    engine : object
+        Injected engine whose connection cannot satisfy the server.
+    reason : str
+        Conflicting or unbindable configuration detail.
+    server_connection : object, optional
+        Connection constraints derived from the server.
+    engine_connection : object, optional
+        Connection reported by the injected engine.
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> print(exc.EngineConfigurationMismatch(object(), "socket conflict"))
+    object configuration does not satisfy Server: socket conflict
+    """
+
+    def __init__(
+        self,
+        engine: object,
+        reason: str,
+        *args: object,
+        server_connection: object | None = None,
+        engine_connection: object | None = None,
+    ) -> None:
+        self.engine = engine
+        self.reason = reason
+        self.server_connection = server_connection
+        self.engine_connection = engine_connection
+        super().__init__(
+            f"{type(engine).__name__} configuration does not satisfy Server: {reason}",
+            *args,
+        )
+
+
 class NotInsideTmux(LibTmuxException):
     """Raised when the process is not running inside a tmux pane.
 
