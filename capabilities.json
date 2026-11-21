@@ -6,6 +6,25 @@
   },
   "capabilities": [
     {
+      "id": "control-mode",
+      "name": "Control mode",
+      "summary": "Attach a library-managed control client and pipeline commands.",
+      "since": "3.7",
+      "handling": "refuse",
+      "error": "libtmux.exc.VersionTooLow",
+      "apis": [
+        "libtmux.engine.ControlModeEngine"
+      ],
+      "commands": [
+        {
+          "command": "attach-session",
+          "flags": [
+            "-C"
+          ]
+        }
+      ]
+    },
+    {
       "id": "run-shell-start-directory",
       "name": "run-shell working directory",
       "summary": "Start a run-shell job in a chosen directory.",
@@ -184,5 +203,26 @@
       ]
     }
   ],
-  "workarounds": []
+  "workarounds": [
+    {
+      "id": "break-pane-misnames-windows",
+      "name": "break-pane window naming",
+      "summary": "tmux 3.7 crashes on break-pane without -n and ignores -n when given; break_pane supplies a placeholder -n and renames afterwards.",
+      "releases": [
+        "3.7"
+      ],
+      "handling": "repair",
+      "apis": [
+        "libtmux.Pane.break_pane"
+      ],
+      "commands": [
+        {
+          "command": "break-pane",
+          "flags": [
+            "-n"
+          ]
+        }
+      ]
+    }
+  ]
 }
