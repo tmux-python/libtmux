@@ -55,6 +55,19 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### A value ending in `;` is passed as data (#845)
+
+A value whose last character is `;` no longer ends the tmux command early.
+`server.set_option("mouse;", "kill-server", global_=True)` previously ran
+`kill-server`; other values lost the `;` or failed with `unknown command`.
+Option, environment, name, title, start-directory, popup, menu and `send_keys`
+values now reach tmux unchanged.
+
+{meth}`~libtmux.Server.cmd` still sends its arguments as given, so a bare `";"`
+keeps separating commands, and hook and menu commands remain tmux command
+strings. {func}`~libtmux.common.escape_trailing_separator` escapes a value for
+a raw `cmd()` call.
+
 #### `send_keys(hex_keys=True)` sends every byte (#894)
 
 {meth}`~libtmux.Pane.send_keys` with `hex_keys=True` sends each byte of a
