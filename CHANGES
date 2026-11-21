@@ -54,6 +54,14 @@ end of life in October 2026.
 
 ### Fixes
 
+#### Destination window after a single-pane move (#879)
+
+{meth}`~libtmux.Pane.break_pane` returns the destination {class}`~libtmux.Window`
+when breaking out a window's only pane, even if another client moved the pane
+before the call. On tmux 3.2a through 3.5, libtmux could raise `IndexError`
+after the move succeeded. If tmux fails without an error message, libtmux
+reports the command's exit status.
+
 #### tmux 3.8 hooks and terminal examples (#775)
 
 {meth}`~libtmux.hooks.HooksMixin.show_hook` reads hooks added in tmux 3.8,
