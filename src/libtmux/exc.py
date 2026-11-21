@@ -288,6 +288,32 @@ class EngineConfigurationMismatch(LibTmuxException, ValueError):
         )
 
 
+class UnscriptedCommand(LibTmuxException):
+    """Replay engine encountered a command absent from its recorded tape.
+
+    Parameters
+    ----------
+    commands : tuple[tuple[str, ...], ...]
+        Unmatched command tuple sequence.
+    hint : str, optional
+        Diagnostic detail (such as recorded tmux version or exhaustion count).
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+    """
+
+    def __init__(
+        self,
+        commands: tuple[tuple[str, ...], ...],
+        hint: str | None = None,
+        *args: object,
+    ) -> None:
+        self.commands = commands
+        self.hint = hint
+        rendered = " ; ".join(" ".join(cmd) for cmd in commands)
+        detail = f" ({hint})" if hint else ""
+        super().__init__(f"unscripted command: {rendered}{detail}", *args)
+
+
 class NotInsideTmux(LibTmuxException):
     """Raised when the process is not running inside a tmux pane.
 
