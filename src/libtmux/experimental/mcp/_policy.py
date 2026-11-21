@@ -193,6 +193,7 @@ _CURATED_OPEN_WORLD_TOOLS = frozenset(
         "rename_session",
         "rename_window",
         "respawn_pane",
+        "run_in_pane",
         "run_tmux",
         "send_input",
         "set_buffer",

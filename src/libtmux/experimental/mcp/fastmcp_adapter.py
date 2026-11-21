@@ -635,6 +635,15 @@ def register_plan_tools(
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Build multiple declarative workspaces in one merged plan."""
+            for spec in specs:
+                plan, replacing = _workspace_plan_and_replacement(
+                    spec,
+                    preflight,
+                    version,
+                )
+                await _guard_plan(plan, version)
+                if replacing is not None:
+                    await _guard_workspace_replace(replacing, version)
             outcome = await _plan.abuild_workspaces(
                 specs,
                 t.cast("AsyncTmuxEngine", engine),
@@ -698,6 +707,15 @@ def register_plan_tools(
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Build multiple declarative workspaces in one merged plan."""
+            for spec in specs:
+                plan, replacing = _workspace_plan_and_replacement(
+                    spec,
+                    preflight,
+                    version,
+                )
+                drive_sync(_guard_plan(plan, version))
+                if replacing is not None:
+                    drive_sync(_guard_workspace_replace(replacing, version))
             outcome = _plan.build_workspaces(
                 specs,
                 t.cast("TmuxEngine", engine),
@@ -711,7 +729,11 @@ def register_plan_tools(
         tools.append((build_workspaces, "mutating"))
 
     for fn, safety in tools:
-        destructive = fn.__name__ in {"execute_plan", "build_workspace"}
+        destructive = fn.__name__ in {
+            "execute_plan",
+            "build_workspace",
+            "build_workspaces",
+        }
         annotations = ToolAnnotations(
             title=fn.__name__,
             readOnlyHint=safety == "readonly",
