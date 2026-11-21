@@ -797,3 +797,21 @@ def test_import_without_stdout_encoding() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_logged_command_line_masks_environment_values(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Environment values are masked in the logged command line; names stay."""
+    caplog.set_level(logging.DEBUG, logger="libtmux.common")
+
+    session.set_environment("API_TOKEN", "hunter2")
+    session.new_window(environment={"OTHER_TOKEN": "swordfish"})
+
+    logged = [r.tmux_cmd for r in caplog.records if hasattr(r, "tmux_cmd")]
+    assert logged
+    assert not [line for line in logged if "hunter2" in line or "swordfish" in line]
+    assert [line for line in logged if "API_TOKEN" in line]
+    assert [line for line in logged if "OTHER_TOKEN=***" in line]
+    assert session.show_environment()["API_TOKEN"] == "hunter2"
