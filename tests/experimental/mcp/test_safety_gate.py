@@ -1349,6 +1349,8 @@ def test_safe_plan_and_workspace_annotations_match_capabilities() -> None:
     assert tools["execute_plan"].annotations.openWorldHint is True
     assert tools["build_workspace"].annotations.destructiveHint is True
     assert tools["build_workspace"].annotations.openWorldHint is True
+    assert tools["build_workspaces"].annotations.destructiveHint is True
+    assert tools["build_workspaces"].annotations.openWorldHint is True
     assert tools["run_tmux"].annotations.destructiveHint is True
     assert tools["run_tmux"].annotations.openWorldHint is True
     for name in (
@@ -1366,6 +1368,31 @@ def test_safe_plan_and_workspace_annotations_match_capabilities() -> None:
         assert tools[name].annotations.destructiveHint is True
         assert tools[name].annotations.openWorldHint is True
 
-    for name in ("paste_buffer", "send_input", "set_buffer"):
+    for name in ("paste_buffer", "run_in_pane", "send_input", "set_buffer"):
         assert tools[name].annotations.destructiveHint is False
         assert tools[name].annotations.openWorldHint is True
+
+
+def test_workspace_set_compiled_plan_requires_payload_safety() -> None:
+    """Workspace-set builds gate executable payloads and replacements before dispatch."""
+    engine = _RecordingEngine()
+    server = build_server(engine)
+    specs = [
+        {"session_name": "safe", "windows": [{"panes": ["printf ok"]}]},
+        {
+            "session_name": "unsafe",
+            "options": {"default-command": "arbitrary-host-command"},
+            "windows": [{"panes": [""]}],
+        },
+    ]
+
+    async def main() -> None:
+        async with fastmcp.Client(server) as client:
+            await client.call_tool(
+                "build_workspaces",
+                {"specs": specs, "preflight": False},
+            )
+
+    with pytest.raises(ToolError, match="destructive"):
+        asyncio.run(main())
+    assert engine.calls == []
