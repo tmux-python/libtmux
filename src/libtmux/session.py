@@ -1045,7 +1045,9 @@ class Session(
         Parameters
         ----------
         target_window : str | int, optional
-            Window to kill.
+            Window to kill. An index or a name is resolved within this
+            session; a window id (``@1``) or a target that names a session
+            (``other:1``) is passed to tmux as given.
 
         Raises
         ------
@@ -1054,10 +1056,10 @@ class Session(
         """
         target: str | int | None = target_window
         if target_window is not None:
-            if isinstance(target_window, int):
-                target = f"{self.session_name}:{target_window}"
-            else:
-                target = f"{target_window}"
+            target = str(target_window)
+            if not target.startswith("@") and ":" not in target:
+                # tmux resolves a bare index or name in its own current session.
+                target = f"{self.session_id}:{target}"
 
         proc = self.cmd("kill-window", target=target)
 

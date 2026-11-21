@@ -782,3 +782,22 @@ def test_kill_session_group(server: Server) -> None:
     else:
         with pytest.warns(UserWarning, match="group requires tmux 3.7"):
             session.kill(group=True)
+
+
+def test_kill_window_by_name_stays_in_its_session(server: Server) -> None:
+    """A window name is resolved in the session ``kill_window`` was called on.
+
+    tmux resolves a bare name in the most recently used session, so the
+    session under test is the one that is *not* the latest.
+    """
+    first = server.new_session("first_session")
+    latest = server.new_session("latest_session")
+    first.new_window(window_name="shared")
+    kept = latest.new_window(window_name="shared")
+
+    first.kill_window("shared")
+
+    assert first.windows.filter(window_name="shared") == []
+    assert [w.window_id for w in latest.windows.filter(window_name="shared")] == [
+        kept.window_id,
+    ]
