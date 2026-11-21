@@ -45,6 +45,14 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### Importing libtmux when stdout has no encoding (#890)
+
+`import libtmux` works when `sys.stdout` has been replaced by an object with no
+`encoding` attribute, as some editors and capture wrappers do. It previously
+raised `AttributeError`.
+
 ## libtmux 0.63.0 (2026-11-21)
 
 libtmux 0.63.0 raises the minimum Python to 3.11 and brings the library in

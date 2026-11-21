@@ -1,10 +1,7 @@
 # flake8: NOQA
 import functools
-import sys
 import types
 import typing as t
-
-console_encoding = sys.stdout.encoding
 
 
 # TODO Consider removing, reraise does not seem to be called anywhere

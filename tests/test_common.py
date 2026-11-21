@@ -5,7 +5,9 @@ from __future__ import annotations
 import locale
 import logging
 import re
+import subprocess
 import sys
+import textwrap
 import typing as t
 
 import pytest
@@ -762,3 +764,36 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     result = parse_output(line, "list-sessions", tmux_version)
     assert isinstance(result, dict)
     assert "session_id" in result
+
+
+def test_import_without_stdout_encoding() -> None:
+    """Importing libtmux works when ``sys.stdout`` has no ``encoding``.
+
+    Embedders such as editors replace ``sys.stdout`` with objects that lack
+    the attribute. A fresh interpreter is used because the import under test
+    happens once per process.
+    """
+    code = textwrap.dedent(
+        """
+        import sys
+
+        class Stdout:
+            def write(self, text):
+                return len(text)
+
+            def flush(self):
+                pass
+
+        sys.stdout = Stdout()
+        import libtmux
+        """,
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
