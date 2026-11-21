@@ -55,6 +55,12 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### `send_keys` types text that starts with a dash (#892)
+
+{meth}`~libtmux.Pane.send_keys` types text that begins with `-`, such as
+`-n hello`, into the pane. tmux previously read it as a flag, answered
+`unknown flag -n`, and typed nothing, while the call returned normally.
+
 #### Values that start with a dash are passed as data (#893)
 
 Renaming a session or window to `-n`, storing `-a` in a buffer, or setting an

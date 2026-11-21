@@ -43,6 +43,25 @@ def test_send_keys(session: Session) -> None:
     assert "c-a" not in pane_contents, "should not print to pane"
 
 
+@pytest.mark.parametrize(
+    ("text", "literal"),
+    [("-n hello", False), ("-n hello", True), ("--help", True)],
+    ids=["flag_like", "flag_like_literal", "double_dash_literal"],
+)
+def test_send_keys_text_starting_with_a_dash(
+    text: str,
+    literal: bool,
+    session: Session,
+) -> None:
+    """Text that starts with ``-`` is typed into the pane, not read as a flag."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    pane.send_keys(text, literal=literal, enter=False)
+
+    retry_until(lambda: text in "\n".join(pane.capture_pane()), 2, raises=True)
+
+
 def test_set_height(session: Session) -> None:
     """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")
