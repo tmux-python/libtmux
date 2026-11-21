@@ -40,7 +40,13 @@ def _hold_command(text: str) -> str:
 
 @dataclass(frozen=True)
 class HudRenderer:
-    """Render an :class:`~..store.AgentStore` into floating-HUD pane content."""
+    """Render an :class:`~..store.AgentStore` into floating-HUD pane content.
+
+    Attributes
+    ----------
+    title : str
+        Header line displayed at the top of the HUD frame.
+    """
 
     title: str = "agents"
 

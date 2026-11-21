@@ -18,7 +18,25 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkspaceStatus:
-    """Status for one declared workspace against a live server snapshot."""
+    """Status for one declared workspace against a live server snapshot.
+
+    Attributes
+    ----------
+    name : str
+        Declared workspace session name.
+    exists : bool
+        Whether a live session with ``name`` exists in the snapshot.
+    session_id : str or None
+        Tmux session identifier (e.g. ``"$1"``) when ``exists`` is true.
+    windows : int
+        Number of live windows in the session.
+    panes : int
+        Total number of live panes across the session's windows.
+    agents : tuple[Agent, ...]
+        Tracked coding agents running inside panes of the session.
+    agent_state : AgentState or None
+        Most urgent state among ``agents``, or ``None`` when no agents match.
+    """
 
     name: str
     exists: bool

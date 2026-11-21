@@ -482,7 +482,7 @@ def test_osc_survives_the_real_tmux_output_transport(
 
     async def main() -> str:
         engine = AsyncControlModeEngine.for_server(session.server)
-        monitor = AgentMonitor(engine)
+        monitor = AgentMonitor(engine, session=session.session_id)
         await monitor.start()
         active_pane = session.active_window.active_pane
         assert active_pane is not None

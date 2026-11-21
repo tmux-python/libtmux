@@ -85,7 +85,7 @@ def test_render_custom_labels() -> None:
 def test_status_line_op_is_a_global_set_option() -> None:
     """The op builder renders a single set-option for status-right."""
     op = status_line_op("wait:1", global_=True)
-    assert op.render() == ("set-option", "-g", "status-right", "wait:1")
+    assert op.render() == ("set-option", "-g", "--", "status-right", "wait:1")
 
 
 def test_paint_reads_store_then_writes_once() -> None:
@@ -97,7 +97,7 @@ def test_paint_reads_store_then_writes_once() -> None:
     rec = _Recorder()
     ok = asyncio.run(paint_status_line(rec, mon, global_=True))
     assert ok
-    assert rec.calls == [("set-option", "-g", "status-right", "wait:1")]
+    assert rec.calls == [("set-option", "-g", "--", "status-right", "wait:1")]
 
 
 def test_paint_status_line_lands_live(session: Session) -> None:

@@ -76,7 +76,10 @@ def test_wait_for_output_captures_real_output(session: Session) -> None:
 
 def test_watch_events_output_source_captures_real_output(session: Session) -> None:
     """watch_events(target=...) attaches and streams a real pane's %output."""
-    from libtmux.experimental.engines import AsyncControlModeEngine
+    from libtmux.experimental.engines import (
+        AsyncControlModeEngine,
+        ControlNotification,
+    )
     from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
 
     server = session.server
@@ -129,6 +132,12 @@ def test_watch_events_output_source_captures_real_output(session: Session) -> No
     text = "".join(
         payload
         for event in data["events"]
-        if (payload := output_payload(event["raw"], pane_id)) is not None
+        if (
+            payload := output_payload(
+                ControlNotification.parse(event["raw"].encode()),
+                pane_id,
+            )
+        )
+        is not None
     )
     assert "WATCH_OK" in text

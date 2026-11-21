@@ -21,6 +21,13 @@ class Stamp:
     Ordered by ``counter`` first, then ``writer`` (a deterministic tie-break when
     two sources stamp the same counter).
 
+    Attributes
+    ----------
+    counter : int
+        Monotonically increasing logical timestamp.
+    writer : str
+        Signal channel identifier used to break ties deterministically.
+
     Examples
     --------
     >>> Stamp(2, "option") > Stamp(1, "osc")
