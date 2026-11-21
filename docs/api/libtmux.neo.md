@@ -33,7 +33,7 @@ Attach default tmux {class}`~libtmux.Server` to `t`:
 >>> import libtmux
 >>> t = libtmux.Server()
 >>> t
-Server(socket_path=/tmp/tmux-.../default)
+Server(socket_path=.../default)
 ```
 
 ## Session
