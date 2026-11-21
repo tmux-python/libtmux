@@ -175,4 +175,5 @@ class OscSignal:
                 "osc",
             )
             for payload in payloads
+            if payload.state
         ]

@@ -34,3 +34,17 @@ def test_osc_signal_reassembles_fragmented_bytes() -> None:
     assert readings[0].pane_id == "%2"
     assert readings[0].state is AgentState.AWAITING_INPUT
     assert readings[0].source == "osc"
+
+
+def test_osc_signal_ignores_systemd_osc_3008_without_state() -> None:
+    """Systemd OSC 3008 shell-context frames (no state= key) are ignored."""
+    osc = OscSignal()
+    stream = (
+        b"\033]3008;start=abc;user=d;type=command\033\\"
+        b"\033]3008;state=running;name=claude\033\\"
+        b"\033]3008;end=abc;exit=success\033\\"
+    )
+    readings = osc.feed("%1", stream)
+    assert len(readings) == 1
+    assert readings[0].state is AgentState.RUNNING
+    assert readings[0].name == "claude"
