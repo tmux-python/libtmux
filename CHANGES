@@ -74,6 +74,15 @@ the forwarded call; runtime behaviour is unchanged.
 `encoding` attribute, as some editors and capture wrappers do. It previously
 raised `AttributeError`.
 
+### Documentation
+
+#### Automation patterns wait for the command to finish (#734)
+
+The examples on {ref}`automation-patterns` waited by sleeping a fixed time and
+then searching the pane for a marker, which matched the echoed command line
+before the command had run. They now have the command signal a channel, block
+on it with {meth}`~libtmux.Server.wait_for`, and compare whole captured lines.
+
 ### Development
 
 #### Control-mode output test no longer times out (#733)
