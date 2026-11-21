@@ -3,8 +3,10 @@
 A startup preflight that fails fast if the engine cannot reach tmux at all
 (missing binary, a fundamentally broken connection) -- distinct from a tmux-side
 error such as "no server running", which the engine returns as data, not an
-exception. The lifespan also closes engines whose ownership was explicitly
-transferred to the server. Injected engines remain borrowed by default.
+exception. When a streaming engine is in use, the optional
+:class:`~libtmux.experimental.agents.monitor.AgentMonitor` is started after a
+successful preflight and stopped on shutdown, before any owned engine is closed.
+Injected engines remain borrowed by default.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ if t.TYPE_CHECKING:
 
     from fastmcp import FastMCP
 
+    from libtmux.experimental.agents.monitor import AgentMonitor
     from libtmux.experimental.engines.base import AsyncTmuxEngine
 
 
@@ -93,6 +96,7 @@ async def _drain_aclose(
 
 def make_lifespan(
     engine: AsyncTmuxEngine,
+    monitor: AgentMonitor | None = None,
     *,
     ownership: EngineOwnership = EngineOwnership.BORROWED,
 ) -> Callable[[FastMCP], contextlib.AbstractAsyncContextManager[None]]:
@@ -101,12 +105,15 @@ def make_lifespan(
     The probe runs ``list-sessions`` over *engine* and raises ``RuntimeError``
     only when the engine itself is broken (it raises -- missing binary, lost
     connection), never on a tmux-side failure, which comes back as a
-    :class:`~..engines.base.CommandResult`. An ``OWNED`` engine must provide
-    ``aclose()`` and is closed exactly once after startup begins. Cleanup is
-    drained through repeated caller cancellation. A close failure propagates
-    after a clean server body; if a body exception or cancellation is already
-    in flight, that original exception remains primary and the close failure is
-    chained as its cause.
+    :class:`~..engines.base.CommandResult`.
+
+    When *monitor* is provided, its
+    :meth:`~libtmux.experimental.agents.monitor.AgentMonitor.start` is awaited
+    after a successful preflight and
+    :meth:`~libtmux.experimental.agents.monitor.AgentMonitor.stop` on shutdown,
+    before an ``OWNED`` engine is closed. An ``OWNED`` engine must provide
+    ``aclose()`` and is closed exactly once after startup begins; cleanup is
+    drained through repeated caller cancellation.
     """
     ownership = EngineOwnership(ownership)
     closer: _SupportsAsyncClose | None = None
@@ -125,14 +132,26 @@ def make_lifespan(
                 msg = f"tmux engine preflight failed: {error}"
                 raise RuntimeError(msg) from error
 
-        if closer is None:
+        @contextlib.asynccontextmanager
+        async def monitor_scope() -> AsyncIterator[None]:
             await probe()
-            yield
+            if monitor is None:
+                yield
+                return
+            try:
+                await monitor.start()
+                yield
+            finally:
+                await monitor.stop()
+
+        if closer is None:
+            async with monitor_scope():
+                yield
             return
 
         try:
-            await probe()
-            yield
+            async with monitor_scope():
+                yield
         finally:
             primary_error = sys.exc_info()[1]
             close_error, close_cancellation = await _drain_aclose(closer)

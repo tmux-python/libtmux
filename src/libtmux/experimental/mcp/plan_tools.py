@@ -22,6 +22,7 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.mcp.registry import OperationToolRegistry
     from libtmux.experimental.ops.plan import LazyPlan, PlanResult
     from libtmux.experimental.ops.planner import Planner
+    from libtmux.experimental.workspace.sets import WorkspaceSetResult
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,52 @@ def _to_outcome(result: PlanResult) -> PlanOutcome:
         ok=result.ok,
         results=[result_to_dict(item) for item in result.results],
         bindings=bindings_to_dict(result.bindings),
+    )
+
+
+@dataclass(frozen=True)
+class WorkspaceSetOutcome:
+    """The result of executing a workspace-set build.
+
+    Attributes
+    ----------
+    ok : bool
+        Whether the merged workspace-set build succeeded.
+    results : list[dict[str, Any]]
+        Serialized result for each operation executed in the merged plan.
+    bindings : dict[str, str]
+        Resolved forward-reference bindings keyed by slot.
+    sessions : list[str]
+        Session names targeted by the workspace set, in declaration order.
+    reused : list[str]
+        Existing session names kept without rebuilding under reuse policy.
+    """
+
+    ok: bool
+    results: list[dict[str, t.Any]]
+    bindings: dict[str, str]
+    sessions: list[str]
+    reused: list[str]
+
+    def to_dict(self) -> dict[str, t.Any]:
+        """Render as the JSON object an MCP adapter returns to an agent."""
+        return {
+            "ok": self.ok,
+            "results": self.results,
+            "bindings": self.bindings,
+            "sessions": self.sessions,
+            "reused": self.reused,
+        }
+
+
+def _to_set_outcome(result: WorkspaceSetResult) -> WorkspaceSetOutcome:
+    """Project a workspace-set build result into a JSON-friendly outcome."""
+    return WorkspaceSetOutcome(
+        ok=result.ok,
+        results=[result_to_dict(item) for item in result.result.results],
+        bindings=bindings_to_dict(result.bindings),
+        sessions=list(result.sessions),
+        reused=list(result.reused),
     )
 
 
@@ -222,4 +269,50 @@ async def abuild_workspace(
 
     return _to_outcome(
         await analyze(spec).abuild(engine, version=version, preflight=preflight),
+    )
+
+
+def build_workspaces(
+    specs: t.Sequence[t.Mapping[str, t.Any] | str],
+    engine: TmuxEngine,
+    *,
+    version: str | None = None,
+    preflight: bool = True,
+) -> WorkspaceSetOutcome:
+    """Build multiple declarative workspaces as one merged plan."""
+    from libtmux.experimental.workspace import (
+        analyze,
+        build_workspaces as run_workspaces,
+    )
+
+    return _to_set_outcome(
+        run_workspaces(
+            [analyze(spec) for spec in specs],
+            engine,
+            version=version,
+            preflight=preflight,
+        ),
+    )
+
+
+async def abuild_workspaces(
+    specs: t.Sequence[t.Mapping[str, t.Any] | str],
+    engine: AsyncTmuxEngine,
+    *,
+    version: str | None = None,
+    preflight: bool = True,
+) -> WorkspaceSetOutcome:
+    """Async sibling of :func:`build_workspaces`."""
+    from libtmux.experimental.workspace import (
+        abuild_workspaces as arun_workspaces,
+        analyze,
+    )
+
+    return _to_set_outcome(
+        await arun_workspaces(
+            [analyze(spec) for spec in specs],
+            engine,
+            version=version,
+            preflight=preflight,
+        ),
     )

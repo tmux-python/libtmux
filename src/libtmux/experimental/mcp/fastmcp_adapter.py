@@ -68,6 +68,7 @@ _TOOLS: tuple[tuple[str, str], ...] = (
     ("split_pane", "mutating"),
     ("new_pane", "mutating"),
     ("send_input", "mutating"),
+    ("run_in_pane", "mutating"),
     ("capture_pane", "readonly"),
     ("capture_active_pane", "readonly"),
     ("grep_pane", "readonly"),
@@ -162,12 +163,13 @@ def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
     closer = (
         "The curated tools cover most needs; the per-operation surface (op_*) "
         "and the plan tools (preview_plan/execute_plan/result_schema/"
-        "build_workspace) are power-use."
+        "build_workspace/build_workspaces) are power-use."
     )
     if events_enabled:
         closer += (
-            " For live output: wait_for_output waits for one pane to settle "
-            "(run-a-command-and-wait); watch_events/poll_events stream/buffer raw "
+            " For live output: run_in_pane sends a command and waits for one "
+            "pane to settle in one tool call; wait_for_output observes an "
+            "already-running pane; watch_events/poll_events stream/buffer raw "
             "control-mode notifications across the server."
         )
     segments = [
@@ -204,12 +206,15 @@ def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
         segments.append(
             "Run a command and wait for it to finish / for completion "
             "(long-running builds, test runs like `uv run pytest`, installs, a "
-            "server reaching ready): split_pane or pick a pane, send_input the "
-            "command (enter=True), then call wait_for_output on that same pane -- "
-            "it folds the live output and returns when the pane goes quiet "
-            "(settles), needle-free (no regex, no sentinel). Prefer this over "
-            "polling with sleep + capture_pane: wait_for_output is event-backed, "
-            "returns the captured_text, and reports done.pane_dead / "
+            "server reaching ready): split_pane or pick a pane, then call "
+            "run_in_pane(target=..., command=...) -- it sends the command, folds "
+            "the live output, and returns when the pane goes quiet (settles), "
+            "needle-free (no regex, no sentinel). Prefer this over polling with "
+            "sleep + capture_pane, and over a separate send_input + "
+            "wait_for_output pair when you are just running one shell command. "
+            "For commands already started or control keys such as C-c, use "
+            "send_input first and wait_for_output on that same pane. Both "
+            "return captured_text and report done.pane_dead / "
             "done.pane_dead_status (process exit / return code) plus "
             "done.pane_current_command so you can tell finished from "
             "blocked-on-input. Settled means output stopped, not that the command "
@@ -624,8 +629,32 @@ def register_plan_tools(
             )
             return outcome.to_dict()
 
+        async def build_workspaces(
+            specs: list[dict[str, t.Any]],
+            preflight: bool = True,
+            version: str | None = None,
+        ) -> dict[str, t.Any]:
+            """Build multiple declarative workspaces in one merged plan."""
+            for spec in specs:
+                plan, replacing = _workspace_plan_and_replacement(
+                    spec,
+                    preflight,
+                    version,
+                )
+                await _guard_plan(plan, version)
+                if replacing is not None:
+                    await _guard_workspace_replace(replacing, version)
+            outcome = await _plan.abuild_workspaces(
+                specs,
+                t.cast("AsyncTmuxEngine", engine),
+                version=version,
+                preflight=preflight,
+            )
+            return outcome.to_dict()
+
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
+        tools.append((build_workspaces, "mutating"))
     else:
 
         def execute_plan(  # type: ignore[misc]
@@ -672,11 +701,39 @@ def register_plan_tools(
             )
             return outcome.to_dict()
 
+        def build_workspaces(  # type: ignore[misc]
+            specs: list[dict[str, t.Any]],
+            preflight: bool = True,
+            version: str | None = None,
+        ) -> dict[str, t.Any]:
+            """Build multiple declarative workspaces in one merged plan."""
+            for spec in specs:
+                plan, replacing = _workspace_plan_and_replacement(
+                    spec,
+                    preflight,
+                    version,
+                )
+                drive_sync(_guard_plan(plan, version))
+                if replacing is not None:
+                    drive_sync(_guard_workspace_replace(replacing, version))
+            outcome = _plan.build_workspaces(
+                specs,
+                t.cast("TmuxEngine", engine),
+                version=version,
+                preflight=preflight,
+            )
+            return outcome.to_dict()
+
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
+        tools.append((build_workspaces, "mutating"))
 
     for fn, safety in tools:
-        destructive = fn.__name__ in {"execute_plan", "build_workspace"}
+        destructive = fn.__name__ in {
+            "execute_plan",
+            "build_workspace",
+            "build_workspaces",
+        }
         annotations = ToolAnnotations(
             title=fn.__name__,
             readOnlyHint=safety == "readonly",
@@ -887,6 +944,7 @@ def build_async_server(
 
     from libtmux.experimental.mcp._lifespan import make_lifespan
     from libtmux.experimental.mcp.events import _supports_stream, register_events
+    from libtmux.experimental.mcp.vocabulary.agents import supports_monitor
 
     ownership = EngineOwnership(engine_ownership)
     if ownership is EngineOwnership.OWNED and not lifespan:
@@ -896,11 +954,25 @@ def build_async_server(
     ctx = caller if caller is not None else CallerContext.discover()
     _stash_caller(engine, ctx)
     events_enabled = events != "off" and _supports_stream(engine)
+    # Build the agent monitor up front so the lifespan can start/stop it for the
+    # server's whole lifetime. The monitor needs the full control surface
+    # (subscribe + add_subscription + set_attach_targets), a stricter bar than
+    # the event tools' subscribe-only requirement.
+    monitor_enabled = supports_monitor(engine)
+    agent_monitor = None
+    if monitor_enabled:
+        from libtmux.experimental.agents.monitor import AgentMonitor
+
+        agent_monitor = AgentMonitor(engine)
     mcp: FastMCP = FastMCP(
         name=name,
         instructions=instructions or _instructions(ctx, events_enabled=events_enabled),
         middleware=_make_middleware(level) if include_middleware else None,
-        lifespan=(make_lifespan(engine, ownership=ownership) if lifespan else None),
+        lifespan=(
+            make_lifespan(engine, agent_monitor, ownership=ownership)
+            if lifespan
+            else None
+        ),
     )
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True, safety_level=level)
@@ -931,5 +1003,9 @@ def build_async_server(
 
         register_resources(mcp, engine, is_async=True)
     register_events(mcp, engine, mode=events, source=event_source)
+    if monitor_enabled and lifespan:
+        from libtmux.experimental.mcp.vocabulary.agents import register_agents
+
+        register_agents(mcp, engine, monitor=agent_monitor)
     _apply_safety_gate(mcp, level)
     return mcp
