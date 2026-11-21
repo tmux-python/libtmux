@@ -583,7 +583,9 @@ class Window(
         Parameters
         ----------
         target_pane : str
-            'target_pane', '-U' ,'-D', '-L', '-R', or '-l'.
+            'target_pane', '-U' ,'-D', '-L', '-R', or '-l'. A pane index
+            selects within this window; any other target is passed to tmux
+            as given.
 
         Returns
         -------
@@ -592,6 +594,9 @@ class Window(
         if target_pane in {"-l", "-U", "-D", "-L", "-R"}:
             proc = self.cmd("select-pane", target_pane)
         else:
+            if isinstance(target_pane, int) or target_pane.isdigit():
+                # tmux resolves a bare index in its own current window.
+                target_pane = f"{self.window_id}.{target_pane}"
             proc = self.cmd("select-pane", target=target_pane)
 
         raise_if_stderr(proc, "select-pane")
