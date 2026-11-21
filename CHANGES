@@ -55,6 +55,16 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### A newline in a pane's path no longer breaks listings (#752)
+
+Listing a server's panes or windows, and every lookup built on those listings,
+works when a pane's current directory or any other tmux value contains a
+newline. One such pane previously made them raise `ValueError` for the whole
+server.
+
+A value that contains libtmux's field separator is now reported as a
+{exc}`~libtmux.exc.LibTmuxException` instead of being misparsed.
+
 #### `repr(Server())` names the socket tmux uses (#727)
 
 The repr of a {class}`~libtmux.Server` created without a socket name or path
