@@ -8,8 +8,7 @@ import typing as t
 
 import pytest
 
-from libtmux.engines.base import command_count
-from libtmux.experimental.engines.base import CommandSeparator
+from libtmux.experimental.engines.base import CommandSeparator, command_count
 from libtmux.experimental.engines.control_mode import (
     ControlModeBlock,
     ControlModeEngine,

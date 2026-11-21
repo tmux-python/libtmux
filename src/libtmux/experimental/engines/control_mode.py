@@ -32,10 +32,10 @@ import time
 import typing as t
 
 from libtmux import exc
-from libtmux.engines.base import command_count
 from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
+    command_count,
     render_control_line,
 )
 from libtmux.experimental.engines.connection import ServerConnection

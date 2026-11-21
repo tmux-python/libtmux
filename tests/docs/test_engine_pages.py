@@ -17,7 +17,7 @@ _TUTORIAL_ROOT = _ROOT / "docs" / "experimental" / "tutorials"
 # define wrappers, and neither should demand a transport page.
 _INSTRUMENTATION = frozenset(
     {
-        "libtmux.engines.instrumentation",
+        "libtmux._internal.instrumentation",
         "libtmux.experimental.engines.instrumentation",
     }
 )

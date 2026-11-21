@@ -95,8 +95,7 @@ def test_inlining_is_counted_before_argv_encoding() -> None:
     ``encode_direct_argv`` turns :class:`CommandSeparator` into a plain string.
     An observer reading the encoded argv would report zero inlining forever.
     """
-    from libtmux.engines.base import command_count
-    from libtmux.experimental.engines.base import encode_direct_argv
+    from libtmux.experimental.engines.base import command_count, encode_direct_argv
 
     request = CommandRequest.from_args(
         "set-option", "-g", "@a", "1", CommandSeparator(";"), "show-options", "-g"

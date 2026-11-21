@@ -45,10 +45,10 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux import exc
-from libtmux.engines.base import command_count
 from libtmux.experimental.engines.asyncio import AsyncSubprocessEngine
 from libtmux.experimental.engines.base import (
     CommandRequest,
+    command_count,
     render_control_line,
     unescape_control_output,
 )
