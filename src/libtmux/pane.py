@@ -1803,7 +1803,7 @@ class Pane(
     ) -> None:
         """Display a popup overlay via ``$ tmux display-popup``.
 
-        Requires tmux 3.2+ and an attached terminal client. On tmux 3.8+,
+        Requires an attached terminal client. On tmux 3.8+,
         a control client returns without opening the popup or running its command.
 
         Parameters
@@ -1833,18 +1833,18 @@ class Pane(
         start_directory : str or PathLike, optional
             Working directory (``-d`` flag).
         title : str, optional
-            Popup title (``-T`` flag). Requires tmux 3.3+.
+            Popup title (``-T`` flag).
         border_lines : str, optional
-            Border line style (``-b`` flag). Requires tmux 3.3+.
+            Border line style (``-b`` flag).
         style : str, optional
-            Popup style (``-s`` flag). Requires tmux 3.3+.
+            Popup style (``-s`` flag).
         border_style : str, optional
-            Border style (``-S`` flag). Requires tmux 3.3+.
+            Border style (``-S`` flag).
         environment : dict, optional
-            Environment variables (``-e`` flag). Requires tmux 3.3+.
+            Environment variables (``-e`` flag).
         no_border : bool, optional
             Open the popup without a border (``-B`` flag). If
-            *border_lines* is also set, tmux ignores it. Requires tmux 3.3+.
+            *border_lines* is also set, tmux ignores it.
         close_on_any_key : bool, optional
             Dismiss the popup on any key press once the inner
             command has exited (``-k`` flag). Requires tmux 3.6+.
@@ -1898,59 +1898,23 @@ class Pane(
             tmux_args += ("-d", escape_trailing_separator(str(start_path)))
 
         if title is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-T", escape_trailing_separator(title))
-            else:
-                warnings.warn(
-                    "title requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-T", escape_trailing_separator(title))
 
         if border_lines is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-b", escape_trailing_separator(border_lines))
-            else:
-                warnings.warn(
-                    "border_lines requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-b", escape_trailing_separator(border_lines))
 
         if style is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-s", escape_trailing_separator(style))
-            else:
-                warnings.warn(
-                    "style requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-s", escape_trailing_separator(style))
 
         if border_style is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-S", escape_trailing_separator(border_style))
-            else:
-                warnings.warn(
-                    "border_style requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-S", escape_trailing_separator(border_style))
 
         if environment:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                for k, v in environment.items():
-                    tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
-            else:
-                warnings.warn(
-                    "environment requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            for k, v in environment.items():
+                tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
         if no_border:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-B",)
-            else:
-                warnings.warn(
-                    "no_border requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-B",)
 
         if close_on_any_key:
             if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
@@ -2122,7 +2086,7 @@ class Pane(
         source_pane : str, optional
             Source pane whose contents should be displayed in copy
             mode (``-s`` flag). Lets you scroll/copy from another
-            pane's history. Requires tmux 3.2+.
+            pane's history.
 
         Examples
         --------
@@ -2612,7 +2576,7 @@ class Pane(
 
         window_id = proc.stdout[0].strip() if proc.stdout else None
         if not window_id:
-            # tmux 3.2a through 3.5 relinks a sole pane before printing its window ID.
+            # tmux through 3.5 relinks a sole pane before printing its window ID.
             self.refresh()
             window_id = self.window_id
             if not window_id:
