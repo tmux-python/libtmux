@@ -2030,3 +2030,30 @@ def test_display_message_text_starting_with_a_dash(session: Session) -> None:
     assert pane is not None
 
     assert pane.display_message("-p", get_text=True) == ["-p"]
+
+
+def test_send_keys_hex_keys_does_not_send_enter_by_default(session: Session) -> None:
+    """Hex bytes are sent alone unless ``enter`` is passed."""
+    pane = session.active_window.split(shell="sh")
+
+    pane.send_keys("41", hex_keys=True)
+    pane.send_keys("B", enter=False)
+
+    retry_until(
+        lambda: any(line.rstrip().endswith("AB") for line in pane.capture_pane()),
+        2,
+        raises=True,
+    )
+
+
+def test_send_keys_hex_keys_sends_enter_when_asked(session: Session) -> None:
+    """``enter=True`` still sends Enter after hex bytes."""
+    pane = session.active_window.split(shell="sh")
+
+    pane.send_keys("41", hex_keys=True, enter=True)
+
+    retry_until(
+        lambda: any("not found" in line for line in pane.capture_pane()),
+        2,
+        raises=True,
+    )

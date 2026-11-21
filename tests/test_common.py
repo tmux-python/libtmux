@@ -860,3 +860,39 @@ def test_logged_command_line_masks_environment_values(
     assert [line for line in logged if "API_TOKEN" in line]
     assert [line for line in logged if "OTHER_TOKEN=***" in line]
     assert session.show_environment()["API_TOKEN"] == "hunter2"
+
+
+def test_compat_sentinel_matches_the_builtin() -> None:
+    """The backported ``sentinel`` behaves like Python 3.15's built-in."""
+    import copy
+
+    from libtmux._compat import sentinel
+
+    unset = sentinel("UNSET")
+
+    assert repr(unset) == "UNSET"
+    assert repr(sentinel("UNSET", repr="<unset>")) == "<unset>"
+    assert unset is not sentinel("UNSET")
+    assert bool(unset) is True
+    assert copy.copy(unset) is unset
+    assert copy.deepcopy(unset) is unset
+    if sys.version_info >= (3, 15):
+        import builtins
+
+        assert sentinel is builtins.sentinel  # type: ignore[attr-defined,unused-ignore]
+
+
+def test_compat_sentinel_backport() -> None:
+    """The class used before Python 3.15 has the same behaviour."""
+    import copy
+
+    from libtmux._compat import _SentinelBackport
+
+    unset = _SentinelBackport("UNSET")
+
+    assert repr(unset) == "UNSET"
+    assert repr(_SentinelBackport("UNSET", repr="<unset>")) == "<unset>"
+    assert unset is not _SentinelBackport("UNSET")
+    assert bool(unset) is True
+    assert copy.copy(unset) is unset
+    assert copy.deepcopy(unset) is unset

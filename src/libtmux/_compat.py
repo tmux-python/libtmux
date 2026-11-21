@@ -1,5 +1,6 @@
 # flake8: NOQA
 import functools
+import sys
 import types
 import typing as t
 
@@ -13,6 +14,44 @@ def reraise(
     if value.__traceback__ is not tb:
         raise (value.with_traceback(tb))
     raise value
+
+
+class _SentinelBackport:
+    """Backport of the ``sentinel`` built-in added in Python 3.15 (PEP 661).
+
+    A sentinel is a unique object that marks "no value was passed" where
+    ``None`` already has a meaning.
+
+    Examples
+    --------
+    >>> from libtmux._compat import _SentinelBackport
+    >>> UNSET = _SentinelBackport("UNSET")
+    >>> UNSET
+    UNSET
+    >>> UNSET is _SentinelBackport("UNSET")
+    False
+    """
+
+    __slots__ = ("_name", "_repr")
+
+    def __init__(self, name: str, /, *, repr: t.Optional[str] = None) -> None:
+        self._name = name
+        self._repr = name if repr is None else repr
+
+    def __repr__(self) -> str:
+        return self._repr
+
+    def __copy__(self) -> "_SentinelBackport":
+        return self
+
+    def __deepcopy__(self, memo: t.Dict[int, t.Any]) -> "_SentinelBackport":
+        return self
+
+
+if t.TYPE_CHECKING or sys.version_info < (3, 15):
+    sentinel = _SentinelBackport
+else:
+    from builtins import sentinel
 
 
 import re

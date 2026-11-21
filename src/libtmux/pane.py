@@ -14,6 +14,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
+from libtmux._compat import sentinel
 from libtmux._internal.env import pane_id_from_env
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.common import (
@@ -46,6 +47,9 @@ if t.TYPE_CHECKING:
     from .window import Window
 
 logger = logging.getLogger(__name__)
+
+#: Default for ``send_keys(enter=...)``: Enter unless ``hex_keys`` is set.
+_ENTER_DEFAULT: t.Any = sentinel("ENTER_DEFAULT")
 
 
 @dataclasses.dataclass()
@@ -800,7 +804,7 @@ class Pane(
     def send_keys(
         self,
         cmd: str | None = None,
-        enter: bool | None = True,
+        enter: bool | None = _ENTER_DEFAULT,
         suppress_history: bool | None = False,
         literal: bool | None = False,
         reset: bool | None = None,
@@ -832,7 +836,8 @@ class Pane(
 
                Now optional. ``None`` triggers tmux's flag-only path.
         enter : bool, optional
-            Send enter after sending the input, default True.
+            Send Enter after the input. When omitted, Enter is sent unless
+            ``hex_keys`` is set, so hex bytes arrive alone.
         suppress_history : bool, optional
             Prepend a space to command to suppress shell history, default False.
 
@@ -898,6 +903,9 @@ class Pane(
 
         >>> pane.send_keys(reset=True)
         """
+        if enter is _ENTER_DEFAULT:
+            enter = not hex_keys
+
         prefix = " " if suppress_history else ""
 
         tmux_args: tuple[str, ...] = ()
