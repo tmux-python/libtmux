@@ -31,9 +31,10 @@ VALUES = ["v;", "v\\;", ";", "v;;"]
 def shown(value: str) -> str:
     """Return ``value`` as tmux prints it in a format result.
 
-    tmux 3.8 doubles backslashes in format output.
+    From tmux 3.7 a window name given at creation and a pane title are
+    stored encoded, which writes a backslash as two.
     """
-    if has_gte_version("3.8"):
+    if has_gte_version("3.7"):
         return value.replace("\\", "\\\\")
     return value
 
@@ -41,8 +42,8 @@ def shown(value: str) -> str:
 def shown_name(value: str) -> str:
     """Return a session name or renamed window name as tmux prints it.
 
-    tmux encodes a backslash in these names as two on every release: it
-    stores them encoded before 3.8 and escapes them in format output from 3.8.
+    tmux stores these names encoded on every supported release, which
+    writes a backslash as two.
     """
     return value.replace("\\", "\\\\")
 
