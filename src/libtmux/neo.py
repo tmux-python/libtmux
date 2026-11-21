@@ -882,6 +882,9 @@ class Obj:
         the same precondition explicitly so the guarantee survives
         ``python -O``, where an ``assert`` would be stripped.
 
+        A field tmux reports as empty is reset to ``None``, so a value the
+        object held before it was cleared does not linger.
+
         Raises
         ------
         ValueError
@@ -903,6 +906,14 @@ class Obj:
         if obj is not None:
             for k, v in obj.items():
                 setattr(self, k, v)
+            # parse_output omits empty values, so a field tmux emptied is absent.
+            fields, _ = get_output_format(
+                list_cmd,
+                str(get_version(tmux_bin=self.server.tmux_bin)),
+            )
+            for k in fields:
+                if k not in obj:
+                    setattr(self, k, None)
 
 
 @functools.cache
