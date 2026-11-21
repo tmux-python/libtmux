@@ -2533,7 +2533,7 @@ class Pane(
         detach: bool = True,
         window_name: str | None = None,
     ) -> Window:
-        """Break this pane out into a new window via ``$ tmux break-pane``.
+        """Break this pane out into its own window via ``$ tmux break-pane``.
 
         Parameters
         ----------
@@ -2545,7 +2545,8 @@ class Pane(
         Returns
         -------
         :class:`Window`
-            The newly created window containing the pane.
+            The window containing the pane after the break. tmux moves the
+            existing window when this is its only pane.
 
         Examples
         --------
@@ -2576,8 +2577,18 @@ class Pane(
         proc = self.server.cmd("break-pane", *tmux_args)
 
         raise_if_stderr(proc, "break-pane")
+        if proc.returncode != 0:
+            msg = f"tmux exited with status {proc.returncode}"
+            raise exc.LibTmuxException(msg, subcommand="break-pane")
 
-        window_id = proc.stdout[0].strip()
+        window_id = proc.stdout[0].strip() if proc.stdout else None
+        if not window_id:
+            # tmux 3.2a through 3.5 relinks a sole pane before printing its window ID.
+            self.refresh()
+            window_id = self.window_id
+            if not window_id:
+                msg = "tmux moved the pane but its destination window is unknown"
+                raise exc.LibTmuxException(msg, subcommand="break-pane")
 
         from libtmux.window import Window
 

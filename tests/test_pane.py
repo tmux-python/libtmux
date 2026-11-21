@@ -1399,6 +1399,50 @@ def test_break_pane_basic(session: Session) -> None:
     assert new_window.window_id is not None
 
 
+@pytest.mark.parametrize("window_name", [None, "broken"])
+@pytest.mark.parametrize("swapped", [False, True], ids=["current", "stale-window"])
+def test_break_pane_returns_relinked_window(
+    session: Session, window_name: str | None, swapped: bool
+) -> None:
+    """Breaking a sole pane returns its window in the destination session."""
+    source = session.new_window(window_name="source")
+    pane = source.active_pane
+    assert pane is not None
+    expected = source
+    if swapped:
+        expected = session.new_window(window_name="other")
+        other_pane = expected.active_pane
+        assert other_pane is not None
+        other_pane.swap(target=pane, detach=True)
+        assert pane.window_id == source.window_id
+    destination = session.server.new_session(session_name="destination")
+
+    window = pane.break_pane(window_name=window_name)
+
+    assert window.window_id == expected.window_id
+    assert window.session_id == destination.session_id
+    assert [member.pane_id for member in window.panes] == [pane.pane_id]
+    if window_name is not None:
+        assert window.window_name == window_name
+
+
+def test_break_pane_rejects_silent_failure(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Simulate a failed command without stderr on an otherwise live pane."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    failed: subprocess.CompletedProcess[list[str]] = subprocess.CompletedProcess(
+        ["break-pane"], 1, stdout=[], stderr=[]
+    )
+    monkeypatch.setattr(pane.server, "cmd", lambda *_args, **_kwargs: failed)
+
+    with pytest.raises(
+        exc.LibTmuxException, match="break-pane: tmux exited with status 1"
+    ):
+        pane.break_pane()
+
+
 def test_break_pane_with_name(session: Session) -> None:
     """Test Pane.break_pane() with window_name."""
     window = session.new_window(window_name="test_break_name")
