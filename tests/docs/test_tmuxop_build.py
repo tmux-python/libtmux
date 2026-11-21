@@ -167,6 +167,7 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert "send-keys" in operation_html
     assert "mutating" in operation_html
     assert "primitive" in operation_html
+    assert "Batchable" in operation_html
     assert "AckResult" in operation_html
     assert "Link to this definition" in operation_html
     assert "https://example.invalid/source/" not in operation_html

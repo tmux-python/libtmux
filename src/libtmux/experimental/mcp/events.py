@@ -563,7 +563,7 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
 
         async def _frames() -> AsyncGenerator[str, None]:
             async for notification in engine.subscribe():
-                payload = output_payload(notification.raw, pane)
+                payload = output_payload(notification, pane)
                 if payload is None:
                     continue
                 if stream_partials:

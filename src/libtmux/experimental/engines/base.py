@@ -22,10 +22,17 @@ import shlex
 import typing as t
 from dataclasses import dataclass
 
+from libtmux._internal.tmux_argv import (
+    DirectArgv,
+    encode_direct_argv,
+    split_direct_argv,
+)
 from libtmux.engines.base import (
     CommandRequest,
     CommandResult,
     CommandSeparator,
+    HasConnection,
+    SupportsConnection,
     SupportsTmuxVersion,
     TmuxEngine,
     is_command_separator,
@@ -38,14 +45,6 @@ if t.TYPE_CHECKING:
 #: tmux escapes a byte in ``%output`` as a backslash plus three octal digits.
 _CONTROL_OCTAL = re.compile(rb"\\([0-7]{3})")
 
-# tmux parses these options with getopt before its command argv reaches
-# cmd_parse_from_arguments. Only values in the latter have structural
-# trailing-semicolon semantics.
-_GLOBAL_OPTIONS_WITH_VALUE = frozenset({"c", "f", "L", "S", "T"})
-_GLOBAL_OPTIONS_WITHOUT_VALUE = frozenset(
-    {"2", "8", "C", "D", "d", "h", "l", "N", "q", "u", "U", "v", "V"},
-)
-
 __all__ = (
     "AsyncTmuxEngine",
     "CommandRequest",
@@ -54,6 +53,9 @@ __all__ = (
     "DirectArgv",
     "EngineKind",
     "EngineSpec",
+    "HasConnection",
+    "SupportsAsyncTmuxVersion",
+    "SupportsConnection",
     "SupportsTmuxVersion",
     "TmuxEngine",
     "encode_direct_argv",
@@ -62,116 +64,6 @@ __all__ = (
     "split_direct_argv",
     "unescape_control_output",
 )
-
-
-class DirectArgv(t.NamedTuple):
-    """The client-global and command portions of direct tmux argv.
-
-    Attributes
-    ----------
-    global_args : tuple[str, ...]
-        Leading options consumed by tmux's client-level ``getopt`` parser.
-    command_argv : tuple[str, ...]
-        The subcommand and arguments passed to ``cmd_parse_from_arguments``.
-    """
-
-    global_args: tuple[str, ...]
-    command_argv: tuple[str, ...]
-
-
-def _global_option_consumes_next(token: str) -> bool | None:
-    """Return a global option's separate-value arity, or ``None`` if unknown.
-
-    Examples
-    --------
-    >>> _global_option_consumes_next("-L")
-    True
-    >>> _global_option_consumes_next("-Lwork")
-    False
-    >>> _global_option_consumes_next("list-sessions") is None
-    True
-    """
-    if not token.startswith("-") or token in {"-", "--"}:
-        return None
-    cluster = token[1:]
-    if not cluster:
-        return None
-    for index, option in enumerate(cluster):
-        if option in _GLOBAL_OPTIONS_WITH_VALUE:
-            return index == len(cluster) - 1
-        if option not in _GLOBAL_OPTIONS_WITHOUT_VALUE:
-            return None
-    return False
-
-
-def split_direct_argv(argv: Sequence[str]) -> DirectArgv:
-    """Split raw tmux argv at the client-global/command parser boundary.
-
-    The split follows tmux's leading short-option ``getopt`` grammar, including
-    attached values and ``--``. Global values remain byte-for-byte data because
-    tmux removes them before parsing command separators.
-
-    Examples
-    --------
-    >>> split_direct_argv(("-L", "socket;", "display-message", "text;"))
-    DirectArgv(global_args=('-L', 'socket;'), command_argv=('display-message', 'text;'))
-    >>> split_direct_argv(("-Lsocket;", "--", "display-message"))
-    DirectArgv(global_args=('-Lsocket;', '--'), command_argv=('display-message',))
-    """
-    args = tuple(argv)
-    if any("\0" in token for token in args):
-        msg = "tmux command arguments cannot contain NUL"
-        raise ValueError(msg)
-
-    index = 0
-    while index < len(args):
-        token = args[index]
-        if token == "--":
-            index += 1
-            break
-        consumes_next = _global_option_consumes_next(token)
-        if consumes_next is None:
-            break
-        index += 2 if consumes_next and index + 1 < len(args) else 1
-    return DirectArgv(global_args=args[:index], command_argv=args[index:])
-
-
-def _encode_command_argv(argv: Sequence[str]) -> tuple[str, ...]:
-    r"""Escape literal separators in argv already known to be command-scoped.
-
-    Examples
-    --------
-    >>> _encode_command_argv(("display-message", "literal;"))
-    ('display-message', 'literal\\;')
-    """
-    encoded: list[str] = []
-    for token in argv:
-        if not is_command_separator(token) and token.endswith(";"):
-            token = f"{token[:-1]}\\;"
-        encoded.append(str(token))
-    return tuple(encoded)
-
-
-def encode_direct_argv(argv: Sequence[str]) -> tuple[str, ...]:
-    r"""Encode literal arguments for tmux's direct argv parser.
-
-    Tmux first removes client-global options, then routes only the remaining
-    command argv through ``cmd_parse_from_arguments``, where a final ``;`` is
-    structural. Prefixing that final byte with one backslash preserves it as
-    data. Global option values remain unchanged, and a
-    :class:`CommandSeparator` remains structural.
-
-    Examples
-    --------
-    >>> encode_direct_argv(("send-keys", "text;"))
-    ('send-keys', 'text\\;')
-    >>> encode_direct_argv(("-L", "socket;", "send-keys", "text;"))
-    ('-L', 'socket;', 'send-keys', 'text\\;')
-    >>> encode_direct_argv(("a", CommandSeparator(";"), "b"))
-    ('a', ';', 'b')
-    """
-    direct = split_direct_argv(argv)
-    return (*direct.global_args, *_encode_command_argv(direct.command_argv))
 
 
 def _quote_control_token(token: str) -> str:
@@ -208,7 +100,7 @@ def render_control_line(argv: Sequence[str]) -> str:
     )
 
 
-def unescape_control_output(payload: str) -> bytes:
+def unescape_control_output(payload: str | bytes) -> bytes:
     r"""Decode a control-mode ``%output`` payload back to the bytes the pane wrote.
 
     tmux does not forward pane output verbatim: in a ``%output`` notification it
@@ -217,8 +109,9 @@ def unescape_control_output(payload: str) -> bytes:
     this first, or it can never match: an ``ESC`` (``0x1b``) arrives on the wire
     as the four *characters* ``\``, ``0``, ``3``, ``3``.
 
-    Bytes tmux left alone pass through untouched, so feeding this an already-raw
-    payload is harmless.
+    Bytes outside an exact three-digit escape pass through untouched. Apply the
+    decoder once to wire data; it is not idempotent when decoded pane bytes
+    themselves contain a backslash followed by three octal digits.
 
     Examples
     --------
@@ -237,7 +130,11 @@ def unescape_control_output(payload: str) -> bytes:
     >>> unescape_control_output(r"caf\303\251").decode()
     'café'
     """
-    raw = payload.encode("utf-8", "surrogateescape")
+    raw = (
+        payload.encode("utf-8", "surrogateescape")
+        if isinstance(payload, str)
+        else payload
+    )
     return _CONTROL_OCTAL.sub(lambda m: bytes((int(m.group(1), 8),)), raw)
 
 
@@ -303,6 +200,24 @@ class EngineSpec:
     def imsg(cls, *, protocol_version: int | None = None) -> EngineSpec:
         """Build an imsg (native binary) engine spec."""
         return cls(kind=EngineKind.IMSG, protocol_version=protocol_version)
+
+
+@t.runtime_checkable
+class SupportsAsyncTmuxVersion(t.Protocol):
+    """An async engine that can report its tmux version without blocking.
+
+    Examples
+    --------
+    >>> class Versioned:
+    ...     async def atmux_version(self):
+    ...         return "3.4"
+    >>> isinstance(Versioned(), SupportsAsyncTmuxVersion)
+    True
+    """
+
+    async def atmux_version(self) -> str | None:
+        """Return the engine's tmux version string, or ``None`` if unknown."""
+        ...
 
 
 @t.runtime_checkable

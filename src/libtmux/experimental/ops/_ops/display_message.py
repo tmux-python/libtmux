@@ -40,7 +40,6 @@ class DisplayMessage(Operation[DisplayMessageResult]):
     scope = "pane"
     result_cls = DisplayMessageResult
     safety = "readonly"
-    chainable = False
     effects = Effects(read_only=True, reads_output=True, idempotent=True)
 
     message: str

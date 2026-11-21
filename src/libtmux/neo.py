@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from libtmux import exc
 from libtmux._compat import LooseVersion
 from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.engines.base import SupportsTmuxVersion
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -1095,7 +1096,11 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    engine = server.engine
+    engine_version = (
+        engine.tmux_version() if isinstance(engine, SupportsTmuxVersion) else None
+    )
+    tmux_version = engine_version or str(get_version(tmux_bin=server.tmux_bin))
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
     tmux_cmds: list[str | int] = [list_cmd]
@@ -1120,7 +1125,7 @@ def fetch_objs(
             },
         )
 
-    proc = tmux_cmd(*tmux_cmds, engine=server.engine)
+    proc = tmux_cmd(*tmux_cmds, engine=engine)
 
     raise_if_stderr(proc, list_cmd)
 

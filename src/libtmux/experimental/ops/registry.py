@@ -46,8 +46,8 @@ class OpSpec:
         Typed operation class indexed by this spec.
     result_cls : type[Result]
         Typed result class built after execution.
-    chainable : bool
-        Whether a planner may fold the operation into a shared dispatch.
+    batchable : bool
+        Whether a planner may place the operation in a shared request batch.
     primitive : bool
         Whether the operation maps to one tmux command.
     safety : Safety
@@ -65,7 +65,7 @@ class OpSpec:
     scope: Scope
     operation_cls: type[Operation[t.Any]]
     result_cls: type[Result]
-    chainable: bool
+    batchable: bool
     primitive: bool
     safety: Safety
     effects: Effects
@@ -89,7 +89,7 @@ class OpSpec:
             scope=operation_cls.scope,
             operation_cls=operation_cls,
             result_cls=operation_cls.result_cls,
-            chainable=operation_cls.chainable,
+            batchable=operation_cls.batchable,
             primitive=operation_cls.primitive,
             safety=operation_cls.safety,
             effects=operation_cls.effects,
