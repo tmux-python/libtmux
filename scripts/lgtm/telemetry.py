@@ -38,7 +38,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from libtmux.engines.base import command_count
+from libtmux.experimental.engines.base import command_count
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import CommandRequest, CommandResult
@@ -331,8 +331,8 @@ def build(
         tracer_provider=tracer_provider,
         meter_provider=meter_provider,
         logger_provider=logger_provider,
-        tracer=trace.get_tracer("libtmux.engines"),
-        meter=metrics.get_meter("libtmux.engines"),
+        tracer=trace.get_tracer("libtmux.engine"),
+        meter=metrics.get_meter("libtmux.engine"),
         handler=LoggingHandler(logger_provider=logger_provider),
         resource_attributes=attributes,
         metric_labels=identity.metric_attributes(attributes),

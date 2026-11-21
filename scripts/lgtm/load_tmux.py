@@ -34,13 +34,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import rampa
 import telemetry
 
-from libtmux.engines.base import command_count
 from libtmux.experimental.engines import (
     AsyncControlModeEngine,
     AsyncSubprocessEngine,
     instrument,
 )
-from libtmux.experimental.engines.base import CommandRequest, CommandSeparator
+from libtmux.experimental.engines.base import (
+    CommandRequest,
+    CommandSeparator,
+    command_count,
+)
 from libtmux.server import Server
 
 # Transports this scenario can drive, and how to build each.
