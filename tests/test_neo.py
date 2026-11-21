@@ -26,6 +26,9 @@ from libtmux.neo import (
     get_output_format,
 )
 
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
+
 
 class TargetNotFoundFixture(t.NamedTuple):
     """One line of tmux stderr, and whether it means "that object is gone"."""
@@ -333,3 +336,17 @@ def test_split_records_reports_a_forged_separator() -> None:
 def test_split_records_handles_no_objects() -> None:
     """An empty listing yields no records rather than a bogus one."""
     assert _split_records([], 5) == []
+
+
+def test_refresh_clears_a_field_tmux_emptied(session: Session) -> None:
+    """A field tmux reports as empty stops holding its earlier value."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    pane.cmd("select-pane", "-T", "titled")
+    pane.refresh()
+    assert pane.pane_title == "titled"
+
+    pane.cmd("select-pane", "-T", "")
+    pane.refresh()
+    assert pane.pane_title is None
