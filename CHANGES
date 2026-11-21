@@ -60,6 +60,14 @@ the forwarded call; runtime behaviour is unchanged.
 `encoding` attribute, as some editors and capture wrappers do. It previously
 raised `AttributeError`.
 
+### Development
+
+#### Control-mode output test no longer times out (#733)
+
+The test that checks control-mode output keeps non-ASCII text could time out
+while the line it wanted had already arrived, then pass on re-run. Its wait is
+now bounded without that gap.
+
 ## libtmux 0.63.0 (2026-11-21)
 
 libtmux 0.63.0 raises the minimum Python to 3.11 and brings the library in
