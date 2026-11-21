@@ -45,7 +45,21 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### `retry_until` passes arguments to its predicate (#729)
+
+{func}`~libtmux.test.retry.retry_until` accepts `args=`, a tuple passed to the
+predicate on every attempt. A wait inside a loop can hand the loop variable to
+the predicate instead of closing over it.
+
 ### Fixes
+
+#### `retry_until` is unaffected by clock changes (#729)
+
+{func}`~libtmux.test.retry.retry_until` measures its time budget with a
+monotonic clock. A clock correction or a resume from suspend could previously
+cut a wait short or stretch it.
 
 #### Lookup exception subclasses type-check (#891)
 
