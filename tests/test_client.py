@@ -35,22 +35,24 @@ def _read_until(fd: int, marker: bytes) -> bytes:
 
 def test_clipboard_gate_orders_daemon_releases(session: Session) -> None:
     """Evaluate release boundaries with tmux's own format parser."""
-    releases = (
-        "3.5a",
-        "3.6-rc",
-        "3.6",
-        "3.6a",
-        "3.6b",
-        "3.7-rc1",
-        "3.10",
-        "next-3.9",
-        "4.0",
-        "unknown",
-    )
-    formats = " ".join(_CLIPBOARD_GATE.replace("#{version}", v) for v in releases)
-    assert session.server.cmd("display-message", "-p", formats).stdout == [
-        "0 0 0 1 1 1 1 1 1 0"
-    ]
+    expected = {
+        "": "0",
+        "3.2a": "0",
+        "3.5a": "0",
+        "3.6-rc": "0",
+        "3.6": "0",
+        "3.6a": "1",
+        "3.6b": "1",
+        "3.7-rc1": "1",
+        "3.8a": "1",
+        "3.10": "1",
+        "next-3.9": "1",
+        "4.0": "1",
+        "OpenBSD": "0",
+    }
+    formats = " ".join(_CLIPBOARD_GATE.replace("#{version}", v) for v in expected)
+    (result,) = session.server.cmd("display-message", "-p", formats).stdout
+    assert dict(zip(expected, result.split(), strict=True)) == expected
 
 
 def test_request_clipboard_from_selected_terminal(
@@ -65,8 +67,7 @@ def test_request_clipboard_from_selected_terminal(
     ):
         client = server.clients.get(client_name=name)
         assert client is not None
-        version = server.cmd("display-message", "-p", "#{version}").stdout[0]
-        if version in {"3.2a", "3.3", "3.3a", "3.4", "3.5", "3.5a", "3.6"}:
+        if server.cmd("display-message", "-p", _CLIPBOARD_GATE).stdout == ["0"]:
             with pytest.raises(exc.VersionTooLow, match=r"3\.6a"):
                 client.request_clipboard()
             os.write(fd, b"x")
