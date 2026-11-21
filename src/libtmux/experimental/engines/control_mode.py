@@ -46,6 +46,8 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import Self
 
+    from libtmux.engine import TmuxRequest, TmuxResult
+
 logger = logging.getLogger(__name__)
 
 _BEGIN_PREFIX = b"%begin "
@@ -308,9 +310,22 @@ class ControlModeEngine:
         self._stderr_tail: collections.deque[str] = collections.deque(maxlen=20)
 
     @property
+    def endpoint(self) -> None:
+        """Local host endpoint."""
+        return None
+
+    @property
     def connection(self) -> ServerConnection:
         """The tmux binary + connection flags this engine dispatches through."""
         return self._conn
+
+    def with_connection(self, connection: ServerConnection) -> ControlModeEngine:
+        """Return a fresh control-mode engine targeting *connection*."""
+        return ControlModeEngine(
+            tmux_bin=connection.tmux_bin,
+            server_args=connection.args,
+            timeout=self.timeout,
+        )
 
     @property
     def tmux_bin(self) -> str | None:
@@ -335,6 +350,15 @@ class ControlModeEngine:
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command over the control connection."""
         return self.run_batch([request])[0]
+
+    def execute(self, request: TmuxRequest) -> TmuxResult:
+        """Execute a Core :class:`~libtmux.engine.TmuxRequest`."""
+        return self.run(CommandRequest.from_tmux_request(request)).to_tmux_result()
+
+    def execute_batch(self, requests: Sequence[TmuxRequest]) -> list[TmuxResult]:
+        """Pipeline Core requests over control mode."""
+        converted = [CommandRequest.from_tmux_request(req) for req in requests]
+        return [res.to_tmux_result() for res in self.run_batch(converted)]
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Pipeline a batch of commands; one result per request.

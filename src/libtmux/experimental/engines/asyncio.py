@@ -15,14 +15,18 @@ import contextlib
 import typing as t
 
 from libtmux import exc
-from libtmux.experimental.engines.base import CommandResult, encode_direct_argv
+from libtmux.experimental.engines.base import (
+    CommandRequest,
+    CommandResult,
+    encode_direct_argv,
+)
 from libtmux.experimental.engines.connection import ServerConnection
 
 if t.TYPE_CHECKING:
     import pathlib
     from collections.abc import Sequence
 
-    from libtmux.experimental.engines.base import CommandRequest
+    from libtmux.engine import TmuxRequest, TmuxResult
 
 
 class AsyncSubprocessEngine:
@@ -54,9 +58,24 @@ class AsyncSubprocessEngine:
         self._conn = ServerConnection.of(tmux_bin, server_args)
 
     @property
+    def endpoint(self) -> None:
+        """Local host endpoint."""
+        return None
+
+    @property
     def connection(self) -> ServerConnection:
         """The tmux binary + connection flags this engine dispatches through."""
         return self._conn
+
+    def with_connection(
+        self,
+        connection: ServerConnection,
+    ) -> AsyncSubprocessEngine:
+        """Return an async engine bound to *connection*."""
+        return AsyncSubprocessEngine(
+            tmux_bin=connection.tmux_bin,
+            server_args=connection.args,
+        )
 
     @property
     def tmux_bin(self) -> str | None:
@@ -121,6 +140,12 @@ class AsyncSubprocessEngine:
     ) -> list[CommandResult]:
         """Execute requests sequentially (preserving tmux command ordering)."""
         return [await self.run(req) for req in requests]
+
+    async def execute(self, request: TmuxRequest) -> TmuxResult:
+        """Execute a Core :class:`~libtmux.engine.TmuxRequest` asynchronously."""
+        return (
+            await self.run(CommandRequest.from_tmux_request(request))
+        ).to_tmux_result()
 
     @classmethod
     def for_server(cls, server: t.Any) -> AsyncSubprocessEngine:

@@ -1,17 +1,9 @@
-"""Engine abstractions the experimental layer adds on top of Core's seam.
+"""Engine abstractions for :mod:`libtmux.experimental` atop :mod:`libtmux.engine`.
 
-:class:`~libtmux.engines.base.CommandRequest`,
-:class:`~libtmux.engines.base.CommandResult`,
-:class:`~libtmux.engines.base.TmuxEngine` and the separator values live in
-Core's :mod:`libtmux.engines` and are re-exported here, so an experimental
-engine and Core's object API exchange the same values -- an engine written
-against either import path plugs into :class:`libtmux.Server`.
-
-What remains local is what only the experimental transports need: the argv
-encoders that split tmux's client-global options from its command argv,
-control-mode line rendering and unescaping, the serializable
-:class:`EngineSpec` selector, and the asynchronous
-:class:`AsyncTmuxEngine` protocol.
+Bridges experimental ``CommandRequest`` / ``CommandResult`` operations with
+Core's raw-byte :class:`~libtmux.engine.TmuxRequest` and
+:class:`~libtmux.engine.TmuxResult` values so experimental engines plug into
+both :mod:`libtmux.experimental.ops` and :class:`~libtmux.Server`.
 """
 
 from __future__ import annotations
@@ -22,18 +14,17 @@ import shlex
 import typing as t
 from dataclasses import dataclass
 
-from libtmux.engines.base import (
-    CommandRequest,
-    CommandResult,
-    CommandSeparator,
+from libtmux._internal.protocols import (
+    HasConnection,
+    SupportsConnection,
     SupportsTmuxVersion,
-    TmuxEngine,
-    is_command_separator,
 )
+from libtmux.engine import TmuxRequest, TmuxResult
 
 if t.TYPE_CHECKING:
+    import pathlib
     from collections.abc import Sequence
-
+    from typing import Self
 
 #: tmux escapes a byte in ``%output`` as a backslash plus three octal digits.
 _CONTROL_OCTAL = re.compile(rb"\\([0-7]{3})")
@@ -54,6 +45,9 @@ __all__ = (
     "DirectArgv",
     "EngineKind",
     "EngineSpec",
+    "HasConnection",
+    "SupportsAsyncTmuxVersion",
+    "SupportsConnection",
     "SupportsTmuxVersion",
     "TmuxEngine",
     "encode_direct_argv",
@@ -62,6 +56,42 @@ __all__ = (
     "split_direct_argv",
     "unescape_control_output",
 )
+
+
+class CommandSeparator(str):
+    """A planner-authored command boundary, distinct from a literal ``";"``.
+
+    Examples
+    --------
+    >>> CommandSeparator(";")
+    ';'
+    >>> CommandSeparator("kill-server")
+    Traceback (most recent call last):
+    ...
+    ValueError: a command separator must be exactly ';'
+    """
+
+    __slots__ = ()
+
+    def __new__(cls, value: str) -> Self:
+        """Construct the one legal structural token."""
+        if value != ";":
+            msg = "a command separator must be exactly ';'"
+            raise ValueError(msg)
+        return super().__new__(cls, value)
+
+
+def is_command_separator(token: str) -> bool:
+    """Return whether *token* is an intentional tmux command boundary.
+
+    Examples
+    --------
+    >>> is_command_separator(CommandSeparator(";"))
+    True
+    >>> is_command_separator(";")
+    False
+    """
+    return type(token) is CommandSeparator and token == ";"
 
 
 class DirectArgv(t.NamedTuple):
@@ -107,10 +137,6 @@ def _global_option_consumes_next(token: str) -> bool | None:
 def split_direct_argv(argv: Sequence[str]) -> DirectArgv:
     """Split raw tmux argv at the client-global/command parser boundary.
 
-    The split follows tmux's leading short-option ``getopt`` grammar, including
-    attached values and ``--``. Global values remain byte-for-byte data because
-    tmux removes them before parsing command separators.
-
     Examples
     --------
     >>> split_direct_argv(("-L", "socket;", "display-message", "text;"))
@@ -155,12 +181,6 @@ def _encode_command_argv(argv: Sequence[str]) -> tuple[str, ...]:
 def encode_direct_argv(argv: Sequence[str]) -> tuple[str, ...]:
     r"""Encode literal arguments for tmux's direct argv parser.
 
-    Tmux first removes client-global options, then routes only the remaining
-    command argv through ``cmd_parse_from_arguments``, where a final ``;`` is
-    structural. Prefixing that final byte with one backslash preserves it as
-    data. Global option values remain unchanged, and a
-    :class:`CommandSeparator` remains structural.
-
     Examples
     --------
     >>> encode_direct_argv(("send-keys", "text;"))
@@ -187,10 +207,6 @@ def _quote_control_token(token: str) -> str:
 def render_control_line(argv: Sequence[str]) -> str:
     r"""Render a tmux argv as a control-mode (``tmux -C``) command line.
 
-    Literal tokens are quoted for the control parser. Tokens containing a line
-    delimiter are UTF-8 octal encoded so one request remains one physical line.
-    Only a :class:`CommandSeparator` is left bare.
-
     Examples
     --------
     >>> render_control_line(("rename-window", "-t", "@1", "a b"))
@@ -211,34 +227,161 @@ def render_control_line(argv: Sequence[str]) -> str:
 def unescape_control_output(payload: str) -> bytes:
     r"""Decode a control-mode ``%output`` payload back to the bytes the pane wrote.
 
-    tmux does not forward pane output verbatim: in a ``%output`` notification it
-    writes every non-printable byte -- and the backslash itself -- as a backslash
-    followed by three octal digits. A reader that scans for raw bytes must undo
-    this first, or it can never match: an ``ESC`` (``0x1b``) arrives on the wire
-    as the four *characters* ``\``, ``0``, ``3``, ``3``.
-
-    Bytes tmux left alone pass through untouched, so feeding this an already-raw
-    payload is harmless.
-
     Examples
     --------
-    Printable output is returned as-is:
-
     >>> unescape_control_output("hello world")
     b'hello world'
-
-    An escape sequence tmux octal-escaped comes back as real bytes:
-
     >>> unescape_control_output(r"\033]3008;state=idle\033\134")
     b'\x1b]3008;state=idle\x1b\\'
-
-    Multi-byte UTF-8 survives the round trip:
-
     >>> unescape_control_output(r"caf\303\251").decode()
     'café'
     """
     raw = payload.encode("utf-8", "surrogateescape")
     return _CONTROL_OCTAL.sub(lambda m: bytes((int(m.group(1), 8),)), raw)
+
+
+@dataclass(frozen=True)
+class CommandRequest:
+    """A rendered tmux command for :mod:`libtmux.experimental.ops` engines.
+
+    Attributes
+    ----------
+    args : tuple[str, ...]
+        The tmux argv after the binary.
+    tmux_bin : str or None
+        Optional per-request tmux executable override.
+
+    Examples
+    --------
+    >>> CommandRequest.from_args("split-window", "-t", "%1")
+    CommandRequest(args=('split-window', '-t', '%1'), tmux_bin=None)
+    """
+
+    args: tuple[str, ...]
+    tmux_bin: str | None = None
+
+    def __post_init__(self) -> None:
+        r"""Reject arguments that cannot survive tmux's C-string transports.
+
+        Examples
+        --------
+        >>> CommandRequest(args=("display-message", "a\0b"))
+        Traceback (most recent call last):
+        ...
+        ValueError: tmux command arguments cannot contain NUL
+        """
+        if any(
+            type(arg) is CommandSeparator and not is_command_separator(arg)
+            for arg in self.args
+        ):
+            msg = "a command separator must be exactly ';'"
+            raise ValueError(msg)
+        normalized = tuple(
+            arg if is_command_separator(arg) else str.__str__(arg) for arg in self.args
+        )
+        if any("\0" in arg for arg in normalized):
+            msg = "tmux command arguments cannot contain NUL"
+            raise ValueError(msg)
+        object.__setattr__(self, "args", normalized)
+
+    @classmethod
+    def from_args(
+        cls,
+        *args: t.Any,
+        tmux_bin: str | pathlib.Path | None = None,
+    ) -> CommandRequest:
+        """Build a request from arbitrary tokens, stringifying each."""
+        return cls(
+            args=tuple(arg if isinstance(arg, str) else str(arg) for arg in args),
+            tmux_bin=str(tmux_bin) if tmux_bin is not None else None,
+        )
+
+    @classmethod
+    def from_tmux_request(cls, request: TmuxRequest) -> CommandRequest:
+        """Convert a Core :class:`~libtmux.engine.TmuxRequest` to ``CommandRequest``."""
+        tokens: list[str] = list(request.client_args)
+        for index, cmd in enumerate(request.commands):
+            if index > 0:
+                tokens.append(CommandSeparator(";"))
+            tokens.extend(cmd)
+        return cls(args=tuple(tokens), tmux_bin=request.tmux_bin)
+
+    def to_tmux_request(self) -> TmuxRequest:
+        """Convert this request into a Core :class:`~libtmux.engine.TmuxRequest`."""
+        direct = split_direct_argv(self.args)
+        commands: list[tuple[str, ...]] = []
+        current: list[str] = []
+        for token in direct.command_argv:
+            if is_command_separator(token):
+                if current:
+                    commands.append(tuple(current))
+                    current = []
+            else:
+                current.append(str.__str__(token))
+        if current:
+            commands.append(tuple(current))
+        return TmuxRequest(
+            commands=tuple(commands),
+            client_args=direct.global_args,
+            tmux_bin=self.tmux_bin,
+        )
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    """Structured line-decoded outcome of executing a :class:`CommandRequest`.
+
+    Attributes
+    ----------
+    cmd : tuple[str, ...]
+        Full argv that ran.
+    stdout : tuple[str, ...]
+        Captured standard-output lines.
+    stderr : tuple[str, ...]
+        Captured standard-error lines.
+    returncode : int
+        Exit status reported by tmux.
+    """
+
+    cmd: tuple[str, ...]
+    stdout: tuple[str, ...] = ()
+    stderr: tuple[str, ...] = ()
+    returncode: int = 0
+
+    @classmethod
+    def from_tmux_result(cls, result: TmuxResult) -> CommandResult:
+        """Decode a Core :class:`~libtmux.engine.TmuxResult` into lines."""
+        out_lines = result.stdout.decode("utf-8", errors="backslashreplace").split("\n")
+        while out_lines and out_lines[-1] == "":
+            out_lines.pop()
+        err_lines = [
+            line
+            for line in result.stderr.decode("utf-8", errors="backslashreplace").split(
+                "\n"
+            )
+            if line
+        ]
+        return cls(
+            cmd=tuple(result.argv),
+            stdout=tuple(out_lines),
+            stderr=tuple(err_lines),
+            returncode=result.returncode,
+        )
+
+    def to_tmux_result(self) -> TmuxResult:
+        """Encode this line result into a Core :class:`~libtmux.engine.TmuxResult`."""
+        raw_out = (
+            ("\n".join(self.stdout) + "\n").encode("utf-8") if self.stdout else b""
+        )
+        raw_err = (
+            ("\n".join(self.stderr) + "\n").encode("utf-8") if self.stderr else b""
+        )
+        return TmuxResult(
+            argv=tuple(self.cmd),
+            stdout=raw_out,
+            stderr=raw_err,
+            returncode=self.returncode,
+        )
 
 
 class EngineKind(enum.StrEnum):
@@ -303,6 +446,31 @@ class EngineSpec:
     def imsg(cls, *, protocol_version: int | None = None) -> EngineSpec:
         """Build an imsg (native binary) engine spec."""
         return cls(kind=EngineKind.IMSG, protocol_version=protocol_version)
+
+
+@t.runtime_checkable
+class SupportsAsyncTmuxVersion(t.Protocol):
+    """Async engine capable of reporting its connected tmux version."""
+
+    async def atmux_version(self) -> str | None:
+        """Return the raw tmux version string asynchronously, or ``None``."""
+        ...
+
+
+@t.runtime_checkable
+class TmuxEngine(t.Protocol):
+    """Synchronous executor of experimental :class:`CommandRequest` commands."""
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        """Execute one tmux command and return its structured result."""
+        ...
+
+    def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Execute requests in order, returning one result per request."""
+        ...
 
 
 @t.runtime_checkable

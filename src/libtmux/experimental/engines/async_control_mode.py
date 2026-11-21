@@ -246,9 +246,26 @@ class AsyncControlModeEngine:
         self._next_attach_target: str | None = None
 
     @property
+    def endpoint(self) -> None:
+        """Local host endpoint."""
+        return None
+
+    @property
     def connection(self) -> ServerConnection:
         """The tmux binary + connection flags this engine dispatches through."""
         return self._conn
+
+    def with_connection(
+        self,
+        connection: ServerConnection,
+    ) -> AsyncControlModeEngine:
+        """Return a fresh async control-mode engine targeting *connection*."""
+        return AsyncControlModeEngine(
+            tmux_bin=connection.tmux_bin,
+            server_args=connection.args,
+            timeout=self.timeout,
+            event_queue_size=self._event_queue_size,
+        )
 
     @property
     def tmux_bin(self) -> str | None:
@@ -480,6 +497,12 @@ class AsyncControlModeEngine:
     async def run(self, request: CommandRequest) -> CommandResult:
         """Execute one command through control mode or bootstrap subprocess."""
         return (await self.run_batch([request]))[0]
+
+    async def execute(self, request: t.Any) -> t.Any:
+        """Execute a Core :class:`~libtmux.engine.TmuxRequest` asynchronously."""
+        return (
+            await self.run(CommandRequest.from_tmux_request(request))
+        ).to_tmux_result()
 
     async def run_batch(
         self, requests: Sequence[CommandRequest]

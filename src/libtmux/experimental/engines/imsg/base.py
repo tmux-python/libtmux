@@ -224,9 +224,20 @@ class ImsgEngine:
         self._conn = ServerConnection()
 
     @property
+    def endpoint(self) -> None:
+        """Local host endpoint."""
+        return None
+
+    @property
     def connection(self) -> ServerConnection:
         """The tmux binary resolver used by local and server-starting paths."""
         return self._conn
+
+    def with_connection(self, connection: ServerConnection) -> ImsgEngine:
+        """Return an imsg engine bound to *connection*."""
+        clone = ImsgEngine(protocol_version=self.protocol_version)
+        clone._conn = connection
+        return clone
 
     def tmux_version(self) -> str | None:
         """Report this engine's tmux version (``tmux -V``), memoized.
@@ -317,6 +328,14 @@ class ImsgEngine:
         batching benefit, but the method preserves the uniform engine API.
         """
         return [self.run(req) for req in requests]
+
+    def execute(self, request: t.Any) -> t.Any:
+        """Execute a Core :class:`~libtmux.engine.TmuxRequest`."""
+        return self.run(CommandRequest.from_tmux_request(request)).to_tmux_result()
+
+    def execute_batch(self, requests: t.Sequence[t.Any]) -> list[t.Any]:
+        """Execute Core requests in order."""
+        return [self.execute(req) for req in requests]
 
     def _parse_args(self, args: tuple[str, ...]) -> _ImsgCommandArgs:
         direct = split_direct_argv(args)

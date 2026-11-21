@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux.experimental.engines.base import CommandResult
+from libtmux.experimental.engines.base import CommandRequest, CommandResult
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from libtmux.experimental.engines.base import CommandRequest
+    from libtmux.engine import TmuxRequest, TmuxResult
 
 
 def _fabricate(fmt: str, counters: dict[str, int]) -> str:
@@ -93,6 +93,8 @@ class MockEngine:
     ('hello', 'world')
     """
 
+    endpoint: None = None
+
     def __init__(self, *, capture_lines: Sequence[str] = ()) -> None:
         self.capture_lines = tuple(capture_lines)
         self._counters = _new_counters()
@@ -104,6 +106,14 @@ class MockEngine:
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Execute each request in order (no batching benefit)."""
         return [self.run(req) for req in requests]
+
+    def execute(self, request: TmuxRequest) -> TmuxResult:
+        """Execute a Core :class:`~libtmux.engine.TmuxRequest`."""
+        return self.run(CommandRequest.from_tmux_request(request)).to_tmux_result()
+
+    def execute_batch(self, requests: Sequence[TmuxRequest]) -> list[TmuxResult]:
+        """Execute Core requests in order."""
+        return [self.execute(req) for req in requests]
 
 
 class AsyncMockEngine:
@@ -120,6 +130,8 @@ class AsyncMockEngine:
     '%1'
     """
 
+    endpoint: None = None
+
     def __init__(self, *, capture_lines: Sequence[str] = ()) -> None:
         self.capture_lines = tuple(capture_lines)
         self._counters = _new_counters()
@@ -134,3 +146,9 @@ class AsyncMockEngine:
     ) -> list[CommandResult]:
         """Execute each request in order (no batching benefit)."""
         return [await self.run(req) for req in requests]
+
+    async def execute(self, request: TmuxRequest) -> TmuxResult:
+        """Execute a Core :class:`~libtmux.engine.TmuxRequest` asynchronously."""
+        return (
+            await self.run(CommandRequest.from_tmux_request(request))
+        ).to_tmux_result()

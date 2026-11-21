@@ -15,14 +15,18 @@ import subprocess
 import typing as t
 
 from libtmux import exc
-from libtmux.experimental.engines.base import CommandResult, encode_direct_argv
+from libtmux.experimental.engines.base import (
+    CommandRequest,
+    CommandResult,
+    encode_direct_argv,
+)
 from libtmux.experimental.engines.connection import ServerConnection
 
 if t.TYPE_CHECKING:
     import pathlib
     from collections.abc import Sequence
 
-    from libtmux.experimental.engines.base import CommandRequest
+    from libtmux.engine import TmuxRequest, TmuxResult
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +52,21 @@ class SubprocessEngine:
         self._conn = ServerConnection.of(tmux_bin, server_args)
 
     @property
+    def endpoint(self) -> None:
+        """Local host endpoint."""
+        return None
+
+    @property
     def connection(self) -> ServerConnection:
         """The tmux binary + connection flags this engine dispatches through."""
         return self._conn
+
+    def with_connection(self, connection: ServerConnection) -> SubprocessEngine:
+        """Return a copy bound to *connection*."""
+        return SubprocessEngine(
+            tmux_bin=connection.tmux_bin,
+            server_args=connection.args,
+        )
 
     @property
     def tmux_bin(self) -> str | None:
@@ -118,6 +134,15 @@ class SubprocessEngine:
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Execute each request in order (subprocess forks per call)."""
         return [self.run(req) for req in requests]
+
+    def execute(self, request: TmuxRequest) -> TmuxResult:
+        """Execute a Core :class:`~libtmux.engine.TmuxRequest`."""
+        return self.run(CommandRequest.from_tmux_request(request)).to_tmux_result()
+
+    def execute_batch(self, requests: Sequence[TmuxRequest]) -> list[TmuxResult]:
+        """Execute Core requests in order."""
+        converted = [CommandRequest.from_tmux_request(req) for req in requests]
+        return [res.to_tmux_result() for res in self.run_batch(converted)]
 
     @classmethod
     def for_server(cls, server: t.Any) -> SubprocessEngine:
