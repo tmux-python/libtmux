@@ -1815,3 +1815,36 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_set_buffer_data_starting_with_a_dash(session: Session) -> None:
+    """Buffer data that starts with ``-`` is stored, not read as a flag."""
+    server = session.server
+
+    server.set_buffer("-a", buffer_name="dash_data")
+
+    assert server.show_buffer(buffer_name="dash_data") == "-a"
+
+
+def test_run_shell_command_starting_with_a_dash(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A shell command that starts with ``-`` follows ``--`` in the argv.
+
+    ``Server.cmd`` is replaced to read the argv: what a shell does with a
+    command line that starts with ``-`` depends on the shell.
+    """
+    server = session.server
+    seen: list[tuple[t.Any, ...]] = []
+
+    def record(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        seen.append((cmd, *args))
+        return real_cmd("display-message", "-p", "")
+
+    real_cmd = server.cmd
+    monkeypatch.setattr(server, "cmd", record)
+
+    server.run_shell("-b")
+
+    assert seen == [("run-shell", "--", "-b")]

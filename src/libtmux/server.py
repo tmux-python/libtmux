@@ -715,7 +715,7 @@ class Server(
                     stacklevel=2,
                 )
 
-        tmux_args += (command,)
+        tmux_args += ("--", command)
 
         if args:
             if has_gte_version("3.7", tmux_bin=self.tmux_bin):
@@ -1833,7 +1833,7 @@ class Server(
             tmux_args += ("-F", format_string)
 
         if cmd:
-            tmux_args += (cmd,)
+            tmux_args += ("--", cmd)
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1954,7 +1954,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (data,)
+        tmux_args += ("--", data)
 
         proc = self.cmd("set-buffer", *tmux_args)
 

@@ -801,3 +801,31 @@ def test_kill_window_by_name_stays_in_its_session(server: Server) -> None:
     assert [w.window_id for w in latest.windows.filter(window_name="shared")] == [
         kept.window_id,
     ]
+
+
+def test_rename_session_name_starting_with_a_dash(session: Session) -> None:
+    """A session name that starts with ``-`` is a name, not a flag."""
+    session.rename_session("-renamed")
+
+    assert session.session_name == "-renamed"
+    assert session.server.sessions.get(session_id=session.session_id) is not None
+
+
+def test_environment_name_starting_with_a_dash(session: Session) -> None:
+    """A variable name that starts with ``-`` is set, unset and removed.
+
+    tmux prints a removed variable as ``-NAME``, so the listing cannot tell
+    such a name from a removed one; the single-variable form is read instead.
+    """
+
+    def show() -> list[str]:
+        return session.cmd("show-environment", "--", "-dash").stdout
+
+    session.set_environment("-dash", "value")
+    assert show() == ["-dash=value"]
+
+    session.unset_environment("-dash")
+    assert show() == []
+
+    session.remove_environment("-dash")
+    assert show() == ["--dash"]

@@ -55,6 +55,17 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### Values that start with a dash are passed as data (#893)
+
+Renaming a session or window to `-n`, storing `-a` in a buffer, or setting an
+environment variable whose name begins with `-` now does what was asked. tmux
+previously read the value as a flag: `rename_window("-n")` failed with
+`unknown flag -n`, and `set_buffer("-a")` with `no data specified`. This covers
+{meth}`~libtmux.Server.set_buffer`, {meth}`~libtmux.Server.run_shell`,
+{meth}`~libtmux.Session.rename_session`, {meth}`~libtmux.Window.rename_window`,
+the `display_message` methods, and `set_environment`, `unset_environment` and
+`remove_environment`.
+
 #### Environment values are masked in logs (#898)
 
 The tmux command line libtmux logs at `DEBUG` and on errors shows `***` in

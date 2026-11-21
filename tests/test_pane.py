@@ -1989,3 +1989,11 @@ def test_new_pane_error_tags_subcommand(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
             pane.new_pane(target="%99999")
+
+
+def test_display_message_text_starting_with_a_dash(session: Session) -> None:
+    """Message text that starts with ``-`` is printed, not read as a flag."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    assert pane.display_message("-p", get_text=True) == ["-p"]
