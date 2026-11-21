@@ -256,10 +256,16 @@ class ServerConnection:
 
         if getattr(server, "config_file", None):
             args.append(f"-f{server.config_file}")
-        if getattr(server, "socket_path", None):
-            args.append(f"-S{server.socket_path}")
-        if getattr(server, "socket_name", None):
-            args.append(f"-L{server.socket_name}")
+        socket_args = getattr(server, "_socket_args", None)
+        if callable(socket_args):
+            # Server._socket_args() renders -S/-L and raises SocketPathTooLong
+            # for a socket tmux could not bind.
+            args.extend(socket_args())
+        else:
+            if getattr(server, "socket_path", None):
+                args.append(f"-S{server.socket_path}")
+            if getattr(server, "socket_name", None):
+                args.append(f"-L{server.socket_name}")
 
         return cls.of(tmux_bin=getattr(server, "tmux_bin", None), args=args)
 

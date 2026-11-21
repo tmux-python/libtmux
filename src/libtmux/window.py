@@ -445,6 +445,8 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
+            raise
         except exc.LibTmuxException:
             return QueryList([])
 
@@ -572,6 +574,11 @@ class Window(
         Returns
         -------
         :meth:`server.cmd`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            The server's engine is asynchronous; see :meth:`Server.cmd`.
         """
         if target is None:
             target = self.window_id

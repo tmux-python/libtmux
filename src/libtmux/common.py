@@ -10,12 +10,21 @@ from __future__ import annotations
 import functools
 import logging
 import pathlib
-import re
 import shlex
-import shutil
 import subprocess
 import sys
 import typing as t
+
+from libtmux._internal.protocols import (
+    SupportsCommandLine,
+    dispatch_command_line,
+    dispatch_execute,
+)
+from libtmux._internal.support.capabilities import (
+    extract_version_token,
+    normalize_version_for_loose,
+)
+from libtmux.engine import SubprocessEngine, TmuxRequest
 
 from . import exc
 from ._compat import LooseVersion
@@ -25,6 +34,7 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from libtmux._internal.types import StrPath
+    from libtmux.engine import DaemonGuard, TmuxEngine
 
 logger = logging.getLogger(__name__)
 
@@ -454,7 +464,27 @@ def escape_trailing_separator(value: str) -> str:
 
 
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+    """Run any :term:`tmux(1)` command, returning decoded lines and raw bytes.
+
+    Dispatches through a :class:`~libtmux.engine.TmuxEngine`
+    (:class:`~libtmux.engine.SubprocessEngine` by default) and decodes the raw
+    byte result into ``list[str]`` lines while preserving lossless
+    ``raw_stdout`` and ``raw_stderr`` bytes.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        Full argv dispatched by the engine.
+    stdout : list[str]
+        UTF-8 decoded standard-output lines, trailing empty lines removed.
+    stderr : list[str]
+        UTF-8 decoded standard-error lines, empty lines removed.
+    raw_stdout : bytes
+        Unmodified standard-output bytes from the engine.
+    raw_stderr : bytes
+        Unmodified standard-error bytes from the engine.
+    returncode : int
+        Process exit code.
 
     Examples
     --------
@@ -486,57 +516,86 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
-        resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
-
-        cmd = [resolved]
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
-
-        self.cmd = cmd
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        engine: TmuxEngine | None = None,
+        client_args: t.Sequence[str] = (),
+        stdin: bytes | None = None,
+        timeout: float | None = None,
+        env: t.Mapping[str, str] | None = None,
+        inherit_env: bool = True,
+        cwd: pathlib.Path | str | None = None,
+        daemon_guard: DaemonGuard | None = None,
+    ) -> None:
+        runner: TmuxEngine = (
+            engine if engine is not None else SubprocessEngine.of(tmux_bin)
+        )
+        request = TmuxRequest.from_args(
+            *args,
+            client_args=client_args,
+            stdin=stdin,
+            timeout=timeout,
+            env=env,
+            inherit_env=inherit_env,
+            cwd=cwd,
+            daemon_guard=daemon_guard,
+        )
 
         if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = _loggable_cmd(cmd)
+            rendered_cmd = (
+                dispatch_command_line(runner, request)
+                if isinstance(runner, SupportsCommandLine)
+                else (
+                    *request.client_args,
+                    *(tok for c in request.commands for tok in c),
+                )
+            )
             logger.debug(
                 "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
-
-        try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
                 extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
+                    "tmux_cmd": _loggable_cmd(rendered_cmd),
+                    "tmux_subcommand": request.subcommand,
                 },
             )
-            raise
 
-        self.returncode = returncode
+        result = dispatch_execute(runner, request)
 
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
+        argv_attr: t.Iterable[object] = (
+            getattr(result, "argv", None) or getattr(result, "cmd", None) or ()
+        )
+        self.cmd: list[str] = [str(part) for part in argv_attr]
+        self.returncode: int = int(result.returncode)
+        self._process: subprocess.Popen[t.Any] | None = getattr(
+            result, "_process", None
+        ) or getattr(result, "process", None)
 
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
+        raw_out = getattr(result, "stdout", b"")
+        if isinstance(raw_out, bytes):
+            self.raw_stdout = raw_out
+            stdout_text = raw_out.decode("utf-8", errors="backslashreplace")
+            stdout_split = stdout_text.split("\n")
+            while stdout_split and stdout_split[-1] == "":
+                stdout_split.pop()
+        else:
+            stdout_split = [str(line) for line in raw_out]
+            self.raw_stdout = (
+                "\n".join(stdout_split).encode("utf-8") + b"\n" if stdout_split else b""
+            )
 
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
+        raw_err = getattr(result, "stderr", b"")
+        if isinstance(raw_err, bytes):
+            self.raw_stderr = raw_err
+            stderr_text = raw_err.decode("utf-8", errors="backslashreplace")
+            self.stderr = [line for line in stderr_text.split("\n") if line]
+        else:
+            self.stderr = [str(line) for line in raw_err if line]
+            self.raw_stderr = (
+                "\n".join(self.stderr).encode("utf-8") + b"\n" if self.stderr else b""
+            )
+
+        if "has-session" in self.cmd and self.stderr and not stdout_split:
             self.stdout = [self.stderr[0]]
         else:
             self.stdout = stdout_split
@@ -545,7 +604,8 @@ class tmux_cmd:
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
+                    "tmux_cmd": _loggable_cmd(self.cmd),
+                    "tmux_subcommand": request.subcommand,
                     "tmux_exit_code": self.returncode,
                     "tmux_stdout": self.stdout[:100],
                     "tmux_stderr": self.stderr[:100],
@@ -553,6 +613,20 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    @property
+    def process(self) -> subprocess.Popen[t.Any]:
+        """Return the finished :class:`subprocess.Popen` when forked.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            The active engine executed without forking a local process.
+        """
+        if self._process is None:
+            msg = "engine did not fork a subprocess; tmux_cmd.process is unavailable"
+            raise exc.LibTmuxException(msg)
+        return self._process
 
 
 class _TmuxVersionUnavailable(Exception):
@@ -601,11 +675,13 @@ def _query_version(tmux_bin: str | None = None) -> str:
     """
     proc = tmux_cmd("-V", tmux_bin=tmux_bin)
     if proc.stderr:
-        if proc.stderr[0] == "tmux: unknown option -- V":
+        if "unknown option -- V" in proc.stderr[0]:
             raise _TmuxVersionUnavailable
         raise exc.VersionTooLow(proc.stderr)
 
-    return proc.stdout[0].split("tmux ")[1]
+    if not proc.stdout:
+        raise exc.VersionTooLow(["empty output from tmux -V"])
+    return extract_version_token(proc.stdout[0])
 
 
 @functools.cache
@@ -687,9 +763,7 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     if version == "master":
         return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 
-    version = re.sub(r"[a-z-]", "", version)
-
-    return LooseVersion(version)
+    return LooseVersion(normalize_version_for_loose(version))
 
 
 def has_version(version: str, tmux_bin: str | None = None) -> bool:

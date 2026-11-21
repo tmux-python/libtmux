@@ -75,6 +75,10 @@ import typing as t
 import warnings
 
 from libtmux._internal.sparse_array import SparseArray
+from libtmux._internal.support.capabilities import (
+    REMOVED_39_POPUP_OPTIONS,
+    supports_interval,
+)
 from libtmux.common import CmdMixin, escape_trailing_separator
 from libtmux.constants import (
     DEFAULT_OPTION_SCOPE,
@@ -588,6 +592,25 @@ class OptionsMixin(CmdMixin):
         if default_option_scope is not None:
             self.default_option_scope = default_option_scope
 
+    def _check_removed_option(self, option: str) -> None:
+        if option not in REMOVED_39_POPUP_OPTIONS:
+            return
+        server = getattr(self, "server", self)
+        cached = getattr(server, "_cached_capabilities", None)
+        version: str | None = cached.version if cached is not None else None
+        if version is None:
+            engine = getattr(server, "engine", None)
+            tmux_ver_fn = getattr(engine, "tmux_version", None)
+            if callable(tmux_ver_fn):
+                raw_v = tmux_ver_fn()
+                if isinstance(raw_v, str):
+                    version = raw_v
+        if version is not None and not supports_interval(
+            version, since="3.2a", until="3.9"
+        ):
+            msg = f"unknown option: {option} (removed in tmux 3.9)"
+            raise exc.UnknownOption(msg)
+
     def set_option(
         self,
         option: str,
@@ -627,7 +650,6 @@ class OptionsMixin(CmdMixin):
         >>> import typing as t
         >>> from libtmux.common import tmux_cmd
         >>> from libtmux.constants import OptionScope
-        >>> from libtmux._internal.sparse_array import SparseArray
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
@@ -654,6 +676,9 @@ class OptionsMixin(CmdMixin):
         """
         if scope is DEFAULT_OPTION_SCOPE:
             scope = self.default_option_scope
+
+        if not ignore_errors and not suppress_warnings:
+            self._check_removed_option(option)
 
         flags: list[str] = []
         if isinstance(value, bool) and value:
@@ -764,6 +789,9 @@ class OptionsMixin(CmdMixin):
         """
         if scope is DEFAULT_OPTION_SCOPE:
             scope = self.default_option_scope
+
+        if not ignore_errors:
+            self._check_removed_option(option)
 
         flags: list[str] = []
 
@@ -1180,6 +1208,9 @@ class OptionsMixin(CmdMixin):
         >>> MyServer()._show_option('exit-unattached', global_=True)
         False
         """
+        if not ignore_errors:
+            self._check_removed_option(option)
+
         cmd = self._show_option_raw(
             option=option,
             global_=global_,

@@ -7,15 +7,23 @@ libtmux.server
 
 from __future__ import annotations
 
+import concurrent.futures
+import contextlib
 import logging
+import math
 import os
 import pathlib
-import shutil
 import subprocess
+import threading
+import time
 import typing as t
 import warnings
 
 from libtmux import exc
+from libtmux._internal.connection import (
+    ServerConnection,
+    merge_connection_constraints,
+)
 from libtmux._internal.env import (
     TMUX,
     TMUX_TMPDIR,
@@ -24,23 +32,33 @@ from libtmux._internal.env import (
     resolve_socket_path,
     socket_path_from_env,
 )
+from libtmux._internal.protocols import HasConnection, SupportsConnection
 from libtmux._internal.query_list import QueryList
-from libtmux._internal.support.capabilities import capability_since
+from libtmux._internal.support.capabilities import (
+    capability_since,
+    probe_daemon_identity,
+)
+from libtmux.capabilities import ServerCapabilities
 from libtmux.client import Client
 from libtmux.common import (
     _format_arg,
     _format_path_arg,
     _format_text,
     _literal,
-    get_version,
     has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
 from libtmux.constants import OptionScope
+from libtmux.engine import SubprocessEngine
 from libtmux.formats import Format
 from libtmux.hooks import HooksMixin
-from libtmux.neo import fetch_objs, get_output_format, parse_output
+from libtmux.neo import (
+    _resolve_server_version,
+    fetch_objs,
+    get_output_format,
+    parse_output,
+)
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
@@ -60,6 +78,7 @@ if t.TYPE_CHECKING:
     from typing import Self, TypeAlias
 
     from libtmux._internal.types import StrPath
+    from libtmux.engine import DaemonGuard, TmuxEngine
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -93,6 +112,8 @@ def _fetch_or_empty(
     """
     try:
         return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
+    except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
+        raise
     except exc.LibTmuxException as e:
         if e.args and _is_daemon_not_up_error(str(e.args[0])):
             return []
@@ -256,6 +277,9 @@ class Server(
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
+    engine : :class:`~libtmux.engine.TmuxEngine`, optional
+        Executor every tmux command on this server runs through. Defaults to
+        :class:`~libtmux.engine.SubprocessEngine` bound to :attr:`connection`.
 
     Examples
     --------
@@ -351,6 +375,15 @@ class Server(
     tmux_bin: str | None = None
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
 
+    _engine: TmuxEngine | None = None
+    _default_engine: SubprocessEngine | None = None
+    _connection: ServerConnection | None = None
+    _connection_key: tuple[t.Any, ...] | None = None
+    _adopted_engine: (
+        tuple[TmuxEngine, ServerConnection, ServerConnection, TmuxEngine] | None
+    ) = None
+    _cached_capabilities: ServerCapabilities | None = None
+
     def __init__(
         self,
         socket_name: str | None = None,
@@ -360,10 +393,17 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
+        engine: TmuxEngine | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self._engine = engine
+        self._default_engine = None
+        self._adopted_engine = None
+        self._connection = None
+        self._connection_key = None
+        self._cached_capabilities = None
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
@@ -387,8 +427,200 @@ class Server(
         if colors:
             self.colors = colors
 
+        if engine is not None and isinstance(engine, HasConnection):
+            _ = self.engine
+
         if on_init is not None:
             on_init(self)
+
+    @property
+    def connection(self) -> ServerConnection:
+        """Return the tmux binary and connection flags this server dispatches on.
+
+        Derived from :attr:`socket_name`, :attr:`socket_path`,
+        :attr:`config_file`, :attr:`colors`, and :attr:`tmux_bin`, invalidating
+        automatically if any attribute is reassigned.
+
+        Examples
+        --------
+        >>> tmux = Server(socket_name="engine_conn_docs")
+        >>> tmux.connection.args
+        ('-Lengine_conn_docs',)
+        >>> tmux.socket_name = "engine_conn_docs_moved"
+        >>> tmux.connection.args
+        ('-Lengine_conn_docs_moved',)
+        """
+        key = (
+            self.socket_name,
+            None if self.socket_path is None else str(self.socket_path),
+            self.config_file,
+            self.colors,
+            self.tmux_bin,
+        )
+        if self._connection is None or self._connection_key != key:
+            self._connection = ServerConnection.from_server(self)
+            self._connection_key = key
+            self._cached_capabilities = None
+        return self._connection
+
+    @property
+    def engine(self) -> TmuxEngine:
+        """Return the :class:`~libtmux.engine.TmuxEngine` used for command dispatch.
+
+        Unconfigured injected engines adopt this server's socket and flags;
+        contradictory explicit constraints raise
+        :exc:`~libtmux.exc.EngineConfigurationMismatch`.
+
+        Examples
+        --------
+        >>> from libtmux.engine import SubprocessEngine
+        >>> isinstance(server.engine, SubprocessEngine)
+        True
+        >>> scoped = Server(socket_name="adopt_docs", engine=SubprocessEngine())
+        >>> scoped.engine.server_args
+        ('-Ladopt_docs',)
+        """
+        connection = self.connection
+        engine = self._engine
+        if engine is not None:
+            if connection.is_unconfigured or not isinstance(engine, HasConnection):
+                return engine
+            engine_connection = engine.connection
+            if not isinstance(engine_connection, ServerConnection):
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    "connection capability reported a non-ServerConnection value",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
+            resolution = merge_connection_constraints(
+                engine_connection,
+                connection,
+            )
+            if resolution.conflicts:
+                fields = ", ".join(resolution.conflicts)
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    f"explicit Server {fields} constraint conflicts with engine",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
+            target = resolution.connection
+            if not resolution.missing:
+                return engine
+            if not isinstance(engine, SupportsConnection):
+                fields = ", ".join(resolution.missing)
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    f"pinned engine cannot safely rebind to add {fields}",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
+            adopted = self._adopted_engine
+            if (
+                adopted is not None
+                and adopted[0] is engine
+                and adopted[1] == engine_connection
+                and adopted[2] == target
+                and isinstance(adopted[3], HasConnection)
+                and adopted[3].connection == target
+            ):
+                return adopted[3]
+            rebound = engine.with_connection(target)
+            if not isinstance(rebound, HasConnection) or rebound.connection != target:
+                reported = (
+                    rebound.connection
+                    if isinstance(rebound, HasConnection)
+                    else "no connection"
+                )
+                raise exc.EngineConfigurationMismatch(
+                    engine,
+                    "with_connection() reported a connection other than the "
+                    f"requested target: {reported!r}",
+                    server_connection=connection,
+                    engine_connection=engine_connection,
+                )
+            adopted = (engine, engine_connection, target, rebound)
+            self._adopted_engine = adopted
+            return rebound
+        default = self._default_engine
+        if default is None or default.connection is not connection:
+            default = SubprocessEngine(connection)
+            self._default_engine = default
+        return default
+
+    def capabilities(
+        self,
+        *,
+        refresh: bool = True,
+        timeout: float = 5.0,
+        cancel_event: threading.Event | None = None,
+    ) -> ServerCapabilities:
+        """Inspect daemon identity, version, and features without starting tmux.
+
+        Probes ``#{version}``, ``#{pid}``, and ``#{start_time}`` via a
+        no-start ``-u -N run-shell -C`` invocation that fires zero ``after-*``
+        hooks.
+
+        Parameters
+        ----------
+        refresh : bool
+            When ``True`` (default), query the connected daemon anew; when
+            ``False``, return the cached observation if available.
+        timeout : float
+            Finite nonnegative deadline in seconds.
+        cancel_event : threading.Event, optional
+            Optional cancellation signal checked before and after probing.
+
+        Returns
+        -------
+        :class:`~libtmux.capabilities.ServerCapabilities`
+            Immutable identity and feature snapshot.
+
+        Examples
+        --------
+        >>> caps = session.server.capabilities()
+        >>> caps.pid > 0 and len(caps.version) > 0
+        True
+        """
+        if (
+            type(timeout) not in (int, float)
+            or not math.isfinite(timeout)
+            or timeout < 0
+        ):
+            msg = "timeout must be finite and nonnegative"
+            raise ValueError(msg)
+        if cancel_event is not None and not isinstance(cancel_event, threading.Event):
+            msg = "cancel_event must be a threading.Event"
+            raise ValueError(msg)
+        if cancel_event is not None and cancel_event.is_set():
+            msg = "capability probe cancelled"
+            raise concurrent.futures.CancelledError(msg)
+
+        if not refresh and self._cached_capabilities is not None:
+            return self._cached_capabilities
+
+        try:
+            identity = probe_daemon_identity(self.engine, timeout=float(timeout))
+        except exc.TmuxCommandTimeout as err:
+            msg = "capability probe deadline expired"
+            raise exc.WaitTimeout(msg) from err
+
+        if cancel_event is not None and cancel_event.is_set():
+            msg = "capability probe cancelled"
+            raise concurrent.futures.CancelledError(msg)
+
+        if identity is None:
+            msg = "cannot read connected daemon capabilities"
+            raise exc.LibTmuxException(msg)
+
+        report = ServerCapabilities(
+            pid=identity.pid,
+            start_time=identity.start_time,
+            version=identity.version,
+        )
+        self._cached_capabilities = report
+        return report
 
     @classmethod
     def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:
@@ -502,6 +734,8 @@ class Server(
         """
         try:
             res = self.cmd("list-sessions")
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
+            raise
         except Exception:
             return False
         return res.returncode == 0
@@ -511,14 +745,18 @@ class Server(
 
         Raises
         ------
+        :exc:`~libtmux.exc.UnknownColorOption`
+            :attr:`colors` is set to something other than ``256`` or ``88``.
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
         :exc:`~libtmux.exc.SocketPathTooLong`
             When the socket this server names cannot fit in a UNIX socket
             address, so no tmux command could ever reach it.
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            When an injected engine returns an awaitable.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
-            ``list-sessions``).
+            ``list-sessions``), carrying tmux's stderr message.
 
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
@@ -527,18 +765,14 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
-            raise exc.TmuxCommandNotFound
-
-        cmd_args: list[str] = [*self._socket_args(), "list-sessions"]
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        result = self.cmd("list-sessions")
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                result.cmd,
+                output="\n".join(result.stdout),
+                stderr="\n".join(result.stderr),
+            )
 
     #
     # Command
@@ -635,6 +869,13 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        client_args: t.Sequence[str] = (),
+        stdin: bytes | None = None,
+        timeout: float | None = None,
+        env: t.Mapping[str, str] | None = None,
+        inherit_env: bool = True,
+        cwd: pathlib.Path | str | None = None,
+        daemon_guard: DaemonGuard | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -684,6 +925,10 @@ class Server(
             cannot fit in a UNIX socket address. See :meth:`_socket_args`.
         :exc:`~libtmux.exc.UnknownColorOption`
             When ``colors`` is neither 88 nor 256.
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            The engine returned an awaitable on synchronous dispatch.
+        :exc:`~libtmux.exc.EngineConfigurationMismatch`
+            Explicit server settings conflict with the injected engine.
 
         Notes
         -----
@@ -702,21 +947,29 @@ class Server(
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [*self._socket_args(), cmd]
-        cmd_args: list[str | int] = []
-        if self.config_file:
-            svr_args.insert(0, f"-f{self.config_file}")
-        if self.colors:
-            if self.colors == 256:
-                svr_args.insert(0, "-2")
-            elif self.colors == 88:
-                svr_args.insert(0, "-8")
-            else:
-                raise exc.UnknownColorOption
+        # The engine renders the socket flags; measure the socket per command,
+        # since tmux reads $TMUX_TMPDIR when it runs.
+        self._socket_args()
+        cmd_args: list[str | int] = (
+            ["-t", str(target), *args] if target is not None else [*args]
+        )
 
-        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
-
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        try:
+            return tmux_cmd(
+                cmd,
+                *cmd_args,
+                engine=self.engine,
+                client_args=client_args,
+                stdin=stdin,
+                timeout=timeout,
+                env=env,
+                inherit_env=inherit_env,
+                cwd=cwd,
+                daemon_guard=daemon_guard,
+            )
+        except exc.TmuxServerRestarted:
+            self._cached_capabilities = None
+            raise
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -762,8 +1015,16 @@ class Server(
 
         return bool(not proc.returncode)
 
-    def kill(self) -> None:
+    def kill(self, *, wait: bool = False, timeout: float = 5.0) -> None:
         """Kill tmux server.
+
+        Parameters
+        ----------
+        wait : bool
+            When ``True`` on a local engine, poll the daemon PID until it
+            exits so socket teardown finishes before returning.
+        timeout : float
+            Maximum seconds to wait for daemon exit when ``wait=True``.
 
         >>> svr = Server(socket_name="testing")
         >>> svr
@@ -780,12 +1041,33 @@ class Server(
         >>> svr.is_alive()
         False
         """
+        daemon_pid: int | None = None
+        engine = self.engine
+        if wait and engine.endpoint is None:
+            with contextlib.suppress(exc.LibTmuxException, OSError):
+                ident = probe_daemon_identity(engine, timeout=min(timeout, 1.0))
+                if ident is not None:
+                    daemon_pid = ident.pid
+
+        self._cached_capabilities = None
         proc = self.cmd("kill-server")
         if proc.stderr:
             stderr_text = " ".join(str(line) for line in proc.stderr)
             if _is_daemon_not_up_error(stderr_text):
                 return
             raise exc.LibTmuxException(proc.stderr)
+
+        if wait and daemon_pid is not None:
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(daemon_pid, 0)
+                except ProcessLookupError:
+                    break
+                except PermissionError:
+                    break
+                time.sleep(0.01)
+
         logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
 
     def _session_target(
@@ -2729,68 +3011,62 @@ class Server(
             extra["tmux_session"] = str(session_name)
         logger.debug("creating session", extra=extra)
 
-        env = os.environ.get("TMUX")
+        clean_env = {k: v for k, v in os.environ.items() if k != "TMUX"}
+        tmux_version = _resolve_server_version(self)
+        _fields, format_string = get_output_format("list-sessions", tmux_version)
 
-        if env:
-            del os.environ["TMUX"]
+        tmux_args: tuple[str | int, ...] = (
+            "-P",
+            f"-F{format_string}",
+        )
 
-        try:
-            tmux_version = str(get_version(tmux_bin=self.tmux_bin))
-            _fields, format_string = get_output_format("list-sessions", tmux_version)
+        if detach_others:
+            tmux_args += ("-D",)
 
-            tmux_args: tuple[str | int, ...] = (
-                "-P",
-                f"-F{format_string}",
+        if no_size:
+            tmux_args += ("-X",)
+
+        if client_flags is not None:
+            tmux_args += ("-f", client_flags)
+
+        if session_name is not None:
+            tmux_args += (escape_trailing_separator(f"-s{_format_arg(session_name)}"),)
+
+        if not attach:
+            tmux_args += ("-d",)
+
+        if start_directory:
+            tmux_args += (
+                "-c",
+                escape_trailing_separator(_format_path_arg(start_directory)),
             )
 
-            if detach_others:
-                tmux_args += ("-D",)
+        if window_name:
+            tmux_args += ("-n", escape_trailing_separator(_format_arg(window_name)))
 
-            if no_size:
-                tmux_args += ("-X",)
+        if x is not None:
+            tmux_args += ("-x", x)
 
-            if client_flags is not None:
-                tmux_args += ("-f", client_flags)
+        if y is not None:
+            tmux_args += ("-y", y)
 
-            if session_name is not None:
-                tmux_args += (
-                    escape_trailing_separator(f"-s{_format_arg(session_name)}"),
-                )
+        if environment:
+            for k, v in environment.items():
+                tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
-            if not attach:
-                tmux_args += ("-d",)
+        if window_command:
+            tmux_args += (escape_trailing_separator(window_command),)
 
-            if start_directory:
-                tmux_args += (
-                    "-c",
-                    escape_trailing_separator(_format_path_arg(start_directory)),
-                )
+        proc = self.cmd(
+            "new-session",
+            *tmux_args,
+            client_args=("-u",),
+            env=clean_env,
+        )
 
-            if window_name:
-                tmux_args += ("-n", escape_trailing_separator(_format_arg(window_name)))
+        raise_if_stderr(proc, "new-session")
 
-            if x is not None:
-                tmux_args += ("-x", x)
-
-            if y is not None:
-                tmux_args += ("-y", y)
-
-            if environment:
-                for k, v in environment.items():
-                    tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
-
-            if window_command:
-                tmux_args += (escape_trailing_separator(window_command),)
-
-            proc = self.cmd("new-session", *tmux_args)
-
-            raise_if_stderr(proc, "new-session")
-
-            session_stdout = proc.stdout[0]
-
-        finally:
-            if env:
-                os.environ["TMUX"] = env
+        session_stdout = proc.stdout[0]
 
         session_data = parse_output(session_stdout, "list-sessions", tmux_version)
 
@@ -2827,6 +3103,8 @@ class Server(
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2899,6 +3177,8 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except (exc.AsyncEngineMismatch, exc.EngineConfigurationMismatch):
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)
@@ -3081,12 +3361,16 @@ class Server(
     #
     # Dunder
     #
+    def _endpoint_key(self) -> str | None:
+        return getattr(self._engine, "endpoint", None)
+
     def __eq__(self, other: object) -> bool:
         """Equal operator for :class:`Server` object."""
         if isinstance(other, Server):
             return (
                 self.socket_name == other.socket_name
                 and self.socket_path == other.socket_path
+                and self._endpoint_key() == other._endpoint_key()
             )
         return False
 
