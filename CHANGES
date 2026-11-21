@@ -45,6 +45,76 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### `raise_if_dead()` captures tmux's error output (#739)
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` previously let
+tmux write its error straight to the terminal. It now captures stdout and
+stderr onto the raised {exc}`subprocess.CalledProcessError`.
+
+#### `tmux_cmd.process` is a read-only property (#739)
+
+{attr}`~libtmux.common.tmux_cmd.process` is now a read-only property. Reading
+it is unchanged under {class}`~libtmux.engine.SubprocessEngine`; reading it
+after a command ran through an engine that spawns no process raises
+{exc}`~libtmux.exc.LibTmuxException` instead of returning `None`.
+
+### What's new
+
+#### Pluggable raw-byte command engines (#739)
+
+Every tmux command libtmux runs now dispatches through a
+{class}`~libtmux.engine.TmuxEngine` over structured
+{class}`~libtmux.engine.TmuxRequest` and lossless raw-byte
+{class}`~libtmux.engine.TmuxResult` values. The default
+{class}`~libtmux.engine.SubprocessEngine` spawns `tmux` as before, while
+{class}`~libtmux.common.tmux_cmd` exposes `raw_stdout` and `raw_stderr`
+alongside decoded `stdout` and `stderr` lines.
+
+Pass `engine=` to {class}`~libtmux.Server` to route commands through
+{class}`~libtmux.test.FakeEngine`, {class}`~libtmux.test.RecordingEngine`,
+{class}`~libtmux.engine.ExecEngine` for wrapper prefixes such as `docker exec`
+and `ssh`, or {class}`~libtmux.engine.ControlModeEngine` on tmux 3.7+.
+Conflicting server and engine socket settings raise
+{exc}`~libtmux.exc.EngineConfigurationMismatch`, and pairing a command with
+{class}`~libtmux.engine.DaemonGuard` raises
+{exc}`~libtmux.exc.TmuxServerRestarted` when a server restarts mid-workflow.
+See {ref}`engines` for details.
+
+#### Connected daemon capabilities and manifest (#739)
+
+{meth}`Server.capabilities() <libtmux.Server.capabilities>` inspects a live
+daemon's version, `pid`, `start_time`, supported features, and active release
+workarounds via {mod}`libtmux.capabilities` without starting a server or firing
+`after-*` hooks. `capabilities.json` at the repository root publishes the
+shared capability table and workarounds, regenerated via
+`just build-capabilities`.
+
+{meth}`Server.kill() <libtmux.Server.kill>` also accepts `wait=True` to poll
+local daemon exit before returning, used automatically by the pytest plugin
+teardown.
+
+### Fixes
+
+#### Invocation safety, locale isolation, and `$TMUX` hygiene (#739)
+
+Data arguments ending in `;` are escaped before reaching tmux's command parser,
+and requests exceeding tmux's message limit raise
+{exc}`~libtmux.exc.TmuxCommandTooLong` before spawning.
+{meth}`Server.new_session() <libtmux.Server.new_session>` strips `$TMUX` per
+invocation instead of mutating `os.environ`, format-token queries pass `-u` so
+`FORMAT_SEPARATOR` survives `LC_ALL=C`, and retired tmux 3.9 popup window
+options raise {exc}`~libtmux.exc.UnknownOption` consistently.
+
+### Documentation
+
+#### Engines and capabilities reference (#739)
+
+{ref}`engines` introduces custom transports, raw-byte `stdin` and `stdout`,
+and generation fencing; {ref}`engine-api` and {ref}`capabilities-api` document
+the public modules.
+
 ## libtmux 0.67.0 (2026-11-22)
 
 libtmux 0.67.0 keeps a `#` in session names, window names, pane titles,

@@ -14,6 +14,8 @@ This includes:
 | {class}`~libtmux.Window` | `from libtmux.window import Window` |
 | {class}`~libtmux.Pane` | `from libtmux.pane import Pane` |
 | Common | `from libtmux.common import ...` |
+| Engine | `from libtmux.engine import ...` |
+| Capabilities | `from libtmux.capabilities import ...` |
 | Neo | `from libtmux.neo import ...` |
 | Options | `from libtmux.options import ...` |
 | Hooks | `from libtmux.hooks import ...` |
