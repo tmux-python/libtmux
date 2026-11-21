@@ -55,6 +55,13 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### Environment values are masked in logs (#898)
+
+The tmux command line libtmux logs at `DEBUG` and on errors shows `***` in
+place of environment values: `-e NAME=value` on the commands that take it, and
+the value passed to `set-environment`. Variable names stay readable, and the
+command tmux runs is unchanged.
+
 #### `kill_window(name)` kills in its own session (#897)
 
 {meth}`~libtmux.Session.kill_window` with a window name or index kills that
