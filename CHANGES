@@ -45,6 +45,14 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Request a terminal clipboard (#889)
+
+{meth}`~libtmux.Client.request_clipboard` asks a selected terminal for its
+clipboard on tmux 3.6a and later. It returns when tmux accepts the request.
+If the terminal replies with clipboard data, tmux creates a new paste buffer.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
