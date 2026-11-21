@@ -932,7 +932,7 @@ class Pane(
             self.cmd("send-keys", *tmux_args)
             return
         else:
-            self.cmd("send-keys", *tmux_args, prefix + cmd)
+            self.cmd("send-keys", *tmux_args, "--", prefix + cmd)
 
         if enter and copy_mode_cmd is None:
             self.enter()
