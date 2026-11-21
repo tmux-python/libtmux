@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import re
 import sys
 import typing as t
 
 from libtmux import exc
+from libtmux._internal.support.capabilities import extract_version_token
 from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
@@ -35,14 +35,14 @@ _KILL_TIMEOUT = 1.0
 
 
 def _version_from_result(result: CommandResult) -> str | None:
-    """Normalize native async ``tmux -V`` output like the sync probe.
+    """Extract raw ``tmux -V`` version string matching sync ``tmux_version()``.
 
     Examples
     --------
     >>> _version_from_result(
     ...     CommandResult(cmd=("tmux", "-V"), stdout=("tmux 3.4a",))
     ... )
-    '3.4'
+    '3.4a'
     >>> _version_from_result(CommandResult(cmd=("tmux", "-V"), stderr=("bad",)))
     """
     from libtmux.common import TMUX_MAX_VERSION
@@ -56,12 +56,8 @@ def _version_from_result(result: CommandResult) -> str | None:
         return None
     if not result.stdout:
         return None
-    _prefix, separator, version = result.stdout[0].partition("tmux ")
-    if not separator or not version:
-        return None
-    if version == "master":
-        return f"{TMUX_MAX_VERSION}-master"
-    return re.sub(r"[a-z-]", "", version) or None
+    token = extract_version_token(result.stdout[0])
+    return token or None
 
 
 class _AsyncProcessOwner:

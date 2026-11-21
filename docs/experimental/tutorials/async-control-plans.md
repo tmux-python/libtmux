@@ -152,7 +152,7 @@ should share a planner step.
 
 {class}`~libtmux.experimental.ops.planner.BatchingPlanner` groups adjacent
 primitive operations whose arguments are ready to render. Every operation still
-becomes one {class}`~libtmux.engines.base.CommandRequest` and one
+becomes one {class}`~libtmux.experimental.engines.base.CommandRequest` and one
 typed result. A creator remains its own step when later requests need its
 captured ID.
 

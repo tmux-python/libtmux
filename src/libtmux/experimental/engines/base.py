@@ -50,6 +50,8 @@ __all__ = (
     "SupportsConnection",
     "SupportsTmuxVersion",
     "TmuxEngine",
+    "command_count",
+    "encode_command_argv",
     "encode_direct_argv",
     "is_command_separator",
     "render_control_line",
@@ -162,20 +164,45 @@ def split_direct_argv(argv: Sequence[str]) -> DirectArgv:
     return DirectArgv(global_args=args[:index], command_argv=args[index:])
 
 
-def _encode_command_argv(argv: Sequence[str]) -> tuple[str, ...]:
+def encode_command_argv(argv: Sequence[str]) -> tuple[str, ...]:
     r"""Escape literal separators in argv already known to be command-scoped.
 
     Examples
     --------
-    >>> _encode_command_argv(("display-message", "literal;"))
+    >>> encode_command_argv(("display-message", "literal;"))
     ('display-message', 'literal\\;')
+    >>> encode_command_argv(("display-message", "escaped\\;"))
+    ('display-message', 'escaped\\;')
     """
     encoded: list[str] = []
     for token in argv:
-        if not is_command_separator(token) and token.endswith(";"):
+        if (
+            not is_command_separator(token)
+            and token.endswith(";")
+            and not token.endswith(r"\;")
+        ):
             token = f"{token[:-1]}\\;"
         encoded.append(str(token))
     return tuple(encoded)
+
+
+def command_count(argv: Sequence[str] | CommandRequest) -> int:
+    """Return the number of tmux commands in *argv* or *request*.
+
+    Examples
+    --------
+    >>> command_count(("list-panes", "-a"))
+    1
+    >>> command_count(
+    ...     ("set-option", "-g", "@x", "1", CommandSeparator(";"), "list-panes")
+    ... )
+    2
+    """
+    tokens = argv.args if isinstance(argv, CommandRequest) else argv
+    direct = split_direct_argv(tokens)
+    if not direct.command_argv:
+        return 0
+    return 1 + sum(1 for tok in direct.command_argv if is_command_separator(tok))
 
 
 def encode_direct_argv(argv: Sequence[str]) -> tuple[str, ...]:
@@ -191,7 +218,7 @@ def encode_direct_argv(argv: Sequence[str]) -> tuple[str, ...]:
     ('a', ';', 'b')
     """
     direct = split_direct_argv(argv)
-    return (*direct.global_args, *_encode_command_argv(direct.command_argv))
+    return (*direct.global_args, *encode_command_argv(direct.command_argv))
 
 
 def _quote_control_token(token: str) -> str:
@@ -224,7 +251,7 @@ def render_control_line(argv: Sequence[str]) -> str:
     )
 
 
-def unescape_control_output(payload: str) -> bytes:
+def unescape_control_output(payload: str | bytes) -> bytes:
     r"""Decode a control-mode ``%output`` payload back to the bytes the pane wrote.
 
     Examples
@@ -236,7 +263,11 @@ def unescape_control_output(payload: str) -> bytes:
     >>> unescape_control_output(r"caf\303\251").decode()
     'café'
     """
-    raw = payload.encode("utf-8", "surrogateescape")
+    raw = (
+        payload.encode("utf-8", "surrogateescape")
+        if isinstance(payload, str)
+        else payload
+    )
     return _CONTROL_OCTAL.sub(lambda m: bytes((int(m.group(1), 8),)), raw)
 
 
@@ -295,6 +326,12 @@ class CommandRequest:
             args=tuple(arg if isinstance(arg, str) else str(arg) for arg in args),
             tmux_bin=str(tmux_bin) if tmux_bin is not None else None,
         )
+
+    @property
+    def subcommand(self) -> str:
+        """First subcommand token after client-global options, or ``""``."""
+        direct = split_direct_argv(self.args)
+        return str(direct.command_argv[0]) if direct.command_argv else ""
 
     @classmethod
     def from_tmux_request(cls, request: TmuxRequest) -> CommandRequest:

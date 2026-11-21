@@ -70,7 +70,7 @@ def resolve_engine_version(
 
     Returns *version* unchanged when the caller supplied one. Otherwise asks the
     engine via the optional
-    :class:`~libtmux.engines.base.SupportsTmuxVersion` capability,
+    :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` capability,
     so version-gated rendering (flag drops and whole-command gates) reflects the
     live tmux at runtime instead of silently assuming latest. Engines that cannot
     report a version fall back to ``None`` ("assume latest").

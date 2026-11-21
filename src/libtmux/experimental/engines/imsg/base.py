@@ -13,11 +13,12 @@ import socket
 import typing as t
 
 from libtmux import exc
-from libtmux._internal.tmux_argv import encode_command_argv, parse_client_options
+from libtmux._internal.invocation import parse_client_options
 from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
     EngineKind,
+    encode_command_argv,
     split_direct_argv,
 )
 from libtmux.experimental.engines.connection import ServerConnection
