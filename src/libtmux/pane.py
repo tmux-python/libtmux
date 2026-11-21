@@ -18,6 +18,7 @@ from libtmux._compat import sentinel
 from libtmux._internal.env import pane_id_from_env
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.common import (
+    _literal,
     escape_trailing_separator,
     get_version_str,
     has_gte_version,
@@ -1476,7 +1477,7 @@ class Pane(
 
         if start_directory:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
+            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
 
         if not attach:
             tmux_args += ("-d",)
@@ -1675,7 +1676,7 @@ class Pane(
 
         if start_directory:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
+            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
 
         if not attach:
             tmux_args += ("-d",)
@@ -1774,7 +1775,7 @@ class Pane(
         >>> pane.pane_title
         'my-title'
         """
-        proc = self.cmd("select-pane", "-T", escape_trailing_separator(title))
+        proc = self.cmd("select-pane", "-T", escape_trailing_separator(_literal(title)))
         raise_if_stderr(proc, "select-pane")
         self.refresh()
         return self
@@ -2373,7 +2374,7 @@ class Pane(
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
+            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
 
         if environment:
             for k, v in environment.items():

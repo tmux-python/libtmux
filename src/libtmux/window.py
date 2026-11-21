@@ -16,6 +16,7 @@ import warnings
 
 from libtmux._internal.query_list import QueryList
 from libtmux.common import (
+    _literal,
     escape_trailing_separator,
     has_gte_version,
     raise_if_stderr,
@@ -1221,7 +1222,7 @@ class Window(
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{start_path}"),)
+            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
 
         if environment:
             for k, v in environment.items():
@@ -1468,7 +1469,9 @@ class Window(
         lex.escape = " "
         lex.whitespace_split = False
 
-        proc = self.cmd("rename-window", "--", escape_trailing_separator(new_name))
+        proc = self.cmd(
+            "rename-window", "--", escape_trailing_separator(_literal(new_name))
+        )
         raise_if_stderr(proc, "rename-window")
 
         self.window_name = new_name

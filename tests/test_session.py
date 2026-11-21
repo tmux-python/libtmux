@@ -16,6 +16,7 @@ from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import namer
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -829,3 +830,62 @@ def test_environment_name_starting_with_a_dash(session: Session) -> None:
 
     session.remove_environment("-dash")
     assert show() == ["--dash"]
+
+
+def test_hash_in_names_is_literal(server: Server) -> None:
+    """A ``#`` in a session or window name is stored, not expanded as a format."""
+    session = server.new_session("made#{session_id}", window_name="win#{window_id}")
+    assert session.session_name == "made#{session_id}"
+    assert session.active_window.window_name == "win#{window_id}"
+
+    session.rename_session("renamed#S")
+    assert session.session_name == "renamed#S"
+
+    window = session.new_window(window_name="new#{pane_id}")
+    assert window.window_name == "new#{pane_id}"
+    window.rename_window("again#W")
+    window.refresh()
+    assert window.window_name == "again#W"
+
+
+def test_break_pane_window_name_is_passed_unchanged(session: Session) -> None:
+    """``break-pane -n`` does not expand formats, so its name is not escaped."""
+    pane = session.active_window.split()
+
+    window = pane.break_pane(window_name="broken#W")
+
+    assert window.window_name == "broken#W"
+
+
+def test_hash_in_pane_title_is_literal(session: Session) -> None:
+    """A ``#`` in a pane title is stored, not expanded as a format."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    pane.set_title("title#{pane_id}")
+    pane.refresh()
+
+    assert pane.pane_title == "title#{pane_id}"
+
+
+def test_hash_in_start_directory_is_literal(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A ``#`` in ``start_directory`` names a directory, not a format."""
+    directory = tmp_path / "dir#S"
+    directory.mkdir()
+
+    window = session.new_window(start_directory=directory)
+    pane = window.active_pane
+    assert pane is not None
+    split = pane.split(start_directory=directory)
+
+    def started_there() -> bool:
+        pane.refresh()
+        split.refresh()
+        return pane.pane_current_path == str(
+            directory
+        ) and split.pane_current_path == str(directory)
+
+    retry_until(started_there, 2, raises=True)
