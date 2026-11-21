@@ -38,6 +38,15 @@ def shown(value: str) -> str:
     return value
 
 
+def shown_name(value: str) -> str:
+    """Return a session name or renamed window name as tmux prints it.
+
+    tmux encodes a backslash in these names as two on every release: it
+    stores them encoded before 3.8 and escapes them in format output from 3.8.
+    """
+    return value.replace("\\", "\\\\")
+
+
 def start_command(pane: Pane) -> str:
     """Return the command a pane was started with, without tmux's quoting."""
     out = pane.display_message("#{pane_start_command}", get_text=True)
@@ -205,7 +214,7 @@ def test_new_session_session_name(server: Server, value: str) -> None:
     """``new_session(session_name=...)`` names the session as given."""
     new = server.new_session(session_name=f"s{value}", window_command="sleep 30")
     assert server.is_alive()
-    assert new.session_name == shown(f"s{value}")
+    assert new.session_name == shown_name(f"s{value}")
 
 
 def test_new_session_window_command(server: Server) -> None:
@@ -385,7 +394,7 @@ def test_rename_window(session: Session, value: str) -> None:
     window.rename_window(value)
     assert session.server.is_alive()
     window.refresh()
-    assert window.window_name == shown(value)
+    assert window.window_name == shown_name(value)
 
 
 @pytest.mark.parametrize("value", VALUES)
@@ -393,7 +402,7 @@ def test_rename_session(session: Session, value: str) -> None:
     """``Session.rename_session`` names the session as given."""
     session.rename_session(f"r{value}")
     assert session.server.is_alive()
-    assert session.session_name == shown(f"r{value}")
+    assert session.session_name == shown_name(f"r{value}")
 
 
 @pytest.mark.parametrize("value", VALUES)
@@ -504,6 +513,8 @@ def test_display_popup_arguments(
 
     A popup needs a terminal client, so the argument vector is captured.
     """
+    if flag in {"-T", "-b", "-s", "-S"} and not has_gte_version("3.3"):
+        pytest.skip(f"display-popup {flag} requires tmux 3.3+")
     pane = session.active_pane
     assert pane is not None
     captured = capture_cmd(monkeypatch, pane, "display-popup")
@@ -535,6 +546,8 @@ def test_display_menu_arguments(
     value: str,
 ) -> None:
     """``Server.display_menu`` escapes each free-text value."""
+    if flag in {"-b", "-s", "-S", "-H"} and not has_gte_version("3.4"):
+        pytest.skip(f"display-menu {flag} requires tmux 3.4+")
     captured = capture_cmd(monkeypatch, server, "display-menu")
     menu_kwargs: dict[str, t.Any] = {kwarg: value}
     server.display_menu("name", "k", "display-message x", **menu_kwargs)
