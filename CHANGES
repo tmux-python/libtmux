@@ -55,6 +55,12 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### `send_keys(hex_keys=True)` sends every byte (#894)
+
+{meth}`~libtmux.Pane.send_keys` with `hex_keys=True` sends each byte of a
+whitespace-separated value such as `"41 42"`. A value with more than one byte
+was previously dropped without an error.
+
 #### `send_keys` types text that starts with a dash (#892)
 
 {meth}`~libtmux.Pane.send_keys` types text that begins with `-`, such as

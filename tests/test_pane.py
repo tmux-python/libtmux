@@ -62,6 +62,20 @@ def test_send_keys_text_starting_with_a_dash(
     retry_until(lambda: text in "\n".join(pane.capture_pane()), 2, raises=True)
 
 
+def test_send_keys_hex_keys_sends_each_byte(session: Session) -> None:
+    """Space-separated hex bytes all reach the pane.
+
+    tmux reads one byte per argument under ``-H`` and drops an argument that
+    holds more than one.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    pane.send_keys("41 42 43", hex_keys=True, enter=False)
+
+    retry_until(lambda: "ABC" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+
 def test_set_height(session: Session) -> None:
     """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")

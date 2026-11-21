@@ -841,7 +841,8 @@ class Pane(
 
             .. versionadded:: 0.56
         hex_keys : bool, optional
-            Send keys as hex values (``-H`` flag).
+            Send keys as hex values (``-H`` flag). Separate bytes with
+            whitespace, e.g. ``"41 42"``; each byte is sent as its own argument.
 
             .. versionadded:: 0.56
         target_client : str, optional
@@ -932,7 +933,9 @@ class Pane(
             self.cmd("send-keys", *tmux_args)
             return
         else:
-            self.cmd("send-keys", *tmux_args, "--", prefix + cmd)
+            # tmux reads one byte per argument under -H.
+            keys = (prefix + cmd).split() if hex_keys else [prefix + cmd]
+            self.cmd("send-keys", *tmux_args, "--", *keys)
 
         if enter and copy_mode_cmd is None:
             self.enter()
