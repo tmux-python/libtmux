@@ -55,6 +55,12 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### `kill_window(name)` kills in its own session (#897)
+
+{meth}`~libtmux.Session.kill_window` with a window name or index kills that
+window in the session it was called on. The call could previously kill a
+same-named window in another session.
+
 #### `select_pane(index)` selects in its own window (#896)
 
 {meth}`~libtmux.Window.select_pane` with a pane index selects that pane in the
