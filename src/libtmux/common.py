@@ -101,7 +101,7 @@ class EnvironmentMixin:
         if hidden:
             args += ["-h"]
 
-        args += [name, value]
+        args += ["--", name, value]
 
         cmd = self.cmd(*args)
 
@@ -130,7 +130,7 @@ class EnvironmentMixin:
         args = ["set-environment"]
         if self._add_option:
             args += [self._add_option]
-        args += ["-u", name]
+        args += ["-u", "--", name]
 
         cmd = self.cmd(*args)
 
@@ -159,7 +159,7 @@ class EnvironmentMixin:
         args = ["set-environment"]
         if self._add_option:
             args += [self._add_option]
-        args += ["-r", name]
+        args += ["-r", "--", name]
 
         cmd = self.cmd(*args)
 

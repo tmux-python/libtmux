@@ -855,7 +855,7 @@ class Session(
         """
         session_check_name(new_name)
 
-        proc = self.cmd("rename-session", new_name)
+        proc = self.cmd("rename-session", "--", new_name)
 
         raise_if_stderr(proc, "rename-session")
 

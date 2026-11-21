@@ -1361,3 +1361,17 @@ def test_select_pane_index_targets_its_own_window(server: Server) -> None:
     other.refresh()
     assert other.active_pane is not None
     assert other.active_pane.pane_id == other_before
+
+
+def test_rename_window_name_starting_with_a_dash(session: Session) -> None:
+    """A window name that starts with ``-`` is a name, not a flag."""
+    window = session.active_window
+
+    window.rename_window("-renamed")
+
+    assert window.window_name == "-renamed"
+
+
+def test_window_display_message_text_starting_with_a_dash(session: Session) -> None:
+    """Message text that starts with ``-`` is printed, not read as a flag."""
+    assert session.active_window.display_message("-p", get_text=True) == ["-p"]
