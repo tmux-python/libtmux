@@ -55,6 +55,13 @@ the predicate instead of closing over it.
 
 ### Fixes
 
+#### `refresh()` clears a field tmux has emptied (#895)
+
+`refresh()` on a {class}`~libtmux.Pane`, {class}`~libtmux.Window`,
+{class}`~libtmux.Session` or {class}`~libtmux.Client` resets a field to `None`
+when tmux now reports it empty. A cleared pane title previously kept its old
+value.
+
 #### A newline in a pane's path no longer breaks listings (#752)
 
 Listing a server's panes or windows, and every lookup built on those listings,
