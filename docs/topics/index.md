@@ -11,11 +11,11 @@ Explore libtmux's core functionalities and underlying principles at a high level
 Module hierarchy, data flow, and internal identifiers.
 :::
 
-:::{grid-item-card} Traversal
-:link: traversal
+:::{grid-item-card} Querying
+:link: querying/index
 :link-type: doc
-Navigate the {class}`~libtmux.Server`, {class}`~libtmux.Session`,
-{class}`~libtmux.Window`, {class}`~libtmux.Pane` hierarchy.
+Choose hierarchy traversal, Python filtering, tmux formats, raw rows, or
+snapshot plans.
 :::
 
 :::{grid-item-card} Locating Yourself
@@ -23,12 +23,6 @@ Navigate the {class}`~libtmux.Server`, {class}`~libtmux.Session`,
 :link-type: doc
 Code running inside a pane asking which pane, window, session, and server
 it is in.
-:::
-
-:::{grid-item-card} Filtering
-:link: filtering
-:link-type: doc
-Query and filter collections by attributes.
 :::
 
 :::{grid-item-card} Pane Interaction
@@ -61,6 +55,12 @@ Common patterns for scripting and automation.
 Automatic cleanup with temporary sessions and windows.
 :::
 
+:::{grid-item-card} Engines
+:link: engines
+:link-type: doc
+Swap how tmux commands execute: record, fake, or retarget the binary.
+:::
+
 :::{grid-item-card} Options & Hooks
 :link: options_and_hooks
 :link-type: doc
@@ -88,15 +88,15 @@ architecture
 configuration
 design-decisions
 public-vs-internal
-traversal
+querying/index
 self_location
-filtering
 pane_interaction
 floating_panes
 workspace_setup
 automation_patterns
 context_managers
 options_and_hooks
+engines
 clients
 format-tokens
 ```
