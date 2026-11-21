@@ -37,8 +37,8 @@ supported version.
 A typed field is `None` for one of three reasons:
 
 - **Not yet introduced.** Older tmux doesn't know the token at all.
-  {attr}`~libtmux.Pane.pane_dead_signal` is `None` on tmux 3.2a because
-  the token landed in 3.3.
+  {attr}`~libtmux.Pane.pane_x` is `None` on tmux 3.6 because the token
+  landed in 3.7.
 - **Wrong scope for this object.** A {class}`~libtmux.Client` row can report
   client tokens plus the client's current session/window/pane. `buffer_*`
   tokens never apply to client rows.
@@ -47,15 +47,14 @@ A typed field is `None` for one of three reasons:
   binding, copy-mode, popup) — never in a `list-*` snapshot. libtmux
   excludes them from every `-F` template.
 
-The version map for post-3.2a tokens is small and stable. The
+The version map for post-3.3a tokens is small and stable. The
 following are the tokens libtmux currently gates:
 
 | Added in | Tokens |
 |----------|--------|
-| 3.3 | {attr}`~libtmux.Pane.pane_dead_signal`, {attr}`~libtmux.Pane.pane_dead_time` |
 | 3.7 | {attr}`~libtmux.Pane.bracket_paste_flag`, {attr}`~libtmux.Pane.pane_flags`, {attr}`~libtmux.Pane.pane_floating_flag`, {attr}`~libtmux.Pane.pane_pb_progress`, {attr}`~libtmux.Pane.pane_pb_state`, {attr}`~libtmux.Pane.pane_pipe_pid`, {attr}`~libtmux.Pane.pane_x`, {attr}`~libtmux.Pane.pane_y`, {attr}`~libtmux.Pane.pane_z`, {attr}`~libtmux.Pane.pane_zoomed_flag`, {attr}`~libtmux.Pane.synchronized_output_flag` |
 
-Everything not listed above is safe on every supported tmux (≥ 3.2a).
+Everything not listed above is safe on every supported tmux (≥ 3.3a).
 Fields for newer tmux tokens will be added as each supported version is
 validated.
 
@@ -129,7 +128,7 @@ if you're swapping the `tmux` binary mid-test, clear both with
 `get_version_str.cache_clear()`.
 
 {doc}`/compatibility` tracks the project's minimum tmux version
-(currently 3.2a) and full capability matrix.
+(currently 3.3a) and full capability matrix.
 
 ## See also
 
