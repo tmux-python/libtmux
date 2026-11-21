@@ -174,6 +174,6 @@ exposed to LLM clients:
 - **`wait_for_agent`** — blocks on the monitor's in-process store until a pane
   reaches a target state such as `AWAITING_INPUT` or `DONE`.
 - **`send_to_agent`** — waits for `AWAITING_INPUT`, `DONE`, or `IDLE`, then sends
-  a prompt through one folded tmux dispatch.
+  a prompt through one ordered tmux request batch.
 - **`install_agent_hooks`** — installs the named agent's shell hooks into the
   session so the monitor can begin receiving state signals.
