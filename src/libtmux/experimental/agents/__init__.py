@@ -4,7 +4,7 @@ The monitor (:class:`AgentMonitor`) tracks what every coding agent is doing; the
 synchronization verbs act on that knowledge: :func:`wait_for_agent_state` /
 :func:`wait_for_agents` block until agents reach a state (zero tmux calls), and
 :func:`send_to_agent` / :func:`send_to_agents` drive them safely under a per-pane
-:func:`pane_lock`, folding each send to a single tmux dispatch.
+:func:`pane_lock`, batching each send into an ordered request batch.
 """
 
 from __future__ import annotations

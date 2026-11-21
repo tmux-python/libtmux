@@ -1,8 +1,9 @@
-"""Unit tests for the drive verbs: lock, dedup, folding (no live tmux)."""
+"""Unit tests for the drive verbs: lock, dedup, batching (no live tmux)."""
 
 from __future__ import annotations
 
 import asyncio
+import typing as t
 
 from libtmux.experimental.agents.drive import (
     READY_STATES,
@@ -17,16 +18,35 @@ from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.agents.wait import WaitReason
 from libtmux.experimental.engines.base import CommandRequest, CommandResult
 
+if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 class _RecordingEngine:
-    """An async engine that records every dispatched request and succeeds."""
+    """An async engine that records single requests and batches."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, fail_panes: set[str] | None = None) -> None:
         self.requests: list[CommandRequest] = []
+        self.batches: list[tuple[CommandRequest, ...]] = []
+        self._fail_panes = fail_panes or set()
 
     async def run(self, request: CommandRequest) -> CommandResult:
         self.requests.append(request)
+        if any(pane in request.args for pane in self._fail_panes):
+            return CommandResult(
+                cmd=request.args,
+                stderr=("can't find pane",),
+                returncode=1,
+            )
         return CommandResult(cmd=request.args, returncode=0)
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        batch = tuple(requests)
+        self.batches.append(batch)
+        return [await self.run(req) for req in batch]
 
 
 def _idle_monitor() -> tuple[AgentMonitor, _RecordingEngine]:
@@ -72,22 +92,23 @@ def test_dedup_ledger_ttl() -> None:
     assert ledger.get("%1", "k") is None
 
 
-def test_send_to_agent_folds_multiline_into_one_dispatch() -> None:
-    """A multi-line prompt dispatches as a single folded set/paste/send call."""
+def test_send_to_agent_batches_multiline_into_one_batch() -> None:
+    """A multi-line prompt dispatches as one ordered set/paste/send batch."""
 
-    async def main() -> tuple[bool, int, CommandRequest]:
+    async def main() -> tuple[bool, int, tuple[CommandRequest, ...]]:
         monitor, engine = _idle_monitor()
         outcome = await send_to_agent(monitor, "%1", "line one\nline two")
-        return outcome.sent, len(engine.requests), engine.requests[0]
+        return outcome.sent, len(engine.batches), engine.batches[0]
 
-    sent, dispatch_count, request = asyncio.run(main())
+    sent, batch_count, batch = asyncio.run(main())
     assert sent is True
-    assert dispatch_count == 1  # the whole multi-step send is one tmux call
-    args = request.args
-    assert "set-buffer" in args
-    assert "paste-buffer" in args
-    assert "send-keys" in args
-    assert ";" in args  # the ops are chained into one invocation
+    assert batch_count == 1
+    assert [req.subcommand for req in batch] == [
+        "set-buffer",
+        "paste-buffer",
+        "send-keys",
+    ]
+    assert all(";" not in req.args for req in batch)
 
 
 def test_done_is_ready_for_the_next_prompt() -> None:
@@ -139,17 +160,34 @@ def test_send_to_agent_idempotency_key_is_a_no_op_on_retry() -> None:
     assert dispatch_count == 1  # the retry did not re-send
 
 
-def test_send_to_agents_folds_fleet_into_one_dispatch() -> None:
-    """A broadcast to N ready panes dispatches as a single folded call."""
+def test_send_to_agents_batches_fleet_into_one_batch() -> None:
+    """A broadcast to N ready panes dispatches as one ordered engine batch."""
 
-    async def main() -> tuple[list[bool], int]:
+    async def main() -> tuple[list[bool], int, int]:
         engine = _RecordingEngine()
         monitor = AgentMonitor(engine)
         monitor.ingest("%subscription-changed agentstate $0 @0 1 %1 : idle")
         monitor.ingest("%subscription-changed agentstate $0 @0 2 %2 : idle")
         outs = await send_to_agents(monitor, ["%1", "%2"], "ping")
-        return [o.sent for o in outs], len(engine.requests)
+        return [o.sent for o in outs], len(engine.batches), len(engine.requests)
 
-    sent, dispatch_count = asyncio.run(main())
+    sent, batch_count, request_count = asyncio.run(main())
     assert sent == [True, True]
-    assert dispatch_count == 1  # both panes' sends folded into one tmux call
+    assert batch_count == 1
+    assert request_count == 2
+
+
+def test_send_to_agents_isolates_per_pane_failure() -> None:
+    """A vanished middle pane fails only its own outcome while siblings succeed."""
+
+    async def main() -> list[tuple[str, bool]]:
+        engine = _RecordingEngine(fail_panes={"%2"})
+        monitor = AgentMonitor(engine)
+        for idx, pane_id in enumerate(("%1", "%2", "%3"), start=1):
+            monitor.ingest(
+                f"%subscription-changed agentstate $0 @0 {idx} {pane_id} : idle"
+            )
+        outs = await send_to_agents(monitor, ["%1", "%2", "%3"], "line 1\nline 2")
+        return [(o.pane_id, o.sent) for o in outs]
+
+    assert asyncio.run(main()) == [("%1", True), ("%2", False), ("%3", True)]

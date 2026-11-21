@@ -334,11 +334,11 @@ def register_agents(
         timeout_s: float = 30.0,
         key: str | None = None,
     ) -> dict[str, t.Any]:
-        """Wait until the agent is ready, then inject *text* in one folded dispatch.
+        """Wait until the agent is ready, then inject *text* in one ordered batch.
 
         The send is atomic under the per-pane drive lock (concurrent sends
-        serialize) and folds to a single tmux command. An optional *key* makes a
-        retried send a no-op within a short window.
+        serialize) and dispatches as an ordered request batch. An optional *key*
+        makes a retried send a no-op within a short window.
 
         Parameters
         ----------
@@ -381,7 +381,7 @@ def register_agents(
             name="send_to_agent",
             description=(
                 "Wait until a coding agent is ready, then send it a prompt "
-                "atomically in a single folded tmux dispatch"
+                "atomically in one ordered tmux request batch"
             ),
             tags={"mutating", "agents"},
             annotations=ToolAnnotations(title="send_to_agent", readOnlyHint=False),

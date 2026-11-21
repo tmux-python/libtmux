@@ -108,7 +108,7 @@ does not exist, then attaches or switches the current tmux client to it; `start`
 is the explicit form, and `attach` or `att` reconnect to an already-running
 console.  The session itself is declared with
 {class}`~libtmux.experimental.workspace.ir.Workspace`, so creation uses the same
-chainable workspace compiler and folded tmux dispatch path as other declarative
+workspace compiler and batched request path as other declarative
 workspace builds.
 
 The console includes a long-lived `monitor` pane backed by

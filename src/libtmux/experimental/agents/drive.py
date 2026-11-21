@@ -1,14 +1,15 @@
-"""Drive an agent safely: readiness-gated, atomically locked, folded to one call.
+"""Drive an agent safely: readiness-gated, atomically locked, batched requests.
 
 :func:`send_to_agent` is the action half of the synchronization layer. It
 optionally waits until the agent is ready (reusing
 :func:`~libtmux.experimental.agents.wait.wait_for_agent_state`, zero tmux calls),
 then injects the prompt **atomically** under a per-pane logical lock so two
-concurrent drivers cannot interleave keystrokes, and **folds the whole send into
-a single tmux dispatch** via the lazy/chainable plan + the
-:class:`~libtmux.experimental.ops.planner.FoldingPlanner` -- a multi-line prompt
-collapses to one ``set-buffer ; paste-buffer ; send-keys`` invocation, and a
-fleet broadcast (:func:`send_to_agents`) folds N panes' sends into one call.
+concurrent drivers cannot interleave keystrokes, and **batches the send into one
+ordered request batch** via :class:`~libtmux.experimental.ops.plan.LazyPlan` and
+:class:`~libtmux.experimental.ops.planner.BatchingPlanner` -- a multi-line prompt
+dispatches ``set-buffer``, ``paste-buffer``, and ``send-keys`` in one engine
+batch while preserving per-operation attribution, and a fleet broadcast
+(:func:`send_to_agents`) batches ready panes' sends into one engine batch.
 
 The per-pane lock (:func:`pane_lock`) is a process-wide chokepoint: both these
 verbs *and* the MCP ``asend_input`` tool acquire it, so all async keystroke
@@ -35,7 +36,7 @@ from libtmux.experimental.agents.wait import (
 from libtmux.experimental.ops import PasteBuffer, SendKeys, SetBuffer
 from libtmux.experimental.ops._types import PaneId
 from libtmux.experimental.ops.plan import LazyPlan
-from libtmux.experimental.ops.planner import FoldingPlanner
+from libtmux.experimental.ops.planner import BatchingPlanner
 
 if t.TYPE_CHECKING:
     import asyncio
@@ -81,6 +82,17 @@ def pane_lock(pane_id: str) -> asyncio.Lock:
 class SendOutcome:
     """The result of a :func:`send_to_agent`, as data.
 
+    Attributes
+    ----------
+    pane_id : str
+        Target pane identifier (e.g. ``"%1"``).
+    sent : bool
+        Whether every operation for the send succeeded.
+    wait : AgentWait or None
+        Readiness-wait outcome when ``wait_ready`` ran, otherwise ``None``.
+    deduplicated : bool
+        Whether the call matched a live idempotency key and skipped dispatch.
+
     Examples
     --------
     >>> SendOutcome(pane_id="%1", sent=True).sent
@@ -96,6 +108,15 @@ class SendOutcome:
 @dataclass
 class DedupLedger:
     """Short-TTL record of ``(pane, key)`` sends so a retry is a safe no-op.
+
+    Attributes
+    ----------
+    ttl : float
+        Seconds an idempotency entry remains active.
+    clock : Callable[[], float]
+        Monotonic clock source returning seconds.
+    _entries : dict[tuple[str, str], tuple[float, SendOutcome]]
+        Active ``(pane_id, key)`` entries mapped to ``(deadline, outcome)``.
 
     Examples
     --------
@@ -140,11 +161,12 @@ def _buffer_name(pane_id: str) -> str:
 
 
 def _add_send(plan: LazyPlan, pane_id: str, text: str, *, enter: bool) -> None:
-    """Record one agent send into *plan* (multi-line via a folded paste).
+    """Record one agent send into *plan* (multi-line via bracketed paste).
 
-    Single-line text is one ``send-keys``; multi-line text is
-    ``set-buffer ; paste-buffer -p ; send-keys Enter`` -- all chainable, so a
-    :class:`~..ops.planner.FoldingPlanner` collapses each send to one dispatch.
+    Single-line text is one ``send-keys``; multi-line text records
+    ``set-buffer``, ``paste-buffer -p``, and ``send-keys Enter`` -- all
+    batchable, so :class:`~..ops.planner.BatchingPlanner` groups them into one
+    ordered request batch without ``;`` command joining.
     """
     target = PaneId(pane_id)
     if "\n" in text:
@@ -170,13 +192,13 @@ async def send_to_agent(
     key: str | None = None,
     timeout: float | None = None,
 ) -> SendOutcome:
-    """Wait until *pane_id*'s agent is ready, then inject *text* in one dispatch.
+    """Wait until *pane_id*'s agent is ready, then inject *text* in one batch.
 
     Steps: (1) if *wait_ready*, await the agent reaching one of *ready_states*
     (zero tmux calls); a non-ready outcome returns ``sent=False`` with no
     dispatch. (2) Acquire the per-pane :func:`pane_lock` so the whole send is
     atomic. (3) If *key* names an already-delivered send within the dedup TTL,
-    return that no-op. (4) Fold the send to a single tmux call and dispatch it.
+    return that no-op. (4) Execute the send as one ordered request batch.
 
     Returns
     -------
@@ -209,7 +231,7 @@ async def send_to_agent(
                 return dataclasses.replace(prior, wait=wait_result, deduplicated=True)
         plan = LazyPlan()
         _add_send(plan, pane_id, text, enter=enter)
-        result = await plan.aexecute(monitor.engine, planner=FoldingPlanner())
+        result = await plan.aexecute(monitor.engine, planner=BatchingPlanner())
         outcome = SendOutcome(pane_id, sent=result.ok, wait=wait_result)
         if key is not None:
             monitor.dedup.record(pane_id, key, outcome)
@@ -226,12 +248,13 @@ async def send_to_agents(
     enter: bool = True,
     timeout: float | None = None,
 ) -> list[SendOutcome]:
-    """Broadcast *text* to many agents, folding every ready send into ONE dispatch.
+    """Broadcast *text* to many agents in one ordered request batch.
 
     Waits for all panes' readiness (``mode="all"``), then acquires each ready
     pane's lock in **sorted pane-id order** (deadlock-free against a concurrent
-    fleet send) and dispatches every ready pane's send as a single folded tmux
-    call. Returns one :class:`SendOutcome` per input pane, in order.
+    fleet send) and dispatches every ready pane's send in one ordered engine
+    batch with per-pane failure attribution. Returns one :class:`SendOutcome`
+    per input pane, in order.
 
     Examples
     --------
@@ -264,13 +287,21 @@ async def send_to_agents(
     async with contextlib.AsyncExitStack() as stack:
         for pane in sorted(ready):
             await stack.enter_async_context(pane_lock(pane))
-        ok = True
         if ready:
             plan = LazyPlan()
+            slices: dict[str, tuple[int, int]] = {}
             for pane in ready:
+                start = len(plan.operations)
                 _add_send(plan, pane, text, enter=enter)
-            ok = (await plan.aexecute(monitor.engine, planner=FoldingPlanner())).ok
-        for pane in ready:
-            outcomes[pane] = SendOutcome(pane, sent=ok, wait=waits.get(pane))
+                slices[pane] = (start, len(plan.operations))
+            result = await plan.aexecute(monitor.engine, planner=BatchingPlanner())
+            for pane in ready:
+                start, end = slices[pane]
+                pane_ok = all(result.results[idx].ok for idx in range(start, end))
+                outcomes[pane] = SendOutcome(
+                    pane,
+                    sent=pane_ok,
+                    wait=waits.get(pane),
+                )
 
     return [outcomes[pane] for pane in panes]
