@@ -125,8 +125,9 @@ Calling {meth}`~libtmux.Client.refresh` directly still raises
 
 Call {meth}`~libtmux.Client.request_clipboard` on the attached client whose
 clipboard you want. For example, `server.clients.get(client_name=tty).request_clipboard()`
-selects the terminal by its tty name. The connected tmux server must run
-3.6a or later. An older or unrecognized release raises
+selects the terminal currently attached at that tty. A tty name can be reused
+after a client detaches. The connected tmux server must run 3.6a or later.
+An older or unrecognized release raises
 {exc}`~libtmux.exc.VersionTooLow` before the request is sent.
 
 The call returns when tmux accepts the request. A terminal that permits OSC 52

@@ -112,7 +112,7 @@ class Client(Obj):
         :exc:`~libtmux.exc.VersionTooLow`
             If the daemon reports an older or unrecognized release.
         :exc:`~libtmux.exc.LibTmuxException`
-            If tmux reports an error, including when the client has detached.
+            If tmux cannot find the client by name or execute the request.
         """
         if not self.client_name:
             msg = "Client must have a client_name to request the clipboard"
