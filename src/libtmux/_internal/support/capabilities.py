@@ -137,6 +137,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         commands=(Command("run-shell"),),
     ),
     Capability(
+        id="run-shell-output-in-copy-mode",
+        name="run-shell output capture",
+        summary="Return a foreground run-shell command's output to the caller.",
+        since="3.5",
+        handling="refuse",
+        apis=("libtmux.Server.run_shell",),
+        commands=(Command("run-shell"),),
+        error="libtmux.exc.VersionTooLow",
+    ),
+    Capability(
         id="list-keys-format",
         name="Formatted key listing",
         summary="Format each key binding with a caller-supplied template.",

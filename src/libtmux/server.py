@@ -909,15 +909,30 @@ class Server(
         Returns
         -------
         list[str] | None
-            Stdout lines, or None when *background* is True. Empty list on
-            tmux 3.3a/3.4 (upstream stdout passthrough was broken until 3.5).
+            Stdout lines, or None when *background* is True.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.VersionTooLow`
+            On tmux 3.3a and 3.4, for a shell command run without
+            *background*, *as_tmux_command* or *target_pane*. Those releases
+            send its output to the pane's copy mode instead of returning it.
 
         Examples
         --------
-        >>> result = server.run_shell('true')
-        >>> isinstance(result, list)
+        >>> server.run_shell('true', background=True) is None
         True
         """
+        captures_output = not (background or as_tmux_command or target_pane)
+        output_since = capability_since("run-shell-output-in-copy-mode")
+        if captures_output and not has_gte_version(
+            output_since, tmux_bin=self.tmux_bin
+        ):
+            # tmux 3.3a and 3.4 send a foreground run-shell's output to the
+            # pane's copy mode, not back to the caller.
+            msg = f"run_shell output requires tmux {output_since}+"
+            raise exc.VersionTooLow(msg)
+
         tmux_args: tuple[str, ...] = ()
 
         if background:

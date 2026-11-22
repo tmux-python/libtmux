@@ -144,6 +144,7 @@ def test_html_matrix_links_documented_sphinx_apis(
         "   .. py:method:: paste_buffer()\n"
         "   .. py:method:: new_pane()\n\n"
         ".. py:exception:: libtmux.exc.LibTmuxException\n"
+        ".. py:exception:: libtmux.exc.VersionTooLow\n"
         "```\n"
     )
     index_md = (

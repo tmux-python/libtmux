@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import logging
 import os
@@ -19,6 +20,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux._internal.env import SOCKET_PATH_MAX_BYTES, resolve_socket_path
+from libtmux._internal.support.capabilities import capability_since
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -1465,14 +1467,39 @@ def test_wait_for_set_flag(server: Server) -> None:
     server.wait_for("test_channel_set", set_flag=True)
 
 
+def test_run_shell_refuses_only_captured_output(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Below the output capability, only a captured foreground command raises.
+
+    The table entry's release is raised above any tmux to stand in for tmux
+    3.3a or 3.4, which send foreground output to the pane's copy mode.
+    """
+    from libtmux._internal.support import capabilities
+
+    entry = capabilities.get("run-shell-output-in-copy-mode")
+    monkeypatch.setitem(
+        capabilities._BY_ID, entry.id, dataclasses.replace(entry, since="99.0")
+    )
+    server = session.server
+    pane = session.active_pane
+    assert pane is not None
+
+    with pytest.raises(exc.VersionTooLow, match="run_shell output requires tmux"):
+        server.run_shell("echo captured")
+
+    assert server.run_shell("true", background=True) is None
+    assert server.run_shell("display-message -p tmux", as_tmux_command=True) == ["tmux"]
+    assert server.run_shell("true", target_pane=pane.pane_id) == []
+
+
 def test_run_shell_basic(server: Server) -> None:
     """Test Server.run_shell() executes command and returns output."""
     from libtmux.common import has_gte_version
 
-    # tmux <3.5 does not write run-shell stdout back to the cmdq subprocess.
-    # Restored by upstream commit fb37d52d, first released in 3.5.
-    if not has_gte_version("3.5"):
-        pytest.skip("run-shell stdout passthrough requires tmux 3.5+")
+    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+        pytest.skip("run_shell returns output from tmux 3.5")
 
     server.new_session(session_name="run_shell_test")
     result = server.run_shell("echo hello_from_run_shell")
@@ -1491,8 +1518,8 @@ def test_run_shell_cwd(server: Server, tmp_path: pathlib.Path) -> None:
     """``cwd=`` sets the working directory for the shell command."""
     from libtmux.common import has_gte_version
 
-    if not has_gte_version("3.5"):
-        pytest.skip("run-shell stdout passthrough requires tmux 3.5+")
+    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+        pytest.skip("run_shell returns output from tmux 3.5")
 
     server.new_session(session_name="run_shell_cwd_test")
     result = server.run_shell("pwd", cwd=tmp_path)
@@ -1528,7 +1555,7 @@ def test_run_shell_args(server: Server) -> None:
         assert result == ["alpha-beta"]
     else:
         with pytest.warns(UserWarning, match=r"args requires tmux 3.7"):
-            server.run_shell("echo plain", args=["alpha"])
+            server.run_shell("echo plain", args=["alpha"], background=True)
 
 
 def test_run_shell_cwd_warns_on_old_tmux(
@@ -1547,7 +1574,7 @@ def test_run_shell_cwd_warns_on_old_tmux(
     monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
     server.new_session(session_name="run_shell_cwd_warn_test")
     with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
-        server.run_shell("true", cwd=tmp_path)
+        server.run_shell("true", cwd=tmp_path, background=True)
 
 
 def test_run_shell_show_stderr_warns_on_old_tmux(
@@ -1564,7 +1591,7 @@ def test_run_shell_show_stderr_warns_on_old_tmux(
     monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
     server.new_session(session_name="run_shell_stderr_warn_test")
     with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
-        server.run_shell("true", show_stderr=True)
+        server.run_shell("true", show_stderr=True, background=True)
 
 
 class BufferCase(t.NamedTuple):
@@ -2130,6 +2157,13 @@ def test_run_shell_command_starting_with_a_dash(
     ``Server.cmd`` is replaced to read the argv: what a shell does with a
     command line that starts with ``-`` depends on the shell.
     """
+    from libtmux._internal.support import capabilities
+
+    # Only the argv is under test, so tmux 3.3a and 3.4 must not refuse first.
+    entry = capabilities.get("run-shell-output-in-copy-mode")
+    monkeypatch.setitem(
+        capabilities._BY_ID, entry.id, dataclasses.replace(entry, since="1.0")
+    )
     server = session.server
     seen: list[tuple[t.Any, ...]] = []
 
