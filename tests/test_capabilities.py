@@ -36,10 +36,11 @@ def _resolve(dotted: str) -> object:
 
 
 def test_manifest_matches_table() -> None:
-    """The committed manifest is exactly what the table generates."""
-    committed = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    """The committed manifest text and data match what the table generates."""
+    raw = MANIFEST_PATH.read_text(encoding="utf-8")
 
-    assert committed == capabilities.manifest()
+    assert json.loads(raw) == capabilities.manifest()
+    assert raw == capabilities.render()
 
 
 def test_manifest_floor_is_the_minimum_tmux() -> None:
