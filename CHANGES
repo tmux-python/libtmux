@@ -37,13 +37,22 @@ $ uv add libtmux --prerelease allow
 $ uvx --from 'libtmux' --prerelease allow python
 ```
 
-## libtmux 0.66.x (Yet to be released)
+## libtmux 0.67.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
+
+## libtmux 0.66.0 (2026-11-22)
+
+libtmux 0.66.0 makes two narrow breaking changes: files
+{meth}`~libtmux.Server.save_buffer` creates are readable by their owner only,
+and {meth}`~libtmux.Pane.send_keys` with `hex_keys=True` no longer adds Enter.
+A socket path too long for tmux now raises
+{exc}`~libtmux.exc.SocketPathTooLong`, saying how far over the limit it is and
+where the length came from.
 
 ### Breaking changes
 
