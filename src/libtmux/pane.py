@@ -38,8 +38,8 @@ from libtmux.neo import Obj, _is_target_not_found_error, fetch_obj
 from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
-    import sys
     import types
+    from typing import Self
 
     from libtmux._internal.types import StrPath
     from libtmux.formats import Format
@@ -47,11 +47,6 @@ if t.TYPE_CHECKING:
     from .server import Server
     from .session import Session
     from .window import Window
-
-    if sys.version_info >= (3, 11):
-        from typing import Self
-    else:
-        from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 

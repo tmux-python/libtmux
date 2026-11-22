@@ -141,7 +141,7 @@ The destructive command checks the token, PID and start time inside the receivin
 
 ## Cleanup failures and cancellation
 
-If the body and teardown both fail, `BaseExceptionGroup` retains the body error followed by the cleanup error. Python 3.10 uses the `exceptiongroup` backport; Python 3.11 and later use the built-in class. This includes `KeyboardInterrupt` and `SystemExit`. `owner.cleanup_error` retains the latest teardown error, and `owner.closed` stays false until cleanup succeeds. Repair the cause and call `owner.close()` to retry. A successful retry clears the retained cleanup error.
+If the body and teardown both fail, `BaseExceptionGroup` retains the body error followed by the cleanup error. This includes `KeyboardInterrupt` and `SystemExit`. `owner.cleanup_error` retains the latest teardown error, and `owner.closed` stays false until cleanup succeeds. Repair the cause and call `owner.close()` to retry. A successful retry clears the retained cleanup error.
 
 `resource.own(timeout=5.0)` bounds acceptance and each cleanup attempt, including time spent waiting for another cleanup call. A command timeout kills and reaps the tmux client process; it cannot undo a remote operation that was already dispatched. The owner remains open for inspection and retry. Garbage collection releases local observation descriptors and does not destroy remote resources. These APIs are synchronous; they do not provide an asynchronous task-cancellation supervisor.
 
@@ -201,7 +201,7 @@ True
 False
 ```
 
-`result.value` holds the public object. `result.owner` exists for a proven creation; `result.close()` leaves a reused object alive. A created owner retains its identity and cleanup error for retry. Body and teardown failures remain separate exceptions inside a `BaseExceptionGroup`, including on Python 3.10 through the existing backport.
+`result.value` holds the public object. `result.owner` exists for a proven creation; `result.close()` leaves a reused object alive. A created owner retains its identity and cleanup error for retry. Body and teardown failures remain separate exceptions inside a `BaseExceptionGroup`.
 
 Lookup failures raise instead of returning an empty match. Older tmux versions sanitize some session names, including backslashes and a dollar sign before a variable name. If tmux changes a requested name during creation, the call raises `ValueError` and rolls back the created object instead of returning a different name. Duplicate window names or pane keys raise `AmbiguousMatch`. Lookup and creation use separate tmux commands. Concurrent session creators can receive a duplicate-name error; concurrent window or pane creators can each create a matching object. Serialize those callers when your application requires uniqueness. Other clients can rename, move or destroy a borrowed object after lookup.
 

@@ -10,7 +10,6 @@ import typing as t
 import pytest
 
 from libtmux import Server, exc
-from libtmux._compat import BaseExceptionGroup
 from libtmux._internal.control_mode import ControlMode
 from libtmux.pytest_plugin import _reap_test_server
 

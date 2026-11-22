@@ -18,7 +18,6 @@ import secrets
 import select
 import shlex
 import socket
-import sys
 import threading
 import time
 import types
@@ -26,7 +25,6 @@ import typing as t
 import weakref
 
 from libtmux import exc
-from libtmux._compat import BaseExceptionGroup
 from libtmux.common import _run_cleanup
 
 if t.TYPE_CHECKING:
@@ -283,10 +281,7 @@ def _creation(
             )
             if isinstance(failure, Exception):
                 raise UnknownCreation(message) from failure
-            if sys.version_info >= (3, 11):
-                failure.add_note(message)
-            else:
-                failure.__dict__.setdefault("__notes__", []).append(message)
+            failure.add_note(message)
         raise
 
 
@@ -706,10 +701,7 @@ def _find_or_create_server(server: Server, timeout: float) -> FoundOrCreated[Ser
             ):
                 raise UnknownCreation(message) from failure
             if not isinstance(failure, Exception):
-                if sys.version_info >= (3, 11):
-                    failure.add_note(message)
-                else:
-                    failure.__dict__.setdefault("__notes__", []).append(message)
+                failure.add_note(message)
         raise
 
 

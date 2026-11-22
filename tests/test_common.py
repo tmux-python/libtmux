@@ -17,7 +17,7 @@ import pytest
 
 import libtmux
 from libtmux import exc
-from libtmux._compat import BaseExceptionGroup, LooseVersion
+from libtmux._compat import LooseVersion
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,

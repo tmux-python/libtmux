@@ -13,7 +13,6 @@ import pytest
 
 import libtmux.lifecycle as lifecycle_module
 from libtmux import Server
-from libtmux._compat import BaseExceptionGroup
 from libtmux.lifecycle import CreationCleanupError, UnknownCreation
 from libtmux.test.retry import retry_until
 

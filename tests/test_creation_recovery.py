@@ -14,7 +14,6 @@ import pytest
 import libtmux.lifecycle as lifecycle_module
 import libtmux.server as server_module
 from libtmux import Pane, Server, Session, Window, exc
-from libtmux._compat import BaseExceptionGroup
 from libtmux.lifecycle import CreationCleanupError, UnknownCreation
 from libtmux.neo import parse_output
 from libtmux.test.retry import retry_until

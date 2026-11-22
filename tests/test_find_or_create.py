@@ -15,7 +15,6 @@ import pytest
 
 import libtmux.lifecycle as lifecycle_module
 from libtmux import AmbiguousMatch, FoundOrCreated, Pane, Server, Session, Window, exc
-from libtmux._compat import BaseExceptionGroup
 from libtmux.lifecycle import CreationCleanupError, UnknownCreation
 
 if t.TYPE_CHECKING:
