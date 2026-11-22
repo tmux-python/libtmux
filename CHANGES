@@ -45,6 +45,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### `new_window(select_existing=True)` finds a literal name on every tmux (#917)
+
+{meth}`~libtmux.Session.new_window` with `select_existing=True` now looks the
+window name up itself and returns the existing window. tmux's own lookup
+compared the escaped name on tmux 3.3a, so a name containing `#`, `%`, `,` or
+`}` created a duplicate, and expanded the name a second time from tmux 3.7, so
+it could pick another window. A {class}`~libtmux.Format` name is expanded once,
+then looked up. With `window_index` or `target_window`, tmux still decides.
+
 ### Documentation
 
 #### The format guide says what a format can run (#915)
