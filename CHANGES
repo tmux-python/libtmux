@@ -45,6 +45,35 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### `new_session(kill_session=True)` kills only the exactly named session (#899)
+
+{meth}`~libtmux.Server.new_session` with `kill_session=True` kills the session
+whose name matches exactly. It previously also killed a session whose name only
+began with the requested name, so creating `doom` could remove `doomsday`.
+
+```python
+# Before: also killed "doomsday"
+server.new_session("doom", kill_session=True)
+
+# After, to still remove it
+server.kill_session("doomsday", exact=True)
+server.new_session("doom", kill_session=True)
+```
+
+### What's new
+
+#### `exact=` for session names (#899)
+
+{meth}`~libtmux.Server.kill_session`, {meth}`~libtmux.Server.switch_client` and
+{meth}`~libtmux.Server.attach_session` accept `exact=True` to match a session
+name exactly, so `kill_session("doom", exact=True)` leaves `doomsday` alone.
+
+Without it the calls still match by prefix or pattern as tmux does, and now
+emit a `FutureWarning` when the name matched only that way. Pass `exact=False`
+to keep that match without the warning.
+
 ## libtmux 0.66.0 (2026-11-22)
 
 libtmux 0.66.0 makes two narrow breaking changes: files
