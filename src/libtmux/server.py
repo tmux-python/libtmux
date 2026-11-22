@@ -2365,6 +2365,7 @@ class Server(
         self,
         *,
         format_string: str | None = None,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> list[str]:
         """List paste buffers via ``$ tmux list-buffers``.
@@ -2930,6 +2931,7 @@ class Server(
     def search_sessions(
         self,
         *,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Session]:
         """Sessions, optionally filtered by tmux before rows are returned.
@@ -2988,6 +2990,7 @@ class Server(
     def search_windows(
         self,
         *,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Window]:
         """All windows across sessions, optionally filtered by tmux.
@@ -3045,6 +3048,7 @@ class Server(
     def search_panes(
         self,
         *,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """All panes across the server, optionally filtered by tmux.

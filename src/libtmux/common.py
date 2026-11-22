@@ -540,6 +540,7 @@ class tmux_cmd:
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
+            # Avoid duplicating traceback when re-raising — https://docs.astral.sh/ruff/rules/error-instead-of-exception/
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
                 extra={

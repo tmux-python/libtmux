@@ -189,29 +189,51 @@ target-version = "py311"
 # set, and an explicit `select` would replace it rather than extend it.
 # `extend-select` layers this project's additional linters on top.
 extend-select = [
-  "E", # pycodestyle
-  "F", # pyflakes
-  "I", # isort
-  "UP", # pyupgrade
-  "A", # flake8-builtins
-  "B", # flake8-bugbear
-  "C4", # flake8-comprehensions
-  "COM", # flake8-commas
-  "EM", # flake8-errmsg
-  "Q", # flake8-quotes
-  "PTH", # flake8-use-pathlib
-  "SIM", # flake8-simplify
-  "TRY", # Trycertatops
-  "PERF", # Perflint
-  "RUF", # Ruff-specific rules
-  "D", # pydocstyle
-  "FA100", # future annotations
+  # pycodestyle errors — https://docs.astral.sh/ruff/rules/#pycodestyle-e-w
+  "E",
+  # Pyflakes — https://docs.astral.sh/ruff/rules/#pyflakes-f
+  "F",
+  # isort import sorting — https://docs.astral.sh/ruff/rules/#isort-i
+  "I",
+  # pyupgrade — https://docs.astral.sh/ruff/rules/#pyupgrade-up
+  "UP",
+  # flake8-builtins — https://docs.astral.sh/ruff/rules/#flake8-builtins-a
+  "A",
+  # flake8-annotations — https://docs.astral.sh/ruff/rules/#flake8-annotations-ann
+  "ANN",
+  # flake8-bugbear — https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+  "B",
+  # flake8-comprehensions — https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
+  "C4",
+  # flake8-commas — https://docs.astral.sh/ruff/rules/#flake8-commas-com
+  "COM",
+  # flake8-errmsg — https://docs.astral.sh/ruff/rules/#flake8-errmsg-em
+  "EM",
+  # flake8-quotes — https://docs.astral.sh/ruff/rules/#flake8-quotes-q
+  "Q",
+  # flake8-use-pathlib — https://docs.astral.sh/ruff/rules/#flake8-use-pathlib-pth
+  "PTH",
+  # flake8-simplify — https://docs.astral.sh/ruff/rules/#flake8-simplify-sim
+  "SIM",
+  # tryceratops — https://docs.astral.sh/ruff/rules/#tryceratops-try
+  "TRY",
+  # Perflint — https://docs.astral.sh/ruff/rules/#perflint-perf
+  "PERF",
+  # Ruff-specific rules — https://docs.astral.sh/ruff/rules/#ruff-specific-rules-ruf
+  "RUF",
+  # pydocstyle — https://docs.astral.sh/ruff/rules/#pydocstyle-d
+  "D",
+  # Require `from __future__ import annotations` for modern type syntax — https://docs.astral.sh/ruff/rules/future-rewritable-type-annotation/
+  "FA100",
 ]
 ignore = [
-  "COM812", # missing trailing comma, ruff format conflict
+  # Avoid trailing-comma rule conflicting with ruff formatter — https://docs.astral.sh/ruff/rules/missing-trailing-comma/
+  "COM812",
 ]
 extend-safe-fixes = [
+  # Promote PEP 585 builtin generic rewrites to safe fixes — https://docs.astral.sh/ruff/rules/non-pep585-annotation/
   "UP006",
+  # Promote PEP 604 `X | Y` union rewrites to safe fixes — https://docs.astral.sh/ruff/rules/non-pep604-annotation-union/
   "UP007",
 ]
 pyupgrade.keep-runtime-typing = false
@@ -236,30 +258,24 @@ builtins-allowed-modules = [
 convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
+# Allow package re-exports in `__init__.py` — https://docs.astral.sh/ruff/rules/unused-import/
 "*/__init__.py" = ["F401"]
 "docs/conf.py" = [
-  # Sphinx reads version metadata by exec'ing the package's `__about__.py`,
-  # which keeps the docs build off an import of the package being documented.
+  # Sphinx execs `__about__.py` so docs builds stay independent of importing libtmux — https://docs.astral.sh/ruff/rules/exec-builtin/
   "S102",
 ]
 "src/libtmux/_internal/query_list.py" = [
-  # `X as X` is PEP 484's explicit re-export form, and mypy runs strict here,
-  # so dropping the alias stops mypy seeing the exception types as exported.
+  # Preserve PEP 484 `X as X` explicit re-exports for downstream type checkers — https://docs.astral.sh/ruff/rules/useless-import-alias/
   "PLC0414",
-  # The lookup operators are total predicates over caller-supplied data of any
-  # type: a comparison that blows up means "no match", not an error to raise.
+  # Lookup operators are total predicates over arbitrary caller data — https://docs.astral.sh/ruff/rules/blind-except/
   "BLE001",
 ]
 "src/libtmux/options.py" = [
-  # The option parsers accept whatever shape tmux prints, across every tmux
-  # version. An unparseable entry is logged and kept as its raw value so one
-  # unfamiliar option cannot take down every other option on the object.
+  # Option parsers log and preserve unfamiliar raw values across tmux versions — https://docs.astral.sh/ruff/rules/blind-except/
   "BLE001",
 ]
 "src/libtmux/server.py" = [
-  # `Server.is_alive` answers a yes/no question about an unreachable server.
-  # Every way of failing to reach it is a "no"; callers who need the reason
-  # use `Server.raise_if_dead`.
+  # `Server.is_alive` maps any unreachable-daemon failure to False — https://docs.astral.sh/ruff/rules/blind-except/
   "BLE001",
 ]
 

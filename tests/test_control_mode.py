@@ -47,6 +47,7 @@ def _read_lines(
         try:
             for line in stream:
                 lines.put(line)
+        # Forward any reader failure across the thread boundary — https://docs.astral.sh/ruff/rules/blind-except/
         except BaseException as e:  # noqa: BLE001
             # Carry it across the thread boundary. Collapsing it into the
             # ``None`` sentinel would report the reader as having reached EOF,

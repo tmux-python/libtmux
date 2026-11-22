@@ -483,6 +483,7 @@ class Window(
     def search_panes(
         self,
         *,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """Panes in this window, optionally filtered by tmux.

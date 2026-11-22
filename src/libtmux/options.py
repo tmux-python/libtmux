@@ -1,3 +1,4 @@
+# Disable line-length check for embedded status-format doctests — https://docs.astral.sh/ruff/rules/line-too-long/
 # ruff: noqa: E501
 """Helpers for tmux options.
 

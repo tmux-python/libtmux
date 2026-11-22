@@ -1099,6 +1099,7 @@ def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
     list_extra_args: ListExtraArgs = None,
+    # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
     filter: str | Format | None = None,  # noqa: A002
 ) -> OutputsRaw:
     """Fetch a listing of raw data from a tmux command.

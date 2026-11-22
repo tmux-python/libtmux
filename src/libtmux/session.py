@@ -389,6 +389,7 @@ class Session(
     def search_windows(
         self,
         *,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Window]:
         """Windows in this session, optionally filtered by tmux.
@@ -444,6 +445,7 @@ class Session(
     def search_panes(
         self,
         *,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """Panes in this session, optionally filtered by tmux.
