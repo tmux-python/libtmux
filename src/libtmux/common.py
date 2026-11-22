@@ -485,9 +485,47 @@ def _redact_env_values(argv: Sequence[str]) -> list[str]:
     return out
 
 
+def _redact_command_line(argv: Sequence[str]) -> list[str]:
+    """Mask environment values in every command *argv* carries.
+
+    A chained command (``a ';' b``) is masked one command at a time, and an
+    argument that is itself a tmux command -- an ``if-shell`` branch, for
+    instance -- is split, masked and re-quoted, so a value nested there is
+    masked too.
+
+    Examples
+    --------
+    >>> _redact_command_line(
+    ...     ["tmux", "set-option", "-q", "@x", "1", ";", "new-window", "-eK=v"]
+    ... )
+    ['tmux', 'set-option', '-q', '@x', '1', ';', 'new-window', '-eK=***']
+
+    >>> _redact_command_line(["tmux", "if-shell", "-F", "1", "new-window -eK=v"])
+    ['tmux', 'if-shell', '-F', '1', "new-window '-eK=***'"]
+    """
+    out = list(argv)
+    starts = [0] + [i for i, token in enumerate(out) if token == ";"]
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(out)
+        head = out[:1] if start == 0 else [out[0]]
+        body = out[1:end] if start == 0 else out[start + 1 : end]
+        out[(1 if start == 0 else start + 1) : end] = _redact_env_values(
+            [*head, *body]
+        )[1:]
+    for i, token in enumerate(out[1:], start=1):
+        if any(c.isspace() for c in token):
+            try:
+                words = shlex.split(token)
+            except ValueError:
+                continue
+            if words and not words[0].startswith("-"):
+                out[i] = shlex.join(_redact_command_line([out[0], *words])[1:])
+    return out
+
+
 def _loggable_cmd(argv: Sequence[str]) -> str:
     """Render *argv* as the command line libtmux writes to its logs."""
-    return shlex.join(_redact_env_values(argv))
+    return shlex.join(_redact_command_line(argv))
 
 
 def escape_trailing_separator(value: str) -> str:
