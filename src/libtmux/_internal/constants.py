@@ -1136,19 +1136,6 @@ class Hooks(
     after_unbind_key: SparseArray[str] = field(default_factory=SparseArray)
     # Runs when a command fails (tmux 3.5+)
     command_error: SparseArray[str] = field(default_factory=SparseArray)
-    # Runs after 'swap-window' completes (tmux 3.8+).
-    after_swap_window: SparseArray[str] = field(default_factory=SparseArray)
-    # Run when a client is closed (tmux 3.8+).
-    client_closed: SparseArray[str] = field(default_factory=SparseArray)
-    # Run when a client is created (tmux 3.8+).
-    client_created: SparseArray[str] = field(default_factory=SparseArray)
-    # Run when the marked pane changes (tmux 3.8+).
-    marked_pane_changed: SparseArray[str] = field(default_factory=SparseArray)
-    # Run when a session is added to a session group (tmux 3.8+).
-    session_added_to_group: SparseArray[str] = field(default_factory=SparseArray)
-    # Run when a session is removed from a session group (tmux 3.8+).
-    session_removed_from_group: SparseArray[str] = field(default_factory=SparseArray)
-
     after_swap_window: SparseArray[str] = field(default_factory=SparseArray)
     client_closed: SparseArray[str] = field(default_factory=SparseArray)
     client_created: SparseArray[str] = field(default_factory=SparseArray)

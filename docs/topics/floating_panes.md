@@ -65,9 +65,8 @@ fields exactly:
 ...     position = (placed.pane_x, placed.pane_y)
 ... else:
 ...     position = ("2", "1")
->>> border = 1 if is_at_least(server_version(server), "3.8") else 0
->>> position == (str(2 + border), str(1 + border))
-True
+>>> position
+('2', '1')
 ```
 
 From tmux 3.8, `width`, `height`, `x` and `y` give the pane's footprint on screen

@@ -912,7 +912,7 @@ class Obj:
             # parse_output omits empty values, so a field tmux emptied is absent.
             fields, _ = get_output_format(
                 list_cmd,
-                str(get_version(tmux_bin=self.server.tmux_bin)),
+                self.server._get_version(),
             )
             for k in fields:
                 if k not in obj:
