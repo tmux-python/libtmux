@@ -2183,7 +2183,9 @@ class Server(
         Parameters
         ----------
         path : str or PathLike
-            File path to save the buffer to.
+            File path to save the buffer to. A file this call creates is
+            readable and writable by its owner only; an existing file keeps
+            its permissions.
         buffer_name : str, optional
             Name of the buffer (``-b`` flag). Defaults to the most recent.
         append : bool, optional
@@ -2204,9 +2206,26 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (str(pathlib.Path(path).expanduser()),)
+        destination = pathlib.Path(path).expanduser()
+        tmux_args += (str(destination),)
+
+        # tmux creates the file world-readable under the usual umask. Create
+        # it first so a new file is owner-only; "-" is tmux's stdout.
+        created = False
+        if str(path) != "-":
+            try:
+                os.close(
+                    os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600),
+                )
+                created = True
+            except OSError:
+                # It exists and keeps its mode, or tmux reports the problem.
+                pass
 
         proc = self.cmd("save-buffer", *tmux_args)
+
+        if proc.stderr and created:
+            destination.unlink(missing_ok=True)
 
         raise_if_stderr(proc, "save-buffer")
 

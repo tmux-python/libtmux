@@ -8,6 +8,7 @@ import os
 import pathlib
 import shutil
 import socket
+import stat
 import subprocess
 import time
 import typing as t
@@ -2115,3 +2116,58 @@ def test_run_shell_command_starting_with_a_dash(
     server.run_shell("-b")
 
     assert seen == [("run-shell", "--", "-b")]
+
+
+@pytest.fixture
+def default_umask() -> t.Iterator[None]:
+    """Run a test under the common ``022`` umask, then restore the old one."""
+    previous = os.umask(0o022)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
+@pytest.mark.usefixtures("default_umask")
+def test_save_buffer_creates_an_owner_only_file(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A file ``save_buffer`` creates is readable by its owner only."""
+    destination = tmp_path / "buffer.txt"
+    session.server.set_buffer("private text", buffer_name="private")
+
+    session.server.save_buffer(destination, buffer_name="private")
+
+    assert destination.read_text() == "private text"
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+
+
+@pytest.mark.usefixtures("default_umask")
+def test_save_buffer_keeps_the_mode_of_an_existing_file(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Overwriting a file leaves the permissions its owner chose."""
+    destination = tmp_path / "shared.txt"
+    destination.write_text("old")
+    destination.chmod(0o644)
+    session.server.set_buffer("new text", buffer_name="shared")
+
+    session.server.save_buffer(destination, buffer_name="shared")
+
+    assert destination.read_text() == "new text"
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o644
+
+
+def test_save_buffer_leaves_no_file_when_tmux_fails(
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A failed save does not leave an empty file behind."""
+    destination = tmp_path / "missing.txt"
+
+    with pytest.raises(exc.LibTmuxException, match="no buffer"):
+        session.server.save_buffer(destination, buffer_name="no-such-buffer")
+
+    assert not destination.exists()
