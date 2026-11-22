@@ -15,6 +15,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
+from libtmux._internal.support.capabilities import capability_since
 from libtmux.common import (
     escape_trailing_separator,
     get_version_str,
@@ -735,7 +736,10 @@ class Pane(
         if preserve_trailing:
             cmd.append("-N")
         if trim_trailing:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if has_gte_version(
+                capability_since("capture-trim-blank-cells"),
+                tmux_bin=self.server.tmux_bin,
+            ):
                 cmd.append("-T")
             else:
                 warnings.warn(
@@ -747,7 +751,9 @@ class Pane(
         if quiet:
             cmd.append("-q")
         if mode_screen:
-            if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
+            if has_gte_version(
+                capability_since("capture-mode-screen"), tmux_bin=self.server.tmux_bin
+            ):
                 cmd.append("-M")
             else:
                 warnings.warn(
@@ -757,7 +763,9 @@ class Pane(
         if pending:
             cmd.append("-P")
         if hyperlinks:
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if has_gte_version(
+                capability_since("capture-line-flags"), tmux_bin=self.server.tmux_bin
+            ):
                 cmd.append("-H")
             else:
                 warnings.warn(
@@ -765,7 +773,9 @@ class Pane(
                     stacklevel=2,
                 )
         if line_numbers:
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if has_gte_version(
+                capability_since("capture-line-flags"), tmux_bin=self.server.tmux_bin
+            ):
                 cmd.append("-L")
             else:
                 warnings.warn(
@@ -773,7 +783,9 @@ class Pane(
                     stacklevel=2,
                 )
         if line_flags:
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if has_gte_version(
+                capability_since("capture-line-flags"), tmux_bin=self.server.tmux_bin
+            ):
                 cmd.append("-F")
             else:
                 warnings.warn(
@@ -1620,7 +1632,9 @@ class Pane(
         >>> is_floating
         '1'
         """
-        if not has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+        if not has_gte_version(
+            capability_since("floating-pane"), tmux_bin=self.server.tmux_bin
+        ):
             msg = "new_pane (floating panes) requires tmux 3.7+"
             raise exc.LibTmuxException(msg)
 
@@ -2018,7 +2032,9 @@ class Pane(
             tmux_args += ("-s", separator)
 
         if no_vis:
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if has_gte_version(
+                capability_since("paste-buffer-no-vis"), tmux_bin=self.server.tmux_bin
+            ):
                 tmux_args += ("-S",)
             else:
                 warnings.warn(

@@ -51,7 +51,8 @@
 "api/test-helpers/temporary.md" "api/testing/test-helpers/temporary.md"
 # Policy docs move to project/ (2026-03)
 "api/public-api.md" "project/public-api.md"
-"api/compatibility.md" "project/compatibility.md"
+"api/compatibility.md" "compatibility.md"
+"project/compatibility.md" "compatibility.md"
 "api/deprecations.md" "project/deprecations.md"
 # libtmux.test package page removed — empty __init__.py, no members to document
 "api/testing/test-helpers/libtmux.test.md" "api/testing/test-helpers/index.md"

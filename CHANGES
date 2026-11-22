@@ -45,6 +45,25 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### Capability matrix on the compatibility page (#887)
+
+{doc}`/compatibility` moves to the top-level sidebar beneath {doc}`/migration`
+and renders a capability matrix across tmux releases from the internal
+capability table, linking each entry to its documented Python API and refusal
+exception via the `tmux-capabilities` Sphinx directive.
+
+### Development
+
+#### Capability manifest (#887)
+
+`capabilities.json` at the repository root lists tmux features libtmux gates by
+release: the capability id shared with the other libtmux ports, the first tmux
+release that has it, the methods that need it, and what libtmux does on an
+older tmux. It is generated from the table those gates read, and the test suite
+fails when the two differ. Regenerate it with `just build-capabilities`.
+
 ## libtmux 0.64.0 (2026-11-21)
 
 libtmux 0.64.0 is a fixes-only release. Commands act on the session, window

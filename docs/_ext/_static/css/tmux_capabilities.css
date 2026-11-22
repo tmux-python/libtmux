@@ -1,0 +1,165 @@
+/* Capabilities matrix styling for docs._ext.tmux_capabilities. */
+
+:root {
+  --tmux-cap-supported-bg: #e6f7ed;
+  --tmux-cap-supported-fg: #14532d;
+  --tmux-cap-supported-border: #3aad65;
+
+  --tmux-cap-fallback-bg: #fffbeb;
+  --tmux-cap-fallback-fg: #92400e;
+  --tmux-cap-fallback-border: #f59e0b;
+
+  --tmux-cap-refused-bg: #fff1f2;
+  --tmux-cap-refused-fg: #9f1239;
+  --tmux-cap-refused-border: #f43f5e;
+
+  --tmux-cap-workaround-bg: #f0f9ff;
+  --tmux-cap-workaround-fg: #075985;
+  --tmux-cap-workaround-border: #0ea5e9;
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --tmux-cap-supported-bg: #0d2e1a;
+    --tmux-cap-supported-fg: #86efac;
+    --tmux-cap-supported-border: #22c55e;
+
+    --tmux-cap-fallback-bg: #3b2306;
+    --tmux-cap-fallback-fg: #fcd34d;
+    --tmux-cap-fallback-border: #d97706;
+
+    --tmux-cap-refused-bg: #4c0519;
+    --tmux-cap-refused-fg: #fda4af;
+    --tmux-cap-refused-border: #fb7185;
+
+    --tmux-cap-workaround-bg: #082f49;
+    --tmux-cap-workaround-fg: #7dd3fc;
+    --tmux-cap-workaround-border: #38bdf8;
+  }
+}
+
+body[data-theme="dark"] {
+  --tmux-cap-supported-bg: #0d2e1a;
+  --tmux-cap-supported-fg: #86efac;
+  --tmux-cap-supported-border: #22c55e;
+
+  --tmux-cap-fallback-bg: #3b2306;
+  --tmux-cap-fallback-fg: #fcd34d;
+  --tmux-cap-fallback-border: #d97706;
+
+  --tmux-cap-refused-bg: #4c0519;
+  --tmux-cap-refused-fg: #fda4af;
+  --tmux-cap-refused-border: #fb7185;
+
+  --tmux-cap-workaround-bg: #082f49;
+  --tmux-cap-workaround-fg: #7dd3fc;
+  --tmux-cap-workaround-border: #38bdf8;
+}
+
+@layer gp-sphinx {
+  .gp-sphinx-badge--cap-supported {
+    --gp-sphinx-badge-bg: var(--tmux-cap-supported-bg);
+    --gp-sphinx-badge-fg: var(--tmux-cap-supported-fg);
+    --gp-sphinx-badge-border: var(--tmux-cap-supported-border);
+  }
+
+  .gp-sphinx-badge--cap-fallback {
+    --gp-sphinx-badge-bg: var(--tmux-cap-fallback-bg);
+    --gp-sphinx-badge-fg: var(--tmux-cap-fallback-fg);
+    --gp-sphinx-badge-border: var(--tmux-cap-fallback-border);
+  }
+
+  .gp-sphinx-badge--cap-refused {
+    --gp-sphinx-badge-bg: var(--tmux-cap-refused-bg);
+    --gp-sphinx-badge-fg: var(--tmux-cap-refused-fg);
+    --gp-sphinx-badge-border: var(--tmux-cap-refused-border);
+  }
+
+  .gp-sphinx-badge--cap-workaround,
+  .gp-sphinx-badge--cap-repaired {
+    --gp-sphinx-badge-bg: var(--tmux-cap-workaround-bg);
+    --gp-sphinx-badge-fg: var(--tmux-cap-workaround-fg);
+    --gp-sphinx-badge-border: var(--tmux-cap-workaround-border);
+  }
+
+  table.docutils.tmux-capabilities-table {
+    width: 100%;
+    font-size: 0.85rem;
+  }
+
+  table.docutils.tmux-capabilities-table th,
+  table.docutils.tmux-capabilities-table td {
+    padding: 0.45rem 0.5rem;
+    vertical-align: middle;
+  }
+
+  table.docutils.tmux-capabilities-table th.stub,
+  table.docutils.tmux-capabilities-table thead th:first-child,
+  table.docutils.tmux-capabilities-table thead th:nth-child(2) {
+    text-align: left;
+    vertical-align: top;
+    font-weight: 500;
+  }
+
+  table.docutils.tmux-capabilities-table thead th.tmux-cap-version-col {
+    text-align: center;
+    font-family: var(--font-stack--monospace);
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
+  table.docutils.tmux-capabilities-table td.tmux-cap-cell {
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  table.docutils.tmux-capabilities-table td.tmux-cap-api-col {
+    white-space: nowrap;
+    vertical-align: top;
+  }
+
+  table.docutils.tmux-capabilities-table .tmux-cap-title {
+    font-weight: 600;
+    margin: 0;
+  }
+
+  table.docutils.tmux-capabilities-table .tmux-cap-summary {
+    margin: 0.15rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-foreground-secondary);
+    font-weight: 400;
+    line-height: 1.4;
+  }
+
+  table.docutils.tmux-capabilities-table .tmux-cap-meta {
+    margin: 0.25rem 0 0;
+    font-size: 0.76rem;
+    font-weight: 400;
+    line-height: 1.4;
+  }
+
+  .tmux-capabilities-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    list-style: none;
+    margin: 0.5rem 0 1.25rem;
+    padding: 0;
+    font-size: 0.82rem;
+    color: var(--color-foreground-secondary);
+  }
+
+  .tmux-capabilities-legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+  }
+
+  .tmux-capabilities-legend li p {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+  }
+}
