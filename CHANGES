@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### Capability matrix on the compatibility page
+
+{doc}`/compatibility` moves to the top-level sidebar beneath {doc}`/migration`
+and renders a capability matrix across tmux releases from the internal
+capability table, linking each entry to its documented Python API and refusal
+exception via the `tmux-capabilities` Sphinx directive.
+
 ### Development
 
 #### Capability manifest (#887)
