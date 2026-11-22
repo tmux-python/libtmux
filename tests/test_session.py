@@ -10,7 +10,7 @@ from contextlib import nullcontext as does_not_raise
 
 import pytest
 
-from libtmux import exc
+from libtmux import Format, exc
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -672,6 +672,86 @@ def test_new_window_select_existing(session: Session) -> None:
         select_existing=True,
     )
     assert w.window_name == "selexist_new"
+
+
+class SelectExistingFixture(t.NamedTuple):
+    """A literal window name and a decoy named what tmux could expand it to."""
+
+    test_id: str
+    name: str
+    decoy: str
+
+
+SELECT_EXISTING_FIXTURES: list[SelectExistingFixture] = [
+    SelectExistingFixture("plain", "plain", "decoy"),
+    SelectExistingFixture("comma", "a,b", "decoy"),
+    SelectExistingFixture("percent", "50%", "decoy"),
+    SelectExistingFixture("style-opener", "a#[b", "decoy"),
+    SelectExistingFixture("hash-digit", "build#2", "decoy"),
+    SelectExistingFixture("trailing-hash", "end#", "end"),
+    SelectExistingFixture("format", "#{session_name}", "{session}"),
+    SelectExistingFixture("double-hash", "a##b", "a#b"),
+    SelectExistingFixture("alias", "x#Sy", "x{session}y"),
+    SelectExistingFixture("hash-comma", "x#,y", "x,y"),
+]
+
+
+@pytest.mark.parametrize("attach", [False, True], ids=["detached", "attach"])
+@pytest.mark.parametrize(
+    list(SelectExistingFixture._fields),
+    SELECT_EXISTING_FIXTURES,
+    ids=[fixture.test_id for fixture in SELECT_EXISTING_FIXTURES],
+)
+def test_new_window_select_existing_finds_literal_name(
+    session: Session,
+    test_id: str,
+    name: str,
+    decoy: str,
+    attach: bool,
+) -> None:
+    """select_existing returns the window named exactly *name* on every tmux."""
+    existing = session.new_window(window_name=name, window_shell="exec cat")
+    session.new_window(
+        window_name=decoy.format(session=session.session_name),
+        window_shell="exec cat",
+    )
+    window_count = len(session.windows)
+
+    reused = session.new_window(
+        window_name=name,
+        select_existing=True,
+        attach=attach,
+        window_shell="exec cat",
+    )
+
+    assert reused.window_id == existing.window_id
+    assert reused.server is session.server
+    assert len(session.windows) == window_count
+    assert (session.active_window.window_id == existing.window_id) is attach
+
+
+def test_new_window_select_existing_format_name(session: Session) -> None:
+    """A Format name is expanded once against the session, then looked up."""
+    assert session.session_name is not None
+    named = session.new_window(
+        window_name=session.session_name, window_shell="exec cat"
+    )
+    session.new_window(window_name="#{session_name}", window_shell="exec cat")
+
+    reused = session.new_window(
+        window_name=Format("#{session_name}"), select_existing=True
+    )
+
+    assert reused.window_id == named.window_id
+
+
+def test_new_window_select_existing_duplicate_names_raise(session: Session) -> None:
+    """Two windows with the name raise, as tmux's -S does."""
+    session.new_window(window_name="twin", window_shell="exec cat")
+    session.new_window(window_name="twin", window_shell="exec cat")
+
+    with pytest.raises(exc.LibTmuxException, match="multiple windows named twin"):
+        session.new_window(window_name="twin", select_existing=True)
 
 
 def test_session_last_window_exception_tags_subcommand(session: Session) -> None:
