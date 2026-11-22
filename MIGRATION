@@ -93,7 +93,7 @@ sections below for detailed migration examples and code samples.
 
 | Item | Removed In | Migration |
 |------|------------|-----------|
-| tmux < 3.3a support | 0.63.x (yet to be released) | Upgrade tmux or use libtmux 0.62.x |
+| tmux < 3.3a support | 0.65.0 (2026-11-22) | Upgrade tmux or use libtmux 0.64.x |
 | tmux < 3.2a support | 0.49.0 (2025-11-29) | Upgrade tmux or use libtmux 0.48.x |
 | `console_to_str()` | 0.42.0 (2025-02-02) | Use `text=True` in subprocess |
 | `str_from_console()` | 0.42.0 (2025-02-02) | Use `text=True` in subprocess |
