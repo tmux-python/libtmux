@@ -933,6 +933,14 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
+            expands_cwd = has_gte_version(
+                capability_since("run-shell-start-directory-format"),
+                tmux_bin=self.tmux_bin,
+            )
+            if isinstance(cwd, Format) and not expands_cwd:
+                # Before 3.8, tmux uses run-shell -c as given, without expanding it.
+                msg = "cwd=Format(...) requires tmux 3.8+"
+                raise exc.LibTmuxException(msg)
             if not has_gte_version(
                 capability_since("run-shell-start-directory"), tmux_bin=self.tmux_bin
             ):
@@ -940,17 +948,10 @@ class Server(
                     "cwd requires tmux 3.4+, ignoring",
                     stacklevel=2,
                 )
-            elif has_gte_version(
-                capability_since("run-shell-start-directory-format"),
-                tmux_bin=self.tmux_bin,
-            ):
+            elif expands_cwd:
                 # From 3.8, tmux expands run-shell -c as a format.
                 start = cwd.template if isinstance(cwd, Format) else _literal(str(cwd))
                 tmux_args += ("-c", start)
-            elif isinstance(cwd, Format):
-                # Before 3.8, tmux uses run-shell -c as given, without expanding it.
-                msg = "cwd=Format(...) requires tmux 3.8+"
-                raise exc.LibTmuxException(msg)
             else:
                 tmux_args += ("-c", str(cwd))
 

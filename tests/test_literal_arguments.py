@@ -633,6 +633,8 @@ def test_run_shell_cwd_follows_tmux_expansion(
     tmux 3.4 through 3.7 use ``run-shell -c`` as given; 3.8 expands it as a
     format. The table entry's release stands in for the tmux version.
     """
+    if not has_gte_version("3.4"):
+        pytest.skip("run-shell -c requires tmux 3.4+")
     server.new_session()
     entry = capabilities.get("run-shell-start-directory-format")
     monkeypatch.setitem(
