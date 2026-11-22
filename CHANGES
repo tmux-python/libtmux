@@ -47,6 +47,24 @@ _Notes on the upcoming release will go here._
 
 ### Breaking changes
 
+#### Empty tmux fields read as `""` (#900)
+
+A field tmux reports as empty, such as a cleared
+{attr}`~libtmux.Pane.pane_title`, is now the empty string, and `refresh()`
+picks the change up. `None` now means only that tmux was not asked for the
+field, for example one newer than the running tmux. Both cases previously read
+as `None`.
+
+```python
+# Before
+if pane.pane_title is None:
+    ...
+
+# After
+if not pane.pane_title:
+    ...
+```
+
 #### `with Server()` no longer kills the server on exit (#728)
 
 Leaving a `with` block previously killed the {class}`~libtmux.Server`, so
