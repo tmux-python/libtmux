@@ -45,6 +45,21 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Socket paths too long for tmux raise `SocketPathTooLong` (#730)
+
+A socket path too long for a UNIX socket now raises
+{exc}`~libtmux.exc.SocketPathTooLong`, a {exc}`~libtmux.exc.LibTmuxException`,
+saying how far over the limit the path is and whether `$TMUX_TMPDIR` made it
+that long. tmux's own `File name too long` names only the path.
+
+An explicit `socket_path` is checked when the {class}`~libtmux.Server` is
+created. A `socket_name` is checked when a command runs, because tmux resolves
+it against `$TMUX_TMPDIR` only then, and {meth}`~libtmux.Server.is_alive` still
+returns `False` instead of raising. A deep pytest `tmp_path` is the usual cause;
+see {ref}`socket_path_length`.
+
 ## libtmux 0.65.0 (2026-11-22)
 
 libtmux 0.65.0 adds a capability matrix to the {doc}`/compatibility` page: which

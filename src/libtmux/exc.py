@@ -7,9 +7,11 @@ libtmux.exc
 
 from __future__ import annotations
 
+import os
 import typing as t
 
 if t.TYPE_CHECKING:
+    from libtmux._internal.types import StrPath
     from libtmux.neo import ListExtraArgs
 
 
@@ -149,6 +151,122 @@ class NotInsideTmux(LibTmuxException):
             f"Not inside a tmux pane: ${variable} is {reason}",
             *args,
         )
+
+
+class SocketPathTooLong(LibTmuxException):
+    """A tmux socket path is longer than a UNIX socket address can hold.
+
+    ``sun_path`` in ``struct sockaddr_un`` is a fixed-size buffer, so a path
+    over the platform's limit can never be connected to, whatever the
+    filesystem allows. tmux says ``error connecting to <path> (File name too
+    long)``, which names the path but not how far over it is, nor which
+    variable made it that long.
+
+    The overrun is usually inherited rather than typed: a deep pytest
+    ``tmp_path``, an XDG runtime dir, a nested worktree, a long
+    ``$TMUX_TMPDIR``. So the message adds the numbers tmux leaves out -- how
+    many bytes over the limit, and where the length came from.
+
+    Parameters
+    ----------
+    socket_path : str or :class:`os.PathLike`
+        The path that does not fit. Measured in bytes, as the kernel does.
+    limit : int
+        Bytes available for a socket path on this platform.
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+    socket_name : str, optional
+        Set when the path was *resolved* from a socket name rather than passed
+        in, in which case the length came from ``$TMUX_TMPDIR``.
+    env_var : str, optional
+        Environment variable the directory came from, when one did.
+    env_value : str, optional
+        What that variable held, so the caller can see what to shorten.
+
+    Attributes
+    ----------
+    socket_path : str or :class:`os.PathLike`
+        The path that does not fit.
+    length : int
+        Length of *socket_path* in bytes.
+    limit : int
+        Bytes available for a socket path on this platform.
+    over : int
+        Bytes to cut before the path fits.
+    socket_name : str or None
+        Socket name the path was resolved from, if any.
+    env_var : str or None
+        Environment variable the directory came from, if any.
+    env_value : str or None
+        Value that variable held, if any.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> print(exc.SocketPathTooLong("/tmp/" + "d" * 120 + "/sock", 107))
+    Socket path is 130 bytes, 23 over the 107 byte limit: /tmp/ddd...
+
+    A path nobody typed says where it came from, and what to shorten:
+
+    >>> print(
+    ...     exc.SocketPathTooLong(
+    ...         "/tmp/" + "d" * 120 + "/tmux-1000/dev",
+    ...         107,
+    ...         socket_name="dev",
+    ...         env_var="TMUX_TMPDIR",
+    ...         env_value="/tmp/" + "d" * 120,
+    ...     )
+    ... )
+    Socket path for socket_name='dev' is 139 bytes, 32 over the 107 byte
+    limit: /tmp/ddd... Inherited from $TMUX_TMPDIR: shorten it, or pass a
+    socket_path under a shorter directory.
+
+    The numbers and the provenance are readable, for a caller that would
+    rather format its own message:
+
+    >>> e = exc.SocketPathTooLong("/tmp/" + "d" * 120 + "/sock", 107)
+    >>> e.length, e.over, e.limit, e.env_var
+    (130, 23, 107, None)
+
+    It is part of the :exc:`LibTmuxException` hierarchy, so
+    ``except LibTmuxException`` catches it:
+
+    >>> issubclass(exc.SocketPathTooLong, exc.LibTmuxException)
+    True
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(
+        self,
+        socket_path: StrPath,
+        limit: int,
+        *args: object,
+        socket_name: str | None = None,
+        env_var: str | None = None,
+        env_value: str | None = None,
+    ) -> None:
+        self.socket_path: StrPath = socket_path
+        self.length: int = len(os.fsencode(socket_path))
+        self.limit: int = limit
+        self.over: int = self.length - limit
+        self.socket_name: str | None = socket_name
+        self.env_var: str | None = env_var
+        self.env_value: str | None = env_value
+
+        subject = "Socket path"
+        if socket_name is not None:
+            subject += f" for socket_name={socket_name!r}"
+        message = (
+            f"{subject} is {self.length} bytes, {self.over} over the "
+            f"{limit} byte limit: {socket_path}"
+        )
+        if env_var is not None:
+            message += (
+                f" Inherited from ${env_var}: shorten it, or pass a "
+                f"socket_path under a shorter directory."
+            )
+        super().__init__(message, *args)
 
 
 class ObjectDoesNotExist(LibTmuxException):
