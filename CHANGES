@@ -62,10 +62,10 @@ server.kill_session("doomsday", exact=True)
 server.new_session("doom", kill_session=True)
 ```
 
-#### `#` in names, titles and start directories is literal (#901)
+#### `#` in names, titles, start directories and buffer paths is literal (#901)
 
-A `#` in a session name, window name, pane title or start directory is kept
-as typed, so `rename_window("build#2")` names the window `build#2` and
+A `#` in a session name, window name, pane title, start directory or buffer
+file path is kept as typed, so `rename_window("build#2")` names the window `build#2` and
 `rename_window("#S")` names it `#S`. tmux previously expanded the text as a
 format: `#S` became the session name and an unknown sequence was dropped. This
 covers {meth}`~libtmux.Server.new_session`, {meth}`~libtmux.Session.new_window`,
@@ -73,8 +73,10 @@ covers {meth}`~libtmux.Server.new_session`, {meth}`~libtmux.Session.new_window`,
 {meth}`~libtmux.Pane.set_title`, {meth}`~libtmux.Pane.split`,
 {meth}`~libtmux.Pane.new_pane`, the respawn methods, the start directory and
 title of {meth}`~libtmux.Pane.display_popup`, the title of
-{meth}`~libtmux.Server.display_menu` and the `cwd` of
-{meth}`~libtmux.Server.run_shell`.
+{meth}`~libtmux.Server.display_menu`, the paths of
+{meth}`~libtmux.Server.save_buffer` and {meth}`~libtmux.Server.load_buffer`,
+and the `cwd` of {meth}`~libtmux.Server.run_shell` on tmux 3.8, the first
+release that expands it.
 
 To keep tmux's expansion, wrap the value in {class}`~libtmux.Format`:
 
@@ -90,6 +92,8 @@ pane.split(start_directory=Format("#{pane_current_path}"))
 window.rename_window(Format("#{pane_current_command}"))
 ```
 
+See {ref}`formats` for which arguments are literal and how to opt in.
+
 ### What's new
 
 #### Opt a value into tmux formats with `Format` (#910)
@@ -104,11 +108,21 @@ session.new_window(
 )
 ```
 
-{meth}`Format.escape() <libtmux.Format.escape>`, `+` and
-{meth}`~libtmux.Format.join` combine a format with text from users or files
-and keep that text literal. Parameters that accept a format are typed
+`+` and {meth}`~libtmux.Format.join` add text from users or files and keep it
+literal; {meth}`Format.escape() <libtmux.Format.escape>` places such text inside
+an expression, such as one side of a comparison. Adding plain text where tmux
+would read it as format syntax, after a lone `#` or inside an unfinished
+`#{...}`, raises {exc}`ValueError`. Parameters that accept a format are typed
 `str | Format`, so a type checker flags a `Format` passed where tmux would
 store it as typed.
+
+Arguments tmux always expands accept a {class}`~libtmux.Format` too: the
+message of {meth}`~libtmux.Pane.display_message`, the commands of
+{meth}`~libtmux.Server.run_shell`, {meth}`~libtmux.Server.if_shell` and
+{meth}`~libtmux.Pane.pipe`, and the `filter` of the search methods. So
+`pane.display_message(Format.escape(text))` shows `text` exactly, `%`
+included. {meth}`~libtmux.Window.new_window` takes a `start_directory`. See
+{ref}`formats` for a guide.
 
 #### `exact=` for session names (#899)
 
