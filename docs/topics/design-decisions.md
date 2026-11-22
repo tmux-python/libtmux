@@ -64,7 +64,7 @@ objects above and never touches this layer directly.
 alongside the legacy dict-style objects. The motivation:
 
 - **Type safety**: dataclass fields have declared types, enabling
-  [mypy](https://mypy-lang.org/) checks and IDE completion
+  [ty](https://docs.astral.sh/ty/) checks and IDE completion
 - **Predictability**: attribute access (`session.session_name`) instead of dict access (`session["session_name"]`)
 - **Migration path**: the two interfaces coexist, allowing gradual adoption without breaking existing code
 

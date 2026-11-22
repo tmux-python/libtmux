@@ -81,13 +81,7 @@ jobs:
       - name: Format with ruff format
         run: uv run ruff format . .github/scripts --check
 
-      - name: Lint with mypy
-        run: |
-          uv run mypy .
-          uv run mypy --python-version 3.11 .github/scripts
-
       - name: Lint with ty
-        continue-on-error: true
         run: uv run ty check
 
       - name: Print python versions

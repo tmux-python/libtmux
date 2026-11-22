@@ -336,7 +336,7 @@ class _ForwardingMultiple(MultipleObjectsReturned):
 def test_lookup_exceptions_accept_forwarded_kwargs() -> None:
     """A subclass that forwards ``**kwargs: object`` type-checks and works.
 
-    mypy checks this module, so the two subclasses above are the type test;
+    ty checks this module, so the two subclasses above are the type test;
     the assertions cover the values they forward.
     """
     missing = _ForwardingMissing(query={"pane_id": "%9"})

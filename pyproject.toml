@@ -69,7 +69,6 @@ dev = [
   "pytest-cov",
   # Lint
   "ruff>=0.17.3",
-  "mypy",
   "ty>=0.0.107",
 ]
 
@@ -93,7 +92,6 @@ coverage =[
 ]
 lint = [
   "ruff>=0.17.3",
-  "mypy",
   "ty>=0.0.107",
 ]
 
@@ -137,16 +135,6 @@ sphinx-gp-sitemap = false
 sphinx-gp-theme = false
 sphinx-ux-autodoc-layout = false
 sphinx-ux-badges = false
-
-[tool.mypy]
-strict = true
-python_version = "3.11"
-files = [
-  "src",
-  "tests",
-  "docs/_ext",
-]
-
 
 [tool.ty.environment]
 python-version = "3.11"
