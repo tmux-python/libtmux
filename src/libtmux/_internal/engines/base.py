@@ -275,4 +275,4 @@ class Engine(ABC):
 
     def close(self) -> None:  # pragma: no cover - default noop
         """Clean up any engine resources."""
-        return None
+        return

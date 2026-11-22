@@ -568,7 +568,7 @@ def pytest_collection_modifyitems(
 
     try:
         from _pytest.doctest import DoctestItem
-    except Exception:  # pragma: no cover - defensive
+    except ImportError:  # pragma: no cover - defensive
         return
 
     # Filter out DoctestItems - can't use skip markers due to pytest bug

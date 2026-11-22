@@ -194,6 +194,7 @@ fixture:
 ```python
 import pytest
 
+
 @pytest.mark.engines(["subprocess", "control"])
 def test_my_flow(server, engine_name):
     # server uses the selected engine, engine_name reflects the current one
@@ -212,6 +213,7 @@ Use ``control_sandbox`` when you need a hermetic control-mode server for a test:
 import typing as t
 import pytest
 from libtmux.server import Server
+
 
 @pytest.mark.engines(["control"])
 def test_control_sandbox(control_sandbox: t.ContextManager[Server]):

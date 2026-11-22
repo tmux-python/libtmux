@@ -608,11 +608,11 @@ class ScriptedProcess:
 
     def terminate(self) -> None:
         """Stub terminate."""
-        return None
+        return
 
     def kill(self) -> None:
         """Stub kill."""
-        return None
+        return
 
     def wait(self, timeout: float | None = None) -> int | None:
         """Stub wait."""

@@ -626,6 +626,7 @@ class ControlModeEngine(Engine):
                 has_session_cmd,
                 capture_output=True,
                 text=True,
+                check=False,
             )
             if probe.returncode != 0:
                 msg = f"control_session not found: {self._control_session}"
