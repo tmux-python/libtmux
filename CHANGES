@@ -63,6 +63,21 @@ server.save_buffer(path)
 path.chmod(0o644)
 ```
 
+#### `send_keys(hex_keys=True)` no longer adds Enter (#904)
+
+{meth}`~libtmux.Pane.send_keys` with `hex_keys=True` now sends only the bytes
+you give it. It used to follow them with Enter, so an escape sequence or a
+partial keystroke also ran the line. Without `hex_keys`, Enter is still sent by
+default, and `enter=True`, `enter=False` and `enter=None` mean what they did.
+
+```python
+# Before: the bytes, then Enter
+pane.send_keys("1b 5b 41", hex_keys=True)
+
+# After, to keep the Enter
+pane.send_keys("1b 5b 41", hex_keys=True, enter=True)
+```
+
 ### What's new
 
 #### Socket paths too long for tmux raise `SocketPathTooLong` (#730)
