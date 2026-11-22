@@ -127,6 +127,7 @@ internals/index
 project/index
 history
 migration
+compatibility
 glossary
 MCP <https://libtmux-mcp.git-pull.com>
 GitHub <https://github.com/tmux-python/libtmux>

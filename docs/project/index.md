@@ -2,7 +2,7 @@
 
 # Project
 
-Project guides, compatibility information, and API governance.
+Project guides and API governance.
 
 ::::{grid} 1 1 2 2
 :gutter: 2 2 3 3
@@ -29,19 +29,13 @@ Release checklist and version policy.
 
 ## API Governance
 
-::::{grid} 1 2 3 3
+::::{grid} 1 2 2 2
 :gutter: 2 2 3 3
 
 :::{grid-item-card} Public API
 :link: public-api
 :link-type: doc
 What's public, stability policy, deprecation process.
-:::
-
-:::{grid-item-card} Compatibility
-:link: compatibility
-:link-type: doc
-Python, tmux, and platform support.
 :::
 
 :::{grid-item-card} Deprecations
@@ -59,7 +53,6 @@ contributing
 code-style
 releasing
 public-api
-compatibility
 deprecations
 ```
 

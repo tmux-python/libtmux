@@ -150,7 +150,7 @@ What is and is not considered stable public API.
 :::
 
 :::{grid-item-card} Compatibility
-:link: ../project/compatibility
+:link: ../compatibility
 :link-type: doc
 Supported versions of Python and tmux.
 :::

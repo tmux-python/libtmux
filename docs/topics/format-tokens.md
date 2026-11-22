@@ -128,13 +128,12 @@ if you're swapping the `tmux` binary mid-test, clear both with
 `libtmux.common.get_version.cache_clear()` and
 `get_version_str.cache_clear()`.
 
-The {ref}`project` page tracks the project's minimum tmux version
-(currently 3.2a); see {doc}`/project/compatibility` for the full
-matrix.
+{doc}`/compatibility` tracks the project's minimum tmux version
+(currently 3.2a) and full capability matrix.
 
 ## See also
 
 - {doc}`/api/libtmux.neo` — API reference for format-field helpers
 - {func}`libtmux.neo.get_output_format` — the scope and version filter
 - {ref}`clients` — attached-client fields and live attachment lookups
-- {doc}`/project/compatibility` — supported tmux versions
+- {doc}`/compatibility` — supported tmux versions

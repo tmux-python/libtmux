@@ -83,4 +83,4 @@ prioritize promotion.
 Once a name is public and later has to change, it doesn't vanish quietly; it
 moves through {doc}`a deprecation cycle </project/deprecations>` first. For the
 platforms and tmux versions that stability is promised against, see
-{doc}`Compatibility </project/compatibility>`.
+{doc}`Compatibility </compatibility>`.
