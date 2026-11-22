@@ -39,7 +39,7 @@ from .common import (
 
 if t.TYPE_CHECKING:
     import types
-    from typing import Self
+    from typing import Never, Self
 
     from libtmux._internal.types import StrPath
     from libtmux.common import tmux_cmd
@@ -505,7 +505,7 @@ class Session(
     def cmd(
         self,
         cmd: str,
-        *args: t.Any,
+        *args: object,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within session context.
@@ -738,7 +738,7 @@ class Session(
         if exit_ is not None and exit_:
             flags += ("-x",)
 
-        if flags_ is not None and isinstance(flags_, list):
+        if flags_ is not None:
             flags += tuple(f"{','.join(flags_)}")
 
         proc = self.cmd(
@@ -1202,7 +1202,7 @@ class Session(
             )
 
         window_args += ("-F#{window_id}",)  # output
-        if window_name is not None and isinstance(window_name, (str, Format)):
+        if window_name is not None:
             window_args += ("-n", escape_trailing_separator(_format_arg(window_name)))
 
         if environment:
@@ -1229,14 +1229,11 @@ class Session(
                     raise_if_stderr(proc, "select-window")
                 return existing
 
-        target: str | None = None
-        if window_index is not None:
-            # empty string for window_index will use the first one available
-            target = f"{self.session_id}:{window_index}"
+        # Empty string for window_index selects the first available index.
+        target = f"{self.session_id}:{window_index}"
         if target_window:
             target = target_window
-        elif window_index is not None:
-            # empty string for window_index will use the first one available
+        else:
             window_args += (f"-t{self.session_id}:{window_index}",)
 
         if window_shell:
@@ -1264,8 +1261,7 @@ class Session(
             extra["tmux_session"] = str(self.session_name)
         if window.window_name is not None:
             extra["tmux_window"] = str(window.window_name)
-        if target is not None:
-            extra["tmux_target"] = str(target)
+        extra["tmux_target"] = str(target)
 
         logger.info("window created", extra=extra)
 
@@ -1414,7 +1410,7 @@ class Session(
             version="0.30.0",
         )
 
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
+    def get(self, key: str, default: object = None) -> Never:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.17
@@ -1429,7 +1425,7 @@ class Session(
             version="0.17.0",
         )
 
-    def __getitem__(self, key: str) -> t.Any:
+    def __getitem__(self, key: str) -> Never:
         """Return item lookup by key. Deprecated in favor of attributes.
 
         .. deprecated:: 0.17

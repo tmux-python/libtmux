@@ -10,7 +10,9 @@ from libtmux.test.random import get_test_session_name, get_test_window_name
 if t.TYPE_CHECKING:
     from collections.abc import Generator
 
-    from libtmux.server import Server
+    from libtmux._internal.types import StrPath
+    from libtmux.constants import WindowDirection
+    from libtmux.server import DashLiteral, Server
     from libtmux.session import Session
     from libtmux.window import Window
 
@@ -18,9 +20,21 @@ if t.TYPE_CHECKING:
 @contextlib.contextmanager
 def temp_session(
     server: Server,
-    *args: t.Any,
-    **kwargs: t.Any,
-) -> Generator[Session, t.Any, t.Any]:
+    session_name: str | None = None,
+    kill_session: bool = False,
+    attach: bool = False,
+    start_directory: StrPath | None = None,
+    window_name: str | None = None,
+    window_command: str | None = None,
+    x: int | DashLiteral | None = None,
+    y: int | DashLiteral | None = None,
+    environment: dict[str, str] | None = None,
+    *args: object,
+    detach_others: bool | None = None,
+    no_size: bool | None = None,
+    client_flags: str | None = None,
+    **kwargs: object,
+) -> Generator[Session, None, None]:
     """
     Return a context manager with a temporary session.
 
@@ -51,17 +65,31 @@ def temp_session(
     ...     session.new_window(window_name='my window')
     Window(@3 2:my window, Session($... ...))
     """
-    if "session_name" in kwargs:
-        session_name = kwargs.pop("session_name")
-    else:
-        session_name = get_test_session_name(server)
+    resolved_name = (
+        session_name if session_name is not None else get_test_session_name(server)
+    )
 
-    session = server.new_session(session_name, *args, **kwargs)
+    session = server.new_session(
+        resolved_name,
+        kill_session,
+        attach,
+        start_directory,
+        window_name,
+        window_command,
+        x,
+        y,
+        environment,
+        *args,
+        detach_others=detach_others,
+        no_size=no_size,
+        client_flags=client_flags,
+        **kwargs,
+    )
 
     try:
         yield session
     finally:
-        if server.has_session(session_name):
+        if server.has_session(resolved_name):
             session.kill()
     return
 
@@ -69,9 +97,18 @@ def temp_session(
 @contextlib.contextmanager
 def temp_window(
     session: Session,
-    *args: t.Any,
-    **kwargs: t.Any,
-) -> Generator[Window, t.Any, t.Any]:
+    window_name: str | None = None,
+    *,
+    start_directory: StrPath | None = None,
+    attach: bool = False,
+    window_index: str = "",
+    window_shell: str | None = None,
+    environment: dict[str, str] | None = None,
+    direction: WindowDirection | None = None,
+    target_window: str | None = None,
+    kill_existing: bool | None = None,
+    select_existing: bool | None = None,
+) -> Generator[Window, None, None]:
     """
     Return a context manager with a temporary window.
 
@@ -108,12 +145,22 @@ def temp_window(
     ...     window.split()
     Pane(%4 Window(@3 2:libtmux_..., Session($1 libtmux_...)))
     """
-    if "window_name" not in kwargs:
-        window_name = get_test_window_name(session)
-    else:
-        window_name = kwargs.pop("window_name")
+    resolved_window_name = (
+        get_test_window_name(session) if window_name is None else window_name
+    )
 
-    window = session.new_window(window_name, *args, **kwargs)
+    window = session.new_window(
+        resolved_window_name,
+        start_directory=start_directory,
+        attach=attach,
+        window_index=window_index,
+        window_shell=window_shell,
+        environment=environment,
+        direction=direction,
+        target_window=target_window,
+        kill_existing=kill_existing,
+        select_existing=select_existing,
+    )
 
     # Get ``window_id`` before returning it, it may be killed within context.
     window_id = window.window_id

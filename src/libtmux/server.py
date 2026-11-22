@@ -60,6 +60,7 @@ if t.TYPE_CHECKING:
     from typing import Self, TypeAlias
 
     from libtmux._internal.types import StrPath
+    from libtmux.neo import ListCmd, ListExtraArgs, OutputsRaw
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -81,9 +82,11 @@ def _is_daemon_not_up_error(stderr_text: str) -> bool:
 
 def _fetch_or_empty(
     server: Server,
-    list_cmd: str,
-    **kwargs: t.Any,
-) -> list[dict[str, t.Any]]:
+    list_cmd: ListCmd,
+    list_extra_args: ListExtraArgs = None,
+    # Match `fetch_objs(filter=...)` keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
+    filter: str | Format | None = None,  # noqa: A002
+) -> OutputsRaw:
     """Wrap :func:`fetch_objs`: treat a not-yet-started server as empty.
 
     A fresh :class:`~libtmux.Server` can be introspected via
@@ -92,7 +95,12 @@ def _fetch_or_empty(
     failures, still propagate.
     """
     try:
-        return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
+        return fetch_objs(
+            server=server,
+            list_cmd=list_cmd,
+            list_extra_args=list_extra_args,
+            filter=filter,
+        )
     except exc.LibTmuxException as e:
         if e.args and _is_daemon_not_up_error(str(e.args[0])):
             return []
@@ -331,13 +339,13 @@ class Server(
        Accessed April 1st, 2018.
     """
 
-    socket_name = None
+    socket_name: str | None = None
     """Passthrough to ``[-L socket-name]``"""
-    socket_path = None
+    socket_path: str | pathlib.Path | None = None
     """Passthrough to ``[-S socket-path]``"""
-    config_file = None
+    config_file: str | None = None
     """Passthrough to ``[-f file]``"""
-    colors = None
+    colors: int | None = None
     """``256`` or ``88``"""
     child_id_attribute = "session_id"
     """Unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`"""
@@ -360,7 +368,7 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
-        **kwargs: t.Any,
+        **kwargs: object,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
@@ -633,7 +641,7 @@ class Server(
     def cmd(
         self,
         cmd: str,
-        *args: t.Any,
+        *args: object,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
@@ -703,7 +711,6 @@ class Server(
             Renamed from ``.tmux`` to ``.cmd``.
         """
         svr_args: list[str | int] = [*self._socket_args(), cmd]
-        cmd_args: list[str | int] = []
         if self.config_file:
             svr_args.insert(0, f"-f{self.config_file}")
         if self.colors:
@@ -714,7 +721,9 @@ class Server(
             else:
                 raise exc.UnknownColorOption
 
-        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
+        cmd_args: list[object] = (
+            ["-t", str(target), *args] if target is not None else [*args]
+        )
 
         return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
 
@@ -2624,11 +2633,11 @@ class Server(
         x: int | DashLiteral | None = None,
         y: int | DashLiteral | None = None,
         environment: dict[str, str] | None = None,
-        *args: t.Any,
+        *args: object,
         detach_others: bool | None = None,
         no_size: bool | None = None,
         client_flags: str | None = None,
-        **kwargs: t.Any,
+        **kwargs: object,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
 

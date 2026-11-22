@@ -39,7 +39,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
-    from typing import Self
+    from typing import Never, Self
 
     from libtmux._internal.types import StrPath
     from libtmux.formats import Format
@@ -544,7 +544,7 @@ class Window(
     def cmd(
         self,
         cmd: str,
-        *args: t.Any,
+        *args: object,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within window context.
@@ -1963,7 +1963,7 @@ class Window(
             global_=g,
         )
 
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
+    def get(self, key: str, default: object = None) -> Never:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.17
@@ -1978,7 +1978,7 @@ class Window(
             version="0.17.0",
         )
 
-    def __getitem__(self, key: str) -> t.Any:
+    def __getitem__(self, key: str) -> Never:
         """Return item lookup by key. Deprecated in favor of attributes.
 
         .. deprecated:: 0.17
