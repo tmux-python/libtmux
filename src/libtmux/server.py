@@ -1559,10 +1559,11 @@ class Server(
         numeric: bool | None = None,
         prompt_type: t.Literal["command", "search", "target", "window-target"]
         | None = None,
-        expand_format: bool | None = None,
+        expand_formats: bool | None = None,
         literal: bool | None = None,
         bspace_exit: bool | None = None,
         no_freeze: bool | None = None,
+        expand_format: bool | None = None,
     ) -> None:
         """Open a command prompt via ``$ tmux command-prompt``.
 
@@ -1589,7 +1590,7 @@ class Server(
             Accept only numeric input (``-N`` flag).
         prompt_type : str, optional
             Prompt type (``-T`` flag).
-        expand_format : bool, optional
+        expand_formats : bool, optional
             Pass the template through ``args_make_commands_prepare``
             (``-F`` flag) so format strings expand.
         literal : bool, optional
@@ -1638,7 +1639,15 @@ class Server(
         if numeric:
             tmux_args += ("-N",)
 
-        if expand_format:
+        if expand_format is not None:
+            warnings.warn(
+                "expand_format is deprecated in favor of expand_formats",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            if expand_formats is None:
+                expand_formats = expand_format
+        if expand_formats:
             tmux_args += ("-F",)
 
         if literal:

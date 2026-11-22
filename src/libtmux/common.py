@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import typing as t
+import warnings
 
 from . import exc
 from ._compat import LooseVersion
@@ -70,8 +71,9 @@ class EnvironmentMixin:
         name: str,
         value: str,
         *,
-        expand_format: bool | None = None,
+        expand_formats: bool | None = None,
         hidden: bool | None = None,
+        expand_format: bool | None = None,
     ) -> None:
         """Set environment ``$ tmux set-environment <name> <value>``.
 
@@ -81,14 +83,18 @@ class EnvironmentMixin:
             The environment variable name, e.g. 'PATH'.
         value : str
             Environment value.
-        expand_format : bool, optional
-            Expand tmux format strings in the value (``-F`` flag).
+        expand_formats : bool, optional
+            Expand tmux formats in the value once, when it is set (``-F``
+            flag).
 
             .. versionadded:: 0.56
         hidden : bool, optional
             Mark the variable as hidden (``-h`` flag).
 
             .. versionadded:: 0.56
+        expand_format : bool, optional
+            Deprecated spelling of *expand_formats*; it still works and emits a
+            :exc:`DeprecationWarning`.
 
         Raises
         ------
@@ -99,7 +105,15 @@ class EnvironmentMixin:
         if self._add_option:
             args += [self._add_option]
 
-        if expand_format:
+        if expand_format is not None:
+            warnings.warn(
+                "expand_format is deprecated in favor of expand_formats",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            if expand_formats is None:
+                expand_formats = expand_format
+        if expand_formats:
             args += ["-F"]
 
         if hidden:

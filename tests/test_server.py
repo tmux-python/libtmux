@@ -1018,13 +1018,13 @@ def test_command_prompt(
 @pytest.mark.parametrize(
     ("kwargs", "expected_flag", "min_tmux_version"),
     [
-        ({"expand_format": True}, "-F", None),
+        ({"expand_formats": True}, "-F", None),
         ({"literal": True}, "-l", "3.6"),
         # -e is master-only (upstream 1e5f93b7); not in any 3.6 release
         ({"bspace_exit": True}, "-e", "3.7"),
         ({"no_freeze": True}, "-C", "3.7"),
     ],
-    ids=["expand_format", "literal_v36", "bspace_exit", "no_freeze"],
+    ids=["expand_formats", "literal_v36", "bspace_exit", "no_freeze"],
 )
 def test_command_prompt_extra_flags(
     kwargs: dict[str, t.Any],
@@ -1065,6 +1065,32 @@ def test_command_prompt_extra_flags(
     assert captured, "Server.cmd was not invoked"
     _name, *flags = captured[0]
     assert expected_flag in flags
+
+
+def test_command_prompt_expand_format_is_deprecated(
+    monkeypatch: pytest.MonkeyPatch,
+    server: Server,
+) -> None:
+    """``expand_format`` still passes ``-F`` and warns to use ``expand_formats``."""
+    captured: list[tuple[str, ...]] = []
+    real_cmd = server.cmd
+
+    class _StubResult:
+        stderr: t.ClassVar[list[str]] = []
+        stdout: t.ClassVar[list[str]] = []
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        if cmd == "command-prompt":
+            captured.append((cmd, *args))
+            return _StubResult()
+        return real_cmd(cmd, *args, **_kw)
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    with pytest.warns(DeprecationWarning, match="expand_formats"):
+        server.command_prompt("set -g @x '%1'", expand_format=True)
+
+    (call,) = captured
+    assert "-F" in call
 
 
 class DisplayMenuCase(t.NamedTuple):
