@@ -77,7 +77,11 @@ class SkipDefaultFieldsReprMixin:
     """
 
     def __repr__(self) -> str:
-        """Omit default fields in object representation."""
+        """Omit default fields in object representation.
+
+        Accepts any ``self`` to satisfy :meth:`object.__repr__` Liskov
+        substitution and delegates non-dataclass instances to ``super()``.
+        """
         if not dataclasses.is_dataclass(self):
             return super().__repr__()
 
