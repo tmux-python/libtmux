@@ -78,6 +78,19 @@ in a particular pane's directory, pass its
 {attr}`~libtmux.Pane.pane_current_path` instead.
 ```
 
+## A format can run commands
+
+A {class}`~libtmux.Format` hands its text to tmux's format language, which
+does more than substitute values. tmux runs `#(...)` as a shell command and
+inserts its output, and the `E:` and `T:` modifiers expand a value a second
+time, so `#{E:status-right}` runs any `#(...)` stored in the `status-right`
+option. Wrapping text in {class}`~libtmux.Format` accepts all of this, the
+same as writing it in `tmux.conf`; libtmux does not inspect or limit what a
+format does.
+
+Keep text you did not write in a plain `str`, or add it to a format the ways
+the next section shows, so tmux reads it as characters, not as format syntax.
+
 ## Add text from users or files
 
 Only wrap text your program wrote. Text from users, files or other programs can
@@ -137,9 +150,11 @@ Some arguments are formats by design:
 True
 ```
 
-They accept a {class}`~libtmux.Format` too, so text from users can be shown
-exactly. Some of them also expand `%` as a time field, which
-{meth}`Format.escape() <libtmux.Format.escape>` keeps literal:
+A plain `str` from a user is therefore a format here, and tmux runs any
+`#(...)` it contains. These arguments accept a {class}`~libtmux.Format` too,
+so pass such text through {meth}`Format.escape() <libtmux.Format.escape>` to
+show it exactly. Some of them also expand `%` as a time field, which
+`Format.escape()` keeps literal as well:
 
 ```python
 >>> pane.display_message(Format.escape("50%d done"), get_text=True)
@@ -166,6 +181,13 @@ so a title of `#[fg=red]X` is shown as a red `X`.
 - {meth}`~libtmux.Server.new_session` with `kill_session=True` needs a plain
   session name, because a {class}`~libtmux.Format` name is known only after
   tmux creates the session.
+- {meth}`~libtmux.Session.new_window` with `select_existing=True` looks the
+  name up with tmux's `new-window -S`, which matches a plain name exactly only
+  on tmux 3.4 to 3.6. tmux 3.3a creates another window when the name contains
+  `#`, `%`, `,` or `}`, and tmux 3.7 and later expand the name a second time
+  before matching, so format syntax in the name is matched as a format and a
+  `#(...)` in it runs
+  ([#914](https://github.com/tmux-python/libtmux/issues/914)).
 
 ## Raw commands
 
