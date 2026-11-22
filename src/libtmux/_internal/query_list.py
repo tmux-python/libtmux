@@ -7,6 +7,8 @@ This is an internal API not covered by versioning policy.
 
 from __future__ import annotations
 
+import dataclasses
+import enum
 import logging
 import re
 import typing as t
@@ -20,14 +22,23 @@ from libtmux.exc import (
 logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
+    from typing import TypeAlias
+
+    from _typeshed import DataclassInstance
+
+    LookupScalar: TypeAlias = str | bytes | int | float | bool
+    LookupData: TypeAlias = (
+        LookupScalar | Sequence["LookupData"] | Mapping[str, "LookupData"]
+    )
+    LookupRhs: TypeAlias = LookupData | re.Pattern[str] | re.Pattern[bytes] | None
 
     class LookupProtocol(t.Protocol):
         """Protocol for :class:`QueryList` filtering operators."""
 
         def __call__(
             self,
-            data: object,
-            rhs: object,
+            data: LookupData,
+            rhs: LookupRhs,
         ) -> bool:
             """Return callback for :class:`QueryList` filtering operators."""
             ...
@@ -36,13 +47,31 @@ if t.TYPE_CHECKING:
 T = t.TypeVar("T")
 _DefaultT = t.TypeVar("_DefaultT")
 
-no_arg = object()
+
+class _NoArg(enum.Enum):
+    TOKEN = 0
+
+
+no_arg: t.Final = _NoArg.TOKEN
+
+
+def _narrow_lookup_value(
+    val: object,
+) -> LookupData | DataclassInstance | None:
+    """Narrow a dynamically traversed lookup value without copying containers."""
+    if val is None or isinstance(val, (str, bytes, int, float, bool)):
+        return val
+    if dataclasses.is_dataclass(val) and not isinstance(val, type):
+        return val
+    if isinstance(val, (Sequence, Mapping)):
+        return t.cast("LookupData", val)
+    return None
 
 
 def keygetter(
-    obj: object,
+    obj: Mapping[str, object] | DataclassInstance,
     path: str,
-) -> object:
+) -> LookupData | DataclassInstance | None:
     """Fetch values in objects and keys, supported nested data.
 
     **With dictionaries**:
@@ -95,12 +124,14 @@ def keygetter(
     """
     try:
         sub_fields = path.split("__")
-        dct = obj
+        dct: object = obj
         for sub_field in sub_fields:
-            if isinstance(dct, dict):
+            if isinstance(dct, Mapping):
                 dct = dct[sub_field]
             elif hasattr(dct, sub_field):
                 dct = getattr(dct, sub_field)
+            else:
+                return None
 
     except Exception:
         logger.debug(
@@ -110,14 +141,14 @@ def keygetter(
         )
         return None
 
-    return dct
+    return _narrow_lookup_value(dct)
 
 
 def parse_lookup(
-    obj: object,
+    obj: Mapping[str, object] | DataclassInstance,
     path: str,
     lookup: str,
-) -> object:
+) -> LookupData | DataclassInstance | None:
     """Check if field lookup key, e.g. "my__path__contains" has comparator, return val.
 
     If comparator not used or value not found, return None.
@@ -155,15 +186,15 @@ def parse_lookup(
 
 
 def lookup_exact(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
     return rhs == data
 
 
 def lookup_iexact(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -172,33 +203,35 @@ def lookup_iexact(
 
 
 def lookup_contains(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
-    if not isinstance(rhs, str) or not isinstance(data, (str, Mapping, list)):
+    if not isinstance(rhs, str) or not isinstance(data, (str, Mapping, Sequence)):
+        return False
+    if isinstance(data, bytes):
         return False
 
     return rhs in data
 
 
 def lookup_icontains(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
-    if not isinstance(rhs, str) or not isinstance(data, (str, Mapping, list)):
+    if not isinstance(rhs, str) or not isinstance(data, (str, Mapping, Sequence)):
         return False
 
     if isinstance(data, str):
         return rhs.lower() in data.lower()
     if isinstance(data, Mapping):
-        return rhs.lower() in [str(k).lower() for k in data]
+        return rhs.lower() in [k.lower() for k in data]
 
     return False
 
 
 def lookup_startswith(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -207,8 +240,8 @@ def lookup_startswith(
 
 
 def lookup_istartswith(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -217,8 +250,8 @@ def lookup_istartswith(
 
 
 def lookup_endswith(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -227,8 +260,8 @@ def lookup_endswith(
 
 
 def lookup_iendswith(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -236,14 +269,18 @@ def lookup_iendswith(
 
 
 def lookup_in(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
-    if isinstance(rhs, list):
+    if isinstance(rhs, Sequence) and not isinstance(rhs, (str, bytes)):
         return data in rhs
 
     try:
-        if isinstance(rhs, str) and isinstance(data, (str, list, Mapping)):
+        if (
+            isinstance(rhs, str)
+            and isinstance(data, (str, Sequence, Mapping))
+            and not isinstance(data, bytes)
+        ):
             return rhs in data
     except Exception:
         return False
@@ -251,14 +288,18 @@ def lookup_in(
 
 
 def lookup_nin(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
-    if isinstance(rhs, list):
+    if isinstance(rhs, Sequence) and not isinstance(rhs, (str, bytes)):
         return data not in rhs
 
     try:
-        if isinstance(rhs, str) and isinstance(data, (str, list, Mapping)):
+        if (
+            isinstance(rhs, str)
+            and isinstance(data, (str, Sequence, Mapping))
+            and not isinstance(data, bytes)
+        ):
             return rhs not in data
     except Exception:
         return False
@@ -266,24 +307,36 @@ def lookup_nin(
 
 
 def lookup_regex(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
-    if isinstance(data, str) and isinstance(rhs, str):
-        return bool(re.search(rhs, data))
-    if isinstance(data, bytes) and isinstance(rhs, bytes):
-        return bool(re.search(rhs, data))
+    if isinstance(data, str):
+        if isinstance(rhs, str):
+            return bool(re.search(rhs, data))
+        if isinstance(rhs, re.Pattern) and isinstance(rhs.pattern, str):
+            return bool(re.search(rhs.pattern, data, rhs.flags))
+    if isinstance(data, bytes):
+        if isinstance(rhs, bytes):
+            return bool(re.search(rhs, data))
+        if isinstance(rhs, re.Pattern) and isinstance(rhs.pattern, bytes):
+            return bool(re.search(rhs.pattern, data, rhs.flags))
     return False
 
 
 def lookup_iregex(
-    data: object,
-    rhs: object,
+    data: LookupData,
+    rhs: LookupRhs,
 ) -> bool:
-    if isinstance(data, str) and isinstance(rhs, str):
-        return bool(re.search(rhs, data, re.IGNORECASE))
-    if isinstance(data, bytes) and isinstance(rhs, bytes):
-        return bool(re.search(rhs, data, re.IGNORECASE))
+    if isinstance(data, str):
+        if isinstance(rhs, str):
+            return bool(re.search(rhs, data, re.IGNORECASE))
+        if isinstance(rhs, re.Pattern) and isinstance(rhs.pattern, str):
+            return bool(re.search(rhs.pattern, data, rhs.flags | re.IGNORECASE))
+    if isinstance(data, bytes):
+        if isinstance(rhs, bytes):
+            return bool(re.search(rhs, data, re.IGNORECASE))
+        if isinstance(rhs, re.Pattern) and isinstance(rhs.pattern, bytes):
+            return bool(re.search(rhs.pattern, data, rhs.flags | re.IGNORECASE))
     return False
 
 
@@ -503,11 +556,20 @@ class QueryList(list[T], t.Generic[T]):
         self,
         matcher: Callable[[T], bool] | list[T] | T | None = None,
         /,
-        **kwargs: object,
+        **kwargs: LookupRhs,
     ) -> QueryList[T]:
         """Filter list of objects."""
 
         def filter_lookup(obj: T) -> bool:
+            if not kwargs:
+                return True
+            if not isinstance(obj, Mapping) and not (
+                dataclasses.is_dataclass(obj) and not isinstance(obj, type)
+            ):
+                return False
+            target = (
+                t.cast("Mapping[str, object]", obj) if isinstance(obj, Mapping) else obj
+            )
             for path, v in kwargs.items():
                 try:
                     lhs, op = path.rsplit("__", 1)
@@ -520,9 +582,14 @@ class QueryList(list[T], t.Generic[T]):
 
                 assert op in LOOKUP_NAME_MAP
                 path = lhs
-                data = keygetter(obj, path)
+                data = keygetter(target, path)
 
-                if data is None or not LOOKUP_NAME_MAP[op](data, v):
+                if data is None:
+                    return False
+                if dataclasses.is_dataclass(data):
+                    if op not in ("eq", "exact") or data != v:
+                        return False
+                elif not LOOKUP_NAME_MAP[op](data, v):
                     return False
 
             return True
@@ -553,7 +620,7 @@ class QueryList(list[T], t.Generic[T]):
         /,
         *,
         default: _DefaultT,
-        **kwargs: object,
+        **kwargs: LookupRhs,
     ) -> T | _DefaultT: ...
 
     @t.overload
@@ -562,7 +629,7 @@ class QueryList(list[T], t.Generic[T]):
         matcher: Callable[[T], bool] | list[T] | T | None,
         /,
         default: _DefaultT,
-        **kwargs: object,
+        **kwargs: LookupRhs,
     ) -> T | _DefaultT: ...
 
     @t.overload
@@ -570,30 +637,30 @@ class QueryList(list[T], t.Generic[T]):
         self,
         matcher: Callable[[T], bool] | list[T] | T | None = None,
         /,
-        **kwargs: object,
+        **kwargs: LookupRhs,
     ) -> T | None: ...
 
     def get(
         self,
         matcher: Callable[[T], bool] | list[T] | T | None = None,
         /,
-        default: object = no_arg,
-        **kwargs: object,
-    ) -> object:
+        default: _DefaultT | _NoArg = no_arg,
+        **kwargs: LookupRhs,
+    ) -> T | _DefaultT | None:
         """Retrieve exactly one object.
 
         Parameters
         ----------
-        matcher : :class:`~collections.abc.Callable` or object, optional
+        matcher : :class:`~collections.abc.Callable` or T, optional
             Same matcher :meth:`filter` takes.
-        default : object, optional
+        default : _DefaultT, optional
             Returned instead of raising when *nothing* matches.
-        **kwargs : object
+        **kwargs : LookupRhs
             Lookups, as passed to :meth:`filter`.
 
         Returns
         -------
-        object
+        T | _DefaultT | None
             The single match, or *default* when there is no match and one was
             given.
 

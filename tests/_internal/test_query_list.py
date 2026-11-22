@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 import typing as t
 
 import pytest
@@ -15,12 +16,19 @@ from libtmux._internal.query_list import (
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import TypeAlias
+
+    from libtmux._internal.query_list import LookupRhs
 
 
 @dataclasses.dataclass
 class Obj:
     test: int
     fruit: list[str] = dataclasses.field(default_factory=list)
+
+
+if t.TYPE_CHECKING:
+    FilterTestItem: TypeAlias = Obj | dict[str, object] | int
 
 
 @pytest.mark.parametrize(
@@ -258,11 +266,14 @@ class Obj:
     ],
 )
 def test_filter(
-    items: list[object],
-    filter_expr: Callable[[object], bool] | dict[str, object] | list[object] | None,
-    expected_result: QueryList[object] | list[object],
+    items: list[FilterTestItem],
+    filter_expr: Callable[[FilterTestItem], bool]
+    | dict[str, LookupRhs]
+    | list[FilterTestItem]
+    | None,
+    expected_result: QueryList[FilterTestItem] | list[FilterTestItem],
 ) -> None:
-    qs: QueryList[object] = QueryList(items)
+    qs: QueryList[FilterTestItem] = QueryList(items)
     if filter_expr is not None:
         if isinstance(filter_expr, dict):
             assert qs.filter(**filter_expr) == expected_result
@@ -369,16 +380,18 @@ def test_get_default_with_broad_eq_is_returned() -> None:
 
 def test_object_does_not_exist_exposes_query() -> None:
     """``ObjectDoesNotExist`` exposes its lookup, mirroring its sibling."""
-    query: dict[str, object] = {"pane_id": "%9"}
+    query: dict[str, str] = {"pane_id": "%9"}
     assert ObjectDoesNotExist(query=query).query == query
     assert ObjectDoesNotExist().query is None
 
 
 def test_lookup_regex_and_iregex_characterization() -> None:
-    """Pin ``lookup_regex`` and ``lookup_iregex`` across str, bytes, and collections."""
+    """Pin ``lookup_regex`` and ``lookup_iregex`` across str, Pattern, and mappings."""
     assert lookup_regex("apple", r"^app") is True
     assert lookup_regex("Apple", r"^app") is False
+    assert lookup_regex("apple", re.compile(r"^app")) is True
     assert lookup_iregex("Apple", r"^app") is True
+    assert lookup_iregex("Apple", re.compile(r"^app")) is True
     assert lookup_iregex("mango", r"^app") is False
     assert lookup_regex(["apple"], r"^app") is False
     assert lookup_iregex({"fruit": "apple"}, r"^app") is False
