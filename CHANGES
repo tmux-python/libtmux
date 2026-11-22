@@ -45,6 +45,24 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### `save_buffer` creates files only their owner can read (#903)
+
+A new file {meth}`~libtmux.Server.save_buffer` writes is now readable and
+writable by its owner only. It used to follow the process umask, which usually
+made saved scrollback and paste buffers readable by every local user. A file
+that already exists keeps its permissions.
+
+```python
+# Before: the new file was usually world-readable
+server.save_buffer(path)
+
+# After: owner-only; widen it yourself to share it
+server.save_buffer(path)
+path.chmod(0o644)
+```
+
 ### What's new
 
 #### Socket paths too long for tmux raise `SocketPathTooLong` (#730)
