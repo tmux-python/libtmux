@@ -200,6 +200,28 @@ def test_socket_name_too_long_via_tmux_tmpdir(
     assert str(excinfo.value.socket_path).endswith(f"/tmux-{os.geteuid()}/dev")
 
 
+def test_engine_server_context_measures_the_socket(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The engine's server context renders socket flags through ``_socket_args``.
+
+    Engines spawn tmux from the context bound in ``Server.__init__``, so the
+    socket is measured when the flags are rendered, not when the server is built.
+    """
+    from libtmux._internal.engines.base import ServerContext
+
+    _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+    myserver = Server(socket_name="dev")
+    context = ServerContext(
+        socket_name=myserver.socket_name,
+        socket_args=myserver._socket_args,
+    )
+
+    with pytest.raises(exc.SocketPathTooLong):
+        context.to_args()
+
+
 def test_socket_name_factory_too_long_via_tmux_tmpdir(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,

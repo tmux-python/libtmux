@@ -24,6 +24,13 @@ class ServerContext:
     socket_name: str | None = None
     socket_path: str | None = None
     config_file: str | None = None
+    #: Renders ``-S``/``-L`` and measures the socket path, normally
+    #: :meth:`libtmux.Server._socket_args`; called on each :meth:`to_args`.
+    socket_args: t.Callable[[], list[str]] | None = dataclasses.field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
     def to_args(self) -> tuple[str, ...]:
         """Convert context to tmux server argument tuple.
@@ -32,10 +39,14 @@ class ServerContext:
         the format used by ``Server._build_server_args()``.
         """
         args: list[str] = []
-        if self.socket_name:
-            args.append(f"-L{self.socket_name}")
-        if self.socket_path:
-            args.append(f"-S{self.socket_path}")
+        if self.socket_args is not None:
+            # Raises SocketPathTooLong for a socket tmux could not bind.
+            args.extend(self.socket_args())
+        else:
+            if self.socket_name:
+                args.append(f"-L{self.socket_name}")
+            if self.socket_path:
+                args.append(f"-S{self.socket_path}")
         if self.config_file:
             args.append(f"-f{self.config_file}")
         return tuple(args)

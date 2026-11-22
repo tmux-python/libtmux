@@ -402,6 +402,7 @@ class Server(
                 socket_name=self.socket_name,
                 socket_path=str(self.socket_path) if self.socket_path else None,
                 config_file=self.config_file,
+                socket_args=self._socket_args,
             ),
         )
 
