@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Development
+
+#### Type checking with ty (#682)
+
+[ty](https://docs.astral.sh/ty/) (`ty>=0.0.107`) replaces mypy for static type
+checking in development and CI (`uv run ty check`, `just ty`), paired with
+[Ruff](https://docs.astral.sh/ruff/)'s `ANN` rules for parameter and return
+annotations.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
