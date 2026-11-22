@@ -64,25 +64,51 @@ server.new_session("doom", kill_session=True)
 
 #### `#` in names, titles and start directories is literal (#901)
 
-A `#` in a session name, window name, pane title or `start_directory` is kept
-as typed, so `rename_window("build#2")` names the window `build#2`. tmux
-previously expanded the text as a format: `#S` became the session name and an
-unknown sequence was dropped. This covers {meth}`~libtmux.Server.new_session`,
-{meth}`~libtmux.Session.new_window`, {meth}`~libtmux.Session.rename_session`,
-{meth}`~libtmux.Window.rename_window`, {meth}`~libtmux.Pane.set_title`,
-{meth}`~libtmux.Pane.split`, {meth}`~libtmux.Pane.new_pane` and the respawn
-methods.
+A `#` in a session name, window name, pane title or start directory is kept
+as typed, so `rename_window("build#2")` names the window `build#2` and
+`rename_window("#S")` names it `#S`. tmux previously expanded the text as a
+format: `#S` became the session name and an unknown sequence was dropped. This
+covers {meth}`~libtmux.Server.new_session`, {meth}`~libtmux.Session.new_window`,
+{meth}`~libtmux.Session.rename_session`, {meth}`~libtmux.Window.rename_window`,
+{meth}`~libtmux.Pane.set_title`, {meth}`~libtmux.Pane.split`,
+{meth}`~libtmux.Pane.new_pane`, the respawn methods, the start directory and
+title of {meth}`~libtmux.Pane.display_popup`, the title of
+{meth}`~libtmux.Server.display_menu` and the `cwd` of
+{meth}`~libtmux.Server.run_shell`.
+
+To keep tmux's expansion, wrap the value in {class}`~libtmux.Format`:
 
 ```python
 # Before
+pane.split(start_directory="#{pane_current_path}")
 window.rename_window("#{pane_current_command}")
 
 # After
-name = pane.display_message("#{pane_current_command}", get_text=True)[0]
-window.rename_window(name)
+from libtmux import Format
+
+pane.split(start_directory=Format("#{pane_current_path}"))
+window.rename_window(Format("#{pane_current_command}"))
 ```
 
 ### What's new
+
+#### Opt a value into tmux formats with `Format` (#910)
+
+{class}`~libtmux.Format` marks a value for tmux to expand as a format, so one
+argument can use `#{...}` while the others stay literal:
+
+```python
+session.new_window(
+    window_name="build#2",
+    start_directory=Format("#{pane_current_path}"),
+)
+```
+
+{meth}`Format.escape() <libtmux.Format.escape>`, `+` and
+{meth}`~libtmux.Format.join` combine a format with text from users or files
+and keep that text literal. Parameters that accept a format are typed
+`str | Format`, so a type checker flags a `Format` passed where tmux would
+store it as typed.
 
 #### `exact=` for session names (#899)
 
