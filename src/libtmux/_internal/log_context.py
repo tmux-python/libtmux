@@ -16,6 +16,81 @@ LOG_OUTPUT_LINE_LIMIT = 100
 """Maximum output lines attached to one log record."""
 
 
+_REDACTED = "***"
+
+_GLOBAL_FLAGS_WITH_VALUE = frozenset({"-c", "-f", "-L", "-S", "-T"})
+_ENV_FLAG_SUBCOMMANDS = frozenset(
+    {
+        "display-popup",
+        "new-pane",
+        "new-session",
+        "new-window",
+        "respawn-pane",
+        "respawn-window",
+        "split-window",
+    },
+)
+
+
+def _redact_env_values(argv: Sequence[str]) -> list[str]:
+    """Return *argv* with environment values masked and their names kept.
+
+    Covers ``-e NAME=value`` on the commands that take it and the value of
+    ``set-environment``. Only the copy that is logged goes through this; the
+    argv tmux receives is unchanged.
+
+    Examples
+    --------
+    >>> _redact_env_values(["tmux", "new-window", "-eTOKEN=hunter2", "-d"])
+    ['tmux', 'new-window', '-eTOKEN=***', '-d']
+
+    >>> _redact_env_values(["tmux", "split-window", "-e", "TOKEN=hunter2"])
+    ['tmux', 'split-window', '-e', 'TOKEN=***']
+
+    >>> _redact_env_values(["tmux", "set-environment", "-t", "$0", "TOKEN", "hunter2"])
+    ['tmux', 'set-environment', '-t', '$0', 'TOKEN', '***']
+
+    A flag that is not an environment assignment is left alone:
+
+    >>> _redact_env_values(["tmux", "capture-pane", "-e", "-p"])
+    ['tmux', 'capture-pane', '-e', '-p']
+    """
+    out = list(argv)
+    sub = 1  # argv[0] is the tmux binary
+    while sub < len(out) and out[sub].startswith("-"):
+        sub += 2 if out[sub] in _GLOBAL_FLAGS_WITH_VALUE else 1
+    if sub >= len(out):
+        return out
+    if out[sub] in _ENV_FLAG_SUBCOMMANDS:
+        i = sub + 1
+        while i < len(out):
+            if out[i] == "-e" and i + 1 < len(out):
+                key, eq, _ = out[i + 1].partition("=")
+                if eq:
+                    out[i + 1] = f"{key}={_REDACTED}"
+                i += 2
+                continue
+            if out[i].startswith("-e") and "=" in out[i]:
+                out[i] = f"{out[i].partition('=')[0]}={_REDACTED}"
+            i += 1
+    elif out[sub] == "set-environment":
+        positional: list[int] = []
+        i = sub + 1
+        while i < len(out):
+            if out[i] == "--":
+                positional.extend(range(i + 1, len(out)))
+                break
+            if out[i] == "-t":
+                i += 2
+                continue
+            if not out[i].startswith("-"):
+                positional.append(i)
+            i += 1
+        if len(positional) >= 2:
+            out[positional[1]] = _REDACTED
+    return out
+
+
 def _safe_scalar(value: str) -> str:
     """Keep printable identities readable and escape control characters."""
     return value if value.isprintable() else ascii(value)
@@ -67,7 +142,8 @@ def command_extra(argv: Sequence[str]) -> dict[str, str]:
         index += 2 if takes_next else 1
 
     socket = socket_path if socket_path is not None else socket_label
-    extra = {"tmux_cmd": " ".join(_quote(token) for token in (tokens or [executable]))}
+    masked = _redact_env_values(tokens) if tokens else [executable]
+    extra = {"tmux_cmd": " ".join(_quote(token) for token in masked)}
     if subcommand is not None:
         extra["tmux_subcommand"] = _safe_scalar(subcommand)
     if socket is not None:

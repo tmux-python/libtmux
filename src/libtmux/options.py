@@ -523,7 +523,7 @@ def explode_complex(
                     try:
                         term, features = item.split(":", maxsplit=1)
                         new_val[term] = features.split(":")
-                    except Exception:  # NOQA: PERF203
+                    except Exception:
                         skipped += 1
                 _warn_skipped(key, skipped)
                 options[key] = new_val
@@ -549,7 +549,7 @@ def explode_complex(
                                 new_overrides[term][k] = int(v) if v.isdigit() else v
                             elif feature:
                                 new_overrides[term][feature] = None
-                    except Exception:  # NOQA: PERF203
+                    except Exception:
                         skipped += 1
                 _warn_skipped(key, skipped)
                 options[key] = new_overrides
@@ -567,7 +567,7 @@ def explode_complex(
                         ):
                             options[key] = {}
                         new_aliases[alias] = command
-                    except Exception:  # NOQA: PERF203
+                    except Exception:
                         skipped += 1
                 _warn_skipped(key, skipped)
                 options[key] = new_aliases

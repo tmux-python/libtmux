@@ -678,7 +678,7 @@ def test_options_warning_logging_schema(
         (
             ["tmux", "-Lsock", "new-session", "-eKEY=secret"],
             {
-                "tmux_cmd": "tmux -Lsock new-session -eKEY=secret",
+                "tmux_cmd": "tmux -Lsock new-session '-eKEY=***'",
                 "tmux_subcommand": "new-session",
                 "tmux_socket": "sock",
             },
