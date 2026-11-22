@@ -2367,3 +2367,69 @@ def test_new_session_kill_session_matches_name_exactly(
     with pytest.raises(exc.LibTmuxException):
         server.new_session(session_name="foo", kill_session=True)
     assert server.cmd("has-session", target="=foobar").returncode == 0
+
+
+def test_get_or_create_session_creates_then_reuses(server: Server) -> None:
+    """The first call creates the session; later calls return the same one."""
+    created = server.get_or_create_session("get-or-create")
+
+    again = server.get_or_create_session("get-or-create")
+
+    assert again.session_id == created.session_id
+    assert [s.session_name for s in server.sessions].count("get-or-create") == 1
+
+
+@pytest.mark.parametrize(
+    "precheck",
+    [True, False],
+    ids=["libtmux-precheck", "tmux-duplicate-session"],
+)
+def test_get_or_create_session_returns_a_concurrent_creator(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    precheck: bool,
+) -> None:
+    """When another caller creates the session first, its session is returned.
+
+    With *precheck* off, ``has_session`` is made to miss so that tmux itself
+    refuses the second creation with ``duplicate session``.
+    """
+    real_new_session = server.new_session
+    winners: list[Session] = []
+
+    def racing_new_session(*args: t.Any, **kwargs: t.Any) -> Session:
+        winners.append(real_new_session(session_name="get-or-create-race"))
+        if not precheck:
+            monkeypatch.setattr(server, "has_session", lambda *a, **kw: False)
+        return real_new_session(*args, **kwargs)
+
+    monkeypatch.setattr(server, "new_session", racing_new_session)
+
+    found = server.get_or_create_session("get-or-create-race")
+
+    (winner,) = winners
+    assert found.session_id == winner.session_id
+
+
+def test_get_or_create_session_raises_other_errors(server: Server) -> None:
+    """A creation error that is not a duplicate session is raised."""
+    with pytest.raises(exc.BadSessionName):
+        server.get_or_create_session("bad:name")
+
+
+def test_get_or_create_session_does_not_hide_other_failures(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unrelated error is raised even when the session appeared meanwhile."""
+    real_new_session = server.new_session
+
+    def failing_new_session(*args: t.Any, **kwargs: t.Any) -> Session:
+        real_new_session(session_name="get-or-create-fail")
+        msg = "new-session: no space for new pty"
+        raise exc.LibTmuxException(msg)
+
+    monkeypatch.setattr(server, "new_session", failing_new_session)
+
+    with pytest.raises(exc.LibTmuxException, match="no space for new pty"):
+        server.get_or_create_session("get-or-create-fail")

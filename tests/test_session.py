@@ -977,6 +977,29 @@ def test_new_window_select_existing_context_exit_kills_reused_window(
     assert existing not in session.windows
 
 
+def test_get_or_create_window_creates_then_reuses(session: Session) -> None:
+    """The first call creates the window; later calls return the same one."""
+    created = session.get_or_create_window("get-or-create", window_shell="exec cat")
+    window_count = len(session.windows)
+
+    again = session.get_or_create_window("get-or-create", window_shell="exec sh")
+
+    assert again.window_id == created.window_id
+    assert len(session.windows) == window_count
+
+
+def test_get_or_create_window_format_name(session: Session) -> None:
+    """A Format name is expanded once against the session, then looked up."""
+    assert session.session_name is not None
+    named = session.new_window(
+        window_name=session.session_name, window_shell="exec cat"
+    )
+
+    found = session.get_or_create_window(Format("#{session_name}"))
+
+    assert found.window_id == named.window_id
+
+
 def test_session_last_window_exception_tags_subcommand(session: Session) -> None:
     """Wrapper raises tag LibTmuxException with the originating tmux subcommand.
 

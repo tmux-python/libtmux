@@ -2829,6 +2829,63 @@ class Server(
 
         return session
 
+    def get_or_create_session(
+        self,
+        session_name: str,
+        *,
+        start_directory: StrPath | Format | None = None,
+        window_name: str | Format | None = None,
+        window_command: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> Session:
+        """Return the session named *session_name*, creating it if absent.
+
+        Session names are unique in tmux. When another caller creates the
+        session between the lookup and :meth:`new_session`, tmux refuses the
+        duplicate and the session it created is returned. The creation arguments
+        apply only when a session is created; an existing session is returned as
+        it is.
+
+        Parameters
+        ----------
+        session_name : str
+            Exact name to look up, and to give a new session.
+        start_directory : str, PathLike or Format, optional
+            Working directory of a new session.
+        window_name : str or Format, optional
+            Name of a new session's first window.
+        window_command : str, optional
+            Command a new session's first window runs.
+        environment : dict, optional
+            Environment variables for a new session.
+
+        Examples
+        --------
+        >>> build = server.get_or_create_session("get-or-create-build")
+        >>> server.get_or_create_session("get-or-create-build") == build
+        True
+        >>> build.kill()
+        """
+        existing = self.sessions.get(session_name=session_name, default=None)
+        if existing is not None:
+            return existing
+        try:
+            return self.new_session(
+                session_name=session_name,
+                start_directory=start_directory,
+                window_name=window_name,
+                window_command=window_command,
+                environment=environment,
+            )
+        except exc.LibTmuxException as error:
+            refused = isinstance(error, exc.TmuxSessionExists) or (
+                "duplicate session" in str(error)
+            )
+            existing = self.sessions.get(session_name=session_name, default=None)
+            if not refused or existing is None:
+                raise
+            return existing
+
     #
     # Relations
     #

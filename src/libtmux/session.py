@@ -1269,6 +1269,62 @@ class Session(
 
         return window
 
+    def get_or_create_window(
+        self,
+        window_name: str | Format,
+        *,
+        attach: bool = False,
+        start_directory: StrPath | Format | None = None,
+        window_shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        direction: WindowDirection | None = None,
+    ) -> Window:
+        """Return this session's window named *window_name*, creating it if absent.
+
+        Calls :meth:`new_window` with ``select_existing=True``, so the lookup
+        matches the name exactly on every tmux: a ``str`` as typed, and a
+        :class:`~libtmux.Format` after tmux expands it once against the session.
+        The creation arguments apply only when a window is created; an existing
+        window keeps its directory, command and environment.
+
+        Parameters
+        ----------
+        window_name : str or Format
+            Name to look up, and to give a new window.
+        attach : bool, optional
+            Make the window current, whether it was found or created.
+        start_directory : str, PathLike or Format, optional
+            Working directory of a new window.
+        window_shell : str, optional
+            Command a new window runs.
+        environment : dict, optional
+            Environment variables for a new window.
+        direction : WindowDirection, optional
+            Where a new window goes relative to the current one.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            More than one window has the name.
+
+        Examples
+        --------
+        >>> logs = session.get_or_create_window("logs")
+        >>> session.get_or_create_window("logs") == logs
+        True
+        >>> len([w for w in session.windows if w.window_name == "logs"])
+        1
+        """
+        return self.new_window(
+            window_name,
+            start_directory=start_directory,
+            attach=attach,
+            window_shell=window_shell,
+            environment=environment,
+            direction=direction,
+            select_existing=True,
+        )
+
     def kill_window(self, target_window: str | int | None = None) -> None:
         """Close a tmux window, and all panes inside it, ``$ tmux kill-window``.
 
