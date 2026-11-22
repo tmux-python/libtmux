@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import collections
 import itertools
 import re
 import typing as t
@@ -38,10 +37,68 @@ CmpKey = tuple[
 ]
 VersionComparisonMethod = Callable[[CmpKey, CmpKey], bool]
 
-_Version = collections.namedtuple(
-    "_Version",
-    ["epoch", "release", "dev", "pre", "post", "local"],
-)
+
+class _Version(t.NamedTuple):
+    epoch: int
+    release: tuple[int, ...]
+    dev: tuple[str, int] | None
+    pre: tuple[str, int] | None
+    post: tuple[str, int] | None
+    local: tuple[SubLocalType, ...] | None
+
+
+def _compare_pre_post_dev(lhs: PrePostDevType, rhs: PrePostDevType) -> int:
+    if lhs == rhs:
+        return 0
+    if isinstance(lhs, NegativeInfinityType) or isinstance(rhs, InfinityType):
+        return -1
+    if isinstance(lhs, InfinityType) or isinstance(rhs, NegativeInfinityType):
+        return 1
+    return -1 if lhs < rhs else 1
+
+
+def _compare_local_item(lhs: LocalTuple, rhs: LocalTuple) -> int:
+    if lhs == rhs:
+        return 0
+    assert isinstance(lhs, tuple)
+    assert isinstance(rhs, tuple)
+    l0, l1 = lhs
+    r0, r1 = rhs
+    if isinstance(l0, NegativeInfinityType) and isinstance(r0, NegativeInfinityType):
+        return -1 if str(l1) < str(r1) else 1
+    if isinstance(l0, NegativeInfinityType):
+        return -1
+    if isinstance(r0, NegativeInfinityType):
+        return 1
+    assert isinstance(l0, int)
+    assert isinstance(r0, int)
+    return -1 if l0 < r0 else 1
+
+
+def _compare_local(lhs: LocalType, rhs: LocalType) -> int:
+    if lhs == rhs:
+        return 0
+    if isinstance(lhs, NegativeInfinityType):
+        return -1
+    if isinstance(rhs, NegativeInfinityType):
+        return 1
+    for l_item, r_item in zip(lhs, rhs, strict=False):
+        diff = _compare_local_item(l_item, r_item)
+        if diff != 0:
+            return diff
+    return -1 if len(lhs) < len(rhs) else (1 if len(lhs) > len(rhs) else 0)
+
+
+def _compare_keys(lhs: CmpKey, rhs: CmpKey) -> int:
+    if lhs[0] != rhs[0]:
+        return -1 if lhs[0] < rhs[0] else 1
+    if lhs[1] != rhs[1]:
+        return -1 if lhs[1] < rhs[1] else 1
+    for l_seg, r_seg in ((lhs[2], rhs[2]), (lhs[3], rhs[3]), (lhs[4], rhs[4])):
+        diff = _compare_pre_post_dev(l_seg, r_seg)
+        if diff != 0:
+            return diff
+    return _compare_local(lhs[5], rhs[5])
 
 
 def parse(version: str) -> Version:
@@ -91,13 +148,13 @@ class _BaseVersion:
         if not isinstance(other, _BaseVersion):
             return NotImplemented
 
-        return self._key < other._key
+        return _compare_keys(self._key, other._key) < 0
 
     def __le__(self, other: _BaseVersion) -> bool:
         if not isinstance(other, _BaseVersion):
             return NotImplemented
 
-        return self._key <= other._key
+        return _compare_keys(self._key, other._key) <= 0
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, _BaseVersion):
@@ -109,13 +166,13 @@ class _BaseVersion:
         if not isinstance(other, _BaseVersion):
             return NotImplemented
 
-        return self._key >= other._key
+        return _compare_keys(self._key, other._key) >= 0
 
     def __gt__(self, other: _BaseVersion) -> bool:
         if not isinstance(other, _BaseVersion):
             return NotImplemented
 
-        return self._key > other._key
+        return _compare_keys(self._key, other._key) > 0
 
     def __ne__(self, other: object) -> bool:
         if not isinstance(other, _BaseVersion):
@@ -470,8 +527,8 @@ class Version(_BaseVersion):
 
 
 def _parse_letter_version(
-    letter: str,
-    number: str | bytes | t.SupportsInt,
+    letter: str | None,
+    number: str | bytes | t.SupportsInt | None,
 ) -> tuple[str, int] | None:
     if letter:
         # We consider there to be an implicit 0 in a pre-release if there is
@@ -508,12 +565,13 @@ def _parse_letter_version(
 _local_version_separators = re.compile(r"[\._-]")
 
 
-def _parse_local_version(local: str) -> LocalType | None:
+def _parse_local_version(local: str | None) -> tuple[SubLocalType, ...] | None:
     """Take a string like abc.1.twelve and turns it into ("abc", 1, "twelve")."""
     if local is not None:
         return tuple(
             part.lower() if not part.isdigit() else int(part)
             for part in _local_version_separators.split(local)
+            if isinstance(part, str)
         )
     return None
 
@@ -524,7 +582,7 @@ def _cmpkey(
     pre: tuple[str, int] | None,
     post: tuple[str, int] | None,
     dev: tuple[str, int] | None,
-    local: tuple[SubLocalType] | None,
+    local: tuple[SubLocalType, ...] | None,
 ) -> CmpKey:
     # When we compare a release version, we want to compare it with all of the
     # trailing zeros removed. So we'll use a reverse the list, drop all the now
