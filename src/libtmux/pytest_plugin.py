@@ -317,13 +317,17 @@ def control_mode(
     ...     with control_mode() as ctl:
     ...         assert ctl.client_name != ''
     """
-    return functools.partial(ControlMode, server=server, session=session)
+
+    def _make_control_mode() -> ControlMode:
+        return ControlMode(server=server, session=session)
+
+    return _make_control_mode
 
 
 @pytest.fixture
 def TestServer(
     request: pytest.FixtureRequest,
-) -> type[Server]:
+) -> t.Callable[..., Server]:
     """Create a temporary tmux server that cleans up after itself.
 
     This is similar to the server pytest fixture, but can be used outside of pytest.
@@ -358,11 +362,8 @@ def TestServer(
 
     request.addfinalizer(fin)
 
-    return t.cast(
-        "type[Server]",
-        functools.partial(
-            Server,
-            on_init=on_init,
-            socket_name_factory=socket_name_factory,
-        ),
+    return functools.partial[Server](
+        Server,
+        on_init=on_init,
+        socket_name_factory=socket_name_factory,
     )

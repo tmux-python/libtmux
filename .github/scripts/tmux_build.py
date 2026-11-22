@@ -16,7 +16,9 @@ import tomllib
 
 _REPOSITORY = "https://github.com/tmux/tmux.git"
 with (pathlib.Path(__file__).parents[1] / "tmux-releases.toml").open("rb") as _pins:
-    _RELEASES: dict[str, str] = tomllib.load(_pins)["releases"]
+    _RAW_RELEASES: object = tomllib.load(_pins)["releases"]
+    assert isinstance(_RAW_RELEASES, dict)
+    _RELEASES: dict[str, str] = {str(k): str(v) for k, v in _RAW_RELEASES.items()}
 
 _BUILD_ENV = {
     "CC": "cc",

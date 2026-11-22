@@ -8,11 +8,7 @@ This is an internal API not covered by versioning policy.
 from __future__ import annotations
 
 import dataclasses
-import typing as t
 from operator import attrgetter
-
-if t.TYPE_CHECKING:
-    from _typeshed import DataclassInstance
 
 
 class SkipDefaultFieldsReprMixin:
@@ -80,8 +76,11 @@ class SkipDefaultFieldsReprMixin:
     ItemWithMixin(name=Test, unit_price=2.05)
     """
 
-    def __repr__(self: DataclassInstance) -> str:
+    def __repr__(self) -> str:
         """Omit default fields in object representation."""
+        if not dataclasses.is_dataclass(self):
+            return super().__repr__()
+
         nodef_f_vals = (
             (f.name, attrgetter(f.name)(self))
             for f in dataclasses.fields(self)
