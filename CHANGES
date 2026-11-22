@@ -60,6 +60,14 @@ runner batches command lines through one persistent `tmux -C` client
 and returns one result per command. (#685)
 `libtmux._experimental.chain`, not the top-level `libtmux`. (#685)
 
+### Fixes
+
+#### `break_pane()` keeps the window in the pane's session (#685)
+
+{meth}`~libtmux.Pane.break_pane` put the new window in tmux's current
+session, which can be a different session from the pane's own. It now
+targets the pane's session.
+
 ## libtmux 0.67.0 (2026-11-22)
 
 libtmux 0.67.0 keeps a `#` in session names, window names, pane titles,

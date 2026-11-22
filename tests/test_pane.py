@@ -1437,7 +1437,7 @@ def test_break_pane_basic(session: Session) -> None:
 def test_break_pane_returns_relinked_window(
     session: Session, window_name: str | None, swapped: bool
 ) -> None:
-    """Breaking a sole pane returns its window in the destination session."""
+    """Breaking a sole pane keeps its window in the pane's own session."""
     source = session.new_window(window_name="source")
     pane = source.active_pane
     assert pane is not None
@@ -1448,12 +1448,14 @@ def test_break_pane_returns_relinked_window(
         assert other_pane is not None
         other_pane.swap(target=pane, detach=True)
         assert pane.window_id == source.window_id
-    destination = session.server.new_session(session_name="destination")
+    # The newest session becomes tmux's current one; the window must still
+    # land in the pane's session rather than follow it.
+    newer = session.server.new_session(session_name="destination")
 
     window = pane.break_pane(window_name=window_name)
 
     assert window.window_id == expected.window_id
-    assert window.session_id == destination.session_id
+    assert window.session_id == session.session_id != newer.session_id
     assert [member.pane_id for member in window.panes] == [pane.pane_id]
     if window_name is not None:
         assert window.window_name == window_name
