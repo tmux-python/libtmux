@@ -15,6 +15,9 @@ straight from tmux, mirroring tmux's built-in
 {attr}`pane.session_id <libtmux.Pane.session_id>` without you writing a raw tmux
 command.
 
+This page is about reading formats. To pass one into a command, such as a
+start directory of `#{pane_current_path}`, see {ref}`formats`.
+
 Most of the time you just read these attributes and move on. Not every
 field holds a value on every object, though: the object's type and your
 tmux version decide which fields are populated and which stay `None`.

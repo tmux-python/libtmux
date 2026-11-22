@@ -331,6 +331,9 @@ moves as you watch it — dimensions during a resize, the working directory afte
 a `cd` — since you get a fresh reading rather than a value cached when the object
 was built.
 
+To show text from users exactly, without tmux expanding a `#` or `%` in it,
+see {ref}`formats`.
+
 ### Get pane dimensions
 
 ```python

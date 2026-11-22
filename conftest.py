@@ -19,6 +19,7 @@ from _pytest.doctest import DoctestItem
 
 from libtmux._internal.control_mode import ControlMode
 from libtmux.client import Client
+from libtmux.formats import Format
 from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
@@ -44,6 +45,7 @@ def add_doctest_fixtures(
         doctest_namespace["Window"] = Window
         doctest_namespace["Pane"] = Pane
         doctest_namespace["Client"] = Client
+        doctest_namespace["Format"] = Format
         doctest_namespace["server"] = request.getfixturevalue("server")
         doctest_namespace["Server"] = request.getfixturevalue("TestServer")
         session: Session = request.getfixturevalue("session")

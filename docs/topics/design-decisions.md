@@ -72,6 +72,25 @@ Coexistence is the honest trade-off: two interfaces are more surface area to
 learn than one. The payoff is that you can adopt the typed path incrementally,
 file by file, without a flag-day rewrite.
 
+## Why names are literal and formats opt in
+
+tmux expands formats in names, titles and start directories with no way to
+turn it off, so a window named after a branch like `fix#2` or a directory
+containing `#S` would silently become something else. libtmux keeps plain
+strings literal and asks you to mark the values tmux should expand with
+{class}`~libtmux.Format`. See {ref}`formats` for how to use it.
+
+The marker is a type, not a flag, because one call often mixes the two:
+{meth}`~libtmux.Session.new_window` can keep its name literal while expanding
+its start directory. A per-call flag cannot say which argument it means, and a
+flag keyed by parameter name fails silently on a typo. The type is not a
+`str` subclass, so parameters name it in their signatures and a type checker
+rejects a {class}`~libtmux.Format` where tmux would store the text unchanged.
+
+Text is escaped with tmux's character-code format, `#{a:35}` for `#`, rather
+than by doubling it: tmux keeps a run of `#` before `[` as a style, so
+doubling cannot keep `#[` literal.
+
 ## Pre-1.0 API evolution
 
 libtmux is pre-1.0. This is a deliberate choice — the API is still maturing.
