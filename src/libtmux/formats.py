@@ -271,8 +271,10 @@ class Format:
     def escape(cls, text: str | Format) -> Format:
         """Return a format that tmux expands back to *text*.
 
-        The result is safe anywhere in a format, including inside a
-        conditional or comparison. A :class:`Format` is returned unchanged.
+        The result stays literal inside an expression such as a conditional
+        or comparison, though not inside ``#(...)``, where tmux counts
+        parentheses for a shell command. A :class:`Format` is returned
+        unchanged.
 
         Examples
         --------
