@@ -2,7 +2,7 @@
   "schema": "libtmux-capabilities/1",
   "port": "py",
   "floor": {
-    "minimum": "3.2a"
+    "minimum": "3.3a"
   },
   "capabilities": [
     {

@@ -181,7 +181,11 @@ def test_html_matrix_links_documented_sphinx_apis(
         "Floating panes, tmux 3.6: Refused with an error (exc.LibTmuxException)" in html
     )
     assert "Floating panes, tmux 3.7: Works" in html
-    for release in tmux_capabilities.DEFAULT_TMUX_SERIES:
+    manifest = capabilities.manifest()
+    shown = tmux_capabilities.resolve_versions(
+        manifest["floor"]["minimum"], manifest["capabilities"]
+    )
+    for release in shown:
         assert f"<p>{release}</p>" in html
 
 

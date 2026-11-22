@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 #: Minimum version of tmux required to run libtmux
-TMUX_MIN_VERSION = "3.2a"
+TMUX_MIN_VERSION = "3.3a"
 
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.7"
@@ -723,7 +723,7 @@ def has_lt_version(max_version: str, tmux_bin: str | None = None) -> bool:
 
 
 def has_minimum_version(raises: bool = True, tmux_bin: str | None = None) -> bool:
-    """Return True if tmux meets version requirement. Version >= 3.2a.
+    """Return True if tmux meets version requirement. Version >= 3.3a.
 
     Parameters
     ----------

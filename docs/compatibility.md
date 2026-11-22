@@ -10,7 +10,7 @@
 
 ## tmux
 
-- **Minimum**: tmux 3.2a
+- **Minimum**: tmux 3.3a
 - **Tested**: latest stable tmux release
 - libtmux uses tmux's format system and control mode -- older tmux versions
   may lack required format variables
@@ -18,7 +18,7 @@
 ### Capabilities by tmux release
 
 Core {class}`~libtmux.Server`, {class}`~libtmux.Session`,
-{class}`~libtmux.Window`, and {class}`~libtmux.Pane` calls work from tmux 3.2a
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` calls work from tmux 3.3a
 up. Flags and commands added in newer tmux releases check the running tmux
 version first: optional flags warn and send the command without the flag, while
 features that have no fallback raise {exc}`~libtmux.exc.LibTmuxException` before

@@ -12,7 +12,7 @@ from inside a live tmux session.
 
 ## Requirements
 
-- [tmux] 3.2a or newer
+- [tmux] 3.3a or newer
 - [pip] - for this handbook's examples
 
 [tmux]: https://tmux.github.io/

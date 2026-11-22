@@ -558,40 +558,28 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         "splitp": "split-window",
     }
 
-    if has_gte_version("3.2"):
-        terminal_features = server.show_option("terminal-features")
-        assert isinstance(terminal_features, dict)
-        assert "screen*" in terminal_features
-        assert terminal_features["screen*"] == ["title"]
-        assert "xterm*" in terminal_features
-        assert terminal_features["xterm*"] == [
-            "clipboard",
-            "ccolour",
-            "cstyle",
-            "focus",
-            "title",
-        ]
-        # Additional features in tmux 3.4+
-        if has_gte_version("3.4"):
-            assert "rxvt*" in terminal_features
-            assert terminal_features["rxvt*"] == ["ignorefkeys"]
+    terminal_features = server.show_option("terminal-features")
+    assert isinstance(terminal_features, dict)
+    assert "screen*" in terminal_features
+    assert terminal_features["screen*"] == ["title"]
+    assert "xterm*" in terminal_features
+    assert terminal_features["xterm*"] == [
+        "clipboard",
+        "ccolour",
+        "cstyle",
+        "focus",
+        "title",
+    ]
+    # Additional features in tmux 3.4+
+    if has_gte_version("3.4"):
+        assert "rxvt*" in terminal_features
+        assert terminal_features["rxvt*"] == ["ignorefkeys"]
 
     # Terminal overrides differ by version
     # tmux 3.0a-3.1b: has default values (xterm*, screen*)
     # tmux 3.2+: defaults removed, returns None unless explicitly set
-    if has_gte_version("3.2"):
-        terminal_overrides = server.show_option("terminal-overrides")
-        assert isinstance(terminal_overrides, (dict, type(None)))
-    elif has_gte_version("3.0"):
-        # tmux 3.0a/3.1b have defaults like "xterm*:XT:Ms=...,screen*:XT"
-        terminal_overrides = server.show_option("terminal-overrides")
-        assert isinstance(terminal_overrides, dict)
-        assert "screen*" in terminal_overrides or "xterm*" in terminal_overrides
-    else:
-        terminal_overrides = server.show_option("terminal-overrides")
-        assert isinstance(terminal_overrides, dict)
-        assert "screen*" in terminal_overrides
-        assert "xterm*" in terminal_overrides
+    terminal_overrides = server.show_option("terminal-overrides")
+    assert isinstance(terminal_overrides, (dict, type(None)))
 
     assert server.show_option("user-keys") is None
 
@@ -614,8 +602,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
     # List variables: Pane (pane-colours added in tmux 3.3)
     pane = session.active_pane
     assert pane is not None
-    if has_gte_version("3.3"):
-        assert pane.show_option("pane-colours") is None
+    assert pane.show_option("pane-colours") is None
 
 
 def test_high_level_api_expectations(server: Server) -> None:
@@ -677,14 +664,9 @@ def test_style_option_validation(server: Server) -> None:
     assert isinstance(style, str)
     assert "fg=red" in str(style)
 
-    if has_gte_version("3.2"):
-        # tmux 3.2+: literal string output
-        assert "bg=default" in str(style)
-        assert "bold" in str(style)
-    else:
-        # tmux <3.2: normalized output (bold→bright, bg=default omitted)
-        assert "bright" in str(style)
-        assert "bg=default" not in str(style)
+    # tmux 3.2+: literal string output
+    assert "bg=default" in str(style)
+    assert "bold" in str(style)
 
     # Invalid style should raise OptionError
     with pytest.raises(exc.OptionError):
@@ -698,19 +680,14 @@ def test_style_option_validation(server: Server) -> None:
         )
         style = session.show_option("status-style")
         assert isinstance(style, str)
-        if has_gte_version("3.2"):
-            # tmux 3.2+: literal string output
-            assert style == "fg=colour240,bg=#525252,bold,underscore"
-        else:
-            # tmux <3.2: bold→bright
-            assert style == "fg=colour240,bg=#525252,bright,underscore"
+        # tmux 3.2+: literal string output
+        assert style == "fg=colour240,bg=#525252,bold,underscore"
 
         # Test style with variables (format expansion added in tmux 3.2)
-        if has_gte_version("3.2"):
-            session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
-            style = session.show_option("status-style")
-            assert isinstance(style, str)
-            assert style == "fg=#{?pane_in_mode,red,green}"
+        session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
+        style = session.show_option("status-style")
+        assert isinstance(style, str)
+        assert style == "fg=#{?pane_in_mode,red,green}"
 
 
 def test_option_error_handling(server: Server) -> None:
@@ -742,9 +719,6 @@ def test_terminal_features_edge_cases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test edge cases for terminal-features option."""
-    if not has_gte_version("3.2"):
-        pytest.skip("terminal-features requires tmux >= 3.2")
-
     # Test empty features
     monkeypatch.setattr(
         server,

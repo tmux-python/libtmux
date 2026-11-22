@@ -14,6 +14,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux.common import TMUX_MIN_VERSION
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import (
     _CONTEXT_ONLY_TOKENS,
@@ -21,6 +22,7 @@ from libtmux.neo import (
     SCOPES_BY_LIST_CMD,
     Obj,
     _is_target_not_found_error,
+    _normalize_tmux_version,
     _split_records,
     _token_scope,
     get_output_format,
@@ -93,33 +95,26 @@ def test_is_target_not_found_error(
     assert _is_target_not_found_error(stderr_text) is expected
 
 
-def test_pane_dead_signal_gated_to_3_3() -> None:
-    """``pane_dead_signal`` first registered in tmux 3.3.
+def test_exit_tokens_are_listed_at_the_minimum_tmux() -> None:
+    """``pane_dead_signal`` and ``pane_dead_time`` need no gate at the minimum.
 
-    The format-table entry sits in ``format.c`` from commit a3d92093
-    ("Add remain-on-exit-format"), first tagged in tmux 3.3. Emitting
-    it on tmux 3.2a hydrates the field with the literal ``#{...}``
-    text rather than an empty value, which downstream code interprets
-    as a live signal — a real footgun.
+    Both tokens registered in tmux 3.3, the release before the 3.3a minimum.
     """
-    assert FIELD_VERSION["pane_dead_signal"] == "3.3"
-    fields_old, _ = get_output_format("list-panes", "3.2a")
-    assert "pane_dead_signal" not in fields_old
-    fields_new, _ = get_output_format("list-panes", "3.3")
-    assert "pane_dead_signal" in fields_new
+    fields, _ = get_output_format("list-panes", TMUX_MIN_VERSION)
+
+    assert "pane_dead_signal" in fields
+    assert "pane_dead_time" in fields
 
 
-def test_pane_dead_time_gated_to_3_3() -> None:
-    """``pane_dead_time`` first registered in tmux 3.3.
+def test_gated_tokens_are_newer_than_the_minimum_tmux() -> None:
+    """Every gated format token arrived after the minimum tmux."""
+    minimum = _normalize_tmux_version(
+        TMUX_MIN_VERSION.rstrip("abcdefghijklmnopqrstuvwxyz")
+    )
 
-    Same provenance as ``pane_dead_signal`` — both tokens shipped in
-    the same upstream commit, so they share a version floor.
-    """
-    assert FIELD_VERSION["pane_dead_time"] == "3.3"
-    fields_old, _ = get_output_format("list-panes", "3.2a")
-    assert "pane_dead_time" not in fields_old
-    fields_new, _ = get_output_format("list-panes", "3.3")
-    assert "pane_dead_time" in fields_new
+    assert all(
+        _normalize_tmux_version(release) > minimum for release in FIELD_VERSION.values()
+    )
 
 
 def test_field_version_keys_are_obj_fields() -> None:

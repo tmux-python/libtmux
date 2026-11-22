@@ -989,8 +989,6 @@ class Server(
     ) -> list[str] | None:
         """Manage server access control via ``$ tmux server-access``.
 
-        Requires tmux 3.3+ (introduced in 3.3).
-
         Parameters
         ----------
         allow : str, optional
@@ -1015,15 +1013,9 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
-        ...     result = server.server_access(list_access=True)
-        ...     assert isinstance(result, list)
+        >>> isinstance(server.server_access(list_access=True), list)
+        True
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "server_access requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         if read_only and write:
             msg = "read_only and write are mutually exclusive (tmux rejects -r -w)"
             raise ValueError(msg)
@@ -1254,8 +1246,6 @@ class Server(
         Always uses ``-b`` (background) to avoid blocking the command queue.
         Use ``send-keys -K -c <client>`` to provide the confirmation key.
 
-        Requires tmux 3.3+ for ``-b`` flag support.
-
         Parameters
         ----------
         command : str
@@ -1290,10 +1280,6 @@ class Server(
         >>> result
         'yes'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "confirm_before requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ("-b",)
 
         if prompt is not None:
@@ -1349,8 +1335,6 @@ class Server(
         Always uses ``-b`` (background) to avoid blocking the command queue.
         Use ``send-keys -K -c <client>`` to type into the prompt and submit.
 
-        Requires tmux 3.3+ for ``-b`` flag support.
-
         Parameters
         ----------
         template : str
@@ -1373,7 +1357,7 @@ class Server(
             Prompt type (``-T`` flag).
         expand_format : bool, optional
             Pass the template through ``args_make_commands_prepare``
-            (``-F`` flag) so format strings expand. Requires tmux 3.3+.
+            (``-F`` flag) so format strings expand.
         literal : bool, optional
             Disable splitting *prompt* on commas — treat it as a single
             prompt (``-l`` flag). Requires tmux 3.6+.
@@ -1406,10 +1390,6 @@ class Server(
         >>> result
         'hi'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "command_prompt requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ("-b",)
 
         if one_key:
@@ -1527,7 +1507,6 @@ class Server(
             Requires tmux 3.5+.
         stay_open : bool, optional
             Keep the menu open when the mouse is released (``-O`` flag).
-            Requires tmux 3.2+.
 
         Examples
         --------
@@ -1893,18 +1872,9 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
-        ...     result = server.show_prompt_history()
-        ... else:
-        ...     result = []
-        >>> isinstance(result, list)
+        >>> isinstance(server.show_prompt_history(), list)
         True
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "show_prompt_history requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
@@ -1931,14 +1901,8 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
-        ...     server.clear_prompt_history()
+        >>> server.clear_prompt_history()
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "clear_prompt_history requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
@@ -2411,7 +2375,7 @@ class Server(
             .. versionadded:: 0.56
         client_flags : str, optional
             Set client flags (``-f`` flag), e.g. ``no-output``,
-            ``read-only``. Requires tmux 3.2+.
+            ``read-only``.
 
             .. versionadded:: 0.56
 

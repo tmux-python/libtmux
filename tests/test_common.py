@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import locale
 import logging
+import pathlib
 import re
 import subprocess
 import sys
@@ -637,6 +638,50 @@ def test_version_validation(
     elif check_type == "type_check":
         assert mock_version is not None  # For type checker
         assert isinstance(has_version(mock_version), bool)
+
+
+def test_minimum_tmux_is_3_3a(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tmux 3.3a is accepted and tmux 3.2a is refused.
+
+    ``get_version`` drops the patch letter, so 3.3a reports as 3.3 and 3.2a
+    as 3.2. It is replaced here because the suite runs one tmux build and the
+    comparison is the behaviour under test.
+    """
+    assert libtmux.common.TMUX_MIN_VERSION == "3.3a"
+
+    monkeypatch.setattr(
+        libtmux.common,
+        "get_version",
+        lambda tmux_bin=None: LooseVersion("3.3"),
+    )
+    assert has_minimum_version()
+
+    monkeypatch.setattr(
+        libtmux.common,
+        "get_version",
+        lambda tmux_bin=None: LooseVersion("3.2"),
+    )
+    with pytest.raises(exc.VersionTooLow, match=r"3\.3a and greater"):
+        has_minimum_version()
+
+
+def test_no_gate_compares_at_or_below_the_minimum() -> None:
+    """No version gate in the library names a release every supported tmux has.
+
+    A gate at or below the minimum can never take its fallback on a supported
+    tmux, so it is dead code that reads as live compatibility.
+    """
+    minimum = LooseVersion(re.sub(r"[a-z-]", "", libtmux.common.TMUX_MIN_VERSION))
+    gate = re.compile(r'has_(?:gte|gt|lte|lt)_version\(\s*"([^"]+)"')
+    stale: list[str] = []
+    for path in sorted(pathlib.Path(libtmux.__file__).parent.rglob("*.py")):
+        stale.extend(
+            f"{path.name}: {release}"
+            for release in gate.findall(path.read_text(encoding="utf-8"))
+            if LooseVersion(release) <= minimum
+        )
+
+    assert stale == []
 
 
 def test_tmux_cmd_pre_execution_logging(

@@ -49,10 +49,6 @@ session/window/pane listings do not have a client attachment to report.
 
 
 FIELD_VERSION: dict[str, str] = {
-    # Post-3.2a additions (verified against tmux's format.c at each gated
-    # release tag, e.g. https://github.com/tmux/tmux/blob/3.6a/format.c).
-    "pane_dead_signal": "3.3",
-    "pane_dead_time": "3.3",
     # tmux 3.7 additions (verified against format.c / tmux.1 at the 3.7 tag).
     "bracket_paste_flag": "3.7",
     "pane_flags": "3.7",
@@ -68,8 +64,8 @@ FIELD_VERSION: dict[str, str] = {
 }
 """Minimum tmux version that registers each format token.
 
-Field names absent from this dict default to ``"3.2a"`` (always-safe within
-the supported tmux range). Entries here represent tokens added after 3.2a
+Field names absent from this dict default to ``"3.3a"`` (always-safe within
+the supported tmux range). Entries here represent tokens added after 3.3a
 that need explicit gating to keep the ``-F`` template compatible with older
 tmux versions.
 """
@@ -272,7 +268,7 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
     >>> from libtmux.neo import _normalize_tmux_version
     >>> _normalize_tmux_version("3.6a") < _normalize_tmux_version("master")
     True
-    >>> _normalize_tmux_version("3.2a") < _normalize_tmux_version("3.6a")
+    >>> _normalize_tmux_version("3.3a") < _normalize_tmux_version("3.6a")
     True
     """
     if "master" in version.lower():
@@ -919,7 +915,7 @@ class Obj:
 @functools.cache
 def get_output_format(
     list_cmd: str = "list-panes",
-    tmux_version: str = "3.2a",
+    tmux_version: str = "3.3a",
 ) -> tuple[tuple[str, ...], str]:
     """Return field names and tmux format string filtered by scope and version.
 
@@ -935,8 +931,8 @@ def get_output_format(
         The tmux list subcommand the format string is being built for.
         Determines which token scopes are reachable.
     tmux_version : str
-        The live tmux version. Used to gate post-3.2a tokens. Defaults to
-        ``"3.2a"`` (the project's minimum) for safe fallback when the
+        The live tmux version. Used to gate post-3.3a tokens. Defaults to
+        ``"3.3a"`` (the project's minimum) for safe fallback when the
         caller can't yet detect the version.
 
     Returns
@@ -996,7 +992,7 @@ def get_output_format(
 def parse_output(
     output: str,
     list_cmd: str = "list-panes",
-    tmux_version: str = "3.2a",
+    tmux_version: str = "3.3a",
 ) -> OutputRaw:
     """Parse a tmux ``-F`` line into a dict keyed by Obj field name.
 
