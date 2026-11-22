@@ -32,6 +32,7 @@ from . import exc
 from .common import (
     EnvironmentMixin,
     WindowDict,
+    _literal,
     session_check_name,
 )
 
@@ -860,7 +861,9 @@ class Session(
         """
         session_check_name(new_name)
 
-        proc = self.cmd("rename-session", "--", escape_trailing_separator(new_name))
+        proc = self.cmd(
+            "rename-session", "--", escape_trailing_separator(_literal(new_name))
+        )
 
         raise_if_stderr(proc, "rename-session")
 
@@ -980,11 +983,13 @@ class Session(
         # Catch empty string and default (`None`)
         if start_directory:
             start_directory = pathlib.Path(start_directory).expanduser()
-            window_args += (escape_trailing_separator(f"-c{start_directory}"),)
+            window_args += (
+                escape_trailing_separator(f"-c{_literal(str(start_directory))}"),
+            )
 
         window_args += ("-F#{window_id}",)  # output
         if window_name is not None and isinstance(window_name, str):
-            window_args += ("-n", escape_trailing_separator(window_name))
+            window_args += ("-n", escape_trailing_separator(_literal(window_name)))
 
         if environment:
             for k, v in environment.items():

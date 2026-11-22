@@ -27,7 +27,13 @@ from libtmux._internal.env import (
 from libtmux._internal.query_list import QueryList
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    _literal,
+    get_version,
+    has_gte_version,
+    raise_if_stderr,
+    tmux_cmd,
+)
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -2704,7 +2710,7 @@ class Server(
                 tmux_args += ("-f", client_flags)
 
             if session_name is not None:
-                tmux_args += (escape_trailing_separator(f"-s{session_name}"),)
+                tmux_args += (escape_trailing_separator(f"-s{_literal(session_name)}"),)
 
             if not attach:
                 tmux_args += ("-d",)
@@ -2713,11 +2719,11 @@ class Server(
                 start_directory = pathlib.Path(start_directory).expanduser()
                 tmux_args += (
                     "-c",
-                    escape_trailing_separator(str(start_directory)),
+                    escape_trailing_separator(_literal(str(start_directory))),
                 )
 
             if window_name:
-                tmux_args += ("-n", escape_trailing_separator(window_name))
+                tmux_args += ("-n", escape_trailing_separator(_literal(window_name)))
 
             if x is not None:
                 tmux_args += ("-x", x)

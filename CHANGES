@@ -62,6 +62,26 @@ server.kill_session("doomsday", exact=True)
 server.new_session("doom", kill_session=True)
 ```
 
+#### `#` in names, titles and start directories is literal (#901)
+
+A `#` in a session name, window name, pane title or `start_directory` is kept
+as typed, so `rename_window("build#2")` names the window `build#2`. tmux
+previously expanded the text as a format: `#S` became the session name and an
+unknown sequence was dropped. This covers {meth}`~libtmux.Server.new_session`,
+{meth}`~libtmux.Session.new_window`, {meth}`~libtmux.Session.rename_session`,
+{meth}`~libtmux.Window.rename_window`, {meth}`~libtmux.Pane.set_title`,
+{meth}`~libtmux.Pane.split`, {meth}`~libtmux.Pane.new_pane` and the respawn
+methods.
+
+```python
+# Before
+window.rename_window("#{pane_current_command}")
+
+# After
+name = pane.display_message("#{pane_current_command}", get_text=True)[0]
+window.rename_window(name)
+```
+
 ### What's new
 
 #### `exact=` for session names (#899)

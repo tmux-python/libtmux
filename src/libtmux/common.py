@@ -246,6 +246,22 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
+def _literal(value: str) -> str:
+    """Escape ``#`` so tmux stores *value* instead of expanding it as a format.
+
+    tmux expands formats in names, titles and start directories; ``##`` is its
+    escape for a literal ``#``.
+
+    Examples
+    --------
+    >>> _literal("build#2")
+    'build##2'
+    >>> _literal("plain")
+    'plain'
+    """
+    return value.replace("#", "##")
+
+
 def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
 
