@@ -782,19 +782,19 @@ class Server(
         in ``__init__``; measuring it again here is free and keeps this method
         total over every flag it renders.
 
-        A name or a bare server is different, and is measured only here, for
-        the same reason ``colors`` is checked at this point: naming a server is
-        not using one, so :meth:`is_alive` has to stay answerable for a server
-        that cannot be reached. It also reads ``$TMUX_TMPDIR`` at the moment
-        the tmux binary would read it, so an environment changed after
-        construction is measured as tmux sees it rather than as it once was.
+        A name or a bare server resolves to a path from the environment this
+        handle captured at construction, and that path is measured only here:
+        naming a server is not using one, so :meth:`is_alive` has to stay
+        answerable for a server that cannot be reached. A later change to
+        ``$TMUX_TMPDIR`` does not move a handle to another socket.
 
         Returns
         -------
         list[str]
-            ``["-S<path>"]``, ``["-L<name>"]``, or ``[]`` for a bare server,
-            which leaves tmux to pick the socket itself -- ``$TMUX`` inside a
-            pane, and a path under ``$TMUX_TMPDIR`` outside one.
+            ``["-S<path>"]`` for the socket this handle captured: a named or
+            bare server resolves to one at construction -- ``$TMUX`` inside a
+            pane, a path under ``$TMUX_TMPDIR`` outside one -- so tmux never
+            picks a socket itself.
 
         Raises
         ------
@@ -805,16 +805,16 @@ class Server(
         Examples
         --------
         >>> server._socket_args()
-        ['-Llibtmux_test...']
+        ['-S.../libtmux_test...']
 
         >>> from libtmux.server import Server as TmuxServer
         >>> TmuxServer(socket_path="/tmp/short/sock")._socket_args()
         ['-S/tmp/short/sock']
 
-        A bare server names no socket, and tmux falls back to its own default:
+        A bare server captures the socket it would reach:
 
         >>> TmuxServer()._socket_args()
-        []
+        ['-S...']
 
         A path too long to bind is refused here, before tmux is spawned:
 
