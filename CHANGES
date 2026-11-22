@@ -47,7 +47,7 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
-#### Capability matrix on the compatibility page
+#### Capability matrix on the compatibility page (#887)
 
 {doc}`/compatibility` moves to the top-level sidebar beneath {doc}`/migration`
 and renders a capability matrix across tmux releases from the internal
