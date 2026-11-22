@@ -17,7 +17,7 @@ if t.TYPE_CHECKING:
 
     VersionCompareOp: TypeAlias = Callable[
         [LooseVersion, LooseVersion],
-        object,
+        bool,
     ]
 
 
@@ -140,8 +140,8 @@ def test_version_compare(
     raises: type[Exception] | bool,
 ) -> None:
     """Assert version comparisons."""
-    raises_ctx: contextlib.AbstractContextManager[object] = (
-        pytest.raises(raises) if isinstance(raises, type) else does_not_raise()
-    )
+    raises_ctx: contextlib.AbstractContextManager[
+        pytest.ExceptionInfo[Exception] | None
+    ] = pytest.raises(raises) if isinstance(raises, type) else does_not_raise()
     with raises_ctx:
         assert op(LooseVersion(a), LooseVersion(b))
