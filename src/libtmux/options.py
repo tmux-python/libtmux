@@ -75,6 +75,7 @@ import shlex
 import typing as t
 import warnings
 
+from libtmux._internal.constants import TerminalFeatures
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import CmdMixin, escape_trailing_separator
 from libtmux.constants import (
@@ -89,28 +90,46 @@ from . import exc
 if t.TYPE_CHECKING:
     from typing import Self, TypeAlias
 
-    from libtmux._internal.constants import TerminalFeatures
     from libtmux.common import tmux_cmd
 
 
-TerminalOverride = dict[str, str | None]
+TerminalOverride = dict[str, str | int | None]
 TerminalOverrides = dict[str, TerminalOverride]
 CommandAliases = dict[str, str]
 
 OptionDict: TypeAlias = dict[str, t.Any]
 UntypedOptionsDict: TypeAlias = dict[str, str | None]
-ExplodedUntypedOptionsDict: TypeAlias = dict[
-    str,
-    str | int | list[str] | dict[str, list[str]],
-]
-ExplodedComplexUntypedOptionsDict: TypeAlias = dict[
-    str,
+ExplodedArrayValue: TypeAlias = (
     str
     | int
+    | bool
+    | list[str]
+    | dict[str, list[str]]
+    | dict[int, str | int | bool | None]
+    | SparseArray[str | int | bool | None]
+    | None
+)
+ExplodedUntypedOptionsDict: TypeAlias = dict[
+    str,
+    ExplodedArrayValue,
+]
+ExplodedComplexValue: TypeAlias = (
+    str
+    | int
+    | bool
+    | list[str]
     | list[str | int]
+    | dict[str, list[str]]
     | dict[str, list[str | int]]
+    | TerminalOverrides
+    | CommandAliases
     | SparseArray[str | int]
-    | None,
+    | SparseArray[str | int | bool | None]
+    | None
+)
+ExplodedComplexUntypedOptionsDict: TypeAlias = dict[
+    str,
+    ExplodedComplexValue,
 ]
 
 logger = logging.getLogger(__name__)
@@ -175,6 +194,9 @@ ConvertedValues: TypeAlias = (
     | list[ConvertedValue]
     | dict[str, ConvertedValue]
     | SparseArray[ConvertedValue]
+)
+OptionValue: TypeAlias = (
+    ConvertedValues | TerminalFeatures | TerminalOverrides | CommandAliases
 )
 
 
@@ -389,16 +411,21 @@ def explode_arrays(
     >>> sorted(hooks_exploded["session-renamed"].keys())
     [0, 5]
     """
-    options: dict[str, t.Any] = {}
+    options: ExplodedUntypedOptionsDict = {}
     for key, val in _dict.items():
-        Default: type[dict[t.Any, t.Any] | SparseArray[str | int | bool | None]] = (
-            dict if isinstance(key, str) and key == "terminal-features" else SparseArray
-        )
+        is_terminal_features = key == "terminal-features"
         if "[" not in key:
             if force_array:
-                options[key] = Default()
-                if val is not None:
-                    options[key][0] = val
+                if is_terminal_features:
+                    term_dict: dict[int, str | int | bool | None] = {}
+                    if val is not None:
+                        term_dict[0] = val
+                    options[key] = term_dict
+                else:
+                    arr: SparseArray[str | int | bool | None] = SparseArray()
+                    if val is not None:
+                        arr[0] = val
+                    options[key] = arr
             else:
                 options[key] = val
             continue
@@ -418,14 +445,31 @@ def explode_arrays(
                     key = base_key
                     index = int(match["index"])
 
-                    if options.get(key) is None:
-                        options[key] = Default()
-                    options[key][index] = val
+                    existing = options.get(key)
+                    if isinstance(existing, (dict, SparseArray)):
+                        existing_indexed = existing
+                    elif is_terminal_features:
+                        existing_indexed = {}
+                        options[key] = existing_indexed
+                    else:
+                        existing_indexed = SparseArray()
+                        options[key] = existing_indexed
+                    if isinstance(existing_indexed, SparseArray) or (
+                        isinstance(existing_indexed, dict)
+                        and not isinstance(existing_indexed, SparseArray)
+                    ):
+                        t.cast(
+                            "dict[int, str | int | bool | None]",
+                            existing_indexed,
+                        )[index] = val
         except Exception:
             if force_array and val:
-                options[key] = Default()
-                if isinstance(options[key], SparseArray):
-                    options[key][0] = val
+                if key == "terminal-features":
+                    options[key] = {}
+                else:
+                    fallback_arr: SparseArray[str | int | bool | None] = SparseArray()
+                    fallback_arr[0] = val
+                    options[key] = fallback_arr
             else:
                 options[key] = val
             logger.warning(
@@ -504,13 +548,19 @@ def explode_complex(
     ... }}
     True
     """
-    options: dict[str, t.Any] = {}
+    options: ExplodedComplexUntypedOptionsDict = {}
     for key, val in _dict.items():
         try:
             if isinstance(val, SparseArray) and key == "terminal-features":
                 new_val: TerminalFeatures = {}
 
                 for item in val.iter_values():
+                    if not isinstance(item, str):
+                        logger.warning(
+                            "tmux options parse failed",
+                            extra={"tmux_option_key": key},
+                        )
+                        continue
                     try:
                         term, features = item.split(":", maxsplit=1)
                         new_val[term] = features.split(":")
@@ -525,6 +575,12 @@ def explode_complex(
                 new_overrides: TerminalOverrides = {}
 
                 for item in val.iter_values():
+                    if not isinstance(item, str):
+                        logger.warning(
+                            "tmux options parse failed",
+                            extra={"tmux_option_key": key},
+                        )
+                        continue
                     try:
                         # Split on all colons: first part is terminal pattern,
                         # remaining parts are individual features/capabilities
@@ -552,6 +608,12 @@ def explode_complex(
                 new_aliases: CommandAliases = {}
 
                 for item in val.iter_values():
+                    if not isinstance(item, str):
+                        logger.warning(
+                            "tmux options parse failed",
+                            extra={"tmux_option_key": key},
+                        )
+                        continue
                     try:
                         alias, command = item.split("=", maxsplit=1)
                         if options.get(key) is None or not isinstance(
@@ -567,11 +629,25 @@ def explode_complex(
                         )
                 options[key] = new_aliases
                 continue
+            if isinstance(val, dict) and not isinstance(val, SparseArray):
+                str_dict: dict[str, list[str]] = {
+                    str(k): v for k, v in val.items() if isinstance(v, list)
+                }
+                if len(str_dict) == len(val):
+                    options[key] = str_dict
+                    continue
+                sparse_copy: SparseArray[str | int | bool | None] = SparseArray()
+                for idx_k, idx_v in val.items():
+                    if isinstance(idx_k, int) and not isinstance(idx_v, list):
+                        sparse_copy[idx_k] = idx_v
+                options[key] = sparse_copy
+                continue
             options[key] = val
             continue
 
         except Exception:
-            options[key] = val
+            if not (isinstance(val, dict) and not isinstance(val, SparseArray)):
+                options[key] = val
             logger.warning(
                 "tmux options parse failed",
                 extra={"tmux_option_key": key},
@@ -664,10 +740,8 @@ class OptionsMixin(CmdMixin):
             scope = self.default_option_scope
 
         flags: list[str] = []
-        if isinstance(value, bool) and value:
-            value = "on"
-        elif isinstance(value, bool) and not value:
-            value = "off"
+        if isinstance(value, bool):
+            value = "on" if value else "off"
 
         if _format is not None:
             warnings.warn(
@@ -721,7 +795,7 @@ class OptionsMixin(CmdMixin):
             escape_trailing_separator(str(value)),
         )
 
-        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+        if cmd.stderr:
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -808,7 +882,7 @@ class OptionsMixin(CmdMixin):
             option,
         )
 
-        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+        if cmd.stderr:
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -1155,7 +1229,7 @@ class OptionsMixin(CmdMixin):
         ignore_errors: bool | None = None,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
-    ) -> ConvertedValue | None:
+    ) -> OptionValue:
         """Return option value for the target.
 
         todo: test and return True/False for on/off string
@@ -1204,7 +1278,7 @@ class OptionsMixin(CmdMixin):
             include_inherited=include_inherited,
         )
 
-        if cmd.stderr is not None and len(cmd.stderr):
+        if cmd.stderr:
             handle_option_error(cmd.stderr[0])
 
         options_output = cmd.stdout
@@ -1232,7 +1306,7 @@ class OptionsMixin(CmdMixin):
         output_exploded = convert_values(explode_complex(explode_arrays(output_raw)))
 
         if not isinstance(output_exploded, (dict, SparseArray)):
-            return t.cast("ConvertedValue", output_exploded)
+            return output_exploded
 
         # Check for inherited marker in exploded output as well
         exploded_key = option
@@ -1249,7 +1323,7 @@ class OptionsMixin(CmdMixin):
             except (ValueError, KeyError):
                 return None
 
-        return t.cast("ConvertedValue | None", output_exploded[exploded_key])
+        return t.cast("OptionValue", output_exploded[exploded_key])
 
     def show_option(
         self,
@@ -1260,7 +1334,7 @@ class OptionsMixin(CmdMixin):
         ignore_errors: bool | None = None,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
-    ) -> t.Any | None:
+    ) -> OptionValue:
         """Return option value for the target.
 
         Parameters

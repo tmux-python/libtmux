@@ -43,6 +43,7 @@ if t.TYPE_CHECKING:
 
     from libtmux._internal.types import StrPath
     from libtmux.formats import Format
+    from libtmux.options import OptionValue
 
     from .common import PaneDict, WindowOptionDict
     from .server import Server
@@ -1944,7 +1945,7 @@ class Window(
         self,
         option: str,
         g: bool = False,
-    ) -> str | int | None:
+    ) -> OptionValue:
         """Return option for target window. Deprecated by :meth:`Window.show_option()`.
 
         .. deprecated:: 0.50

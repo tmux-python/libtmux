@@ -48,10 +48,23 @@ from libtmux.options import handle_option_error
 if t.TYPE_CHECKING:
     from typing import Self
 
-HookDict = dict[str, t.Any]
+HookDict = dict[str, str | int]
 HookValues = dict[int, str] | SparseArray[str] | list[str]
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_hook_value(val: object) -> str | int | SparseArray[str] | None:
+    """Narrow a dynamically looked-up hook attribute to its public union."""
+    if isinstance(val, SparseArray):
+        typed_array: SparseArray[str] = SparseArray()
+        for idx, item in val.items():
+            if isinstance(item, str):
+                typed_array[idx] = item
+        return typed_array
+    if isinstance(val, (str, int)) or val is None:
+        return val
+    return str(val)
 
 
 class HooksMixin(CmdMixin):
@@ -94,7 +107,7 @@ class HooksMixin(CmdMixin):
             hook,
         )
 
-        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+        if cmd.stderr:
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -167,7 +180,7 @@ class HooksMixin(CmdMixin):
             value,
         )
 
-        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+        if cmd.stderr:
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -212,7 +225,7 @@ class HooksMixin(CmdMixin):
             hook,
         )
 
-        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+        if cmd.stderr:
             handle_option_error(cmd.stderr[0])
 
         return self
@@ -319,7 +332,7 @@ class HooksMixin(CmdMixin):
 
         cmd = self.cmd("show-hooks", *flags)
 
-        if len(cmd.stderr):
+        if cmd.stderr:
             handle_option_error(cmd.stderr[0])
 
         return cmd.stdout
@@ -383,12 +396,12 @@ class HooksMixin(CmdMixin):
         if index_match:
             # Strip the index for attribute lookup
             base_hook_attr = re.sub(r"\[\d+\]$", "", hook_attr)
-            hook_val = getattr(hooks, base_hook_attr, None)
+            hook_val: object = getattr(hooks, base_hook_attr, None)
             if isinstance(hook_val, SparseArray):
-                return hook_val.get(int(index_match.group(1)))
-            return hook_val
+                return _coerce_hook_value(hook_val.get(int(index_match.group(1))))
+            return _coerce_hook_value(hook_val)
 
-        return getattr(hooks, hook_attr, None)
+        return _coerce_hook_value(getattr(hooks, hook_attr, None))
 
     def set_hooks(
         self,
