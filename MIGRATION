@@ -54,6 +54,8 @@ sections below for detailed migration examples and code samples.
 | Method(s) | Deprecated | Replacement | Since | Raises |
 |-----------|------------|-------------|-------|--------|
 | Options/hooks methods | `g` | `global_` | 0.50.0 (2025-11-30) | _(warning)_ |
+| `set_environment()` / `command_prompt()` | `expand_format` | `expand_formats` | _(upcoming)_ | _(warning)_ |
+| `set_option()` | `_format` | `expand_formats` | _(upcoming)_ | _(warning)_ |
 | `split_window()` / `split()` | `percent` | `size` | 0.28.0 (2024-02-14) | 0.51.0 |
 | `split_window()` / `split()` | `vertical`/`horizontal` | `direction` (PaneDirection) | 0.33.0 (2024-03-17) | 0.51.0 |
 | `resize_pane()` | `-U`, `-D`, `-L`, `-R` | `adjustment_direction` | 0.28.0 (2024-02-14) | 0.51.0 |
@@ -113,6 +115,24 @@ sections below for detailed migration examples and code samples.
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
+
+### `expand_formats` is the one name for tmux's `-F` (#919)
+
+{meth}`~libtmux.Session.set_environment` and
+{meth}`~libtmux.Server.command_prompt` took `expand_format`, and
+{meth}`~libtmux.options.OptionsMixin.set_option` took `_format`. Each now takes
+`expand_formats`, the name {meth}`~libtmux.Pane.send_keys` already used. The
+old spellings still work and emit a `DeprecationWarning`:
+
+```python
+# Before
+session.set_environment("BUILD", "#{session_name}", expand_format=True)
+session.set_option("@label", "#{session_name}", _format=True)
+
+# After
+session.set_environment("BUILD", "#{session_name}", expand_formats=True)
+session.set_option("@label", "#{session_name}", expand_formats=True)
+```
 
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
