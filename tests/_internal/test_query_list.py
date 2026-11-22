@@ -9,6 +9,8 @@ from libtmux._internal.query_list import (
     MultipleObjectsReturned,
     ObjectDoesNotExist,
     QueryList,
+    lookup_iregex,
+    lookup_regex,
 )
 
 if t.TYPE_CHECKING:
@@ -373,3 +375,22 @@ def test_object_does_not_exist_exposes_query() -> None:
     query: dict[str, t.Any] = {"pane_id": "%9"}
     assert ObjectDoesNotExist(query=query).query == query
     assert ObjectDoesNotExist().query is None
+
+
+def test_lookup_regex_and_iregex_characterization() -> None:
+    """Pin ``lookup_regex`` and ``lookup_iregex`` across str, bytes, and collections."""
+    assert lookup_regex("apple", r"^app") is True
+    assert lookup_regex("Apple", r"^app") is False
+    assert lookup_iregex("Apple", r"^app") is True
+    assert lookup_iregex("mango", r"^app") is False
+    assert lookup_regex(["apple"], r"^app") is False
+    assert lookup_iregex({"fruit": "apple"}, r"^app") is False
+
+
+def test_get_with_default_still_raises_on_multiple_matches() -> None:
+    """``get(default=...)`` returns the fallback on zero matches, never on ambiguity."""
+    qs = QueryList([{"pane_id": "%0"}, {"pane_id": "%0"}])
+    assert qs.get(pane_id="%9", default="fallback") == "fallback"
+    assert qs.get(pane_id="%9", default=None) is None
+    with pytest.raises(MultipleObjectsReturned):
+        qs.get(pane_id="%0", default="fallback")

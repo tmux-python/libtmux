@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import locale
 import logging
 import pathlib
@@ -896,3 +897,33 @@ def test_compat_sentinel_backport() -> None:
     assert bool(unset) is True
     assert copy.copy(unset) is unset
     assert copy.deepcopy(unset) is unset
+
+
+def test_environment_mixin_dispatches_through_cmd_protocol(
+    session: Session,
+) -> None:
+    """``EnvironmentMixin`` forwards global flags and variable ops through ``cmd``."""
+    server = session.server
+    server.set_environment("CHAR_TEST_VAR", "alpha")
+    assert server.getenv("CHAR_TEST_VAR") == "alpha"
+    assert server.show_environment()["CHAR_TEST_VAR"] == "alpha"
+
+    server.unset_environment("CHAR_TEST_VAR")
+    assert server.getenv("CHAR_TEST_VAR") is None
+
+    server.set_environment("CHAR_TEST_REMOVE", "beta")
+    server.remove_environment("CHAR_TEST_REMOVE")
+    assert server.getenv("CHAR_TEST_REMOVE") is None
+
+
+def test_skip_default_fields_repr_mixin_omits_defaults() -> None:
+    """``SkipDefaultFieldsReprMixin`` renders only non-default dataclass fields."""
+    from libtmux._internal.dataclasses import SkipDefaultFieldsReprMixin
+
+    @dataclasses.dataclass(repr=False)
+    class Sample(SkipDefaultFieldsReprMixin):
+        name: str
+        count: int = 0
+
+    assert repr(Sample("only")) == "Sample(name=only)"
+    assert repr(Sample("many", count=3)) == "Sample(name=many, count=3)"
