@@ -97,11 +97,10 @@ def retry_until(
     the pane, so ``'ready' in line`` matches that echo and is already true
     before the shell has run anything:
 
+    >>> def is_ready(p):
+    ...     return any(line.strip() == 'ready' for line in p.capture_pane())
     >>> for pane in panes:
-    ...     assert retry_until(
-    ...         lambda p: any(line.strip() == 'ready' for line in p.capture_pane()),
-    ...         args=(pane,),
-    ...     )
+    ...     assert retry_until(is_ready, args=(pane,))
     """
     ini = time.monotonic()
 
