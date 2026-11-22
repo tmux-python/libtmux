@@ -119,6 +119,23 @@ watch-mypy:
         just _entr-warn
     fi
 
+# Run ty type checker
+[group: 'lint']
+ty:
+    uv run ty check
+
+# Watch files and run ty on change
+[group: 'lint']
+watch-ty:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v entr > /dev/null; then
+        {{ py_files }} | entr -c just ty
+    else
+        just ty
+        just _entr-warn
+    fi
+
 # Format markdown files with prettier
 [group: 'format']
 format-markdown:

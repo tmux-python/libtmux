@@ -70,6 +70,7 @@ dev = [
   # Lint
   "ruff>=0.17.3",
   "mypy",
+  "ty>=0.0.107",
 ]
 
 docs = [
@@ -93,6 +94,7 @@ coverage =[
 lint = [
   "ruff>=0.17.3",
   "mypy",
+  "ty>=0.0.107",
 ]
 
 [project.entry-points.pytest11]
@@ -144,6 +146,59 @@ files = [
   "tests",
   "docs/_ext",
 ]
+
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.src]
+include = [
+  "src",
+  "tests",
+  "docs/_ext",
+  ".github/scripts",
+  "conftest.py",
+]
+
+[tool.ty.rules]
+# Promote every diagnostic and opt-in check to error — https://docs.astral.sh/ty/reference/configuration/#rules
+all = "error"
+# Require rule codes on ty: ignore comments — https://docs.astral.sh/ty/reference/rules/#blanket-ignore-comment
+blanket-ignore-comment = "error"
+# Reject casts between disjoint source and target types — https://docs.astral.sh/ty/reference/rules/#disjoint-cast
+disjoint-cast = "error"
+# Flag static division or modulo by zero — https://docs.astral.sh/ty/reference/rules/#division-by-zero
+division-by-zero = "error"
+# Reject decorators that erase signatures to Any/Unknown — https://docs.astral.sh/ty/reference/rules/#dynamic-function-decorator-return
+dynamic-function-decorator-return = "error"
+# Reject invalid PEP 484 double-underscore positional-only names — https://docs.astral.sh/ty/reference/rules/#invalid-legacy-positional-parameter
+invalid-legacy-positional-parameter = "error"
+# Require sentinel names to match assigned variable names — https://docs.astral.sh/ty/reference/rules/#mismatched-sentinel-name
+mismatched-sentinel-name = "error"
+# Require imported third-party packages to be declared direct dependencies — https://docs.astral.sh/ty/reference/rules/#missing-direct-dependency
+missing-direct-dependency = "error"
+# typing.override requires Python 3.12+ (PEP 698); libtmux supports Python 3.11 with zero runtime deps — https://docs.astral.sh/ty/reference/rules/#missing-override-decorator
+missing-override-decorator = "ignore"
+# Require explicit type arguments on generic classes and aliases — https://docs.astral.sh/ty/reference/rules/#missing-type-argument
+missing-type-argument = "error"
+# Error on attribute accesses that may fail on some control-flow paths — https://docs.astral.sh/ty/reference/rules/#possibly-missing-attribute
+possibly-missing-attribute = "error"
+# Error on imports that may be unbound on some control-flow paths — https://docs.astral.sh/ty/reference/rules/#possibly-missing-import
+possibly-missing-import = "error"
+# Error on variable references that may be unbound on some paths — https://docs.astral.sh/ty/reference/rules/#possibly-unresolved-reference
+possibly-unresolved-reference = "error"
+# Error on conditions statically inferred as always true or false — https://docs.astral.sh/ty/reference/rules/#redundant-condition-strict
+redundant-condition-strict = "error"
+# Optional string and path parameters intentionally treat None and "" identically — https://docs.astral.sh/ty/reference/rules/#truthiness-test-of-none-union
+truthiness-test-of-none-union = "ignore"
+# Reject assigning Any/Unknown values to typed variables — https://docs.astral.sh/ty/reference/rules/#unsound-assignment
+unsound-assignment = "error"
+# Reject returning Any/Unknown values from typed functions — https://docs.astral.sh/ty/reference/rules/#unsound-return
+unsound-return = "error"
+# Reject yielding Any/Unknown values from typed generators — https://docs.astral.sh/ty/reference/rules/#unsound-yield
+unsound-yield = "error"
+# Reject subclassing dynamic or Any-typed base classes — https://docs.astral.sh/ty/reference/rules/#unsupported-dynamic-base
+unsupported-dynamic-base = "error"
 
 
 [tool.coverage.run]
