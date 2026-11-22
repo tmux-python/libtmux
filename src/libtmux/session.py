@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import pathlib
 import typing as t
 import warnings
 
@@ -21,7 +20,7 @@ from libtmux.common import (
     tmux_cmd,
 )
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
-from libtmux.formats import FORMAT_SEPARATOR
+from libtmux.formats import FORMAT_SEPARATOR, Format
 from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.options import OptionsMixin
@@ -32,7 +31,8 @@ from . import exc
 from .common import (
     EnvironmentMixin,
     WindowDict,
-    _literal,
+    _format_arg,
+    _format_path_arg,
     session_check_name,
 )
 
@@ -847,22 +847,25 @@ class Session(
 
         return self
 
-    def rename_session(self, new_name: str) -> Session:
+    def rename_session(self, new_name: str | Format) -> Session:
         """Rename session and return new :class:`Session` object.
 
         Parameters
         ----------
-        new_name : str
-            new session name
+        new_name : str or Format
+            New session name.
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
 
         Raises
         ------
         :exc:`exc.BadSessionName`
         """
-        session_check_name(new_name)
+        # tmux validates a Format's result after expanding it.
+        if isinstance(new_name, str):
+            session_check_name(new_name)
 
         proc = self.cmd(
-            "rename-session", "--", escape_trailing_separator(_literal(new_name))
+            "rename-session", "--", escape_trailing_separator(_format_arg(new_name))
         )
 
         raise_if_stderr(proc, "rename-session")
@@ -871,7 +874,7 @@ class Session(
 
         extra: dict[str, str] = {
             "tmux_subcommand": "rename-session",
-            "tmux_session": new_name,
+            "tmux_session": str(new_name),
         }
         if self.session_id is not None:
             extra["tmux_target"] = str(self.session_id)
@@ -881,9 +884,9 @@ class Session(
 
     def new_window(
         self,
-        window_name: str | None = None,
+        window_name: str | Format | None = None,
         *,
-        start_directory: StrPath | None = None,
+        start_directory: StrPath | Format | None = None,
         attach: bool = False,
         window_index: str = "",
         window_shell: str | None = None,
@@ -900,9 +903,11 @@ class Session(
 
         Parameters
         ----------
-        window_name : str, optional
-        start_directory : str, optional
+        window_name : str or Format, optional
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
+        start_directory : str, PathLike or Format, optional
             working directory in which the new window is created.
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         attach : bool, optional
             make new window the current window after creating it, default True.
         window_index : str
@@ -982,14 +987,13 @@ class Session(
 
         # Catch empty string and default (`None`)
         if start_directory:
-            start_directory = pathlib.Path(start_directory).expanduser()
             window_args += (
-                escape_trailing_separator(f"-c{_literal(str(start_directory))}"),
+                escape_trailing_separator(f"-c{_format_path_arg(start_directory)}"),
             )
 
         window_args += ("-F#{window_id}",)  # output
-        if window_name is not None and isinstance(window_name, str):
-            window_args += ("-n", escape_trailing_separator(_literal(window_name)))
+        if window_name is not None and isinstance(window_name, (str, Format)):
+            window_args += ("-n", escape_trailing_separator(_format_arg(window_name)))
 
         if environment:
             for k, v in environment.items():

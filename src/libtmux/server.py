@@ -28,7 +28,8 @@ from libtmux._internal.query_list import QueryList
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.client import Client
 from libtmux.common import (
-    _literal,
+    _format_arg,
+    _format_path_arg,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -56,6 +57,7 @@ if t.TYPE_CHECKING:
     from typing import Self, TypeAlias
 
     from libtmux._internal.types import StrPath
+    from libtmux.formats import Format
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -857,7 +859,7 @@ class Server(
         delay: str | None = None,
         as_tmux_command: bool | None = None,
         target_pane: str | None = None,
-        cwd: StrPath | None = None,
+        cwd: StrPath | Format | None = None,
         show_stderr: bool | None = None,
         args: list[str] | None = None,
     ) -> list[str] | None:
@@ -876,11 +878,12 @@ class Server(
             (``-C`` flag).
         target_pane : str, optional
             Target pane for output (``-t`` flag).
-        cwd : str or PathLike, optional
+        cwd : str, PathLike or Format, optional
             Start directory for the shell command (``-c`` flag). When
             omitted, tmux uses the target client's current working
             directory. Requires tmux 3.4+; on older tmux a warning is
             emitted and the kwarg is ignored.
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
 
             Note: tmux's ``-c`` is a *start directory*, not subprocess
             semantics. If ``chdir(cwd)`` fails, tmux falls back to the
@@ -930,7 +933,7 @@ class Server(
             if has_gte_version(
                 capability_since("run-shell-start-directory"), tmux_bin=self.tmux_bin
             ):
-                tmux_args += ("-c", str(cwd))
+                tmux_args += ("-c", _format_path_arg(cwd))
             else:
                 warnings.warn(
                     "cwd requires tmux 3.4+, ignoring",
@@ -1671,7 +1674,7 @@ class Server(
     def display_menu(
         self,
         *items: str,
-        title: str | None = None,
+        title: str | Format | None = None,
         target_pane: str | None = None,
         target_client: str | None = None,
         x: int | str | None = None,
@@ -1696,8 +1699,9 @@ class Server(
         *items : str
             Menu items as positional args in tmux's ``name key command``
             triple format. Use empty strings for separators.
-        title : str, optional
+        title : str or Format, optional
             Menu title (``-T`` flag).
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
         target_pane : str, optional
             Target pane for format expansion (``-t`` flag).
         target_client : str, optional
@@ -1742,7 +1746,7 @@ class Server(
         tmux_args: tuple[str, ...] = ()
 
         if title is not None:
-            tmux_args += ("-T", escape_trailing_separator(title))
+            tmux_args += ("-T", escape_trailing_separator(_format_arg(title)))
 
         if target_client is not None:
             tmux_args += ("-c", target_client)
@@ -2561,11 +2565,11 @@ class Server(
 
     def new_session(
         self,
-        session_name: str | None = None,
+        session_name: str | Format | None = None,
         kill_session: bool = False,
         attach: bool = False,
-        start_directory: StrPath | None = None,
-        window_name: str | None = None,
+        start_directory: StrPath | Format | None = None,
+        window_name: str | Format | None = None,
         window_command: str | None = None,
         x: int | DashLiteral | None = None,
         y: int | DashLiteral | None = None,
@@ -2587,7 +2591,8 @@ class Server(
 
         Parameters
         ----------
-        session_name : str, optional
+        session_name : str or Format, optional
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
             ::
 
                 $ tmux new-session -s <session_name>
@@ -2602,10 +2607,12 @@ class Server(
         kill_session : bool, optional
             Kill current session if ``$ tmux has-session``.
             Useful for testing workspaces.
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             specifies the working directory in which the
             new session is created.
-        window_name : str, optional
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
+        window_name : str or Format, optional
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
             ::
 
                 $ tmux new-session -n <window_name>
@@ -2659,7 +2666,9 @@ class Server(
         >>> server.new_session(session_name='my session')
         Session($4 my session)
         """
-        if session_name is not None:
+        # A Format's name is known only after tmux expands it; tmux validates
+        # it then and refuses a duplicate itself.
+        if isinstance(session_name, str):
             session_check_name(session_name)
 
             if self.has_session(session_name):
@@ -2710,20 +2719,21 @@ class Server(
                 tmux_args += ("-f", client_flags)
 
             if session_name is not None:
-                tmux_args += (escape_trailing_separator(f"-s{_literal(session_name)}"),)
+                tmux_args += (
+                    escape_trailing_separator(f"-s{_format_arg(session_name)}"),
+                )
 
             if not attach:
                 tmux_args += ("-d",)
 
             if start_directory:
-                start_directory = pathlib.Path(start_directory).expanduser()
                 tmux_args += (
                     "-c",
-                    escape_trailing_separator(_literal(str(start_directory))),
+                    escape_trailing_separator(_format_path_arg(start_directory)),
                 )
 
             if window_name:
-                tmux_args += ("-n", escape_trailing_separator(_literal(window_name)))
+                tmux_args += ("-n", escape_trailing_separator(_format_arg(window_name)))
 
             if x is not None:
                 tmux_args += ("-x", x)
