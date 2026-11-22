@@ -15,6 +15,7 @@ cwd = pathlib.Path(__file__).parent
 project_root = cwd.parent
 project_src = project_root / "src"
 
+sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_src))
 
 # package data
@@ -32,6 +33,7 @@ conf = merge_sphinx_config(
     light_logo="img/libtmux.svg",
     dark_logo="img/libtmux.svg",
     extra_extensions=[
+        "docs._ext.tmux_capabilities",
         "sphinx_autodoc_api_style",
         "sphinx_autodoc_pytest_fixtures",
         "sphinx.ext.todo",
@@ -61,6 +63,6 @@ conf = merge_sphinx_config(
     rediraffe_redirects="redirects.txt",
     # AGENTS.md (+ its CLAUDE.md symlink) is agent guidance, not a site
     # page; keep Sphinx from treating it as an orphan document.
-    exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md"],
+    exclude_patterns=["_build", "_ext", "AGENTS.md", "CLAUDE.md"],
 )
 globals().update(conf)

@@ -142,6 +142,7 @@ python_version = "3.11"
 files = [
   "src",
   "tests",
+  "docs/_ext",
 ]
 
 

@@ -1,9 +1,11 @@
+(compatibility)=
+
 # Compatibility
 
 ## Python
 
 - **Minimum**: Python 3.11
-- **Tested**: Python 3.11, 3.12, 3.13
+- **Tested**: Python 3.11, 3.12, 3.13, 3.14
 - **Maximum**: Python < 4.0
 
 ## tmux
@@ -12,6 +14,21 @@
 - **Tested**: latest stable tmux release
 - libtmux uses tmux's format system and control mode -- older tmux versions
   may lack required format variables
+
+### Capabilities by tmux release
+
+Core {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` calls work from tmux 3.2a
+up. Flags and commands added in newer tmux releases check the running tmux
+version first: optional flags warn and send the command without the flag, while
+features that have no fallback raise {exc}`~libtmux.exc.LibTmuxException` before
+tmux runs.
+
+The matrix below is generated from the same capability table that drives those
+runtime gates and `capabilities.json`.
+
+```{tmux-capabilities}
+```
 
 ## Platforms
 
