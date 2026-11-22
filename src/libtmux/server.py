@@ -3419,7 +3419,13 @@ class Server(
                 f"{self.__class__.__name__}"
                 f"(socket_name={getattr(self, 'socket_name', 'default')})"
             )
-        return f"{self.__class__.__name__}(socket_path={self.socket_path})"
+        path = self.socket_path
+        if self.socket_name is not None and path is not None:
+            # tmux resolves TMUX_TMPDIR before binding, so show the socket
+            # tmux actually uses when that directory is a symlink.
+            located = pathlib.Path(path)
+            path = str(located.parent.resolve() / located.name)
+        return f"{self.__class__.__name__}(socket_path={path})"
 
     #
     # Legacy: Redundant stuff we want to remove
