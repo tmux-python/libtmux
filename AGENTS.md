@@ -20,7 +20,7 @@ what was asked for.
 | `src/libtmux/options.py`, `hooks.py` | tmux options and hooks abstractions |
 | `src/libtmux/pytest_plugin.py` | The pytest plugin; see `src/libtmux/AGENTS.md` |
 | `tests/` | Functional tests, one file per module under test |
-| `docs/` | Sphinx/MyST site: `topics/` (concepts), `api/` (autodoc), `project/` (contributing, releasing, compatibility) |
+| `docs/` | Sphinx/MyST site: `topics/` (concepts), `api/` (autodoc), `project/` (contributing, releasing), `compatibility.md` |
 | `README.md` | Doctested quickstart — every `>>> ` block is a real test |
 | `CHANGES` | The changelog, rendered as a docs page |
 | `MIGRATION` | Deprecation and migration notes |
