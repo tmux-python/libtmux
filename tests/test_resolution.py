@@ -433,6 +433,7 @@ def test_linked_sessions_lists_each_holder_once(server: Server) -> None:
     assert [s.session_id for s in window.linked_sessions] == [dup.session_id]
 
     guest = server.new_session(session_name="guest")
+    assert window.window_id is not None
     server.cmd(
         "link-window", "-d", "-s", window.window_id, "-t", f"{guest.session_id}:"
     )
@@ -500,6 +501,7 @@ def test_linked_sessions_skips_holder_lost_between_snapshots(
     """
     home = server.new_session(session_name="home")
     window = home.active_window
+    assert window.window_id is not None
     guest = server.new_session(session_name="guest")
     server.cmd(
         "link-window",
@@ -549,6 +551,7 @@ def test_linked_sessions_uses_two_list_calls(
     tmux server still provide every row used by the assertion.
     """
     window, _dup = link_window_twice_into_one_session(server)
+    assert window.window_id is not None
     for name in ("guest-one", "guest-two"):
         guest = server.new_session(session_name=name)
         server.cmd(

@@ -32,6 +32,7 @@ from libtmux.common import (
 )
 
 if t.TYPE_CHECKING:
+    from libtmux.common import CmdArg
     from libtmux.session import Session
 
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
@@ -44,7 +45,7 @@ def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
         stdout: t.ClassVar = ["tmux master"]
         stderr = None
 
-    def mock_tmux_cmd(*args: object, **kwargs: object) -> Hi:
+    def mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -65,7 +66,7 @@ def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
         stdout: t.ClassVar = [f"tmux next-{TMUX_NEXT_VERSION}"]
         stderr = None
 
-    def mock_tmux_cmd(*args: object, **kwargs: object) -> Hi:
+    def mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -82,7 +83,7 @@ def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
         stderr: t.ClassVar = ["tmux: unknown option -- V"]
 
-    def mock_tmux_cmd(*args: object, **kwargs: object) -> Hi:
+    def mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -101,7 +102,7 @@ def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
         stderr: t.ClassVar = ["tmux: unknown option -- V"]
 
-    def mock_tmux_cmd(*args: object, **kwargs: object) -> Hi:
+    def mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)

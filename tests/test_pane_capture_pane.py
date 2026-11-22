@@ -16,6 +16,7 @@ from libtmux.common import has_gte_version
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
+    from libtmux.common import CmdArg, tmux_cmd
     from libtmux.session import Session
 
 
@@ -549,9 +550,9 @@ def test_capture_pane_pending_emits_dash_P(
 
     def fake_cmd(
         cmd_name: str,
-        *args: object,
+        *args: CmdArg,
         target: str | int | None = None,
-    ) -> object:
+    ) -> tmux_cmd:
         captured.append((cmd_name, *(str(a) for a in args)))
         return real_cmd(cmd_name, *args, target=target)
 

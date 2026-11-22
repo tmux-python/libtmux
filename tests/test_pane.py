@@ -23,6 +23,7 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.common import CmdArg, tmux_cmd
     from libtmux.pane import Pane
     from libtmux.server import Server
     from libtmux.session import Session
@@ -607,9 +608,9 @@ def test_send_keys_flag_only_reset_emits_clean_argv(
 
     def fake_cmd(
         cmd_name: str,
-        *args: object,
+        *args: CmdArg,
         target: str | int | None = None,
-    ) -> object:
+    ) -> tmux_cmd:
         captured.append((cmd_name, *(str(a) for a in args)))
         return real_cmd(cmd_name, *args, target=target)
 
@@ -634,9 +635,9 @@ def test_send_keys_flag_only_repeat_emits_dash_N(
 
     def fake_cmd(
         cmd_name: str,
-        *args: object,
+        *args: CmdArg,
         target: str | int | None = None,
-    ) -> object:
+    ) -> tmux_cmd:
         captured.append((cmd_name, *(str(a) for a in args)))
         return real_cmd(cmd_name, *args, target=target)
 

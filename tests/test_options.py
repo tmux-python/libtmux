@@ -28,6 +28,8 @@ from libtmux.options import (
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
+    from libtmux.common import CmdArg
+    from libtmux.options import OptionValue
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -273,7 +275,18 @@ class MockedCmdResponse:
     stderr: list[str] | None
 
 
-def cmd_mocked(*args: object) -> MockedCmdResponse:
+class _MockCmdFn(t.Protocol):
+    def __call__(
+        self,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> MockedCmdResponse: ...
+
+
+def cmd_mocked(
+    *args: CmdArg,
+    target: str | int | None = None,
+) -> MockedCmdResponse:
     """Mock command response for show-options -s (server)."""
     return MockedCmdResponse(
         stdout=[*MOCKED_GLOBAL_OPTIONS],
@@ -284,14 +297,14 @@ def cmd_mocked(*args: object) -> MockedCmdResponse:
 def fake_cmd(
     stdout: t.Sequence[str] | None,
     stderr: list[str] | None = None,
-) -> t.Callable[
-    [tuple[object, ...]],
-    MockedCmdResponse,
-]:
+) -> _MockCmdFn:
     """Mock command response for show-options -s (server)."""
     stdout_lines = list(stdout) if stdout is not None else None
 
-    def _cmd(*args: object) -> MockedCmdResponse:
+    def _cmd(
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> MockedCmdResponse:
         return MockedCmdResponse(
             stdout=stdout_lines,
             stderr=stderr,
@@ -507,7 +520,7 @@ def test_mocked_cmd_stdoutclass_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: object,
+    expected: OptionValue,
     dataclass_attribute: str,
     server: Server,
 ) -> None:
@@ -532,7 +545,7 @@ def test_show_option_pane_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: object,
+    expected: OptionValue,
     dataclass_attribute: str,
     server: Server,
 ) -> None:

@@ -557,7 +557,7 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
 
     def patched_cmd(
         cmd_name: str,
-        *args: object,
+        *args: StrPath | int,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Patched cmd that kills session after attach-session."""
@@ -571,9 +571,9 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     monkeypatch.setattr(test_session, "cmd", patched_cmd)
 
     # Use context manager pattern for exception handling
-    raises_ctx: contextlib.AbstractContextManager[object] = (
-        pytest.raises(raises) if isinstance(raises, type) else does_not_raise()
-    )
+    raises_ctx: contextlib.AbstractContextManager[
+        pytest.ExceptionInfo[Exception] | None
+    ] = pytest.raises(raises) if isinstance(raises, type) else does_not_raise()
     with raises_ctx:
         test_session.attach()
 

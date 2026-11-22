@@ -17,11 +17,11 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.support import capabilities
-from libtmux.common import escape_trailing_separator, has_gte_version
+from libtmux.common import escape_trailing_separator, has_gte_version, tmux_cmd
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
-    from libtmux.common import CmdMixin
+    from libtmux.common import CmdArg, CmdMixin
     from libtmux.pane import Pane
     from libtmux.server import Server
     from libtmux.session import Session
@@ -462,7 +462,7 @@ class CapturedCmd(t.NamedTuple):
     """Arguments of the one command a method sent through ``cmd()``."""
 
     name: str
-    args: tuple[object, ...]
+    args: tuple[CmdArg, ...]
 
 
 def capture_cmd(
@@ -474,16 +474,18 @@ def capture_cmd(
     captured: list[CapturedCmd] = []
     real_cmd = obj.cmd
 
-    class _Result:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
-        returncode = 0
+    class _Result(tmux_cmd):
+        def __init__(self) -> None:
+            self.cmd = [command]
+            self.stderr = []
+            self.stdout = []
+            self.returncode = 0
 
     def fake_cmd(
         name: str,
-        *args: object,
+        *args: CmdArg,
         target: str | int | None = None,
-    ) -> object:
+    ) -> tmux_cmd:
         if name == command:
             captured.append(CapturedCmd(name, args))
             return _Result()
@@ -493,7 +495,7 @@ def capture_cmd(
     return captured
 
 
-def flag_value(args: tuple[object, ...], flag: str) -> str:
+def flag_value(args: tuple[CmdArg, ...], flag: str) -> str:
     """Return the argument that follows ``flag``."""
     return str(args[args.index(flag) + 1])
 

@@ -34,6 +34,7 @@ from libtmux.common import (
 )
 
 if t.TYPE_CHECKING:
+    from libtmux.common import CmdArg
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -59,7 +60,7 @@ def test_get_version_is_memoized_for_same_tmux_bin(
         stdout: t.ClassVar[list[str]] = ["tmux 3.6a"]
         stderr: t.ClassVar[list[str]] = []
 
-    def _mock_tmux_cmd(*args: object, **kwargs: object) -> _MockProc:
+    def _mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> _MockProc:
         call_count["n"] += 1
         return _MockProc()
 
@@ -86,9 +87,8 @@ def test_get_version_cache_keyed_by_tmux_bin(
             self.stderr: list[str] = []
 
     def _mock_tmux_cmd(
-        *args: object,
+        *args: CmdArg,
         tmux_bin: str | None = None,
-        **kwargs: object,
     ) -> _MockProc:
         call_count["n"] += 1
         assert tmux_bin is not None
@@ -116,7 +116,7 @@ def test_get_version_cache_clear_invalidates(
         stdout: t.ClassVar[list[str]] = ["tmux 3.6a"]
         stderr: t.ClassVar[list[str]] = []
 
-    def _mock_tmux_cmd(*args: object, **kwargs: object) -> _MockProc:
+    def _mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> _MockProc:
         call_count["n"] += 1
         return _MockProc()
 
@@ -151,7 +151,7 @@ def test_get_version_binary_swap_requires_explicit_cache_clear(
             self.stdout = [line]
             self.stderr: list[str] = []
 
-    def _mock_tmux_cmd(*args: object, **kwargs: object) -> _MockProc:
+    def _mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> _MockProc:
         proc = _MockProc(versions[call_count["n"]])
         call_count["n"] += 1
         return proc
@@ -484,7 +484,7 @@ def test_version_parsing(
         stdout = mock_stdout
         stderr = mock_stderr
 
-    def mock_tmux_cmd(*args: object, **kwargs: object) -> MockTmuxOutput:
+    def mock_tmux_cmd(*args: CmdArg, tmux_bin: str | None = None) -> MockTmuxOutput:
         return MockTmuxOutput()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
