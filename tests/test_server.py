@@ -714,7 +714,7 @@ def test_socket_name_precedence(server: Server) -> None:
             myserver2.kill()
 
 
-def test_server_context_manager(TestServer: type[Server]) -> None:
+def test_server_context_manager(TestServer: t.Callable[..., Server]) -> None:
     """Test Server context manager functionality."""
     with TestServer() as server:
         session = server.new_session()
@@ -852,8 +852,10 @@ def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
         assert s.tmux_bin == tmux_path
         with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
             s.cmd("list-sessions")
-        running_records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
-        assert any(tmux_path in r.tmux_cmd for r in running_records)
+        running_records = [
+            str(r.tmux_cmd) for r in caplog.records if hasattr(r, "tmux_cmd")
+        ]
+        assert any(tmux_path in cmd_line for cmd_line in running_records)
     finally:
         if s.is_alive():
             s.kill()
@@ -1055,11 +1057,15 @@ def test_command_prompt_extra_flags(
         stderr: t.ClassVar[list[str]] = []
         stdout: t.ClassVar[list[str]] = []
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> object:
         if cmd == "command-prompt":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     server.command_prompt("set -g @x '%1'", **kwargs)
@@ -1206,11 +1212,15 @@ def test_display_menu_flags(
         stderr: t.ClassVar[list[str]] = []
         stdout: t.ClassVar[list[str]] = []
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> object:
         if cmd == "display-menu":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     server.display_menu(*items, **kwargs)
@@ -1278,11 +1288,15 @@ def test_refresh_client_request_clipboard(
         stderr: t.ClassVar[list[str]] = []
         stdout: t.ClassVar[list[str]] = []
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> object:
         if cmd == "refresh-client":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     server.refresh_client(request_clipboard=True)
@@ -1331,11 +1345,15 @@ def test_server_access_argv(
         stderr: t.ClassVar[list[str]] = []
         stdout: t.ClassVar[list[str]] = []
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> object:
         if cmd == "server-access":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
 
@@ -2165,11 +2183,15 @@ def test_run_shell_command_starting_with_a_dash(
         capabilities._BY_ID, entry.id, dataclasses.replace(entry, since="1.0")
     )
     server = session.server
-    seen: list[tuple[t.Any, ...]] = []
+    seen: list[tuple[object, ...]] = []
 
-    def record(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+    def record(
+        cmd: str,
+        *args: object,
+        target: str | int | None = None,
+    ) -> object:
         seen.append((cmd, *args))
-        return real_cmd("display-message", "-p", "")
+        return real_cmd("display-message", "-p", "", target=target)
 
     real_cmd = server.cmd
     monkeypatch.setattr(server, "cmd", record)

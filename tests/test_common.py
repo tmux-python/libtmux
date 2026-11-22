@@ -15,6 +15,7 @@ import typing as t
 import pytest
 
 import libtmux
+import libtmux.common
 from libtmux import exc
 from libtmux._compat import LooseVersion
 from libtmux.common import (
@@ -58,7 +59,7 @@ def test_get_version_is_memoized_for_same_tmux_bin(
         stdout: t.ClassVar[list[str]] = ["tmux 3.6a"]
         stderr: t.ClassVar[list[str]] = []
 
-    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+    def _mock_tmux_cmd(*args: object, **kwargs: object) -> _MockProc:
         call_count["n"] += 1
         return _MockProc()
 
@@ -84,9 +85,14 @@ def test_get_version_cache_keyed_by_tmux_bin(
             self.stdout = [line]
             self.stderr: list[str] = []
 
-    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+    def _mock_tmux_cmd(
+        *args: object,
+        tmux_bin: str | None = None,
+        **kwargs: object,
+    ) -> _MockProc:
         call_count["n"] += 1
-        return _MockProc(versions[kwargs["tmux_bin"]])
+        assert tmux_bin is not None
+        return _MockProc(versions[tmux_bin])
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", _mock_tmux_cmd)
     get_version.cache_clear()
@@ -110,7 +116,7 @@ def test_get_version_cache_clear_invalidates(
         stdout: t.ClassVar[list[str]] = ["tmux 3.6a"]
         stderr: t.ClassVar[list[str]] = []
 
-    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+    def _mock_tmux_cmd(*args: object, **kwargs: object) -> _MockProc:
         call_count["n"] += 1
         return _MockProc()
 
@@ -145,7 +151,7 @@ def test_get_version_binary_swap_requires_explicit_cache_clear(
             self.stdout = [line]
             self.stderr: list[str] = []
 
-    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+    def _mock_tmux_cmd(*args: object, **kwargs: object) -> _MockProc:
         proc = _MockProc(versions[call_count["n"]])
         call_count["n"] += 1
         return proc
@@ -478,7 +484,7 @@ def test_version_parsing(
         stdout = mock_stdout
         stderr = mock_stderr
 
-    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> MockTmuxOutput:
+    def mock_tmux_cmd(*args: object, **kwargs: object) -> MockTmuxOutput:
         return MockTmuxOutput()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -693,12 +699,12 @@ def test_tmux_cmd_pre_execution_logging(
     with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
         server.cmd("list-sessions")
     running_records = [
-        r
+        str(r.tmux_cmd)
         for r in caplog.records
         if hasattr(r, "tmux_cmd") and not hasattr(r, "tmux_exit_code")
     ]
     assert len(running_records) > 0
-    assert "list-sessions" in running_records[0].tmux_cmd
+    assert "list-sessions" in running_records[0]
 
 
 def test_libtmux_exception_subcommand_default_none() -> None:
@@ -855,7 +861,7 @@ def test_logged_command_line_masks_environment_values(
     session.set_environment("API_TOKEN", "hunter2")
     session.new_window(environment={"OTHER_TOKEN": "swordfish"})
 
-    logged = [r.tmux_cmd for r in caplog.records if hasattr(r, "tmux_cmd")]
+    logged = [str(r.tmux_cmd) for r in caplog.records if hasattr(r, "tmux_cmd")]
     assert logged
     assert not [line for line in logged if "hunter2" in line or "swordfish" in line]
     assert [line for line in logged if "API_TOKEN" in line]
@@ -880,7 +886,7 @@ def test_compat_sentinel_matches_the_builtin() -> None:
     if sys.version_info >= (3, 15):
         import builtins
 
-        assert sentinel is builtins.sentinel  # type: ignore[attr-defined,unused-ignore]
+        assert sentinel is getattr(builtins, "sentinel", None)
 
 
 def test_compat_sentinel_backport() -> None:

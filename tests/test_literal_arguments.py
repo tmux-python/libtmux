@@ -21,6 +21,7 @@ from libtmux.common import escape_trailing_separator, has_gte_version
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
+    from libtmux.common import CmdMixin
     from libtmux.pane import Pane
     from libtmux.server import Server
     from libtmux.session import Session
@@ -461,12 +462,12 @@ class CapturedCmd(t.NamedTuple):
     """Arguments of the one command a method sent through ``cmd()``."""
 
     name: str
-    args: tuple[t.Any, ...]
+    args: tuple[object, ...]
 
 
 def capture_cmd(
     monkeypatch: pytest.MonkeyPatch,
-    obj: t.Any,
+    obj: CmdMixin,
     command: str,
 ) -> list[CapturedCmd]:
     """Record calls to ``command`` on ``obj`` instead of sending them to tmux."""
@@ -478,17 +479,21 @@ def capture_cmd(
         stdout: t.ClassVar[list[str]] = []
         returncode = 0
 
-    def fake_cmd(name: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+    def fake_cmd(
+        name: str,
+        *args: object,
+        target: str | int | None = None,
+    ) -> object:
         if name == command:
             captured.append(CapturedCmd(name, args))
             return _Result()
-        return real_cmd(name, *args, **kwargs)
+        return real_cmd(name, *args, target=target)
 
     monkeypatch.setattr(obj, "cmd", fake_cmd)
     return captured
 
 
-def flag_value(args: tuple[t.Any, ...], flag: str) -> str:
+def flag_value(args: tuple[object, ...], flag: str) -> str:
     """Return the argument that follows ``flag``."""
     return str(args[args.index(flag) + 1])
 

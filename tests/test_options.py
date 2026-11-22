@@ -19,12 +19,15 @@ from libtmux._internal.constants import (
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
-from libtmux.options import TerminalOverrides, convert_values, explode_arrays
+from libtmux.options import (
+    OptionsMixin,
+    TerminalOverrides,
+    convert_values,
+    explode_arrays,
+)
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
-    from typing import LiteralString
-
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -55,7 +58,7 @@ def test_options(server: Server) -> None:
     window = session.new_window(window_name="test")
     pane = window.split(attach=False)
 
-    for obj in [server, session, window, pane]:
+    for obj in (server, session, window, pane):
         obj._show_options()
         obj._show_options(global_=True)
         obj._show_options(include_inherited=True)
@@ -184,7 +187,7 @@ def test_options_grid(server: Server) -> None:
 
     for include_inherited in [True, False]:
         for global_ in [True, False]:
-            for obj in [server, session, window, pane]:
+            for obj in (server, session, window, pane):
                 for scope in [
                     OptionScope.Server,
                     OptionScope.Session,
@@ -234,7 +237,7 @@ def test_custom_options(
     assert session._show_option("@custom-option") == "test"
 
 
-MOCKED_GLOBAL_OPTIONS: list[LiteralString] = """
+MOCKED_GLOBAL_OPTIONS = """
 backspace C-?
 buffer-limit 50
 command-alias[0] split-pane=split-window
@@ -266,30 +269,31 @@ user-keys
 class MockedCmdResponse:
     """Mocked tmux_cmd response."""
 
-    stdout: list[LiteralString] | None
+    stdout: list[str] | None
     stderr: list[str] | None
 
 
 def cmd_mocked(*args: object) -> MockedCmdResponse:
     """Mock command response for show-options -s (server)."""
     return MockedCmdResponse(
-        stdout=MOCKED_GLOBAL_OPTIONS,
+        stdout=[*MOCKED_GLOBAL_OPTIONS],
         stderr=None,
     )
 
 
 def fake_cmd(
-    stdout: list[str] | None,
+    stdout: t.Sequence[str] | None,
     stderr: list[str] | None = None,
 ) -> t.Callable[
     [tuple[object, ...]],
     MockedCmdResponse,
 ]:
     """Mock command response for show-options -s (server)."""
+    stdout_lines = list(stdout) if stdout is not None else None
 
     def _cmd(*args: object) -> MockedCmdResponse:
         return MockedCmdResponse(
-            stdout=stdout,
+            stdout=stdout_lines,
             stderr=stderr,
         )
 
@@ -503,7 +507,7 @@ def test_mocked_cmd_stdoutclass_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: t.Any,
+    expected: object,
     dataclass_attribute: str,
     server: Server,
 ) -> None:
@@ -528,7 +532,7 @@ def test_show_option_pane_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: t.Any,
+    expected: object,
     dataclass_attribute: str,
     server: Server,
 ) -> None:
@@ -560,6 +564,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
 
     terminal_features = server.show_option("terminal-features")
     assert isinstance(terminal_features, dict)
+    assert not isinstance(terminal_features, SparseArray)
     assert "screen*" in terminal_features
     assert terminal_features["screen*"] == ["title"]
     assert "xterm*" in terminal_features
@@ -1282,7 +1287,7 @@ def test_option_set_show_cycle(server: Server, test_case: OptionTestCase) -> Non
     pane = window.active_pane
     assert pane is not None
 
-    targets = {
+    targets: dict[OptionScope, OptionsMixin] = {
         OptionScope.Server: server,
         OptionScope.Session: session,
         OptionScope.Window: window,

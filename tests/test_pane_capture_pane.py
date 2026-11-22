@@ -547,9 +547,13 @@ def test_capture_pane_pending_emits_dash_P(
     captured: list[tuple[str, ...]] = []
     real_cmd = pane.cmd
 
-    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd_name: str,
+        *args: object,
+        target: str | int | None = None,
+    ) -> object:
         captured.append((cmd_name, *(str(a) for a in args)))
-        return real_cmd(cmd_name, *args, **kw)
+        return real_cmd(cmd_name, *args, target=target)
 
     monkeypatch.setattr(pane, "cmd", fake_cmd)
 

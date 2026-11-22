@@ -258,11 +258,11 @@ class Obj:
     ],
 )
 def test_filter(
-    items: list[dict[str, t.Any]],
-    filter_expr: Callable[[t.Any], bool] | t.Any | None,
-    expected_result: QueryList[t.Any] | list[dict[str, t.Any]],
+    items: list[object],
+    filter_expr: Callable[[object], bool] | dict[str, object] | list[object] | None,
+    expected_result: QueryList[object] | list[object],
 ) -> None:
-    qs = QueryList(items)
+    qs: QueryList[object] = QueryList(items)
     if filter_expr is not None:
         if isinstance(filter_expr, dict):
             assert qs.filter(**filter_expr) == expected_result
@@ -270,9 +270,6 @@ def test_filter(
             assert qs.filter(filter_expr) == expected_result
     else:
         assert qs.filter() == expected_result
-
-    if not isinstance(expected_result, list):
-        return
 
     # ``get()`` insists on exactly one match. Assert the message too: an
     # exception nobody can read is the defect, not just the raise.
@@ -364,7 +361,7 @@ def test_get_default_with_broad_eq_is_returned() -> None:
         def __eq__(self, other: object) -> bool:
             return True
 
-        __hash__ = None  # type: ignore[assignment]
+        __hash__: t.ClassVar[None] = None
 
     default = BroadEq()
     assert QueryList([]).get(missing="x", default=default) is default
@@ -372,7 +369,7 @@ def test_get_default_with_broad_eq_is_returned() -> None:
 
 def test_object_does_not_exist_exposes_query() -> None:
     """``ObjectDoesNotExist`` exposes its lookup, mirroring its sibling."""
-    query: dict[str, t.Any] = {"pane_id": "%9"}
+    query: dict[str, object] = {"pane_id": "%9"}
     assert ObjectDoesNotExist(query=query).query == query
     assert ObjectDoesNotExist().query is None
 
