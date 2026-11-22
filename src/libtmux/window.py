@@ -1952,6 +1952,10 @@ class Window(
 
            Deprecated by :meth:`Window.show_option()`.
 
+        Returns
+        -------
+        :data:`~libtmux.options.OptionValue`
+            Parsed scalar, array, or mapping option value, or ``None`` when unset.
         """
         warnings.warn(
             "Window.show_window_option() is deprecated"

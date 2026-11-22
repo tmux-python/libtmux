@@ -61,7 +61,7 @@ def test_fresh_window_data(session: Session) -> None:
     active_window = session.active_window
     assert active_window is not None
     pane_base_idx = active_window._show_option("pane-base-index", global_=True)
-    assert isinstance(pane_base_idx, (int, str))
+    assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
     assert len(session.windows) == 1

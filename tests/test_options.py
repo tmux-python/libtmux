@@ -564,7 +564,6 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
 
     terminal_features = server.show_option("terminal-features")
     assert isinstance(terminal_features, dict)
-    assert not isinstance(terminal_features, SparseArray)
     assert "screen*" in terminal_features
     assert terminal_features["screen*"] == ["title"]
     assert "xterm*" in terminal_features

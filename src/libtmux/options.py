@@ -196,8 +196,151 @@ ConvertedValues: TypeAlias = (
     | SparseArray[ConvertedValue]
 )
 OptionValue: TypeAlias = (
-    ConvertedValues | TerminalFeatures | TerminalOverrides | CommandAliases
+    ConvertedValues
+    | SparseArray[str]
+    | list[str]
+    | TerminalFeatures
+    | TerminalOverrides
+    | CommandAliases
 )
+"""Parsed value of any single tmux option: scalar, array, or structured mapping."""
+
+_IntOptionName: TypeAlias = t.Literal[
+    "assume-paste-time",
+    "base-index",
+    "buffer-limit",
+    "clock-mode-style",
+    "display-panes-time",
+    "display-time",
+    "escape-time",
+    "history-limit",
+    "lock-after-time",
+    "message-limit",
+    "message-line",
+    "monitor-silence",
+    "pane-base-index",
+    "prompt-history-limit",
+    "repeat-time",
+    "status-interval",
+    "status-left-length",
+    "status-right-length",
+    "tiled-layout-max-columns",
+]
+_BoolOptionName: TypeAlias = t.Literal[
+    "aggressive-resize",
+    "allow-rename",
+    "alternate-screen",
+    "automatic-rename",
+    "destroy-unattached",
+    "exit-empty",
+    "exit-unattached",
+    "focus-events",
+    "focus-follows-mouse",
+    "monitor-activity",
+    "monitor-bell",
+    "mouse",
+    "renumber-windows",
+    "scroll-on-clear",
+    "set-titles",
+    "synchronize-panes",
+    "wrap-search",
+]
+_BoolOrStrOptionName: TypeAlias = t.Literal[
+    "allow-passthrough",
+    "copy-mode-line-numbers",
+    "detach-on-destroy",
+    "extended-keys",
+    "get-clipboard",
+    "pane-border-indicators",
+    "pane-border-status",
+    "pane-scrollbars",
+    "remain-on-exit",
+    "set-clipboard",
+    "visual-activity",
+    "visual-bell",
+    "visual-silence",
+]
+_IntOrStrOptionName: TypeAlias = t.Literal[
+    "main-pane-height",
+    "main-pane-width",
+    "other-pane-height",
+    "other-pane-width",
+]
+_StrOptionName: TypeAlias = t.Literal[
+    "activity-action",
+    "automatic-rename-format",
+    "backspace",
+    "bell-action",
+    "clock-mode-colour",
+    "copy-command",
+    "copy-mode-current-line-number-style",
+    "copy-mode-current-match-style",
+    "copy-mode-line-number-style",
+    "copy-mode-mark-style",
+    "copy-mode-match-style",
+    "cursor-colour",
+    "cursor-style",
+    "default-client-command",
+    "default-command",
+    "default-shell",
+    "default-size",
+    "default-terminal",
+    "display-panes-active-colour",
+    "display-panes-colour",
+    "editor",
+    "extended-keys-format",
+    "fill-character",
+    "history-file",
+    "key-table",
+    "lock-command",
+    "menu-border-lines",
+    "menu-border-style",
+    "menu-selected-style",
+    "menu-style",
+    "message-command-style",
+    "message-format",
+    "message-style",
+    "mode-keys",
+    "mode-style",
+    "pane-active-border-style",
+    "pane-border-format",
+    "pane-border-lines",
+    "pane-border-style",
+    "pane-scrollbars-style",
+    "popup-border-lines",
+    "popup-border-style",
+    "popup-style",
+    "prefix",
+    "prefix2",
+    "prompt-command-cursor-style",
+    "remain-on-exit-format",
+    "set-titles-string",
+    "silence-action",
+    "status-justify",
+    "status-keys",
+    "status-left",
+    "status-left-style",
+    "status-position",
+    "status-right",
+    "status-right-style",
+    "status-style",
+    "tree-mode-preview-format",
+    "tree-mode-preview-style",
+    "window-active-style",
+    "window-pane-current-status-format",
+    "window-pane-status-format",
+    "window-size",
+    "window-status-activity-style",
+    "window-status-bell-style",
+    "window-status-current-format",
+    "window-status-current-style",
+    "window-status-format",
+    "window-status-last-style",
+    "window-status-separator",
+    "window-status-style",
+    "window-style",
+    "word-separators",
+]
 
 
 def convert_value(
@@ -586,12 +729,12 @@ def explode_complex(
                         # remaining parts are individual features/capabilities
                         parts = item.split(":")
                         term = parts[0]
-                        features = parts[1:]
+                        override_entries = parts[1:]
 
                         if term not in new_overrides:
                             new_overrides[term] = {}
 
-                        for feature in features:
+                        for feature in override_entries:
                             if feature and "=" in feature:
                                 k, v = feature.split("=", 1)
                                 new_overrides[term][k] = int(v) if v.isdigit() else v
@@ -1220,6 +1363,150 @@ class OptionsMixin(CmdMixin):
 
         return self.cmd("show-options", *flags)
 
+    @t.overload
+    def _show_option(
+        self,
+        option: _IntOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> int | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: _BoolOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> bool | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: _BoolOrStrOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> bool | str | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: _IntOrStrOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> int | str | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: t.Literal["status"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> bool | int | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: _StrOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> str | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: t.Literal["terminal-features"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> TerminalFeatures | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: t.Literal["terminal-overrides"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> TerminalOverrides | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: t.Literal["command-alias"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> CommandAliases | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: t.Literal["user-keys", "update-environment"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> SparseArray[str] | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: t.Literal["status-format", "pane-colours"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> SparseArray[str] | list[str] | None: ...
+
+    @t.overload
+    def _show_option(
+        self,
+        option: str,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> OptionValue: ...
+
     def _show_option(
         self,
         option: str,
@@ -1232,7 +1519,9 @@ class OptionsMixin(CmdMixin):
     ) -> OptionValue:
         """Return option value for the target.
 
-        todo: test and return True/False for on/off string
+        Known option names resolve via ``@overload`` to their parsed scalar,
+        :class:`~libtmux._internal.sparse_array.SparseArray`, or mapping type;
+        dynamic or ``@user`` option names return :data:`OptionValue`.
 
         Parameters
         ----------
@@ -1240,6 +1529,12 @@ class OptionsMixin(CmdMixin):
         g : bool, optional
             .. deprecated:: 0.50.0
                Use ``global_`` instead.
+
+        Returns
+        -------
+        OptionValue
+            Parsed option value (scalar, array, or structured mapping), or
+            ``None`` when unset.
 
         Raises
         ------
@@ -1325,6 +1620,150 @@ class OptionsMixin(CmdMixin):
 
         return t.cast("OptionValue", output_exploded[exploded_key])
 
+    @t.overload
+    def show_option(
+        self,
+        option: _IntOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> int | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: _BoolOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> bool | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: _BoolOrStrOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> bool | str | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: _IntOrStrOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> int | str | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: t.Literal["status"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> bool | int | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: _StrOptionName,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> str | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: t.Literal["terminal-features"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> TerminalFeatures | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: t.Literal["terminal-overrides"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> TerminalOverrides | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: t.Literal["command-alias"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> CommandAliases | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: t.Literal["user-keys", "update-environment"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> SparseArray[str] | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: t.Literal["status-format", "pane-colours"],
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> SparseArray[str] | list[str] | None: ...
+
+    @t.overload
+    def show_option(
+        self,
+        option: str,
+        global_: bool = False,
+        g: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> OptionValue: ...
+
     def show_option(
         self,
         option: str,
@@ -1337,12 +1776,22 @@ class OptionsMixin(CmdMixin):
     ) -> OptionValue:
         """Return option value for the target.
 
+        Known option names resolve via ``@overload`` to their parsed scalar,
+        :class:`~libtmux._internal.sparse_array.SparseArray`, or mapping type;
+        dynamic or ``@user`` option names return :data:`OptionValue`.
+
         Parameters
         ----------
         option : str
         g : bool, optional
             .. deprecated:: 0.50.0
                Use ``global_`` instead.
+
+        Returns
+        -------
+        OptionValue
+            Parsed option value (scalar, array, or structured mapping), or
+            ``None`` when unset.
 
         Raises
         ------
