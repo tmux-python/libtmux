@@ -25,6 +25,7 @@ from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.pytest_plugin import ServerFactory
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -714,7 +715,7 @@ def test_socket_name_precedence(server: Server) -> None:
             myserver2.kill()
 
 
-def test_server_context_manager(TestServer: t.Callable[..., Server]) -> None:
+def test_server_context_manager(TestServer: ServerFactory) -> None:
     """Test Server context manager functionality."""
     with TestServer() as server:
         session = server.new_session()
