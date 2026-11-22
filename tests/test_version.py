@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import operator
 import typing as t
 from contextlib import nullcontext as does_not_raise
@@ -14,16 +15,9 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
     from typing import TypeAlias
 
-    try:
-        from _pytest.raises import RaisesExc
-    except ImportError:
-        from _pytest.python_api import RaisesContext  # type: ignore[import-not-found]
-
-        RaisesExc: TypeAlias = RaisesContext[Exception]  # type: ignore[no-redef]
-
     VersionCompareOp: TypeAlias = Callable[
-        [t.Any, t.Any],
-        bool,
+        [LooseVersion, LooseVersion],
+        object,
     ]
 
 
@@ -146,10 +140,8 @@ def test_version_compare(
     raises: type[Exception] | bool,
 ) -> None:
     """Assert version comparisons."""
-    raises_ctx: RaisesExc = (
-        pytest.raises(t.cast("type[Exception]", raises))
-        if raises
-        else t.cast("RaisesExc", does_not_raise())
+    raises_ctx: contextlib.AbstractContextManager[object] = (
+        pytest.raises(raises) if isinstance(raises, type) else does_not_raise()
     )
     with raises_ctx:
         assert op(LooseVersion(a), LooseVersion(b))

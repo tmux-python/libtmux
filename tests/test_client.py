@@ -147,7 +147,9 @@ def test_client_attached_pane_tracks_active_pane(
 
         attached = client.attached_pane
         assert isinstance(attached, Pane)
-        assert attached.pane_id == session.active_window.active_pane.pane_id  # type: ignore[union-attr]
+        active_pane = session.active_window.active_pane
+        assert active_pane is not None
+        assert attached.pane_id == active_pane.pane_id
 
 
 def test_client_attached_properties_return_none_after_detach(
