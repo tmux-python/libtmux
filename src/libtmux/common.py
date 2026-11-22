@@ -375,7 +375,8 @@ def _redact_env_values(argv: Sequence[str]) -> list[str]:
     >>> _redact_env_values(["tmux", "split-window", "-e", "TOKEN=hunter2"])
     ['tmux', 'split-window', '-e', 'TOKEN=***']
 
-    >>> _redact_env_values(["tmux", "set-environment", "-t", "$0", "TOKEN", "hunter2"])
+    >>> argv = ["tmux", "set-environment", "-t", "$0", "TOKEN", "hunter2"]
+    >>> _redact_env_values(argv)
     ['tmux', 'set-environment', '-t', '$0', 'TOKEN', '***']
 
     A flag that is not an environment assignment is left alone:
