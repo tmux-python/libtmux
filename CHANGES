@@ -111,8 +111,8 @@ session.new_window(
 `+` and {meth}`~libtmux.Format.join` add text from users or files and keep it
 literal; {meth}`Format.escape() <libtmux.Format.escape>` places such text inside
 an expression, such as one side of a comparison. Adding plain text where tmux
-would read it as format syntax, after a lone `#` or inside an unfinished
-`#{...}`, raises {exc}`ValueError`. Parameters that accept a format are typed
+would read it as format syntax, such as after a trailing `#` or inside an
+unfinished `#{...}`, raises {exc}`ValueError`. Parameters that accept a format are typed
 `str | Format`, so a type checker flags a `Format` passed where tmux would
 store it as typed.
 

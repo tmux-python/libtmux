@@ -51,45 +51,165 @@ def _escape_format(text: str) -> str:
     return text.translate(_FORMAT_ESCAPES)
 
 
+def _skip(template: str, start: int, end: str) -> int | None:
+    """Return the index of the first *end* character outside ``#{...}``.
+
+    Mirrors tmux's ``format_skip``: ``#{`` opens a level, ``}`` closes one,
+    and ``#,``, ``##``, ``#{``, ``#}`` and ``#:`` are skipped as pairs.
+
+    Examples
+    --------
+    >>> _skip("#{?a,#{b},c}x", 0, "}")
+    11
+    >>> _skip("#{?a,#}", 0, "}") is None
+    True
+    """
+    depth = 0
+    index = start
+    while index < len(template):
+        char = template[index]
+        if char == "#" and index + 1 < len(template):
+            following = template[index + 1]
+            if following == "{":
+                depth += 1
+            if following in ",#{}:":
+                index += 2
+                continue
+        if char == "}":
+            depth -= 1
+        if char in end and depth == 0:
+            return index
+        index += 1
+    return None
+
+
+def _open_expression(template: str) -> str | None:
+    """Return which tmux expression *template* ends inside, if any.
+
+    Mirrors the scanner in tmux's ``format_expand1``: ``#(...)`` closes at
+    its balancing ``)``, counting every ``(`` inside it; ``#{...}`` closes
+    as :func:`_skip` finds; a run of ``#`` before ``[`` is a style.
+
+    Examples
+    --------
+    >>> _open_expression("#{session_name}-") is None
+    True
+    >>> _open_expression("#{?pane_active,")
+    'it ends inside #{...}'
+    >>> _open_expression("#(echo $(printf x)")
+    'it ends inside #(...)'
+    >>> _open_expression("#(echo $(printf x))") is None
+    True
+    >>> _open_expression("#[fg=")
+    'it ends inside #[...]'
+    """
+    index = 0
+    size = len(template)
+    while index < size:
+        if template[index] != "#" or index + 1 == size:
+            index += 1
+            continue
+        following = template[index + 1]
+        if following == "(":
+            depth = 1
+            close = index + 2
+            while close < size:
+                if template[close] == "(":
+                    depth += 1
+                elif template[close] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                close += 1
+            if close == size:
+                return "it ends inside #(...)"
+            index = close + 1
+        elif following == "{":
+            closing = _skip(template, index, "}")
+            if closing is None:
+                return "it ends inside #{...}"
+            index = closing + 1
+        elif following in "#[":
+            run_end = index + 1
+            while run_end < size and template[run_end] == "#":
+                run_end += 1
+            if run_end < size and template[run_end] == "[":
+                if _skip(template, index, "]") is None:
+                    return "it ends inside #[...]"
+                index = run_end + 1
+            else:
+                # tmux halves the run; an odd one leaves its last # to combine.
+                index = run_end - (run_end - index) % 2
+        else:
+            index += 2
+    return None
+
+
+#: Characters strftime accepts between ``%`` and its conversion character.
+_TIME_FLAGS = "_-0^#+"
+
+
+def _open_time_field(template: str) -> bool:
+    """Return whether *template* ends inside a ``%`` time field.
+
+    tmux runs ``strftime`` over arguments it also expands as time, before it
+    expands formats, so a trailing ``%`` would combine with the next
+    character.
+
+    Examples
+    --------
+    >>> _open_time_field("100%")
+    True
+    >>> _open_time_field("at %-")
+    True
+    >>> _open_time_field("100%% and %H:%M")
+    False
+    """
+    index = template.find("%")
+    while index != -1:
+        index += 1
+        while index < len(template) and template[index] in _TIME_FLAGS:
+            index += 1
+        while index < len(template) and template[index].isdigit():
+            index += 1
+        if index < len(template) and template[index] in "EO":
+            index += 1
+        if index >= len(template):
+            return True
+        index = template.find("%", index + 1)
+    return False
+
+
 def _unfinished(template: str) -> str | None:
     """Return why plain text appended to *template* would not stay literal.
 
-    Text is literal only outside tmux's expression syntax. It is not after a
-    lone trailing ``#``, which combines with the next character, or inside an
-    unclosed ``#{...}`` or ``#(...)``.
+    Text is literal only where tmux reads text: not after a trailing ``#``,
+    which combines with the next character, not inside an unclosed
+    ``#{...}``, ``#(...)`` or ``#[...]``, and not after an unfinished ``%``
+    time field.
 
     Examples
     --------
     >>> _unfinished("#{session_name}-") is None
     True
     >>> _unfinished("#{session_name}#")
-    'it ends with a lone #'
+    'it ends with #'
+    >>> _unfinished("##")
+    'it ends with #'
     >>> _unfinished("#{?pane_active,")
     'it ends inside #{...}'
     >>> _unfinished("#(echo ")
     'it ends inside #(...)'
+    >>> _unfinished("Progress: 100%")
+    'it ends inside a % time field'
     """
-    closers: list[str] = []
-    i = 0
-    while i < len(template):
-        char = template[i]
-        if char == "#":
-            if i + 1 == len(template):
-                return "it ends with a lone #"
-            following = template[i + 1]
-            if following == "{":
-                closers.append("}")
-            elif following == "(":
-                closers.append(")")
-            i += 2
-            continue
-        if closers and char == closers[-1]:
-            closers.pop()
-        i += 1
-    if closers:
-        return (
-            "it ends inside #{...}" if closers[-1] == "}" else "it ends inside #(...)"
-        )
+    if template.endswith("#"):
+        return "it ends with #"
+    reason = _open_expression(template)
+    if reason is not None:
+        return reason
+    if _open_time_field(template):
+        return "it ends inside a % time field"
     return None
 
 
@@ -106,7 +226,8 @@ class Format:
 
     Only pass text your program wrote. Add text from users or files with ``+``
     or :meth:`join`, which keep it literal; place it inside an expression,
-    such as a conditional or comparison, with :meth:`escape`.
+    such as a conditional or comparison, with :meth:`escape`. Never place it
+    inside ``#(...)``, which runs a shell command.
 
     Parameters
     ----------

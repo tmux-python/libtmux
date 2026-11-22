@@ -92,9 +92,10 @@ Window(...)
 True
 ```
 
-Plain text can only be added where tmux reads text. Adding it after a lone `#`
-or inside an unfinished `#{...}` or `#(...)` raises, because tmux would read
-it as format syntax:
+Plain text can only be added where tmux reads text. Adding it after a format
+that ends with `#` or an unfinished `%` time field, or inside an unfinished
+`#{...}`, `#(...)` or `#[...]`, raises, because tmux would read it as format
+syntax:
 
 ```python
 >>> Format("#{?pane_active,") + "yes"
@@ -118,8 +119,10 @@ otherwise end an argument:
 ['1']
 ```
 
-Inside `#(...)`, the text becomes part of a shell command, so quote it for the
-shell as well, for example with {func}`shlex.quote`.
+Do not place text from users inside `#(...)`. tmux finds the end of the
+command by counting parentheses before the shell sees any quoting, so a `)` in
+the text ends the command early. Run the command from Python and pass its
+output instead.
 
 ## Arguments tmux always expands
 

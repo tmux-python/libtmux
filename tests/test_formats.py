@@ -168,6 +168,17 @@ UNFINISHED_FIXTURES: list[UnfinishedFixture] = [
         "join_inside_conditional",
         lambda: Format("#{?pane_active,").join(["a", "b"]),
     ),
+    # tmux counts every "(" inside #(...), so the inner ")" does not close it.
+    UnfinishedFixture(
+        "nested_parentheses",
+        lambda: Format("#(echo $(printf x)") + " data",
+    ),
+    # Where tmux also expands time, "%" + "d" would read as a day of month.
+    UnfinishedFixture("time_field", lambda: Format("Progress: 100%") + "done"),
+    UnfinishedFixture("time_field_flag", lambda: Format("at %-") + "d"),
+    # A run of "#" before "[" is a style, so "##" + "[" would become one.
+    UnfinishedFixture("escaped_hash_before_bracket", lambda: Format("##") + "[x"),
+    UnfinishedFixture("inside_style", lambda: Format("#[fg=") + "red]"),
 ]
 
 
@@ -183,6 +194,49 @@ def test_plain_text_after_unfinished_format_raises(
     """Plain text cannot be added where tmux would read it as format syntax."""
     with pytest.raises(ValueError, match="cannot add plain text"):
         build()
+
+
+class FinishedFixture(t.NamedTuple):
+    """A complete format, and what it becomes with ``a#b`` added."""
+
+    test_id: str
+    template: str
+    expected: str
+
+
+FINISHED_FIXTURES: list[FinishedFixture] = [
+    FinishedFixture(
+        "closed_nested_parentheses",
+        "#(echo $(printf x))",
+        "#(echo $(printf x))a#{a:35}b",
+    ),
+    FinishedFixture("percent_pair", "100%% ", "100%% a#{a:35}b"),
+    FinishedFixture("whole_time_field", "%H:%M ", "%H:%M a#{a:35}b"),
+    FinishedFixture("closed_style", "#[fg=red]", "#[fg=red]a#{a:35}b"),
+    FinishedFixture("escaped_brace", "#{?x,#},y}", "#{?x,#},y}a#{a:35}b"),
+]
+
+
+@pytest.mark.parametrize(
+    list(FinishedFixture._fields),
+    FINISHED_FIXTURES,
+    ids=[fixture.test_id for fixture in FINISHED_FIXTURES],
+)
+def test_plain_text_after_finished_format(
+    test_id: str,
+    template: str,
+    expected: str,
+) -> None:
+    """Plain text is added, escaped, after a format that is complete."""
+    assert str(Format(template) + "a#b") == expected
+
+
+def test_added_percent_is_literal_in_message(session: Session) -> None:
+    """A ``%`` in added text is not read as a time field by ``display_message``."""
+    pane = session.active_pane
+    assert pane is not None
+    shown = pane.display_message(Format("Progress: ") + "100%done", get_text=True)
+    assert shown == ["Progress: 100%done"]
 
 
 def test_escape_is_literal_inside_expressions(session: Session) -> None:
