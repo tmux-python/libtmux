@@ -11,7 +11,7 @@ import typing as t
 
 import pytest
 
-from libtmux import exc
+from libtmux import Format, exc
 from libtmux._internal.support import capabilities
 
 if t.TYPE_CHECKING:
@@ -111,6 +111,12 @@ GATE_CASES: list[GateCase] = [
         "run-shell-start-directory",
         lambda session: session.server.run_shell("true", cwd="/"),
         "cwd requires tmux",
+    ),
+    GateCase(
+        "run_shell_cwd_format",
+        "run-shell-start-directory-format",
+        lambda session: session.server.run_shell("true", cwd=Format("/")),
+        None,
     ),
     GateCase(
         "run_shell_show_stderr",

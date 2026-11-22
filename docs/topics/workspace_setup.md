@@ -101,6 +101,10 @@ workspace: {meth}`~libtmux.Window.split` (or the same method on a specific
 round-trip to the tmux server; the resize calls below buy a window large
 enough that the splits have room to land on a small terminal.
 
+A `start_directory` is used as typed. To start a pane in the current pane's
+directory, pass `start_directory=Format("#{pane_current_path}")`; see
+{ref}`formats`.
+
 ### Vertical split (top/bottom)
 
 Splitting top-and-bottom is the default — the new pane opens below the one
@@ -231,7 +235,9 @@ Window(@... ...)
 ### Rename windows
 
 A window's name is how you find it later, so give each one a label that says
-what it's for. {meth}`~libtmux.Window.rename_window` updates it in place:
+what it's for. {meth}`~libtmux.Window.rename_window` updates it in place, and
+keeps the name exactly as typed; {ref}`formats` shows how to build one from
+tmux's formats:
 
 ```python
 >>> rename_window = session.new_window(window_name='old-name', attach=False)

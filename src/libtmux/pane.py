@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import pathlib
 import typing as t
 import warnings
 
@@ -18,7 +17,9 @@ from libtmux._compat import sentinel
 from libtmux._internal.env import pane_id_from_env
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.common import (
-    _literal,
+    _format_arg,
+    _format_path_arg,
+    _format_text,
     escape_trailing_separator,
     get_version_str,
     has_gte_version,
@@ -42,6 +43,7 @@ if t.TYPE_CHECKING:
     from typing import Self
 
     from libtmux._internal.types import StrPath
+    from libtmux.formats import Format
 
     from .server import Server
     from .session import Session
@@ -974,7 +976,7 @@ class Pane(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[True],
         *,
         format_string: str | None = ...,
@@ -990,7 +992,7 @@ class Pane(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[False] = ...,
         *,
         format_string: str | None = ...,
@@ -1005,7 +1007,7 @@ class Pane(
 
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: bool = False,
         *,
         format_string: str | None = None,
@@ -1025,8 +1027,11 @@ class Pane(
 
         Parameters
         ----------
-        cmd : str
+        cmd : str or Format
             Special parameters to request from pane.
+            tmux expands it as a format either way; a :class:`~libtmux.Format`
+            keeps text added to it literal, as in
+            ``Format("Saved: ") + filename``.
         get_text : bool, optional
             Returns only text without displaying a message in
             target-client status line.
@@ -1123,7 +1128,7 @@ class Pane(
             tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += ("--", escape_trailing_separator(cmd))
+            tmux_args += ("--", escape_trailing_separator(_format_text(cmd)))
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1329,7 +1334,7 @@ class Pane(
         self,
         /,
         target: int | str | None = None,
-        start_directory: StrPath | None = None,
+        start_directory: StrPath | Format | None = None,
         attach: bool = False,
         direction: PaneDirection | None = None,
         full_window_split: bool | None = None,
@@ -1354,8 +1359,9 @@ class Pane(
         attach : bool, optional
             make new window the current window after creating it, default
             True.
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             specifies the working directory in which the new window is created.
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         direction : PaneDirection, optional
             split in direction. If none is specified, assume down.
         full_window_split: bool, optional
@@ -1476,8 +1482,9 @@ class Pane(
         tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
 
         if start_directory:
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
+            tmux_args += (
+                escape_trailing_separator(f"-c{_format_path_arg(start_directory)}"),
+            )
 
         if not attach:
             tmux_args += ("-d",)
@@ -1556,7 +1563,7 @@ class Pane(
         self,
         /,
         target: int | str | None = None,
-        start_directory: StrPath | None = None,
+        start_directory: StrPath | Format | None = None,
         attach: bool = False,
         shell: str | None = None,
         environment: dict[str, str] | None = None,
@@ -1582,8 +1589,9 @@ class Pane(
         ----------
         target : int or str, optional
             Custom *target-pane*, used by :meth:`Window.new_pane`.
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             Working directory for the new pane (``-c`` flag).
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         attach : bool, optional
             Make the new pane the active pane, default False (``-d`` when
             not attaching).
@@ -1675,8 +1683,9 @@ class Pane(
         tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
 
         if start_directory:
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
+            tmux_args += (
+                escape_trailing_separator(f"-c{_format_path_arg(start_directory)}"),
+            )
 
         if not attach:
             tmux_args += ("-d",)
@@ -1754,13 +1763,14 @@ class Pane(
         self.resize(height=height)
         return self
 
-    def set_title(self, title: str) -> Pane:
+    def set_title(self, title: str | Format) -> Pane:
         """Set pane title via ``select-pane -T``.
 
         Parameters
         ----------
-        title : str
+        title : str or Format
             Title to set for the pane.
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
 
         Returns
         -------
@@ -1775,7 +1785,9 @@ class Pane(
         >>> pane.pane_title
         'my-title'
         """
-        proc = self.cmd("select-pane", "-T", escape_trailing_separator(_literal(title)))
+        proc = self.cmd(
+            "select-pane", "-T", escape_trailing_separator(_format_arg(title))
+        )
         raise_if_stderr(proc, "select-pane")
         self.refresh()
         return self
@@ -1800,8 +1812,8 @@ class Pane(
         height: int | str | None = None,
         x: int | str | None = None,
         y: int | str | None = None,
-        start_directory: StrPath | None = None,
-        title: str | None = None,
+        start_directory: StrPath | Format | None = None,
+        title: str | Format | None = None,
         border_lines: str | None = None,
         style: str | None = None,
         border_style: str | None = None,
@@ -1839,10 +1851,12 @@ class Pane(
             Popup x position (``-x`` flag).
         y : int or str, optional
             Popup y position (``-y`` flag).
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             Working directory (``-d`` flag).
-        title : str, optional
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
+        title : str or Format, optional
             Popup title (``-T`` flag).
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
         border_lines : str, optional
             Border line style (``-b`` flag).
         style : str, optional
@@ -1903,11 +1917,13 @@ class Pane(
             tmux_args += ("-y", str(y))
 
         if start_directory is not None:
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += ("-d", escape_trailing_separator(str(start_path)))
+            tmux_args += (
+                "-d",
+                escape_trailing_separator(_format_path_arg(start_directory)),
+            )
 
         if title is not None:
-            tmux_args += ("-T", escape_trailing_separator(title))
+            tmux_args += ("-T", escape_trailing_separator(_format_arg(title)))
 
         if border_lines is not None:
             tmux_args += ("-b", escape_trailing_separator(border_lines))
@@ -2021,7 +2037,7 @@ class Pane(
 
     def pipe(
         self,
-        command: str | None = None,
+        command: str | Format | None = None,
         *,
         output_only: bool | None = None,
         input_only: bool | None = None,
@@ -2031,8 +2047,10 @@ class Pane(
 
         Parameters
         ----------
-        command : str, optional
-            Shell command to pipe to. If None, stops piping.
+        command : str or Format, optional
+            Shell command to pipe to. If None, stops piping. tmux expands it as
+            a format either way; a :class:`~libtmux.Format` keeps text added to
+            it literal.
         output_only : bool, optional
             Only pipe output from the pane (``-O`` flag).
         input_only : bool, optional
@@ -2060,7 +2078,7 @@ class Pane(
             tmux_args += ("-o",)
 
         if command is not None:
-            tmux_args += (escape_trailing_separator(command),)
+            tmux_args += (escape_trailing_separator(_format_text(command)),)
 
         proc = self.cmd("pipe-pane", *tmux_args)
 
@@ -2344,7 +2362,7 @@ class Pane(
         self,
         *,
         shell: str | None = None,
-        start_directory: StrPath | None = None,
+        start_directory: StrPath | Format | None = None,
         environment: dict[str, str] | None = None,
         kill: bool | None = None,
     ) -> None:
@@ -2354,8 +2372,9 @@ class Pane(
         ----------
         shell : str, optional
             Shell command to run in the respawned pane.
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             Working directory for the respawned pane (``-c`` flag).
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         environment : dict, optional
             Environment variables (``-e`` flag).
         kill : bool, optional
@@ -2373,8 +2392,9 @@ class Pane(
             tmux_args += ("-k",)
 
         if start_directory is not None:
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
+            tmux_args += (
+                escape_trailing_separator(f"-c{_format_path_arg(start_directory)}"),
+            )
 
         if environment:
             for k, v in environment.items():

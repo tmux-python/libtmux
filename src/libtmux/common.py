@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import pathlib
 import re
 import shlex
 import shutil
@@ -18,9 +19,12 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from .formats import Format, _escape_format
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+    from libtmux._internal.types import StrPath
 
 logger = logging.getLogger(__name__)
 
@@ -249,17 +253,57 @@ class EnvironmentMixin:
 def _literal(value: str) -> str:
     """Escape ``#`` so tmux stores *value* instead of expanding it as a format.
 
-    tmux expands formats in names, titles and start directories; ``##`` is its
-    escape for a literal ``#``.
+    See :func:`libtmux.formats._escape_format` for why ``#{a:35}``, not ``##``.
 
     Examples
     --------
     >>> _literal("build#2")
-    'build##2'
+    'build#{a:35}2'
     >>> _literal("plain")
     'plain'
     """
-    return value.replace("#", "##")
+    return _escape_format(value)
+
+
+def _format_arg(value: str | Format) -> str:
+    """Render a name or title: a ``str`` stays literal, a :class:`Format` expands.
+
+    >>> _format_arg("a#b")
+    'a#{a:35}b'
+    >>> _format_arg(Format("#{session_name}"))
+    '#{session_name}'
+    """
+    if isinstance(value, Format):
+        return value.template
+    return _literal(value)
+
+
+def _format_path_arg(value: StrPath | Format) -> str:
+    """Render a start directory; a :class:`Format` reaches tmux as written.
+
+    A path has ``~`` expanded first; a format is left to tmux.
+
+    >>> _format_path_arg("/tmp/a#b")
+    '/tmp/a#{a:35}b'
+    >>> _format_path_arg(Format("#{pane_current_path}"))
+    '#{pane_current_path}'
+    """
+    if isinstance(value, Format):
+        return value.template
+    return _literal(str(pathlib.Path(value).expanduser()))
+
+
+def _format_text(value: str | Format) -> str:
+    """Render an argument tmux always expands: both forms reach tmux as written.
+
+    >>> _format_text("#{pane_id}")
+    '#{pane_id}'
+    >>> _format_text(Format("#{pane_id}-") + "50%")
+    '#{pane_id}-50#{a:37}'
+    """
+    if isinstance(value, Format):
+        return value.template
+    return value
 
 
 def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:

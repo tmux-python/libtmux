@@ -79,6 +79,12 @@ Attached terminals, live-attachment lookup, and the view-vs-identity model.
 Scope- and version-gated typed fields on every libtmux object.
 :::
 
+:::{grid-item-card} Literal Text and Formats
+:link: formats
+:link-type: doc
+Names and paths kept as typed, and `Format` to have tmux expand a value.
+:::
+
 ::::
 
 ```{toctree}
@@ -99,4 +105,5 @@ context_managers
 options_and_hooks
 clients
 format-tokens
+formats
 ```

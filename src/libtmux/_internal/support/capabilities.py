@@ -109,6 +109,16 @@ CAPABILITIES: tuple[Capability, ...] = (
         commands=(Command("run-shell", ("-c",)),),
     ),
     Capability(
+        id="run-shell-start-directory-format",
+        name="run-shell working directory formats",
+        summary="Expand a format in a run-shell job's working directory.",
+        since="3.8",
+        handling="refuse",
+        apis=("libtmux.Server.run_shell",),
+        commands=(Command("run-shell", ("-c",)),),
+        error="libtmux.exc.LibTmuxException",
+    ),
+    Capability(
         id="run-shell-show-stderr",
         name="run-shell stderr",
         summary="Show a run-shell job's standard error as well as its output.",
@@ -235,7 +245,7 @@ def manifest() -> dict[str, t.Any]:
     >>> doc["schema"], doc["port"]
     ('libtmux-capabilities/1', 'py')
     >>> [entry["id"] for entry in doc["capabilities"]][:2]
-    ['run-shell-start-directory', 'run-shell-show-stderr']
+    ['run-shell-start-directory', 'run-shell-start-directory-format']
     """
     return {
         "schema": SCHEMA,

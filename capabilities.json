@@ -24,6 +24,25 @@
       ]
     },
     {
+      "id": "run-shell-start-directory-format",
+      "name": "run-shell working directory formats",
+      "summary": "Expand a format in a run-shell job's working directory.",
+      "since": "3.8",
+      "handling": "refuse",
+      "error": "libtmux.exc.LibTmuxException",
+      "apis": [
+        "libtmux.Server.run_shell"
+      ],
+      "commands": [
+        {
+          "command": "run-shell",
+          "flags": [
+            "-c"
+          ]
+        }
+      ]
+    },
+    {
       "id": "run-shell-show-stderr",
       "name": "run-shell stderr",
       "summary": "Show a run-shell job's standard error as well as its output.",

@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import pathlib
-import shlex
 import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
 from libtmux.common import (
-    _literal,
+    _format_arg,
+    _format_path_arg,
+    _format_text,
     escape_trailing_separator,
     has_gte_version,
     raise_if_stderr,
@@ -42,6 +42,7 @@ if t.TYPE_CHECKING:
     from typing import Self
 
     from libtmux._internal.types import StrPath
+    from libtmux.formats import Format
 
     from .common import PaneDict, WindowOptionDict
     from .server import Server
@@ -482,7 +483,7 @@ class Window(
     def search_panes(
         self,
         *,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """Panes in this window, optionally filtered by tmux.
 
@@ -491,7 +492,7 @@ class Window(
 
         Parameters
         ----------
-        filter : str, optional
+        filter : str or Format, optional
             tmux format expression (``-f`` flag).
 
             .. warning::
@@ -613,7 +614,7 @@ class Window(
         self,
         /,
         target: int | str | None = None,
-        start_directory: StrPath | None = None,
+        start_directory: StrPath | Format | None = None,
         attach: bool = False,
         direction: PaneDirection | None = None,
         full_window_split: bool | None = None,
@@ -636,8 +637,9 @@ class Window(
         attach : bool, optional
             Make new window the current window after creating it, default
             True.
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             Specifies the working directory in which the new window is created.
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         direction : PaneDirection, optional
             Split in direction. If none is specified, assume down.
         full_window_split : bool, optional
@@ -706,7 +708,7 @@ class Window(
         self,
         /,
         target: int | str | None = None,
-        start_directory: StrPath | None = None,
+        start_directory: StrPath | Format | None = None,
         attach: bool = False,
         shell: str | None = None,
         environment: dict[str, str] | None = None,
@@ -731,8 +733,9 @@ class Window(
         ----------
         target : int or str, optional
             Custom *target-pane*.
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             Working directory for the new pane (``-c``).
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         attach : bool, optional
             Make the new pane active, default False (``-d`` otherwise).
         shell : str, optional
@@ -1192,7 +1195,7 @@ class Window(
         self,
         *,
         shell: str | None = None,
-        start_directory: StrPath | None = None,
+        start_directory: StrPath | Format | None = None,
         environment: dict[str, str] | None = None,
         kill: bool | None = None,
     ) -> None:
@@ -1202,8 +1205,9 @@ class Window(
         ----------
         shell : str, optional
             Shell command to run in the respawned window.
-        start_directory : str or PathLike, optional
+        start_directory : str, PathLike or Format, optional
             Working directory for the respawned window (``-c`` flag).
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         environment : dict, optional
             Environment variables (``-e`` flag).
         kill : bool, optional
@@ -1221,8 +1225,9 @@ class Window(
             tmux_args += ("-k",)
 
         if start_directory is not None:
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (escape_trailing_separator(f"-c{_literal(str(start_path))}"),)
+            tmux_args += (
+                escape_trailing_separator(f"-c{_format_path_arg(start_directory)}"),
+            )
 
         if environment:
             for k, v in environment.items():
@@ -1281,7 +1286,7 @@ class Window(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[True],
         *,
         format_string: str | None = ...,
@@ -1296,7 +1301,7 @@ class Window(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[False] = ...,
         *,
         format_string: str | None = ...,
@@ -1310,7 +1315,7 @@ class Window(
 
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: bool = False,
         *,
         format_string: str | None = None,
@@ -1330,9 +1335,12 @@ class Window(
 
         Parameters
         ----------
-        cmd : str
+        cmd : str or Format
             Format string to display or evaluate (e.g.
             ``"#{window_zoomed_flag}"``).
+            tmux expands it as a format either way; a :class:`~libtmux.Format`
+            keeps text added to it literal, as in
+            ``Format("Saved: ") + filename``.
 
             .. versionadded:: 0.57
         get_text : bool, optional
@@ -1433,7 +1441,7 @@ class Window(
             tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += ("--", escape_trailing_separator(cmd))
+            tmux_args += ("--", escape_trailing_separator(_format_text(cmd)))
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1447,13 +1455,14 @@ class Window(
 
         return None
 
-    def rename_window(self, new_name: str) -> Window:
+    def rename_window(self, new_name: str | Format) -> Window:
         """Rename window.
 
         Parameters
         ----------
-        new_name : str
-            name of the window
+        new_name : str or Format
+            Name of the window.
+            A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
 
         Examples
         --------
@@ -1465,16 +1474,12 @@ class Window(
         >>> window.rename_window('New name')
         Window(@1 1:New name, Session($1 ...))
         """
-        lex = shlex.shlex(new_name)
-        lex.escape = " "
-        lex.whitespace_split = False
-
         proc = self.cmd(
-            "rename-window", "--", escape_trailing_separator(_literal(new_name))
+            "rename-window", "--", escape_trailing_separator(_format_arg(new_name))
         )
         raise_if_stderr(proc, "rename-window")
 
-        self.window_name = new_name
+        # Read the name back: a Format's result is known only after tmux expands it.
         self.refresh()
 
         extra: dict[str, str] = {
@@ -1637,9 +1642,9 @@ class Window(
 
     def new_window(
         self,
-        window_name: str | None = None,
+        window_name: str | Format | None = None,
         *,
-        start_directory: None = None,
+        start_directory: StrPath | Format | None = None,
         attach: bool = False,
         window_index: str = "",
         window_shell: str | None = None,

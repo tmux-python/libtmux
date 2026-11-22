@@ -177,5 +177,6 @@ Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>
 Constants <libtmux.constants>
+Formats <libtmux.formats>
 Exceptions <libtmux.exc>
 ```
