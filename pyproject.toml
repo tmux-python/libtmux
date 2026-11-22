@@ -194,6 +194,7 @@ branch = true
 parallel = true
 omit = [
   "*/_compat.py",
+  "*/_vendor/*",
   "docs/conf.py",
   "tests/test_*.py",
   "tests/*/test_*.py",
@@ -210,7 +211,7 @@ exclude_lines = [
   "def parse_args",
   "if TYPE_CHECKING:",
   "if t.TYPE_CHECKING:",
-  "@overload( |$)",
+  "@(t\\.)?overload( |$)",
   'class .*\bProtocol\):',
   "from __future__ import annotations",
   "import typing as t",
