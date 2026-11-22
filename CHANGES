@@ -47,6 +47,22 @@ _Notes on the upcoming release will go here._
 
 ### Breaking changes
 
+#### User options are returned as strings (#826)
+
+{meth}`~libtmux.options.OptionsMixin.show_option` and
+{meth}`~libtmux.options.OptionsMixin.show_options` return the value of an `@`
+user option as the string tmux stores. `"123"`, `"on"` and `"off"` previously
+came back as an integer or a boolean. Built-in options are converted as before.
+See {ref}`options-and-hooks` and {ref}`migration`.
+
+```python
+# Before
+retries = session.show_option("@retries")  # 3
+
+# After
+retries = int(session.show_option("@retries"))  # "3" -> 3
+```
+
 #### Empty tmux fields read as `""` (#900)
 
 A field tmux reports as empty, such as a cleared
