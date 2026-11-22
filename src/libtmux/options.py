@@ -858,7 +858,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")
@@ -973,7 +973,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")
@@ -1064,7 +1064,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")
@@ -1140,7 +1140,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")
@@ -1192,7 +1192,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")
@@ -1304,7 +1304,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")
@@ -1549,7 +1549,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")
@@ -1806,7 +1806,7 @@ class OptionsMixin(CmdMixin):
 
         >>> class MyServer(OptionsMixin):
         ...     socket_name = server.socket_name
-        ...     def cmd(self, cmd: str, *args: object):
+        ...     def cmd(self, cmd: str, *args: str | int):
         ...         cmd_args: t.List[t.Union[str, int]] = [cmd]
         ...         if self.socket_name:
         ...             cmd_args.insert(0, f"-L{self.socket_name}")

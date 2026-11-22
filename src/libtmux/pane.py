@@ -411,7 +411,7 @@ class Pane(
     def cmd(
         self,
         cmd: str,
-        *args: object,
+        *args: StrPath | int,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within pane context.
@@ -2748,6 +2748,7 @@ class Pane(
         >>> pane.reset()
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
         """
+        assert self.pane_id is not None
         self.server.cmd(
             "send-keys",
             "-t",

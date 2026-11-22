@@ -505,7 +505,7 @@ class Session(
     def cmd(
         self,
         cmd: str,
-        *args: object,
+        *args: StrPath | int,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within session context.

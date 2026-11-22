@@ -24,6 +24,11 @@ from .formats import Format, _escape_format
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import TypeAlias
+
+    from ._internal.types import StrPath
+
+    CmdArg: TypeAlias = StrPath | int
 
     from libtmux._internal.types import StrPath
 
@@ -48,7 +53,7 @@ class CmdProtocol(t.Protocol):
     def __call__(
         self,
         cmd: str,
-        *args: object,
+        *args: CmdArg,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Wrap tmux_cmd."""
@@ -61,7 +66,7 @@ class CmdMixin:
     def cmd(
         self,
         cmd: str,
-        *args: object,
+        *args: CmdArg,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux command."""
@@ -506,7 +511,7 @@ class tmux_cmd:
     stdout: list[str]
     stderr: list[str]
 
-    def __init__(self, *args: object, tmux_bin: str | None = None) -> None:
+    def __init__(self, *args: CmdArg, tmux_bin: str | None = None) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound

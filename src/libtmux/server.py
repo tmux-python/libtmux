@@ -641,7 +641,7 @@ class Server(
     def cmd(
         self,
         cmd: str,
-        *args: object,
+        *args: StrPath | int,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
@@ -721,7 +721,7 @@ class Server(
             else:
                 raise exc.UnknownColorOption
 
-        cmd_args: list[object] = (
+        cmd_args: list[StrPath | int] = (
             ["-t", str(target), *args] if target is not None else [*args]
         )
 

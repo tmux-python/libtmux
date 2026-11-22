@@ -487,7 +487,11 @@ class WaitTimeout(LibTmuxException):
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 
-    def __init__(self, variable: object = None, *args: object) -> None:
+    def __init__(
+        self,
+        variable: t.Sequence[str] | str | None = None,
+        *args: object,
+    ) -> None:
         super().__init__(f"Unexpected variable: {variable!s}")
 
 
