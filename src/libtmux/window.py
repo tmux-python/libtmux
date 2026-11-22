@@ -16,6 +16,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.common import (
     _format_arg,
     _format_path_arg,
+    _format_text,
     escape_trailing_separator,
     has_gte_version,
     raise_if_stderr,
@@ -482,7 +483,7 @@ class Window(
     def search_panes(
         self,
         *,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """Panes in this window, optionally filtered by tmux.
 
@@ -491,7 +492,7 @@ class Window(
 
         Parameters
         ----------
-        filter : str, optional
+        filter : str or Format, optional
             tmux format expression (``-f`` flag).
 
             .. warning::
@@ -1285,7 +1286,7 @@ class Window(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[True],
         *,
         format_string: str | None = ...,
@@ -1300,7 +1301,7 @@ class Window(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[False] = ...,
         *,
         format_string: str | None = ...,
@@ -1314,7 +1315,7 @@ class Window(
 
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: bool = False,
         *,
         format_string: str | None = None,
@@ -1334,9 +1335,12 @@ class Window(
 
         Parameters
         ----------
-        cmd : str
+        cmd : str or Format
             Format string to display or evaluate (e.g.
             ``"#{window_zoomed_flag}"``).
+            tmux expands it as a format either way; a :class:`~libtmux.Format`
+            keeps text added to it literal, as in
+            ``Format("Saved: ") + filename``.
 
             .. versionadded:: 0.57
         get_text : bool, optional
@@ -1437,7 +1441,7 @@ class Window(
             tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += ("--", escape_trailing_separator(cmd))
+            tmux_args += ("--", escape_trailing_separator(_format_text(cmd)))
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -1640,7 +1644,7 @@ class Window(
         self,
         window_name: str | Format | None = None,
         *,
-        start_directory: None = None,
+        start_directory: StrPath | Format | None = None,
         attach: bool = False,
         window_index: str = "",
         window_shell: str | None = None,

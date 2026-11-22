@@ -388,7 +388,7 @@ class Session(
     def search_windows(
         self,
         *,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Window]:
         """Windows in this session, optionally filtered by tmux.
 
@@ -397,7 +397,7 @@ class Session(
 
         Parameters
         ----------
-        filter : str, optional
+        filter : str or Format, optional
             tmux format expression (``-f`` flag).
 
             .. warning::
@@ -443,7 +443,7 @@ class Session(
     def search_panes(
         self,
         *,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """Panes in this session, optionally filtered by tmux.
 
@@ -452,7 +452,7 @@ class Session(
 
         Parameters
         ----------
-        filter : str, optional
+        filter : str or Format, optional
             tmux format expression (``-f`` flag).
 
             .. warning::

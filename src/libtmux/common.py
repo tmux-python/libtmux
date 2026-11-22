@@ -19,7 +19,7 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
-from .formats import Format, _escape_hash
+from .formats import Format, _escape_format
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -253,7 +253,7 @@ class EnvironmentMixin:
 def _literal(value: str) -> str:
     """Escape ``#`` so tmux stores *value* instead of expanding it as a format.
 
-    See :func:`libtmux.formats._escape_hash` for why ``#{a:35}``, not ``##``.
+    See :func:`libtmux.formats._escape_format` for why ``#{a:35}``, not ``##``.
 
     Examples
     --------
@@ -262,7 +262,7 @@ def _literal(value: str) -> str:
     >>> _literal("plain")
     'plain'
     """
-    return _escape_hash(value)
+    return _escape_format(value)
 
 
 def _format_arg(value: str | Format) -> str:
@@ -291,6 +291,19 @@ def _format_path_arg(value: StrPath | Format) -> str:
     if isinstance(value, Format):
         return value.template
     return _literal(str(pathlib.Path(value).expanduser()))
+
+
+def _format_text(value: str | Format) -> str:
+    """Render an argument tmux always expands: both forms reach tmux as written.
+
+    >>> _format_text("#{pane_id}")
+    '#{pane_id}'
+    >>> _format_text(Format("#{pane_id}-") + "50%")
+    '#{pane_id}-50#{a:37}'
+    """
+    if isinstance(value, Format):
+        return value.template
+    return value
 
 
 def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:

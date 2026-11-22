@@ -9,12 +9,14 @@ exercise both rules.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import pathlib
 import typing as t
 
 import pytest
 
 from libtmux import exc
+from libtmux._internal.support import capabilities
 from libtmux.common import escape_trailing_separator, has_gte_version
 from libtmux.test.retry import retry_until
 
@@ -611,3 +613,34 @@ def test_new_pane_message_real(session: Session) -> None:
     assert pane is not None
     pane.new_pane(message="m;", shell="sleep 30")
     assert session.server.is_alive()
+
+
+@pytest.mark.parametrize(
+    ("format_since", "expected"),
+    [
+        pytest.param("99.0", "/tmp/a#b", id="before_3.8_literal"),
+        pytest.param("3.3", "/tmp/a#{a:35}b", id="from_3.8_escaped"),
+    ],
+)
+def test_run_shell_cwd_follows_tmux_expansion(
+    monkeypatch: pytest.MonkeyPatch,
+    server: Server,
+    format_since: str,
+    expected: str,
+) -> None:
+    """``run_shell(cwd=)`` escapes ``#`` only where tmux expands ``-c``.
+
+    tmux 3.4 through 3.7 use ``run-shell -c`` as given; 3.8 expands it as a
+    format. The table entry's release stands in for the tmux version.
+    """
+    server.new_session()
+    entry = capabilities.get("run-shell-start-directory-format")
+    monkeypatch.setitem(
+        capabilities._BY_ID,
+        entry.id,
+        dataclasses.replace(entry, since=format_since),
+    )
+    captured = capture_cmd(monkeypatch, server, "run-shell")
+    server.run_shell("pwd", cwd="/tmp/a#b")
+    (call,) = captured
+    assert flag_value(call.args, "-c") == expected

@@ -30,12 +30,15 @@ from libtmux.client import Client
 from libtmux.common import (
     _format_arg,
     _format_path_arg,
+    _format_text,
+    _literal,
     get_version,
     has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
 from libtmux.constants import OptionScope
+from libtmux.formats import Format
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
@@ -57,7 +60,6 @@ if t.TYPE_CHECKING:
     from typing import Self, TypeAlias
 
     from libtmux._internal.types import StrPath
-    from libtmux.formats import Format
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -853,7 +855,7 @@ class Server(
 
     def run_shell(
         self,
-        command: str,
+        command: str | Format,
         *,
         background: bool | None = None,
         delay: str | None = None,
@@ -867,8 +869,9 @@ class Server(
 
         Parameters
         ----------
-        command : str
-            Shell command to execute.
+        command : str or Format
+            Shell command to execute. tmux expands it as a format either way;
+            a :class:`~libtmux.Format` keeps text added to it literal.
         background : bool, optional
             Run in background (``-b`` flag).
         delay : str, optional
@@ -930,15 +933,26 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
-            if has_gte_version(
+            if not has_gte_version(
                 capability_since("run-shell-start-directory"), tmux_bin=self.tmux_bin
             ):
-                tmux_args += ("-c", _format_path_arg(cwd))
-            else:
                 warnings.warn(
                     "cwd requires tmux 3.4+, ignoring",
                     stacklevel=2,
                 )
+            elif has_gte_version(
+                capability_since("run-shell-start-directory-format"),
+                tmux_bin=self.tmux_bin,
+            ):
+                # From 3.8, tmux expands run-shell -c as a format.
+                start = cwd.template if isinstance(cwd, Format) else _literal(str(cwd))
+                tmux_args += ("-c", start)
+            elif isinstance(cwd, Format):
+                # Before 3.8, tmux uses run-shell -c as given, without expanding it.
+                msg = "cwd=Format(...) requires tmux 3.8+"
+                raise exc.LibTmuxException(msg)
+            else:
+                tmux_args += ("-c", str(cwd))
 
         if show_stderr:
             if has_gte_version(
@@ -951,7 +965,7 @@ class Server(
                     stacklevel=2,
                 )
 
-        tmux_args += ("--", command)
+        tmux_args += ("--", _format_text(command))
 
         if args:
             if has_gte_version(
@@ -1698,7 +1712,10 @@ class Server(
         ----------
         *items : str
             Menu items as positional args in tmux's ``name key command``
-            triple format. Use empty strings for separators.
+            triple format. Use empty strings for separators. tmux expands
+            item names as formats, so a name such as
+            ``#{?pane_marked,Unmark,Mark}`` changes with the pane, and a name
+            that expands to nothing hides its item.
         title : str or Format, optional
             Menu title (``-T`` flag).
             A :class:`~libtmux.Format` is expanded by tmux; a ``str`` is used as typed.
@@ -1900,7 +1917,7 @@ class Server(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[True],
         *,
         format_string: str | None = ...,
@@ -1915,7 +1932,7 @@ class Server(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[False] = ...,
         *,
         format_string: str | None = ...,
@@ -1929,7 +1946,7 @@ class Server(
 
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: bool = False,
         *,
         format_string: str | None = None,
@@ -1965,10 +1982,13 @@ class Server(
 
         Parameters
         ----------
-        cmd : str
+        cmd : str or Format
             Format string to display or evaluate (e.g. ``"#{version}"``).
             Pass ``""`` together with ``all_formats=True`` to dump every
             variable.
+            tmux expands it as a format either way; a :class:`~libtmux.Format`
+            keeps text added to it literal, as in
+            ``Format("Saved: ") + filename``.
 
             .. versionadded:: 0.57
         get_text : bool, optional
@@ -2058,7 +2078,7 @@ class Server(
             tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += ("--", escape_trailing_separator(cmd))
+            tmux_args += ("--", escape_trailing_separator(_format_text(cmd)))
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -2235,7 +2255,7 @@ class Server(
         Parameters
         ----------
         path : str or PathLike
-            File path to save the buffer to. A file this call creates is
+            File path to save the buffer to, used as typed. A file this call creates is
             readable and writable by its owner only; an existing file keeps
             its permissions.
         buffer_name : str, optional
@@ -2259,7 +2279,8 @@ class Server(
             tmux_args += ("-b", buffer_name)
 
         destination = pathlib.Path(path).expanduser()
-        tmux_args += (str(destination),)
+        # tmux expands the path as a format; keep it literal.
+        tmux_args += (_literal(str(destination)),)
 
         # tmux creates the file world-readable under the usual umask. Create
         # it first so a new file is owner-only; "-" is tmux's stdout.
@@ -2283,7 +2304,7 @@ class Server(
 
     def load_buffer(
         self,
-        path: StrPath,
+        path: StrPath | Format,
         *,
         buffer_name: str | None = None,
     ) -> None:
@@ -2291,8 +2312,9 @@ class Server(
 
         Parameters
         ----------
-        path : str or PathLike
+        path : str, PathLike or Format
             File path to load into the buffer.
+            A :class:`~libtmux.Format` is expanded by tmux; a path is used as typed.
         buffer_name : str, optional
             Name of the buffer (``-b`` flag).
 
@@ -2308,7 +2330,7 @@ class Server(
         if buffer_name is not None:
             tmux_args += ("-b", buffer_name)
 
-        tmux_args += (str(pathlib.Path(path).expanduser()),)
+        tmux_args += (_format_path_arg(path),)
 
         proc = self.cmd("load-buffer", *tmux_args)
 
@@ -2318,7 +2340,7 @@ class Server(
         self,
         *,
         format_string: str | None = None,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> list[str]:
         """List paste buffers via ``$ tmux list-buffers``.
 
@@ -2334,7 +2356,7 @@ class Server(
             raw names only.
 
             .. versionadded:: 0.57
-        filter : str, optional
+        filter : str or Format, optional
             Filter expression evaluated by tmux (``-f`` flag). Buffers for
             which the expanded expression is false are omitted. Example:
             ``"#{m:libtmux_mcp_*,#{buffer_name}}"``.
@@ -2389,7 +2411,7 @@ class Server(
             tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if filter is not None:
-            tmux_args += ("-f", filter)
+            tmux_args += ("-f", _format_text(filter))
 
         proc = self.cmd("list-buffers", *tmux_args)
 
@@ -2399,7 +2421,7 @@ class Server(
 
     def if_shell(
         self,
-        shell_command: str,
+        shell_command: str | Format,
         tmux_command: str,
         *,
         else_command: str | None = None,
@@ -2410,8 +2432,10 @@ class Server(
 
         Parameters
         ----------
-        shell_command : str
+        shell_command : str or Format
             Shell command whose exit status determines which tmux command runs.
+            tmux expands it as a format either way; a :class:`~libtmux.Format`
+            keeps text added to it literal.
         tmux_command : str
             Tmux command to run if *shell_command* succeeds (exit 0).
         else_command : str, optional
@@ -2435,7 +2459,7 @@ class Server(
         if target_pane is not None:
             tmux_args += ("-t", target_pane)
 
-        tmux_args += (shell_command, tmux_command)
+        tmux_args += (_format_text(shell_command), tmux_command)
 
         if else_command is not None:
             tmux_args += (else_command,)
@@ -2606,7 +2630,9 @@ class Server(
         ----------------
         kill_session : bool, optional
             Kill current session if ``$ tmux has-session``.
-            Useful for testing workspaces.
+            Useful for testing workspaces. Needs a plain ``str``
+            *session_name*; with a :class:`~libtmux.Format` it raises
+            :exc:`ValueError`.
         start_directory : str, PathLike or Format, optional
             specifies the working directory in which the
             new session is created.
@@ -2666,6 +2692,13 @@ class Server(
         >>> server.new_session(session_name='my session')
         Session($4 my session)
         """
+        if isinstance(session_name, Format) and kill_session:
+            msg = (
+                "kill_session=True needs a plain session name: a Format's name "
+                "is known only after tmux creates the session"
+            )
+            raise ValueError(msg)
+
         # A Format's name is known only after tmux expands it; tmux validates
         # it then and refuses a duplicate itself.
         if isinstance(session_name, str):
@@ -2872,7 +2905,7 @@ class Server(
     def search_sessions(
         self,
         *,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Session]:
         """Sessions, optionally filtered by tmux before rows are returned.
 
@@ -2881,7 +2914,7 @@ class Server(
 
         Parameters
         ----------
-        filter : str, optional
+        filter : str or Format, optional
             tmux format expression (``-f`` flag). tmux omits sessions whose
             expanded expression is false before libtmux builds objects.
 
@@ -2930,7 +2963,7 @@ class Server(
     def search_windows(
         self,
         *,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Window]:
         """All windows across sessions, optionally filtered by tmux.
 
@@ -2939,7 +2972,7 @@ class Server(
 
         Parameters
         ----------
-        filter : str, optional
+        filter : str or Format, optional
             tmux format expression (``-f`` flag).
 
             .. warning::
@@ -2987,7 +3020,7 @@ class Server(
     def search_panes(
         self,
         *,
-        filter: str | None = None,  # noqa: A002
+        filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """All panes across the server, optionally filtered by tmux.
 
@@ -2997,7 +3030,7 @@ class Server(
 
         Parameters
         ----------
-        filter : str, optional
+        filter : str or Format, optional
             tmux format expression (``-f`` flag). Example:
             ``'#{m:%5,#{pane_id}}'`` (id match) or
             ``'#{C/i:libtmux,#{pane_current_command}}'`` (case-insensitive

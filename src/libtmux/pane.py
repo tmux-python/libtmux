@@ -19,6 +19,7 @@ from libtmux._internal.support.capabilities import capability_since
 from libtmux.common import (
     _format_arg,
     _format_path_arg,
+    _format_text,
     escape_trailing_separator,
     get_version_str,
     has_gte_version,
@@ -975,7 +976,7 @@ class Pane(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[True],
         *,
         format_string: str | None = ...,
@@ -991,7 +992,7 @@ class Pane(
     @t.overload
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: t.Literal[False] = ...,
         *,
         format_string: str | None = ...,
@@ -1006,7 +1007,7 @@ class Pane(
 
     def display_message(
         self,
-        cmd: str,
+        cmd: str | Format,
         get_text: bool = False,
         *,
         format_string: str | None = None,
@@ -1026,8 +1027,11 @@ class Pane(
 
         Parameters
         ----------
-        cmd : str
+        cmd : str or Format
             Special parameters to request from pane.
+            tmux expands it as a format either way; a :class:`~libtmux.Format`
+            keeps text added to it literal, as in
+            ``Format("Saved: ") + filename``.
         get_text : bool, optional
             Returns only text without displaying a message in
             target-client status line.
@@ -1124,7 +1128,7 @@ class Pane(
             tmux_args += ("-F", escape_trailing_separator(format_string))
 
         if cmd:
-            tmux_args += ("--", escape_trailing_separator(cmd))
+            tmux_args += ("--", escape_trailing_separator(_format_text(cmd)))
 
         proc = self.cmd("display-message", *tmux_args)
         if proc.stderr:
@@ -2033,7 +2037,7 @@ class Pane(
 
     def pipe(
         self,
-        command: str | None = None,
+        command: str | Format | None = None,
         *,
         output_only: bool | None = None,
         input_only: bool | None = None,
@@ -2043,8 +2047,10 @@ class Pane(
 
         Parameters
         ----------
-        command : str, optional
-            Shell command to pipe to. If None, stops piping.
+        command : str or Format, optional
+            Shell command to pipe to. If None, stops piping. tmux expands it as
+            a format either way; a :class:`~libtmux.Format` keeps text added to
+            it literal.
         output_only : bool, optional
             Only pipe output from the pane (``-O`` flag).
         input_only : bool, optional
@@ -2072,7 +2078,7 @@ class Pane(
             tmux_args += ("-o",)
 
         if command is not None:
-            tmux_args += (escape_trailing_separator(command),)
+            tmux_args += (escape_trailing_separator(_format_text(command)),)
 
         proc = self.cmd("pipe-pane", *tmux_args)
 

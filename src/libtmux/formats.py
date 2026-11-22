@@ -23,40 +23,90 @@ import dataclasses
 import os
 import typing as t
 
-_HASH_ESCAPE = "#{a:35}"
+#: Characters tmux reads as format syntax, each written as tmux's character-code
+#: format so it expands back to itself: ``#`` starts an expression, ``%`` is a
+#: strftime field in arguments tmux also expands as a time format, and ``,``
+#: and ``}`` end an argument inside ``#{...}``.
+_FORMAT_ESCAPES = {ord(char): f"#{{a:{ord(char)}}}" for char in "#%,}"}
 
 
-def _escape_hash(text: str) -> str:
-    """Return *text* with each ``#`` written so tmux reads it back as ``#``.
+def _escape_format(text: str) -> str:
+    """Return *text* written so that tmux expands it back to exactly *text*.
 
-    ``#{a:35}`` is tmux's ASCII-character format for ``#``. Doubling (``##``)
+    ``#{a:35}`` is tmux's character-code format for ``#``. Doubling (``##``)
     is not enough: tmux keeps a run of ``#`` before ``[`` as a style, so
     ``a#[b`` would be stored as ``a##[b``.
 
     Examples
     --------
-    >>> _escape_hash("build#2")
+    >>> _escape_format("build#2")
     'build#{a:35}2'
-    >>> _escape_hash("a#[b")
+    >>> _escape_format("a#[b")
     'a#{a:35}[b'
-    >>> _escape_hash("plain")
+    >>> _escape_format("50% a,b}")
+    '50#{a:37} a#{a:44}b#{a:125}'
+    >>> _escape_format("plain")
     'plain'
     """
-    return text.replace("#", _HASH_ESCAPE)
+    return text.translate(_FORMAT_ESCAPES)
+
+
+def _unfinished(template: str) -> str | None:
+    """Return why plain text appended to *template* would not stay literal.
+
+    Text is literal only outside tmux's expression syntax. It is not after a
+    lone trailing ``#``, which combines with the next character, or inside an
+    unclosed ``#{...}`` or ``#(...)``.
+
+    Examples
+    --------
+    >>> _unfinished("#{session_name}-") is None
+    True
+    >>> _unfinished("#{session_name}#")
+    'it ends with a lone #'
+    >>> _unfinished("#{?pane_active,")
+    'it ends inside #{...}'
+    >>> _unfinished("#(echo ")
+    'it ends inside #(...)'
+    """
+    closers: list[str] = []
+    i = 0
+    while i < len(template):
+        char = template[i]
+        if char == "#":
+            if i + 1 == len(template):
+                return "it ends with a lone #"
+            following = template[i + 1]
+            if following == "{":
+                closers.append("}")
+            elif following == "(":
+                closers.append(")")
+            i += 2
+            continue
+        if closers and char == closers[-1]:
+            closers.pop()
+        i += 1
+    if closers:
+        return (
+            "it ends inside #{...}" if closers[-1] == "}" else "it ends inside #(...)"
+        )
+    return None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Format:
     """A tmux format that tmux expands, instead of storing it as typed.
 
-    Names, titles and start directories passed to libtmux as plain ``str``
-    are stored exactly as typed. Wrap a format your program wrote in
+    Names, titles, start directories and file paths passed to libtmux as plain
+    ``str`` are kept as typed. Wrap a format your program wrote in
     :class:`Format` to have tmux expand it, as it does for ``#{...}`` in
-    ``tmux.conf``.
+    ``tmux.conf``. Where tmux always expands an argument, such as
+    :meth:`~libtmux.Pane.display_message`, a :class:`Format` is accepted too,
+    so text from users or files can be combined with it safely.
 
-    Only pass text your program wrote. Combine a format with text from users
-    or files through ``+``, :meth:`join` or :meth:`escape`, which keep that
-    text literal.
+    Only pass text your program wrote. Add text from users or files with ``+``
+    or :meth:`join`, which keep it literal; place it inside an expression,
+    such as a conditional or comparison, with :meth:`escape`.
 
     Parameters
     ----------
@@ -85,6 +135,13 @@ class Format:
     Window(...)
     >>> window.window_name
     '#{session_name}'
+
+    Plain text cannot be added where tmux would read it as format syntax:
+
+    >>> Format("#{?pane_active,") + "yes"
+    Traceback (most recent call last):
+    ...
+    ValueError: cannot add plain text to Format('#{?pane_active,'): ...
     """
 
     template: str
@@ -93,7 +150,8 @@ class Format:
     def escape(cls, text: str | Format) -> Format:
         """Return a format that tmux expands back to *text*.
 
-        A :class:`Format` is returned unchanged.
+        The result is safe anywhere in a format, including inside a
+        conditional or comparison. A :class:`Format` is returned unchanged.
 
         Examples
         --------
@@ -101,10 +159,16 @@ class Format:
         Format('x#{a:35}S')
         >>> Format.escape(Format("#S"))
         Format('#S')
+
+        Compare a window name with user text:
+
+        >>> user_text = "a,b"
+        >>> Format("#{==:#{window_name},") + Format.escape(user_text) + Format("}")
+        Format('#{==:#{window_name},a#{a:44}b}')
         """
         if isinstance(text, Format):
             return text
-        return cls(_escape_hash(text))
+        return cls(_escape_format(text))
 
     def join(self, parts: t.Iterable[str | Format]) -> Format:
         """Join *parts* with this format between them, escaping each ``str``.
@@ -114,19 +178,40 @@ class Format:
         >>> Format("#{session_name}:").join(["a#1", Format("#{window_index}")])
         Format('a#{a:35}1#{session_name}:#{window_index}')
         """
-        return Format(self.template.join(Format.escape(p).template for p in parts))
+        joined = Format("")
+        for index, part in enumerate(parts):
+            if index:
+                joined += self
+            joined += part
+        return joined
 
     def __add__(self, other: str | Format) -> Format:
-        """Append *other*; a ``str`` is escaped and stays literal."""
-        if not isinstance(other, (str, Format)):
+        """Append *other*; a ``str`` is escaped and stays literal.
+
+        Raises
+        ------
+        ValueError
+            *other* is a ``str`` and this format ends where tmux would read
+            it as format syntax.
+        """
+        if isinstance(other, Format):
+            return Format(self.template + other.template)
+        if not isinstance(other, str):
             return NotImplemented
-        return Format(self.template + Format.escape(other).template)
+        reason = _unfinished(self.template)
+        if reason is not None:
+            msg = (
+                f"cannot add plain text to {self!r}: {reason}; "
+                "use Format.escape() to place text inside an expression"
+            )
+            raise ValueError(msg)
+        return Format(self.template + _escape_format(other))
 
     def __radd__(self, other: str) -> Format:
         """Prepend *other*; a ``str`` is escaped and stays literal."""
         if not isinstance(other, str):
             return NotImplemented
-        return Format(Format.escape(other).template + self.template)
+        return Format(_escape_format(other) + self.template)
 
     def __bool__(self) -> bool:
         """Return whether the format is non-empty, as for ``str``.
