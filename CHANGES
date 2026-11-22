@@ -37,13 +37,24 @@ $ uv add libtmux --prerelease allow
 $ uvx --from 'libtmux' --prerelease allow python
 ```
 
-## libtmux 0.67.x (Yet to be released)
+## libtmux 0.68.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
+
+## libtmux 0.67.0 (2026-11-22)
+
+libtmux 0.67.0 keeps a `#` in session names, window names, pane titles,
+start directories and buffer paths as typed, where tmux used to expand it as a
+format, and adds {class}`~libtmux.Format` to have tmux expand one value on
+purpose. {meth}`~libtmux.Server.new_session` with `kill_session=True` kills
+only the exactly named session, and `exact=True` matches a session name
+exactly in {meth}`~libtmux.Server.kill_session`,
+{meth}`~libtmux.Server.switch_client` and
+{meth}`~libtmux.Server.attach_session`.
 
 ### Breaking changes
 
