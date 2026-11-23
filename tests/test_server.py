@@ -20,7 +20,9 @@ import pytest
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux._internal.env import SOCKET_PATH_MAX_BYTES, resolve_socket_path
+from libtmux._internal.support import server_version
 from libtmux._internal.support.capabilities import capability_since
+from libtmux._internal.support.versions import is_at_least
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -401,7 +403,25 @@ def test_socket_args_covers_every_tmux_spawn(
     assert server.sessions
     assert calls, "neo.fetch_objs did not build socket flags via _socket_args"
 
-    calls.clear()
+
+def test_socket_args_covers_control_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """ControlMode builds its socket flags through :meth:`Server._socket_args`."""
+    server = session.server
+    if not is_at_least(server_version(server), "3.7"):
+        pytest.skip("ControlMode requires tmux 3.7+")
+    calls: list[list[str]] = []
+    real = Server._socket_args
+
+    def spy(self: Server) -> list[str]:
+        args = real(self)
+        calls.append(args)
+        return args
+
+    monkeypatch.setattr(Server, "_socket_args", spy)
+
     with ControlMode(server=server, session=session) as ctl:
         assert ctl.client_name != ""
     assert calls, "ControlMode did not build socket flags via _socket_args"
