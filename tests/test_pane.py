@@ -17,6 +17,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.support import server_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 from tests.tmux_client import client_gte
@@ -1449,6 +1450,10 @@ def test_break_pane_returns_relinked_window(
         other_pane.swap(target=pane, detach=True)
         assert pane.window_id == source.window_id
     destination = session.server.new_session(session_name="destination")
+    if window_name is None and server_version(session.server) == "3.7":
+        with pytest.raises(exc.VersionTooLow, match="unnamed break-pane"):
+            pane.break_pane(window_name=window_name)
+        return
 
     window = pane.break_pane(window_name=window_name)
 
@@ -1473,7 +1478,7 @@ def test_break_pane_rejects_silent_failure(
     with pytest.raises(
         exc.LibTmuxException, match="break-pane: tmux exited with status 1"
     ):
-        pane.break_pane()
+        pane.break_pane(window_name="silent")
 
 
 def test_break_pane_with_name(session: Session) -> None:
