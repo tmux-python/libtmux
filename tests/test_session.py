@@ -754,6 +754,24 @@ def test_new_window_select_existing_duplicate_names_raise(session: Session) -> N
         session.new_window(window_name="twin", select_existing=True)
 
 
+def test_new_window_select_existing_command_format_not_found(
+    session: Session,
+) -> None:
+    """``#{command}`` expands differently in the lookup than in the name.
+
+    The lookup expands a Format with ``display-message``, so ``#{command}``
+    reads ``display-message`` there, while tmux names the window
+    ``new-window``.
+    """
+    first = session.new_window(window_name=Format("#{command}"))
+    assert first.window_name == "new-window"
+
+    second = session.new_window(window_name=Format("#{command}"), select_existing=True)
+
+    assert second.window_id != first.window_id
+    assert second.window_name == "new-window"
+
+
 def test_session_last_window_exception_tags_subcommand(session: Session) -> None:
     """Wrapper raises tag LibTmuxException with the originating tmux subcommand.
 
