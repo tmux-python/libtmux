@@ -882,6 +882,37 @@ class Session(
 
         return self
 
+    def _find_window_by_name(self, window_name: str | Format) -> Window | None:
+        """Return this session's window named *window_name*, if there is one.
+
+        A ``str`` is compared as typed. A :class:`~libtmux.Format` is expanded
+        once against the session, as tmux expands a new window's name.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            More than one window has the name.
+
+        Examples
+        --------
+        >>> logs = session.new_window(window_name="find-logs")
+        >>> session._find_window_by_name("find-logs") == logs
+        True
+        >>> session._find_window_by_name("find-missing") is None
+        True
+        """
+        if isinstance(window_name, Format):
+            proc = self.cmd("display-message", "-p", window_name.template)
+            raise_if_stderr(proc, "display-message")
+            name = proc.stdout[0] if proc.stdout else ""
+        else:
+            name = window_name
+        matches = [window for window in self.windows if window.window_name == name]
+        if len(matches) > 1:
+            msg = f"multiple windows named {name}"
+            raise exc.LibTmuxException(msg, subcommand="new-window")
+        return matches[0] if matches else None
+
     def new_window(
         self,
         window_name: str | Format | None = None,
@@ -933,8 +964,21 @@ class Session(
 
             .. versionadded:: 0.56
         select_existing : bool, optional
-            If a window with the given name already exists, select it instead
-            of creating a new one (``-S`` flag).
+            Return the window with this name if the session has one, instead
+            of creating another (tmux's ``-S`` flag). libtmux looks the name up
+            itself, so every tmux release finds the same window: a ``str`` is
+            compared as typed, and a :class:`~libtmux.Format` is expanded once
+            against the session first. The window is selected only with
+            ``attach=True``, and two windows with the name raise
+            :exc:`~libtmux.exc.LibTmuxException`. With ``window_index`` or
+            ``target_window``, ``-S`` goes to tmux unchanged.
+
+            The lookup and the creation are separate tmux commands, so two
+            callers can both create the window. tmux reads a name containing a
+            backslash back with the backslash doubled once it has stored the
+            name escaped (after :meth:`~libtmux.Window.rename_window`, and for
+            any new window from tmux 3.7), so such a name is not found and
+            another window is created.
 
             .. versionadded:: 0.56
 
@@ -1005,7 +1049,20 @@ class Session(
         if kill_existing:
             window_args += ("-k",)
 
-        if select_existing:
+        # tmux's -S matches a name differently per release and prints nothing on
+        # reuse, so a name lookup happens here; an index or target keeps -S.
+        if (
+            select_existing
+            and window_name is not None
+            and not (target_window or window_index)
+        ):
+            existing = self._find_window_by_name(window_name)
+            if existing is not None:
+                if attach:
+                    proc = self.cmd("select-window", target=existing.window_id)
+                    raise_if_stderr(proc, "select-window")
+                return existing
+        elif select_existing:
             window_args += ("-S",)
 
         target: str | None = None
