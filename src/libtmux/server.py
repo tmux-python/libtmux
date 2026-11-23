@@ -544,8 +544,12 @@ class Server(
         binary = self.tmux_bin or shutil.which("tmux")
         if binary is None:
             raise exc.TmuxCommandNotFound
-        # Selectors come from _socket_args(), which measures the socket path.
-        selectors: list[str] = self._socket_args()
+        # Selectors come from _socket_args(), which measures the socket path
+        # and joins each flag to its value ("-Lname"). Commands are cached
+        # under the flag and value apart, so split them to share one entry.
+        selectors: list[str] = []
+        for arg in self._socket_args():
+            selectors.extend((arg[:2], arg[2:]))
         return binary, selectors
 
     def _get_version(self) -> str:
