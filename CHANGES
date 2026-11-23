@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### `select_existing` names its `#{command}` limit (#921)
+
+{meth}`~libtmux.Session.new_window` with `select_existing=True` expands a
+{class}`~libtmux.Format` name with `display-message` before looking it up, so
+`#{command}` reads `display-message` there while tmux names the window
+`new-window`. Such a name is not found and another window is created. The
+method and {ref}`formats` now say so.
+
 ## libtmux 0.67.1 (2026-11-22)
 
 libtmux 0.67.1 fixes {meth}`~libtmux.Session.new_window` with
