@@ -121,7 +121,7 @@ Percentage splits use portable `-l N%`. On exact tmux 3.7, raw `break-pane`
 and unnamed {meth}`Pane.break_pane() <libtmux.Pane.break_pane>` requests are
 refused. An explicit `window_name` uses the named break and rename repair;
 a failed rename can leave the completed break in place. Other supported
-releases retain ordinary naming. See {doc}`project/compatibility` for the
+releases retain ordinary naming. See {doc}`/compatibility` for the
 operation boundaries and synchronization requirements.
 
 ### Fixes
