@@ -189,7 +189,11 @@ so a title of `#[fg=red]X` is shown as a red `X`.
   window. tmux reads a name containing a backslash back with the backslash
   doubled once it stores the name escaped, after
   {meth}`~libtmux.Window.rename_window` and for any new window from tmux 3.7,
-  so such a name is not found and another window is created.
+  so such a name is not found and another window is created. A
+  {class}`~libtmux.Format` name is expanded with `display-message`, where
+  `#{command}` reads `display-message` while tmux names the window
+  `new-window`, so that name is not found either. Session, window and pane
+  fields expand the same way in both.
 
 ## Raw commands
 

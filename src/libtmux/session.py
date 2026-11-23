@@ -978,7 +978,10 @@ class Session(
             backslash back with the backslash doubled once it has stored the
             name escaped (after :meth:`~libtmux.Window.rename_window`, and for
             any new window from tmux 3.7), so such a name is not found and
-            another window is created.
+            another window is created. A :class:`~libtmux.Format` name is
+            expanded with ``display-message``, where ``#{command}`` reads
+            ``display-message`` while tmux names the window ``new-window``, so
+            that name is not found either.
 
             .. versionadded:: 0.56
 
