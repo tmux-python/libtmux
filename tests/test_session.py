@@ -777,6 +777,188 @@ def test_new_window_select_existing_command_format_not_found(
     assert second.window_name == "new-window"
 
 
+@pytest.mark.parametrize("attach", [False, True])
+@pytest.mark.parametrize("target_kind", ["index", "id", "other-session", "session-id"])
+def test_new_window_reuses_stable_target(
+    session: Session, attach: bool, target_kind: str
+) -> None:
+    """An index or target reuses that window and its program on every tmux."""
+    selected = session
+    if target_kind in ("other-session", "session-id"):
+        selected = session.server.new_session(session_name="other-reuse")
+    existing = selected.new_window(
+        window_name="logs", window_index="5", window_shell="exec /bin/cat"
+    )
+    pane = existing.active_pane
+    assert pane is not None
+    before = {window.window_id for window in session.server.windows}
+    target_window = None
+    if target_kind == "id":
+        assert existing.window_id is not None
+        target_window = existing.window_id
+    elif target_kind == "other-session":
+        target_window = f"{selected.session_id}:"
+    elif target_kind == "session-id":
+        target_window = selected.session_id
+
+    reused = session.new_window(
+        window_name="logs",
+        select_existing=True,
+        attach=attach,
+        window_index="5" if target_kind == "index" else "",
+        target_window=target_window,
+    )
+
+    assert reused.window_id == existing.window_id
+    assert reused.server is session.server
+    reused_pane = reused.active_pane
+    assert reused_pane is not None
+    assert reused_pane.pane_pid == pane.pane_pid
+    assert {window.window_id for window in session.server.windows} == before
+    if attach:
+        assert selected.active_window.window_id == existing.window_id
+
+
+@pytest.mark.parametrize("offset", ["+2", "-3"])
+def test_new_window_reuses_relative_index(session: Session, offset: str) -> None:
+    """A relative index counts from the active window, as tmux counts it."""
+    origin_window = session.active_window
+    origin = int(origin_window.window_index or "0")
+    expected = session.new_window(window_name="relative", window_index=str(origin + 2))
+    decoy = session.new_window(window_name="decoy", window_index=str(origin + 5))
+    if offset.startswith("-"):
+        decoy.select()
+    before = {window.window_id for window in session.windows}
+
+    reused = session.new_window(window_index=offset, select_existing=True)
+
+    assert reused.window_id == expected.window_id
+    assert {window.window_id for window in session.windows} == before
+
+
+@pytest.mark.parametrize("target_kind", ["index", "target-index", "id"])
+def test_new_window_reuse_rejects_other_name(
+    session: Session, target_kind: str
+) -> None:
+    """A name that differs from the window at the target raises, creating nothing."""
+    logs = session.new_window(window_name="logs", window_index="5")
+    assert logs.window_id is not None
+    window_index = "5" if target_kind == "index" else ""
+    target_window = {
+        "index": None,
+        "target-index": f"{session.session_id}:5",
+        "id": logs.window_id,
+    }[target_kind]
+    before = {window.window_id for window in session.server.windows}
+
+    with pytest.raises(exc.LibTmuxException, match="is named 'logs', not 'other'"):
+        session.new_window(
+            window_name="other",
+            window_index=window_index,
+            target_window=target_window,
+            select_existing=True,
+        )
+
+    assert {window.window_id for window in session.server.windows} == before
+
+
+def test_new_window_index_reuse_without_name(session: Session) -> None:
+    """Without a name, the window at an occupied index is reused, as tmux 3.8 does."""
+    logs = session.new_window(window_name="logs", window_index="5")
+
+    reused = session.new_window(window_index="5", select_existing=True)
+
+    assert reused.window_id == logs.window_id
+    assert reused.window_name == "logs"
+
+
+def test_new_window_index_reuse_expands_format_name(session: Session) -> None:
+    """A Format name is compared as tmux expands it."""
+    assert session.session_name is not None
+    named = session.new_window(window_name=session.session_name, window_index="5")
+
+    reused = session.new_window(
+        window_name=Format("#{session_name}"), window_index="5", select_existing=True
+    )
+
+    assert reused.window_id == named.window_id
+
+
+def test_new_window_select_and_kill_existing_raise(session: Session) -> None:
+    """select_existing and kill_existing together raise before tmux runs."""
+    logs = session.new_window(window_name="logs", window_index="5")
+    before = {window.window_id for window in session.server.windows}
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        session.new_window(
+            window_name="logs",
+            window_index="5",
+            select_existing=True,
+            kill_existing=True,
+        )
+
+    assert {window.window_id for window in session.server.windows} == before
+    assert logs.window_id in before
+
+
+def test_new_window_index_reuse_creates_at_free_index(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A free index creates the window there, without tmux's -S."""
+    calls: list[tuple[t.Any, ...]] = []
+    native = session.server.cmd
+
+    def spy(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        calls.append(args)
+        return native(*args, **kwargs)
+
+    monkeypatch.setattr(session.server, "cmd", spy)
+    created = session.new_window(
+        window_name="fresh", window_index="7", select_existing=True
+    )
+
+    assert created.window_index == "7"
+    assert created.window_name == "fresh"
+    creations = [call for call in calls if call and call[0] == "new-window"]
+    assert len(creations) == 1
+    assert "-S" not in creations[0]
+
+
+@pytest.mark.parametrize(
+    ("target_window", "window_index", "match"),
+    [
+        ("=main", "", "found no session"),
+        ("no-such-session", "", "found no session"),
+        (None, "{end}", "cannot resolve window index"),
+    ],
+    ids=["prefix-target", "missing-session", "index-token"],
+)
+def test_new_window_reuse_rejects_unresolvable_target(
+    session: Session,
+    target_window: str | None,
+    window_index: str,
+    match: str,
+) -> None:
+    """Targets libtmux cannot resolve raise before tmux runs anything."""
+    before = {window.window_id for window in session.server.windows}
+
+    with pytest.raises(exc.LibTmuxException, match=match):
+        session.new_window(
+            window_name="x",
+            window_index=window_index,
+            target_window=target_window,
+            select_existing=True,
+        )
+
+    assert {window.window_id for window in session.server.windows} == before
+
+
+def test_new_window_reuse_missing_window_id(session: Session) -> None:
+    """A missing window ID is created against, and tmux's error is raised."""
+    with pytest.raises(exc.LibTmuxException, match="can't find window"):
+        session.new_window(target_window="@999999", select_existing=True)
+
+
 def test_session_last_window_exception_tags_subcommand(session: Session) -> None:
     """Wrapper raises tag LibTmuxException with the originating tmux subcommand.
 
