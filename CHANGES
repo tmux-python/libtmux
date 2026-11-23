@@ -55,6 +55,15 @@ _Notes on the upcoming release will go here._
 `new-window`. Such a name is not found and another window is created. The
 method and {ref}`formats` now say so.
 
+### Development
+
+#### Environment tests wait for the shell (#922)
+
+The tests that check a new window's and a split pane's environment typed
+before the shell had printed its prompt and read the pane straight after, so
+they failed now and then, most often on tmux 3.3a. They now wait for the prompt
+and then for the output.
+
 ## libtmux 0.67.1 (2026-11-22)
 
 libtmux 0.67.1 fixes {meth}`~libtmux.Session.new_window` with

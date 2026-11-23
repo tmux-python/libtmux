@@ -342,9 +342,14 @@ def test_new_window_with_environment(
     )
     pane = window.active_pane
     assert pane is not None
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+
+        def echoed(expected: str = v) -> bool:
+            return pane.capture_pane()[-2:] == [expected, "$"]
+
+        retry_until(echoed, 2, raises=True)
 
 
 def test_session_new_window_with_direction(
