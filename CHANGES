@@ -63,10 +63,8 @@ then looked up. With `window_index` or `target_window`, tmux still decides.
 {ref}`formats` now says that a {class}`~libtmux.Format` can run `#(...)`
 shell commands and expand an option's value again through `E:` and `T:`, and
 that a plain `str` from a user does the same in arguments tmux always expands,
-such as {meth}`~libtmux.Pane.display_message`. It also notes that
-{meth}`~libtmux.Session.new_window` with `select_existing=True` matches a plain
-name exactly only on tmux 3.4 to 3.6
-([#914](https://github.com/tmux-python/libtmux/issues/914)).
+such as {meth}`~libtmux.Pane.display_message`. It also notes the limits of
+{meth}`~libtmux.Session.new_window` with `select_existing=True`.
 
 ## libtmux 0.67.0 (2026-11-22)
 
