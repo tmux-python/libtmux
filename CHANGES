@@ -54,7 +54,7 @@ tmux server it talks to, not the `tmux` executable on `PATH`, and raises
 {exc}`~libtmux.exc.VersionTooLow` before sending anything to an older server,
 including 3.3 without its patch letter. Upgrading the executable does not
 upgrade a server that is already running: restart it after saving its
-sessions. See {doc}`project/compatibility` for the releases each feature needs.
+sessions. See {doc}`/compatibility` for the releases each feature needs.
 
 #### Executable version helpers are deprecated (#779)
 
