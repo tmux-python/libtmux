@@ -948,7 +948,7 @@ class Server(
 
         Raises
         ------
-        :exc:`~libtmux.exc.VersionTooLow`
+        libtmux.exc.VersionTooLow
             On tmux 3.3a and 3.4, for a shell command run without
             *background*, *as_tmux_command* or *target_pane*. Those releases
             send its output to the pane's copy mode instead of returning it.
@@ -960,9 +960,7 @@ class Server(
         """
         captures_output = not (background or as_tmux_command or target_pane)
         output_since = capability_since("run-shell-output-in-copy-mode")
-        if captures_output and not has_gte_version(
-            output_since, tmux_bin=self.tmux_bin
-        ):
+        if captures_output and not self._has_gte_version(output_since):
             # tmux 3.3a and 3.4 send a foreground run-shell's output to the
             # pane's copy mode, not back to the caller.
             msg = f"run_shell output requires tmux {output_since}+"
