@@ -959,6 +959,24 @@ def test_new_window_reuse_missing_window_id(session: Session) -> None:
         session.new_window(target_window="@999999", select_existing=True)
 
 
+@pytest.mark.parametrize("by", ["name", "index"])
+def test_new_window_select_existing_context_exit_kills_reused_window(
+    session: Session,
+    by: str,
+) -> None:
+    """Entering ``with`` on a reused window kills it on exit."""
+    existing = session.new_window(window_name="kept", window_index="6")
+
+    with session.new_window(
+        window_name="kept" if by == "name" else None,
+        window_index="6" if by == "index" else "",
+        select_existing=True,
+    ) as reused:
+        assert reused.window_id == existing.window_id
+
+    assert existing not in session.windows
+
+
 def test_session_last_window_exception_tags_subcommand(session: Session) -> None:
     """Wrapper raises tag LibTmuxException with the originating tmux subcommand.
 
