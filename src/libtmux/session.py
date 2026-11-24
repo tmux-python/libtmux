@@ -1134,6 +1134,9 @@ class Session(
             while tmux names the window ``new-window``, so that name is not
             found either.
 
+            Entering ``with`` on the returned :class:`~libtmux.Window` kills it
+            on exit, even when an existing window was returned.
+
             .. versionadded:: 0.56
 
         .. versionchanged:: 0.28.0
