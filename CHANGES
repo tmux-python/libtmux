@@ -45,6 +45,25 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### `run_shell` raises on tmux 3.3a and 3.4 instead of returning `[]` (#918)
+
+On tmux 3.3a and 3.4, a foreground `run-shell` leaves its output in the
+pane's copy mode and returns nothing, so {meth}`~libtmux.Server.run_shell`
+returned `[]` whatever the command printed. It now raises
+{exc}`~libtmux.exc.VersionTooLow` there. Calls with `background=True`,
+`as_tmux_command=True` or `target_pane=` run as before.
+
+```python
+# Before, on tmux 3.3a or 3.4
+server.run_shell("echo hi")  # []
+
+# After
+server.run_shell("echo hi")  # raises VersionTooLow
+server.run_shell("echo hi", background=True)  # still runs
+```
+
 ### What's new
 
 #### `expand_formats` is the one name for tmux's `-F` (#919)

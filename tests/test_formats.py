@@ -7,6 +7,7 @@ import typing as t
 import pytest
 
 from libtmux import Format, exc
+from libtmux._internal.support.capabilities import capability_since
 from libtmux.common import has_gte_version
 from libtmux.constants import WindowDirection
 from libtmux.test.retry import retry_until
@@ -256,9 +257,8 @@ def test_escape_is_literal_inside_expressions(session: Session) -> None:
 
 def test_always_expanded_command_keeps_added_text_literal(server: Server) -> None:
     """Text added to a ``run_shell`` command format reaches the shell as typed."""
-    # tmux <3.5 does not write run-shell stdout back to the cmdq subprocess.
-    if not has_gte_version("3.5"):
-        pytest.skip("run-shell stdout passthrough requires tmux 3.5+")
+    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+        pytest.skip("run_shell returns output from tmux 3.5")
     server.new_session()
     output = server.run_shell(Format("echo ") + "a#S%d")
     assert output == ["a#S%d"]
@@ -272,9 +272,8 @@ def test_new_session_refuses_format_with_kill_session(server: Server) -> None:
 
 def test_run_shell_cwd(session: Session, tmp_path: pathlib.Path) -> None:
     """A ``#`` directory is literal; a ``Format`` directory needs tmux 3.8."""
-    # tmux <3.5 does not write run-shell stdout back to the cmdq subprocess.
-    if not has_gte_version("3.5"):
-        pytest.skip("run-shell stdout passthrough requires tmux 3.5+")
+    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+        pytest.skip("run_shell returns output from tmux 3.5")
     directory = tmp_path / "d#S"
     directory.mkdir()
     server = session.server

@@ -643,6 +643,6 @@ def test_run_shell_cwd_follows_tmux_expansion(
         dataclasses.replace(entry, since=format_since),
     )
     captured = capture_cmd(monkeypatch, server, "run-shell")
-    server.run_shell("pwd", cwd="/tmp/a#b")
+    server.run_shell("pwd", cwd="/tmp/a#b", background=True)
     (call,) = captured
     assert flag_value(call.args, "-c") == expected

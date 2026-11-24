@@ -109,26 +109,36 @@ GATE_CASES: list[GateCase] = [
     GateCase(
         "run_shell_cwd",
         "run-shell-start-directory",
-        lambda session: session.server.run_shell("true", cwd="/"),
+        lambda session: session.server.run_shell("true", cwd="/", background=True),
         "cwd requires tmux",
     ),
     GateCase(
         "run_shell_cwd_format",
         "run-shell-start-directory-format",
-        lambda session: session.server.run_shell("true", cwd=Format("/")),
+        lambda session: session.server.run_shell(
+            "true", cwd=Format("/"), background=True
+        ),
         None,
     ),
     GateCase(
         "run_shell_show_stderr",
         "run-shell-show-stderr",
-        lambda session: session.server.run_shell("true", show_stderr=True),
+        lambda session: session.server.run_shell(
+            "true", show_stderr=True, background=True
+        ),
         "show_stderr requires tmux",
     ),
     GateCase(
         "run_shell_args",
         "run-shell-args",
-        lambda session: session.server.run_shell("true", args=["x"]),
+        lambda session: session.server.run_shell("true", args=["x"], background=True),
         "args requires tmux",
+    ),
+    GateCase(
+        "run_shell_output",
+        "run-shell-output-in-copy-mode",
+        lambda session: session.server.run_shell("true"),
+        None,
     ),
     GateCase(
         "list_keys_format",
