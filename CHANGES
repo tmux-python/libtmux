@@ -64,6 +64,13 @@ server.run_shell("echo hi")  # raises VersionTooLow
 server.run_shell("echo hi", background=True)  # still runs
 ```
 
+#### `select_existing` and `kill_existing` together raise `ValueError` (#827)
+
+{meth}`~libtmux.Session.new_window` used to apply `kill_existing` and ignore
+`select_existing` when both were passed. The two now raise `ValueError` before
+tmux runs, since one returns the existing window and the other replaces it.
+Pass the one you mean.
+
 ### What's new
 
 #### `expand_formats` is the one name for tmux's `-F` (#919)
@@ -74,6 +81,24 @@ server.run_shell("echo hi", background=True)  # still runs
 {meth}`~libtmux.Pane.send_keys` already uses. The old spellings,
 `expand_format` and `_format`, still work and emit a `DeprecationWarning`. See
 {ref}`migration` for the change.
+
+### Fixes
+
+#### `select_existing` reuses by index or target on every tmux (#827)
+
+{meth}`~libtmux.Session.new_window` with `select_existing=True` and a
+`window_index` or `target_window` returns the existing {class}`~libtmux.Window`
+instead of raising `IndexError`. libtmux finds the window itself, as it already
+does for a name: the window at the index, the window a window ID names, or the
+named window in the session the target names. tmux 3.3a through 3.7 refuse to
+reuse an occupied index, so this now works there too.
+
+Without a `window_name`, the window at the index is returned whatever its name,
+as tmux 3.8 does. With one, that window must have the name: a window with
+another name raises {exc}`~libtmux.exc.LibTmuxException` naming both, and
+nothing is created, where tmux 3.8 would return it. A target libtmux cannot
+resolve, such as a `=name` match, also raises
+{exc}`~libtmux.exc.LibTmuxException`.
 
 ### Documentation
 

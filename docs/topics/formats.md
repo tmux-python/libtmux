@@ -182,10 +182,12 @@ so a title of `#[fg=red]X` is shown as a red `X`.
   session name, because a {class}`~libtmux.Format` name is known only after
   tmux creates the session.
 - {meth}`~libtmux.Session.new_window` with `select_existing=True` looks the
-  name up itself instead of through tmux's `new-window -S`, which matches
-  names differently per release
-  ([#914](https://github.com/tmux-python/libtmux/issues/914)). The lookup and
-  the creation are separate commands, so two callers can both create the
+  name, index or target up itself instead of through tmux's `new-window -S`,
+  which matches names differently per release and an index only from tmux 3.8
+  ([#914](https://github.com/tmux-python/libtmux/issues/914)). A name passed
+  with an index or window ID must match the window there, after a
+  {class}`~libtmux.Format` name is expanded; another name raises. The lookup
+  and the creation are separate commands, so two callers can both create the
   window. tmux reads a name containing a backslash back with the backslash
   doubled once it stores the name escaped, after
   {meth}`~libtmux.Window.rename_window` and for any new window from tmux 3.7,
