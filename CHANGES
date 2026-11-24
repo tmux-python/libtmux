@@ -71,6 +71,29 @@ server.run_shell("echo hi", background=True)  # still runs
 tmux runs, since one returns the existing window and the other replaces it.
 Pass the one you mean.
 
+#### A closed pane, window or session raises `TmuxObjectDoesNotExist` (#902)
+
+{meth}`~libtmux.Pane.capture_pane` and {meth}`~libtmux.Pane.send_keys` raise
+{exc}`~libtmux.exc.TmuxObjectDoesNotExist` when their pane no longer exists.
+They previously returned an empty list and `None`.
+{meth}`~libtmux.Pane.send_keys` and {meth}`~libtmux.Pane.enter` also raise
+{exc}`~libtmux.exc.LibTmuxException` on any other tmux error.
+
+Methods that already raised {exc}`~libtmux.exc.LibTmuxException` for a missing
+target now raise {exc}`~libtmux.exc.TmuxObjectDoesNotExist`, a subclass with
+the same message, so `except LibTmuxException` keeps working.
+
+```python
+# Before
+lines = pane.capture_pane()  # [] when the pane was closed
+
+# After
+try:
+    lines = pane.capture_pane()
+except libtmux.exc.TmuxObjectDoesNotExist:
+    lines = []
+```
+
 ### What's new
 
 #### `expand_formats` is the one name for tmux's `-F` (#919)

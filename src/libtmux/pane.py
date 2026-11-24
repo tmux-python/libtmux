@@ -35,7 +35,7 @@ from libtmux.constants import (
 )
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
-from libtmux.neo import Obj, fetch_obj
+from libtmux.neo import Obj, _is_target_not_found_error, fetch_obj
 from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
@@ -800,6 +800,10 @@ class Pane(
                     stacklevel=2,
                 )
         proc = self.cmd(*cmd)
+        # Only a missing pane raises here: other stderr, such as "no alternate
+        # screen", has always returned an empty capture.
+        if _is_target_not_found_error("\n".join(proc.stderr)):
+            raise_if_stderr(proc, "capture-pane")
         if to_buffer is not None:
             return None
         return proc.stdout
@@ -948,7 +952,7 @@ class Pane(
 
         if copy_mode_cmd is not None:
             tmux_args += ("-X",)
-            self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+            proc = self.cmd("send-keys", *tmux_args, copy_mode_cmd)
         elif cmd is None:
             # Flag-only path — tmux's cmd-send-keys.c:223-225 explicitly
             # supports count == 0 when -R or -N is set, returning
@@ -959,7 +963,7 @@ class Pane(
                     "reset=True, repeat=N, copy_mode_cmd=..."
                 )
                 raise ValueError(msg)
-            self.cmd("send-keys", *tmux_args)
+            raise_if_stderr(self.cmd("send-keys", *tmux_args), "send-keys")
             return
         else:
             # tmux reads one byte per argument under -H.
@@ -968,7 +972,9 @@ class Pane(
                 if hex_keys
                 else [escape_trailing_separator(prefix + cmd)]
             )
-            self.cmd("send-keys", *tmux_args, "--", *keys)
+            proc = self.cmd("send-keys", *tmux_args, "--", *keys)
+
+        raise_if_stderr(proc, "send-keys")
 
         if enter and copy_mode_cmd is None:
             self.enter()
@@ -1797,7 +1803,7 @@ class Pane(
 
         ``$ tmux send-keys`` send Enter to the pane.
         """
-        self.cmd("send-keys", "Enter")
+        raise_if_stderr(self.cmd("send-keys", "Enter"), "send-keys")
         return self
 
     def display_popup(

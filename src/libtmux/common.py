@@ -323,6 +323,10 @@ def _format_text(value: str | Format) -> str:
 def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
 
+    When tmux reports that the target does not exist (``can't find pane:
+    %1``), the exception is :exc:`~libtmux.exc.TmuxObjectDoesNotExist`, a
+    subclass, carrying the same text.
+
     Centralizes the ``if proc.stderr: raise exc.LibTmuxException(proc.stderr)``
     pattern scattered across the wrappers. Tags the exception with the
     originating tmux subcommand so downstream consumers (e.g. libtmux-mcp's
@@ -341,6 +345,8 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     ------
     :exc:`LibTmuxException`
         When ``proc.stderr`` is non-empty.
+    :exc:`~libtmux.exc.TmuxObjectDoesNotExist`
+        When ``proc.stderr`` says the target does not exist.
 
     Examples
     --------
@@ -352,10 +358,12 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     .. versionadded:: 0.57
     """
     if proc.stderr:
-        raise exc.LibTmuxException(
-            "\n".join(proc.stderr),
-            subcommand=subcommand,
-        )
+        from libtmux.neo import _is_target_not_found_error
+
+        stderr = "\n".join(proc.stderr)
+        if _is_target_not_found_error(stderr):
+            raise exc.TmuxObjectDoesNotExist._from_stderr(stderr, subcommand)
+        raise exc.LibTmuxException(stderr, subcommand=subcommand)
 
 
 _REDACTED = "***"

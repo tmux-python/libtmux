@@ -423,6 +423,20 @@ class TmuxObjectDoesNotExist(ObjectDoesNotExist):
             return
         super().__init__("Could not find object")
 
+    @classmethod
+    def _from_stderr(cls, stderr: str, subcommand: str) -> TmuxObjectDoesNotExist:
+        """Build the error from tmux's own ``can't find ...`` message.
+
+        Examples
+        --------
+        >>> str(TmuxObjectDoesNotExist._from_stderr("can't find pane: %9", "kill-pane"))
+        "kill-pane: can't find pane: %9"
+        """
+        error = cls()
+        error.args = (stderr,)
+        error.subcommand = subcommand
+        return error
+
 
 class VersionTooLow(LibTmuxException):
     """Raised if tmux below the minimum version to use libtmux."""
