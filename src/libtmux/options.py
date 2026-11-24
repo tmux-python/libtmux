@@ -600,6 +600,7 @@ class OptionsMixin(CmdMixin):
         g: bool | None = None,
         global_: bool | None = None,
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        expand_formats: bool | None = None,
     ) -> Self:
         """Set option for tmux target.
 
@@ -612,6 +613,12 @@ class OptionsMixin(CmdMixin):
         value : str
             option value. True/False will turn in 'on' and 'off',
             also accepts string of 'on' or 'off' directly.
+        expand_formats : bool, optional
+            Expand tmux formats in *value* once, when it is set (``-F``
+            flag).
+        _format : bool, optional
+            Deprecated spelling of *expand_formats*; it still works and emits a
+            :exc:`DeprecationWarning`.
 
         .. deprecated:: 0.28
 
@@ -661,8 +668,15 @@ class OptionsMixin(CmdMixin):
         elif isinstance(value, bool) and not value:
             value = "off"
 
-        if _format is not None and _format:
-            assert isinstance(_format, bool)
+        if _format is not None:
+            warnings.warn(
+                "_format is deprecated in favor of expand_formats",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            if expand_formats is None:
+                expand_formats = _format
+        if expand_formats:
             flags.append("-F")
 
         if prevent_overwrite is not None and prevent_overwrite:

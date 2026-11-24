@@ -1658,15 +1658,40 @@ def test_set_environment_hidden(session: Session) -> None:
     assert "HIDDEN_TEST_VAR" not in env
 
 
-def test_set_environment_expand_format(session: Session) -> None:
-    """Test set_environment with expand_format flag."""
+def test_set_environment_expand_formats(session: Session) -> None:
+    """Test set_environment with the expand_formats flag."""
     session.set_environment(
         "FORMAT_TEST_VAR",
         "#{session_name}",
-        expand_format=True,
+        expand_formats=True,
     )
 
     env = session.show_environment()
     # The value should have been expanded (not the raw format string)
     assert "FORMAT_TEST_VAR" in env
     assert env["FORMAT_TEST_VAR"] != "#{session_name}"
+
+
+def test_set_environment_expand_format_is_deprecated(session: Session) -> None:
+    """``expand_format`` still expands the value and warns to use ``expand_formats``."""
+    with pytest.warns(DeprecationWarning, match="expand_formats"):
+        session.set_environment(
+            "FORMAT_ALIAS_VAR", "#{session_name}", expand_format=True
+        )
+
+    assert session.show_environment()["FORMAT_ALIAS_VAR"] == session.session_name
+
+
+def test_set_option_expand_formats(session: Session) -> None:
+    """``expand_formats`` expands a user option's value once, when it is set."""
+    session.set_option("@expand_test", "#{session_name}", expand_formats=True)
+
+    assert session.show_option("@expand_test") == session.session_name
+
+
+def test_set_option_format_is_deprecated(session: Session) -> None:
+    """``_format`` still passes ``-F`` and warns to use ``expand_formats``."""
+    with pytest.warns(DeprecationWarning, match="expand_formats"):
+        session.set_option("@expand_alias", "#{session_name}", _format=True)
+
+    assert session.show_option("@expand_alias") == session.session_name

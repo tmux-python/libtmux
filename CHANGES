@@ -45,6 +45,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### `expand_formats` is the one name for tmux's `-F` (#919)
+
+{meth}`~libtmux.Session.set_environment`,
+{meth}`~libtmux.Server.command_prompt` and
+{meth}`~libtmux.Session.set_option` take `expand_formats`, the name
+{meth}`~libtmux.Pane.send_keys` already uses. The old spellings,
+`expand_format` and `_format`, still work and emit a `DeprecationWarning`. See
+{ref}`migration` for the change.
+
 ### Documentation
 
 #### `select_existing` names its `#{command}` limit (#921)
