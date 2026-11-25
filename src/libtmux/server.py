@@ -635,6 +635,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -672,6 +673,9 @@ class Server(
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Positive finite seconds for this command. None waits indefinitely.
+            Expiry raises :exc:`~libtmux.exc.TmuxTimeout` after reaping the client.
 
         Returns
         -------
@@ -684,6 +688,8 @@ class Server(
             cannot fit in a UNIX socket address. See :meth:`_socket_args`.
         :exc:`~libtmux.exc.UnknownColorOption`
             When ``colors`` is neither 88 nor 256.
+        NotImplementedError
+            A requested bound uses a custom dispatcher or injected engine.
 
         Notes
         -----
@@ -702,6 +708,8 @@ class Server(
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
+        if timeout is not None:
+            self._raise_if_custom_dispatch()
         svr_args: list[str | int] = [*self._socket_args(), cmd]
         cmd_args: list[str | int] = []
         if self.config_file:
@@ -716,7 +724,19 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        if timeout is None:
+            return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin, timeout=timeout)
+
+    def _raise_if_custom_dispatch(self) -> None:
+        """Refuse command deadlines outside the native subprocess dispatcher."""
+        if (
+            type(self).cmd is not _STOCK_SERVER_CMD
+            or "cmd" in vars(self)
+            or getattr(self, "_engine", None) is not None
+        ):
+            msg = "Command deadlines cannot use a custom command backend"
+            raise NotImplementedError(msg)
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -3344,3 +3364,6 @@ class Server(
             replacement="Server.sessions property",
             version="0.17.0",
         )
+
+
+_STOCK_SERVER_CMD = Server.cmd
