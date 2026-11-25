@@ -1,0 +1,453 @@
+"""Headless tmux-continuum style autosave helpers."""
+
+from __future__ import annotations
+
+import datetime
+import hashlib
+import json
+import os
+import pathlib
+import typing as t
+from dataclasses import dataclass
+
+from libtmux._internal.types import StrPath
+from libtmux.resurrect.archives import (
+    RestorePolicy,
+    capture_archive,
+    restore_archive,
+    write_archive,
+)
+
+if t.TYPE_CHECKING:
+    from libtmux.server import Server
+
+STATE_FORMAT_VERSION = "libtmux.resurrect.autosave-state.v1"
+"""Autosave state format identifier."""
+
+DEFAULT_AUTOSAVE_INTERVAL = datetime.timedelta(minutes=15)
+"""Default interval between autosaves."""
+
+DEFAULT_STARTUP_RESTORE_GRACE = datetime.timedelta(seconds=10)
+"""Default window in which startup restore is considered fresh."""
+
+
+@dataclass(frozen=True, slots=True)
+class AutosaveState:
+    """Persisted autosave state."""
+
+    last_saved_at: datetime.datetime | None = None
+    last_archive_path: pathlib.Path | None = None
+    save_count: int = 0
+    format_version: str = STATE_FORMAT_VERSION
+
+
+@dataclass(frozen=True, slots=True)
+class AutosavePaths:
+    """Socket-aware archive and state paths."""
+
+    archive_path: pathlib.Path
+    state_path: pathlib.Path
+
+
+@dataclass(frozen=True, slots=True)
+class AutosaveResult:
+    """Result returned by :func:`autosave_once`."""
+
+    saved: bool
+    reason: str
+    archive_path: pathlib.Path
+    state: AutosaveState
+    state_path: pathlib.Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StartupRestoreDecision:
+    """Decision returned by :func:`should_restore_on_startup`."""
+
+    allowed: bool
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class StartupRestoreResult:
+    """Result returned by :func:`startup_restore_once`."""
+
+    restored: bool
+    reason: str
+    archive_path: pathlib.Path
+    decision: StartupRestoreDecision
+
+
+def default_autosave_paths(
+    server: Server,
+    directory: StrPath,
+    *,
+    prefix: str = "workspace",
+) -> AutosavePaths:
+    """Return deterministic, socket-aware autosave paths.
+
+    The generated filenames are keyed by the tmux socket identity, but socket
+    paths are hashed so local filesystem details are not embedded in filenames.
+
+    Examples
+    --------
+    >>> import pathlib
+    >>> paths = default_autosave_paths(
+    ...     Server(socket_name="demo"),
+    ...     pathlib.Path("/tmp"),
+    ... )
+    >>> paths.archive_path.name.startswith("workspace-name-")
+    True
+    >>> paths.state_path.name.endswith(".state.json")
+    True
+    """
+    base_dir = pathlib.Path(directory)
+    stem = _autosave_stem(server, prefix=prefix)
+    return AutosavePaths(
+        archive_path=base_dir / f"{stem}.json",
+        state_path=base_dir / f"{stem}.state.json",
+    )
+
+
+def next_autosave_at(
+    last_saved_at: datetime.datetime | None,
+    *,
+    interval: datetime.timedelta = DEFAULT_AUTOSAVE_INTERVAL,
+) -> datetime.datetime | None:
+    """Return when the next autosave is due.
+
+    Examples
+    --------
+    >>> import datetime
+    >>> saved = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    >>> next_autosave_at(saved)
+    datetime.datetime(2026, 7, 4, 12, 15, tzinfo=datetime.timezone.utc)
+    >>> next_autosave_at(None) is None
+    True
+    """
+    if last_saved_at is None:
+        return None
+    return _coerce_datetime(last_saved_at) + interval
+
+
+def should_autosave(
+    *,
+    last_saved_at: datetime.datetime | None,
+    now: datetime.datetime | None = None,
+    interval: datetime.timedelta = DEFAULT_AUTOSAVE_INTERVAL,
+) -> bool:
+    """Return True when an autosave should run.
+
+    Examples
+    --------
+    >>> should_autosave(last_saved_at=None)
+    True
+    """
+    if last_saved_at is None:
+        return True
+
+    due_at = next_autosave_at(last_saved_at, interval=interval)
+    return due_at is not None and _coerce_datetime(now) >= due_at
+
+
+def read_autosave_state(path: StrPath) -> AutosaveState:
+    """Read persisted autosave state, returning an empty state if missing.
+
+    Examples
+    --------
+    >>> import pathlib
+    >>> target = pathlib.Path(request.getfixturevalue("tmp_path")) / "state.json"
+    >>> read_autosave_state(target).save_count
+    0
+    """
+    source = pathlib.Path(path)
+    if not source.exists():
+        return AutosaveState()
+    return _state_from_dict(json.loads(source.read_text(encoding="utf-8")))
+
+
+def write_autosave_state(state: AutosaveState, path: StrPath) -> pathlib.Path:
+    """Write autosave state using an atomic replace.
+
+    Examples
+    --------
+    >>> import pathlib
+    >>> target = pathlib.Path(request.getfixturevalue("tmp_path")) / "state.json"
+    >>> saved = write_autosave_state(AutosaveState(save_count=1), target)
+    >>> saved == target
+    True
+    """
+    destination = pathlib.Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(
+        json.dumps(_state_to_dict(state), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    tmp_path.replace(destination)
+    return destination
+
+
+def autosave_once(
+    server: Server,
+    *,
+    archive_path: StrPath,
+    state_path: StrPath | None = None,
+    now: datetime.datetime | None = None,
+    interval: datetime.timedelta = DEFAULT_AUTOSAVE_INTERVAL,
+    force: bool = False,
+) -> AutosaveResult:
+    """Capture and write one archive if autosave is due.
+
+    Examples
+    --------
+    >>> import pathlib
+    >>> target = pathlib.Path(request.getfixturevalue("tmp_path")) / "tmux.json"
+    >>> result = autosave_once(server, archive_path=target, force=True)
+    >>> result.saved
+    True
+    """
+    resolved_archive_path = pathlib.Path(archive_path)
+    resolved_state_path = pathlib.Path(state_path) if state_path is not None else None
+    previous_state = (
+        read_autosave_state(resolved_state_path)
+        if resolved_state_path is not None
+        else AutosaveState()
+    )
+    resolved_now = _coerce_datetime(now)
+
+    if not force and not should_autosave(
+        last_saved_at=previous_state.last_saved_at,
+        now=resolved_now,
+        interval=interval,
+    ):
+        return AutosaveResult(
+            saved=False,
+            reason="interval_not_elapsed",
+            archive_path=resolved_archive_path,
+            state=previous_state,
+            state_path=resolved_state_path,
+        )
+
+    archive = capture_archive(server, saved_at=resolved_now)
+    write_archive(archive, resolved_archive_path)
+    next_state = AutosaveState(
+        last_saved_at=resolved_now,
+        last_archive_path=resolved_archive_path,
+        save_count=previous_state.save_count + 1,
+    )
+    if resolved_state_path is not None:
+        write_autosave_state(next_state, resolved_state_path)
+
+    return AutosaveResult(
+        saved=True,
+        reason="saved",
+        archive_path=resolved_archive_path,
+        state=next_state,
+        state_path=resolved_state_path,
+    )
+
+
+def should_restore_on_startup(
+    *,
+    enabled: bool,
+    halt_file: StrPath | None,
+    session_count: int,
+    another_server_running: bool,
+    tmux_started_at: datetime.datetime | None = None,
+    now: datetime.datetime | None = None,
+    startup_grace: datetime.timedelta = DEFAULT_STARTUP_RESTORE_GRACE,
+) -> StartupRestoreDecision:
+    """Return whether startup restore should run.
+
+    Examples
+    --------
+    >>> import datetime
+    >>> now = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    >>> should_restore_on_startup(
+    ...     enabled=True,
+    ...     halt_file=None,
+    ...     session_count=0,
+    ...     another_server_running=False,
+    ...     tmux_started_at=now,
+    ...     now=now,
+    ... )
+    StartupRestoreDecision(allowed=True, reason='restore_allowed')
+    """
+    if not enabled:
+        return StartupRestoreDecision(allowed=False, reason="restore_disabled")
+    if halt_file is not None and pathlib.Path(halt_file).exists():
+        return StartupRestoreDecision(allowed=False, reason="halt_file_present")
+    if another_server_running:
+        return StartupRestoreDecision(allowed=False, reason="another_server_running")
+    if session_count > 0:
+        return StartupRestoreDecision(allowed=False, reason="sessions_exist")
+    if tmux_started_at is not None:
+        elapsed = _coerce_datetime(now) - _coerce_datetime(tmux_started_at)
+        if elapsed > startup_grace:
+            return StartupRestoreDecision(
+                allowed=False,
+                reason="startup_window_elapsed",
+            )
+    return StartupRestoreDecision(allowed=True, reason="restore_allowed")
+
+
+def startup_restore_once(
+    server: Server,
+    archive_path: StrPath,
+    *,
+    enabled: bool,
+    halt_file: StrPath | None = None,
+    another_server_running: bool = False,
+    tmux_started_at: datetime.datetime | None = None,
+    now: datetime.datetime | None = None,
+    startup_grace: datetime.timedelta = DEFAULT_STARTUP_RESTORE_GRACE,
+    on_exists: RestorePolicy = "reuse",
+) -> StartupRestoreResult:
+    """Restore an archive once when startup guards allow it.
+
+    Examples
+    --------
+    >>> import pathlib
+    >>> result = startup_restore_once(
+    ...     server,
+    ...     pathlib.Path("missing.json"),
+    ...     enabled=False,
+    ... )
+    >>> result.restored
+    False
+    """
+    resolved_archive_path = pathlib.Path(archive_path)
+    decision = should_restore_on_startup(
+        enabled=enabled,
+        halt_file=halt_file,
+        session_count=len(server.sessions),
+        another_server_running=another_server_running,
+        tmux_started_at=tmux_started_at,
+        now=now,
+        startup_grace=startup_grace,
+    )
+    if not decision.allowed:
+        return StartupRestoreResult(
+            restored=False,
+            reason=decision.reason,
+            archive_path=resolved_archive_path,
+            decision=decision,
+        )
+
+    restore_archive(resolved_archive_path, server, on_exists=on_exists)
+    return StartupRestoreResult(
+        restored=True,
+        reason="restored",
+        archive_path=resolved_archive_path,
+        decision=decision,
+    )
+
+
+def _coerce_datetime(value: datetime.datetime | None) -> datetime.datetime:
+    if value is None:
+        return datetime.datetime.now(datetime.timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.timezone.utc)
+    return value.astimezone(datetime.timezone.utc)
+
+
+def _autosave_stem(server: Server, *, prefix: str) -> str:
+    safe_prefix = _safe_path_component(prefix) or "workspace"
+    socket_path = getattr(server, "socket_path", None)
+    socket_name = getattr(server, "socket_name", None)
+    if socket_path is not None:
+        identity = f"path:{os.fspath(socket_path)}"
+        identity_kind = "path"
+    elif socket_name is not None:
+        identity = f"name:{socket_name}"
+        identity_kind = "name"
+    else:
+        identity = "default"
+        identity_kind = "default"
+
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+    return f"{safe_prefix}-{identity_kind}-{digest}"
+
+
+def _safe_path_component(value: str) -> str:
+    return "".join(
+        character if character.isalnum() or character in {"-", "_"} else "-"
+        for character in value
+    ).strip("-")
+
+
+def _state_to_dict(state: AutosaveState) -> dict[str, object]:
+    return {
+        "format_version": state.format_version,
+        "last_archive_path": (
+            str(state.last_archive_path) if state.last_archive_path else None
+        ),
+        "last_saved_at": (
+            _coerce_datetime(state.last_saved_at).isoformat()
+            if state.last_saved_at is not None
+            else None
+        ),
+        "save_count": state.save_count,
+    }
+
+
+def _state_from_dict(data: object) -> AutosaveState:
+    state_data = _expect_mapping(data, "state")
+    format_version = _expect_str(state_data, "format_version")
+    if format_version != STATE_FORMAT_VERSION:
+        msg = f"unsupported autosave state format: {format_version}"
+        raise ValueError(msg)
+
+    return AutosaveState(
+        format_version=format_version,
+        last_archive_path=_optional_path(state_data, "last_archive_path"),
+        last_saved_at=_optional_datetime(state_data, "last_saved_at"),
+        save_count=_expect_int(state_data, "save_count"),
+    )
+
+
+def _optional_path(data: t.Mapping[str, object], key: str) -> pathlib.Path | None:
+    value = data[key]
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        msg = f"{key} must be a string or null"
+        raise TypeError(msg)
+    return pathlib.Path(value)
+
+
+def _optional_datetime(
+    data: t.Mapping[str, object],
+    key: str,
+) -> datetime.datetime | None:
+    value = data[key]
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        msg = f"{key} must be a string or null"
+        raise TypeError(msg)
+    return _coerce_datetime(datetime.datetime.fromisoformat(value))
+
+
+def _expect_mapping(data: object, name: str) -> t.Mapping[str, object]:
+    if not isinstance(data, dict):
+        msg = f"{name} must be an object"
+        raise TypeError(msg)
+    return t.cast("t.Mapping[str, object]", data)
+
+
+def _expect_str(data: t.Mapping[str, object], key: str) -> str:
+    value = data[key]
+    if not isinstance(value, str):
+        msg = f"{key} must be a string"
+        raise TypeError(msg)
+    return value
+
+
+def _expect_int(data: t.Mapping[str, object], key: str) -> int:
+    value = data[key]
+    if not isinstance(value, int):
+        msg = f"{key} must be an integer"
+        raise TypeError(msg)
+    return value
