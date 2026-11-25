@@ -11,7 +11,7 @@ from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import raise_if_stderr
 from libtmux.formats import FORMAT_SEPARATOR, Format
 
 if t.TYPE_CHECKING:
@@ -905,7 +905,7 @@ class Obj:
             # parse_output omits empty values, so a field tmux emptied is absent.
             fields, _ = get_output_format(
                 list_cmd,
-                str(get_version(tmux_bin=self.server.tmux_bin)),
+                str(self.server._version),
             )
             for k in fields:
                 if k not in obj:
@@ -1154,13 +1154,10 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    tmux_version = str(server._version)
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
-    tmux_cmds: list[str | int] = [
-        *server._socket_args(),
-        list_cmd,
-    ]
+    tmux_cmds: list[str | int] = []
 
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
@@ -1173,7 +1170,7 @@ def fetch_objs(
     cmd_str: str | None = None
 
     if logger.isEnabledFor(logging.DEBUG):
-        cmd_str = shlex.join([str(x) for x in tmux_cmds])
+        cmd_str = shlex.join([list_cmd, *(str(x) for x in tmux_cmds)])
         logger.debug(
             "tmux list queried",
             extra={
@@ -1182,10 +1179,7 @@ def fetch_objs(
             },
         )
 
-    proc = tmux_cmd(
-        *tmux_cmds,
-        tmux_bin=server.tmux_bin,
-    )
+    proc = server.cmd(list_cmd, *tmux_cmds)
 
     raise_if_stderr(proc, list_cmd)
 
@@ -1196,7 +1190,7 @@ def fetch_objs(
 
     if logger.isEnabledFor(logging.DEBUG):
         if cmd_str is None:
-            cmd_str = shlex.join([str(x) for x in tmux_cmds])
+            cmd_str = shlex.join([list_cmd, *(str(x) for x in tmux_cmds)])
         logger.debug(
             "tmux list parsed",
             extra={

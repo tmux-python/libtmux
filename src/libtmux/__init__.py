@@ -15,7 +15,16 @@ from .__about__ import (
     __version__,
 )
 from .client import Client
+from .discovery import DiscoveredServer, DiscoveryDiagnostic, DiscoveryResult
 from .formats import Format
+from .lifecycle import (
+    AmbiguousMatch,
+    CreationCleanupError,
+    FoundOrCreated,
+    Owned,
+    OwnedIdentity,
+    UnknownCreation,
+)
 from .pane import Pane
 from .server import Server
 from .session import Session
@@ -24,11 +33,20 @@ from .window import Window
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __all__ = (
+    "AmbiguousMatch",
     "Client",
+    "CreationCleanupError",
+    "DiscoveredServer",
+    "DiscoveryDiagnostic",
+    "DiscoveryResult",
     "Format",
+    "FoundOrCreated",
+    "Owned",
+    "OwnedIdentity",
     "Pane",
     "Server",
     "Session",
+    "UnknownCreation",
     "Window",
     "__author__",
     "__copyright__",

@@ -136,13 +136,14 @@ tmux report `File name too long` with only the path to go on:
 130
 ```
 
-A `socket_name` is different: tmux resolves it against `$TMUX_TMPDIR` when it
-runs, so the length is only knowable at dispatch. Building the object is safe,
+A `socket_name` is different: the server resolves it against the
+`$TMUX_TMPDIR` it captured when it was built, and measures it when it is first
+used. Building the object is safe,
 and a test that only asks whether a server is there gets an answer instead of an
 exception — an unbindable address is one more way of not being alive:
 
-The directory has to exist for that to be the socket tmux would bind: tmux takes
-the first of `$TMUX_TMPDIR` and `/tmp` that resolves.
+The directory has to exist: a server never swaps a missing root for `/tmp`, so a
+handle meant for a private root cannot reach the shared default server.
 
 ```python
 >>> from libtmux.server import Server as TmuxServer

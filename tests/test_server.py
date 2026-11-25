@@ -50,24 +50,22 @@ def test_socket_name(server: Server) -> None:
     assert myserver.socket_name == "test"
 
 
-def test_socket_path(server: Server) -> None:
+def test_socket_path(server: Server, tmp_path: pathlib.Path) -> None:
     """``-S`` socket_path  (alternative path for server socket)."""
-    myserver = Server(socket_path="test")
+    myserver = Server(socket_path=tmp_path / "test")
 
-    assert myserver.socket_path == "test"
+    assert myserver.socket_path == str(tmp_path / "test")
 
 
-def test_socket_path_not_derived_from_socket_name() -> None:
-    """A named socket leaves ``socket_path`` unset.
-
-    tmux resolves a ``-L`` name against its own socket directory, so libtmux
-    has no reason to guess the path. Anything that needs the real path asks
-    tmux for it (``#{socket_path}``).
-    """
+def test_socket_path_captured_from_socket_name() -> None:
+    """A named socket captures its root and absolute endpoint."""
     myserver = Server(socket_name="libtmux_test_named_socket")
 
     assert myserver.socket_name == "libtmux_test_named_socket"
-    assert myserver.socket_path is None
+    root = os.environ.get("TMUX_TMPDIR") or "/tmp"
+    assert myserver.socket_path == str(
+        pathlib.Path(root) / f"tmux-{os.getuid()}" / myserver.socket_name,
+    )
 
 
 def test_repr_socket_path_honors_tmux_tmpdir(
@@ -224,37 +222,37 @@ def test_socket_name_factory_too_long_via_tmux_tmpdir(
     assert excinfo.value.socket_name == "factory_made"
 
 
-def test_socket_path_measured_at_dispatch_not_construction(
+def test_socket_path_measured_against_the_captured_environment(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``$TMUX_TMPDIR`` is read when tmux would read it, not before.
+    """A handle measures the socket it captured, not a later ``$TMUX_TMPDIR``.
 
-    The tmux binary resolves its socket directory at exec time, so a server
-    built under a short ``$TMUX_TMPDIR`` and used under a long one is measured
-    against the long one -- and the reverse recovers without rebuilding the
-    object.
+    The endpoint is resolved from the environment captured at construction, so
+    a server built under a short ``$TMUX_TMPDIR`` keeps its socket when the
+    variable later grows, and one built under an unbindable root is refused on
+    first use rather than when it is built.
     """
     myserver = Server(socket_name="dev")
-    assert myserver._socket_args() == ["-Ldev"]
+    assert myserver._socket_args() == [f"-S{myserver.socket_path}"]
 
     _unbindable_tmux_tmpdir(tmp_path, monkeypatch)
+    assert myserver._socket_args() == [f"-S{myserver.socket_path}"]
+
+    unbindable = Server(socket_name="dev")
     with pytest.raises(exc.SocketPathTooLong):
-        myserver._socket_args()
-
-    monkeypatch.delenv("TMUX_TMPDIR")
-    assert myserver._socket_args() == ["-Ldev"]
+        unbindable._socket_args()
 
 
-def test_long_symlinked_tmpdir_is_measured_after_resolving(
+def test_long_symlinked_tmpdir_is_measured_as_passed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
 ) -> None:
-    """A long ``$TMUX_TMPDIR`` symlink to a short directory is accepted.
+    """A long ``$TMUX_TMPDIR`` symlink is measured as written.
 
-    tmux resolves the socket directory before binding, so the link's own
-    length is not what has to fit. Measuring the unresolved path would refuse
-    a server tmux runs happily.
+    The handle passes its captured socket to tmux with ``-S``, and the kernel
+    checks the length of the path it is given, so the link's own length is
+    what has to fit, wherever it points.
     """
     target = tmp_path / "t"
     target.mkdir()
@@ -266,7 +264,8 @@ def test_long_symlinked_tmpdir_is_measured_after_resolving(
 
     myserver = Server(socket_name="dev")
 
-    assert myserver._socket_args() == ["-Ldev"]
+    with pytest.raises(exc.SocketPathTooLong):
+        myserver._socket_args()
 
 
 def _unbindable_tmux_tmpdir(
@@ -306,21 +305,19 @@ def test_default_socket_too_long_via_tmux_tmpdir(
     with pytest.raises(exc.SocketPathTooLong) as excinfo:
         myserver.cmd("list-sessions")
 
-    assert excinfo.value.socket_name is None
+    assert excinfo.value.socket_name == "default"
     assert str(excinfo.value.socket_path).endswith("/default")
     assert excinfo.value.env_var == "TMUX_TMPDIR"
 
 
-def test_unusable_tmux_tmpdir_falls_back_to_tmp(
+def test_unusable_tmux_tmpdir_is_not_replaced_by_tmp(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A ``$TMUX_TMPDIR`` tmux cannot use is not the path that gets measured.
+    """A ``$TMUX_TMPDIR`` that does not exist is refused, never swapped for /tmp.
 
-    tmux takes the first of ``$TMUX_TMPDIR`` and ``/tmp`` that resolves, so a
-    directory that does not exist never holds the socket however long its name
-    is. Measuring it anyway would refuse a server tmux reaches without
-    difficulty: :meth:`Server.is_alive` would report a live daemon dead and the
-    first command would raise.
+    tmux itself would fall back to ``/tmp``, but a handle meant for a private
+    root would then reach the shared default server. The captured root is kept
+    and measured as written.
     """
     monkeypatch.delenv("TMUX", raising=False)
     monkeypatch.setenv("TMUX_TMPDIR", f"/nonexistent-{'d' * 200}")
@@ -331,7 +328,9 @@ def test_unusable_tmux_tmpdir_falls_back_to_tmp(
 
     myserver = Server(socket_name="dev")
 
-    assert myserver._socket_args() == ["-Ldev"]
+    assert myserver.socket_path.startswith("/nonexistent-")
+    with pytest.raises(exc.SocketPathTooLong):
+        myserver._socket_args()
 
 
 def test_bare_server_inside_a_pane_ignores_tmux_tmpdir(
@@ -339,7 +338,7 @@ def test_bare_server_inside_a_pane_ignores_tmux_tmpdir(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
 ) -> None:
-    """A bare client inside a pane uses ``$TMUX``, so a deep dir is irrelevant.
+    """A bare server inside a pane captures ``$TMUX``, so a deep dir is irrelevant.
 
     Measuring ``$TMUX_TMPDIR`` here would refuse a server tmux reaches without
     difficulty -- the common case for a script run inside tmux, which is where
@@ -365,7 +364,7 @@ def test_bare_server_inside_a_pane_ignores_tmux_tmpdir(
 
         myserver = Server()
 
-        assert myserver._socket_args() == []
+        assert myserver._socket_args() == [f"-S{socket_path}"]
         assert myserver.is_alive()
 
 
@@ -715,14 +714,15 @@ def test_socket_name_precedence(server: Server) -> None:
 
 
 def test_server_context_manager(TestServer: type[Server]) -> None:
-    """Test Server context manager functionality."""
+    """Server client scope leaves the daemon alive; explicit ownership destroys it."""
     with TestServer() as server:
         session = server.new_session()
         assert server.is_alive()
         assert len(server.sessions) == 1
         assert session in server.sessions
 
-    # Server should be killed after exiting context
+    assert server.is_alive()
+    server.own().close()
     assert not server.is_alive()
 
 
@@ -835,8 +835,8 @@ def test_new_session_start_directory_pathlib(
 
 
 def test_tmux_bin_default(server: Server) -> None:
-    """Default tmux_bin is None, falls back to shutil.which."""
-    assert server.tmux_bin is None
+    """Default tmux_bin records the executable found at construction."""
+    assert server.tmux_bin == shutil.which("tmux")
 
 
 def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
@@ -1565,13 +1565,9 @@ def test_run_shell_cwd_warns_on_old_tmux(
 ) -> None:
     """``cwd=`` emits a warning and skips ``-c`` on tmux <3.4.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace (where it's bound at
-    import time).
+    Simulates an older executable on this server handle.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(server, "_supports_version", lambda minimum: False)
     server.new_session(session_name="run_shell_cwd_warn_test")
     with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
         server.run_shell("true", cwd=tmp_path, background=True)
@@ -1583,12 +1579,9 @@ def test_run_shell_show_stderr_warns_on_old_tmux(
 ) -> None:
     """``show_stderr=True`` emits a warning and skips ``-E`` on tmux <3.6.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace.
+    Simulates an older executable on this server handle.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(server, "_supports_version", lambda minimum: False)
     server.new_session(session_name="run_shell_stderr_warn_test")
     with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
         server.run_shell("true", show_stderr=True, background=True)

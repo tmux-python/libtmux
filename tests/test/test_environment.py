@@ -5,7 +5,45 @@ from __future__ import annotations
 import os
 import typing as t
 
+import pytest
+
 from libtmux.test.environment import EnvironmentVarGuard
+
+
+@pytest.mark.parametrize("original", [None, "", "original"])
+@pytest.mark.parametrize("fail_body", [False, True])
+def test_environment_guard_restores_first_state(
+    monkeypatch: pytest.MonkeyPatch,
+    original: str | None,
+    fail_body: bool,
+) -> None:
+    """Restore absence or the original value after repeated changes and exceptions."""
+    key = "LIBTMUX_TEST_GUARD"
+    if original is None:
+        monkeypatch.delenv(key, raising=False)
+    else:
+        monkeypatch.setenv(key, original)
+    guard = EnvironmentVarGuard()
+    body_error = RuntimeError("body failed")
+
+    def raise_body_error() -> None:
+        raise body_error
+
+    try:
+        with guard:
+            guard.set(key, "first")
+            guard.set(key, "second")
+            guard.unset(key)
+            guard.set(key, "third")
+            guard.unset(key)
+            if fail_body:
+                raise_body_error()
+    except RuntimeError:
+        assert fail_body
+    assert os.environ.get(key) == original
+    assert (key in os.environ) == (original is not None)
+    guard.__exit__(None, None, None)
+    assert os.environ.get(key) == original
 
 
 def test_environment_var_guard_set() -> None:
