@@ -12,3 +12,6 @@ symbol comes from the [upstream logo](https://github.com/modelcontextprotocol/mo
 Package-specific artwork sits beside its README where the package format
 supports it. `.github/social-preview.png` is the cog sharing card, ready to
 upload under the repository's **Settings → Social preview**.
+
+Library sharing images come from `assets/python/library/`
+at kit revision `4b86a9d9158d7c6d52cd635d59c92a04b48b960f`.
