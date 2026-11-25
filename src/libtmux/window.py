@@ -17,6 +17,7 @@ from libtmux.common import (
     _format_arg,
     _format_path_arg,
     _format_text,
+    _prepare_program_args,
     escape_trailing_separator,
     has_gte_version,
     raise_if_stderr,
@@ -629,11 +630,17 @@ class Window(
         inactive_border_style: str | None = None,
         message: str | None = None,
         keep: bool | None = None,
+        *,
+        argv: t.Sequence[str] | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         attach : bool, optional
             Make new window the current window after creating it, default
             True.
@@ -693,6 +700,7 @@ class Window(
             full_window_split=full_window_split,
             zoom=zoom,
             shell=shell,
+            argv=argv,
             size=size,
             percentage=percentage,
             environment=environment,
@@ -723,6 +731,8 @@ class Window(
         inactive_border_style: str | None = None,
         message: str | None = None,
         keep: bool | None = None,
+        *,
+        argv: t.Sequence[str] | None = None,
     ) -> Pane:
         """Create a floating :class:`Pane` in this window (``$ tmux new-pane``).
 
@@ -731,6 +741,10 @@ class Window(
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         target : int or str, optional
             Custom *target-pane*.
         start_directory : str, PathLike or Format, optional
@@ -793,6 +807,7 @@ class Window(
             start_directory=start_directory,
             attach=attach,
             shell=shell,
+            argv=argv,
             environment=environment,
             width=width,
             height=height,
@@ -1198,11 +1213,16 @@ class Window(
         start_directory: StrPath | Format | None = None,
         environment: dict[str, str] | None = None,
         kill: bool | None = None,
+        argv: t.Sequence[str] | None = None,
     ) -> None:
         """Respawn the window process via ``$ tmux respawn-window``.
 
         Parameters
         ----------
+        argv : Sequence[str], optional
+            Program and at least one argument, passed without shell expansion.
+            Mutually exclusive with the shell-command string. See
+            :doc:`/topics/program_arguments` for single-argument and escaping rules.
         shell : str, optional
             Shell command to run in the respawned window.
         start_directory : str, PathLike or Format, optional
@@ -1219,6 +1239,7 @@ class Window(
         >>> window = session.new_window(window_name='respawn_test')
         >>> window.respawn(kill=True, shell='sh')
         """
+        program_args = _prepare_program_args(shell, argv)
         tmux_args: tuple[str, ...] = ()
 
         if kill:
@@ -1233,8 +1254,7 @@ class Window(
             for k, v in environment.items():
                 tmux_args += (escape_trailing_separator(f"-e{k}={v}"),)
 
-        if shell:
-            tmux_args += (shell,)
+        tmux_args += program_args
 
         proc = self.cmd("respawn-window", *tmux_args)
 
@@ -1650,8 +1670,12 @@ class Window(
         window_shell: str | None = None,
         environment: dict[str, str] | None = None,
         direction: WindowDirection | None = None,
+        argv: t.Sequence[str] | None = None,
     ) -> Window:
         """Create new window respective of current window's position.
+
+        ``argv`` accepts a program and at least one argument, without shell
+        expansion. See :doc:`/topics/program_arguments`.
 
         See Also
         --------
@@ -1690,6 +1714,7 @@ class Window(
             attach=attach,
             window_index=window_index,
             window_shell=window_shell,
+            argv=argv,
             environment=environment,
             direction=direction,
             target_window=self.window_id,
