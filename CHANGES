@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### Standalone window and pane examples (#815)
+
+Three {doc}`complete programs </topics/examples>` create a window, rename
+a window, and send text to a pane reader. Each checks its result and cleans
+up a private server. The test suite runs the files unchanged, repeats each
+program, and verifies that an unrelated session remains alive. Source
+distributions include the programs, and mypy checks their public API use.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
