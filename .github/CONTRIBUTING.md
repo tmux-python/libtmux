@@ -26,13 +26,13 @@ $ uv sync --all-extras --dev
 ```
 
 This project uses Python 3.11+, [uv] for dependency management, [ruff]
-for linting and formatting, [mypy] for type checking, and [pytest] for
+for linting and formatting, [ty] for type checking, and [pytest] for
 testing (with [pytest-watcher] for continuous runs).
 
 [git]: https://git-scm.com/
 [uv]: https://github.com/astral-sh/uv
 [ruff]: https://github.com/astral-sh/ruff
-[mypy]: https://mypy-lang.org/
+[ty]: https://docs.astral.sh/ty/
 [pytest]: https://docs.pytest.org/
 [pytest-watcher]: https://github.com/olzhasar/pytest-watcher
 
@@ -53,7 +53,7 @@ $ uv run ruff check . --fix --show-fixes
 Type-check:
 
 ```console
-$ uv run mypy
+$ uv run ty check
 ```
 
 Test:

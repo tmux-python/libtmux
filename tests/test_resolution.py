@@ -433,6 +433,7 @@ def test_linked_sessions_lists_each_holder_once(server: Server) -> None:
     assert [s.session_id for s in window.linked_sessions] == [dup.session_id]
 
     guest = server.new_session(session_name="guest")
+    assert window.window_id is not None
     server.cmd(
         "link-window", "-d", "-s", window.window_id, "-t", f"{guest.session_id}:"
     )
@@ -466,11 +467,22 @@ def test_linked_sessions_returns_empty_when_session_snapshot_fails(
     window = server.new_session(session_name="holder").active_window
     real_fetch_objs = neo.fetch_objs
 
-    def fail_session_snapshot(**kwargs: t.Any) -> list[dict[str, str]]:
-        if kwargs["list_cmd"] == "list-sessions":
+    def fail_session_snapshot(
+        server: Server,
+        list_cmd: neo.ListCmd,
+        list_extra_args: neo.ListExtraArgs = None,
+        # Match `fetch_objs(filter=...)` keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
+        filter: str | None = None,  # noqa: A002
+    ) -> neo.OutputsRaw:
+        if list_cmd == "list-sessions":
             msg = "session snapshot failed"
             raise exc.LibTmuxException(msg)
-        return real_fetch_objs(**kwargs)
+        return real_fetch_objs(
+            server=server,
+            list_cmd=list_cmd,
+            list_extra_args=list_extra_args,
+            filter=filter,
+        )
 
     monkeypatch.setattr(window_module, "fetch_objs", fail_session_snapshot)
 
@@ -489,6 +501,7 @@ def test_linked_sessions_skips_holder_lost_between_snapshots(
     """
     home = server.new_session(session_name="home")
     window = home.active_window
+    assert window.window_id is not None
     guest = server.new_session(session_name="guest")
     server.cmd(
         "link-window",
@@ -500,9 +513,20 @@ def test_linked_sessions_skips_holder_lost_between_snapshots(
     )
     real_fetch_objs = neo.fetch_objs
 
-    def remove_guest_after_window_snapshot(**kwargs: t.Any) -> list[dict[str, str]]:
-        rows = real_fetch_objs(**kwargs)
-        if kwargs["list_cmd"] == "list-windows":
+    def remove_guest_after_window_snapshot(
+        server: Server,
+        list_cmd: neo.ListCmd,
+        list_extra_args: neo.ListExtraArgs = None,
+        # Match `fetch_objs(filter=...)` keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
+        filter: str | None = None,  # noqa: A002
+    ) -> neo.OutputsRaw:
+        rows = real_fetch_objs(
+            server=server,
+            list_cmd=list_cmd,
+            list_extra_args=list_extra_args,
+            filter=filter,
+        )
+        if list_cmd == "list-windows":
             guest.kill()
         return rows
 
@@ -527,6 +551,7 @@ def test_linked_sessions_uses_two_list_calls(
     tmux server still provide every row used by the assertion.
     """
     window, _dup = link_window_twice_into_one_session(server)
+    assert window.window_id is not None
     for name in ("guest-one", "guest-two"):
         guest = server.new_session(session_name=name)
         server.cmd(
@@ -553,9 +578,20 @@ def test_linked_sessions_uses_two_list_calls(
     )
     list_calls: list[str] = []
 
-    def recording_fetch_objs(**kwargs: t.Any) -> list[dict[str, str]]:
-        list_calls.append(kwargs["list_cmd"])
-        return real_fetch_objs(**kwargs)
+    def recording_fetch_objs(
+        server: Server,
+        list_cmd: neo.ListCmd,
+        list_extra_args: neo.ListExtraArgs = None,
+        # Match `fetch_objs(filter=...)` keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
+        filter: str | None = None,  # noqa: A002
+    ) -> neo.OutputsRaw:
+        list_calls.append(list_cmd)
+        return real_fetch_objs(
+            server=server,
+            list_cmd=list_cmd,
+            list_extra_args=list_extra_args,
+            filter=filter,
+        )
 
     monkeypatch.setattr(window_module, "fetch_objs", recording_fetch_objs)
     monkeypatch.setattr(neo, "fetch_objs", recording_fetch_objs)

@@ -898,18 +898,16 @@ class Obj:
             list_extra_args=list_extra_args,
             server=self.server,
         )
-        assert obj is not None
-        if obj is not None:
-            for k, v in obj.items():
-                setattr(self, k, v)
-            # parse_output omits empty values, so a field tmux emptied is absent.
-            fields, _ = get_output_format(
-                list_cmd,
-                str(get_version(tmux_bin=self.server.tmux_bin)),
-            )
-            for k in fields:
-                if k not in obj:
-                    setattr(self, k, None)
+        for k, v in obj.items():
+            setattr(self, k, v)
+        # parse_output omits empty values, so a field tmux emptied is absent.
+        fields, _ = get_output_format(
+            list_cmd,
+            str(get_version(tmux_bin=self.server.tmux_bin)),
+        )
+        for k in fields:
+            if k not in obj:
+                setattr(self, k, None)
 
 
 @functools.cache
@@ -1099,6 +1097,7 @@ def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
     list_extra_args: ListExtraArgs = None,
+    # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
     filter: str | Format | None = None,  # noqa: A002
 ) -> OutputsRaw:
     """Fetch a listing of raw data from a tmux command.

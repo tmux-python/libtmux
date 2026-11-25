@@ -39,10 +39,11 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
-    from typing import Self
+    from typing import Never, Self
 
     from libtmux._internal.types import StrPath
     from libtmux.formats import Format
+    from libtmux.options import OptionValue
 
     from .common import PaneDict, WindowOptionDict
     from .server import Server
@@ -483,6 +484,7 @@ class Window(
     def search_panes(
         self,
         *,
+        # Match public keyword name — https://docs.astral.sh/ruff/rules/builtin-argument-shadowing/
         filter: str | Format | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
         """Panes in this window, optionally filtered by tmux.
@@ -543,7 +545,7 @@ class Window(
     def cmd(
         self,
         cmd: str,
-        *args: t.Any,
+        *args: StrPath | int,
         target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within window context.
@@ -1943,13 +1945,17 @@ class Window(
         self,
         option: str,
         g: bool = False,
-    ) -> str | int | None:
+    ) -> OptionValue:
         """Return option for target window. Deprecated by :meth:`Window.show_option()`.
 
         .. deprecated:: 0.50
 
            Deprecated by :meth:`Window.show_option()`.
 
+        Returns
+        -------
+        :data:`~libtmux.options.OptionValue`
+            Parsed scalar, array, or mapping option value, or ``None`` when unset.
         """
         warnings.warn(
             "Window.show_window_option() is deprecated"
@@ -1962,7 +1968,7 @@ class Window(
             global_=g,
         )
 
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
+    def get(self, key: str, default: object = None) -> Never:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.17
@@ -1977,7 +1983,7 @@ class Window(
             version="0.17.0",
         )
 
-    def __getitem__(self, key: str) -> t.Any:
+    def __getitem__(self, key: str) -> Never:
         """Return item lookup by key. Deprecated in favor of attributes.
 
         .. deprecated:: 0.17

@@ -78,8 +78,10 @@ _legacy_version_replacement_map = {
 
 
 def _parse_version_parts(s: str) -> Iterator[str]:
-    for part in _legacy_version_component_re.split(s):
-        part = _legacy_version_replacement_map.get(part, part)
+    for raw_part in _legacy_version_component_re.split(s):
+        if not isinstance(raw_part, str):
+            continue
+        part = _legacy_version_replacement_map.get(raw_part, raw_part)
 
         if not part or part == ".":
             continue

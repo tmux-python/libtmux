@@ -16,7 +16,7 @@ Development setup, running tests, submitting PRs.
 :::{grid-item-card} Code Style
 :link: code-style
 :link-type: doc
-[Ruff], [mypy], [NumPy] docstrings, import conventions.
+[Ruff], [ty], [NumPy] docstrings, import conventions.
 :::
 
 :::{grid-item-card} Releasing
@@ -57,5 +57,5 @@ deprecations
 ```
 
 [Ruff]: https://docs.astral.sh/ruff/
-[mypy]: https://mypy-lang.org/
+[ty]: https://docs.astral.sh/ty/
 [NumPy]: https://numpydoc.readthedocs.io/en/latest/format.html

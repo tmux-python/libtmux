@@ -102,20 +102,20 @@ watch-ruff:
         just _entr-warn
     fi
 
-# Run mypy type checker
+# Run ty type checker
 [group: 'lint']
-mypy:
-    uv run mypy $({{ py_files }})
+ty:
+    uv run ty check
 
-# Watch files and run mypy on change
+# Watch files and run ty on change
 [group: 'lint']
-watch-mypy:
+watch-ty:
     #!/usr/bin/env bash
     set -euo pipefail
     if command -v entr > /dev/null; then
-        {{ py_files }} | entr -c just mypy
+        {{ py_files }} | entr -c just ty
     else
-        just mypy
+        just ty
         just _entr-warn
     fi
 

@@ -5,7 +5,7 @@
 - ruff - Fast Python linter and formatter
 - py.test - Testing framework
   - pytest-watcher - Continuous test runner
-- mypy - Static type checking
+- ty - Static type checking
 - doctest - Testing code examples in documentation
 </project_stack>
 

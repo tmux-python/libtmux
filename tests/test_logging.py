@@ -303,7 +303,7 @@ def test_options_warning_logging_schema(
     bad_features[0] = 42  # int, not str — causes .split() to fail
 
     with caplog.at_level(logging.WARNING, logger="libtmux.options"):
-        explode_complex({"terminal-features": bad_features})  # type: ignore[dict-item]
+        explode_complex({"terminal-features": bad_features})
 
     records = [
         r
@@ -312,6 +312,6 @@ def test_options_warning_logging_schema(
     ]
     assert len(records) >= 1, "expected WARNING record for option parse failure"
 
-    rec = t.cast(t.Any, records[0])
-    assert isinstance(rec.tmux_option_key, str)
+    rec = records[0]
+    assert isinstance(getattr(rec, "tmux_option_key", None), str)
     assert rec.exc_info is None

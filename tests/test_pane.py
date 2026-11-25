@@ -23,6 +23,7 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.common import CmdArg, tmux_cmd
     from libtmux.pane import Pane
     from libtmux.server import Server
     from libtmux.session import Session
@@ -605,9 +606,13 @@ def test_send_keys_flag_only_reset_emits_clean_argv(
     captured: list[tuple[str, ...]] = []
     real_cmd = pane.cmd
 
-    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd_name: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         captured.append((cmd_name, *(str(a) for a in args)))
-        return real_cmd(cmd_name, *args, **kw)
+        return real_cmd(cmd_name, *args, target=target)
 
     monkeypatch.setattr(pane, "cmd", fake_cmd)
 
@@ -628,9 +633,13 @@ def test_send_keys_flag_only_repeat_emits_dash_N(
     captured: list[tuple[str, ...]] = []
     real_cmd = pane.cmd
 
-    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd_name: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         captured.append((cmd_name, *(str(a) for a in args)))
-        return real_cmd(cmd_name, *args, **kw)
+        return real_cmd(cmd_name, *args, target=target)
 
     monkeypatch.setattr(pane, "cmd", fake_cmd)
 
@@ -1051,11 +1060,31 @@ def test_display_panes(
         pane.display_panes()
 
 
+class DisplayPopupKwargs(t.TypedDict, total=False):
+    """Keyword arguments forwarded to :meth:`Pane.display_popup` in tests."""
+
+    close_existing: bool | None
+    target_client: str | None
+    width: int | str | None
+    height: int | str | None
+    x: int | str | None
+    y: int | str | None
+    start_directory: pathlib.Path | str | None
+    title: str | None
+    border_lines: str | None
+    style: str | None
+    border_style: str | None
+    environment: dict[str, str] | None
+    no_border: bool | None
+    close_on_any_key: bool | None
+    no_keys: bool | None
+
+
 class DisplayPopupCase(t.NamedTuple):
     """Test case for display_popup() flag variations."""
 
     test_id: str
-    kwargs: dict[str, t.Any]
+    kwargs: DisplayPopupKwargs
     min_tmux_version: str | None
 
 
@@ -1133,58 +1162,60 @@ def terminal_client(server: Server, session: Session) -> t.Iterator[str]:
     env = {**os.environ, "TERM": "xterm-256color"}
     env.pop("TMUX", None)
     env.pop("TMUX_PANE", None)
-    reader: threading.Thread | None = None
+    readers: list[threading.Thread] = []
 
-    try:
-        with contextlib.ExitStack() as cleanup:
-            master, slave = os.openpty()
-            cleanup.callback(os.close, master)
-            cleanup.callback(os.close, slave)
-            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
-            client = subprocess.Popen(
-                [*prefix, "attach-session", "-t", str(session.session_id)],
-                stdin=slave,
-                stdout=slave,
-                stderr=slave,
+    def join_readers() -> None:
+        for active_reader in readers:
+            active_reader.join(timeout=1)
+            assert not active_reader.is_alive()
+
+    with contextlib.ExitStack() as cleanup:
+        cleanup.callback(join_readers)
+        master, slave = os.openpty()
+        cleanup.callback(os.close, master)
+        cleanup.callback(os.close, slave)
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+        client = subprocess.Popen(
+            [*prefix, "attach-session", "-t", str(session.session_id)],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            env=env,
+            start_new_session=True,
+        )
+
+        def drain() -> None:
+            with contextlib.suppress(OSError):
+                while os.read(master, 65536):
+                    pass
+
+        try:
+            reader = threading.Thread(target=drain, daemon=True)
+            reader.start()
+            readers.append(reader)
+            subprocess.run(
+                [*prefix, "wait-for", channel],
+                check=True,
+                capture_output=True,
+                timeout=1,
                 env=env,
-                start_new_session=True,
             )
-
-            def drain() -> None:
-                with contextlib.suppress(OSError):
-                    while os.read(master, 65536):
-                        pass
-
+            name = os.ttyname(slave)
+            clients = server.cmd(
+                "list-clients",
+                "-F",
+                "#{client_pid}\t#{client_name}",
+            ).stdout
+            assert f"{client.pid}\t{name}" in clients
+            server.unset_hook("client-attached[0]", global_=True)
+            yield name
+        finally:
+            client.terminate()
             try:
-                reader = threading.Thread(target=drain, daemon=True)
-                reader.start()
-                subprocess.run(
-                    [*prefix, "wait-for", channel],
-                    check=True,
-                    capture_output=True,
-                    timeout=1,
-                    env=env,
-                )
-                name = os.ttyname(slave)
-                clients = server.cmd(
-                    "list-clients",
-                    "-F",
-                    "#{client_pid}\t#{client_name}",
-                ).stdout
-                assert f"{client.pid}\t{name}" in clients
-                server.unset_hook("client-attached[0]", global_=True)
-                yield name
-            finally:
-                client.terminate()
-                try:
-                    client.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    client.kill()
-                    client.wait(timeout=1)
-    finally:
-        if reader is not None:
-            reader.join(timeout=1)
-            assert not reader.is_alive()
+                client.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                client.kill()
+                client.wait(timeout=1)
 
 
 @pytest.mark.parametrize(
@@ -1194,7 +1225,7 @@ def terminal_client(server: Server, session: Session) -> t.Iterator[str]:
 )
 def test_display_popup_flags(
     test_id: str,
-    kwargs: dict[str, t.Any],
+    kwargs: DisplayPopupKwargs,
     min_tmux_version: str | None,
     terminal_client: str,
     session: Session,
@@ -1213,9 +1244,11 @@ def test_display_popup_flags(
     pane = session.active_window.active_pane
     assert pane is not None
 
-    call_kwargs = {"command": f"touch {marker}", "close_on_exit": True, **kwargs}
-
-    pane.display_popup(**call_kwargs)
+    pane.display_popup(
+        command=f"touch {marker}",
+        close_on_exit=True,
+        **kwargs,
+    )
 
     assert marker.exists()
 

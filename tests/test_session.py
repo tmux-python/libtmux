@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import pathlib
 import shutil
@@ -20,19 +21,8 @@ from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
-    from libtmux.server import Server
-
-if t.TYPE_CHECKING:
-    from typing import TypeAlias
-
-    try:
-        from _pytest.raises import RaisesExc
-    except ImportError:
-        from _pytest.python_api import RaisesContext  # type: ignore[import-not-found]
-
-        RaisesExc: TypeAlias = RaisesContext[Exception]  # type: ignore[no-redef]
-
     from libtmux._internal.types import StrPath
+    from libtmux.common import CmdArg, tmux_cmd
     from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
@@ -549,8 +539,6 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     2. Session state can change arbitrarily while the user is attached
     3. Refreshing after such a command makes no semantic sense
     """
-    from libtmux.common import tmux_cmd
-
     # Create a new session specifically for this test
     test_session = server.new_session(detach=True)
 
@@ -558,29 +546,34 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     original_cmd = test_session.cmd
 
     # Create a mock tmux_cmd result that simulates successful attach-session
-    class MockTmuxCmd:
-        def __init__(self) -> None:
-            self.stdout: list[str] = []
-            self.stderr: list[str] = []
-            self.cmd: list[str] = ["tmux", "attach-session"]
+    from libtmux.common import tmux_cmd as real_tmux_cmd
 
-    def patched_cmd(cmd_name: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    class MockTmuxCmd(real_tmux_cmd):
+        def __init__(self) -> None:
+            self.stdout = []
+            self.stderr = []
+            self.cmd = ["tmux", "attach-session"]
+            self.returncode = 0
+
+    def patched_cmd(
+        cmd_name: str,
+        *args: StrPath | int,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         """Patched cmd that kills session after attach-session."""
         if cmd_name == "attach-session":
             # Simulate: attach-session succeeded, user worked, then killed session
             # This happens BEFORE refresh() is called
             test_session.kill()
-            return MockTmuxCmd()  # type: ignore[return-value]
-        return original_cmd(cmd_name, *args, **kwargs)
+            return MockTmuxCmd()
+        return original_cmd(cmd_name, *args, target=target)
 
     monkeypatch.setattr(test_session, "cmd", patched_cmd)
 
     # Use context manager pattern for exception handling
-    raises_ctx: RaisesExc = (
-        pytest.raises(t.cast("type[Exception]", raises))
-        if raises
-        else t.cast("RaisesExc", does_not_raise())
-    )
+    raises_ctx: contextlib.AbstractContextManager[
+        pytest.ExceptionInfo[Exception] | None
+    ] = pytest.raises(raises) if isinstance(raises, type) else does_not_raise()
     with raises_ctx:
         test_session.attach()
 
@@ -905,12 +898,16 @@ def test_new_window_index_reuse_creates_at_free_index(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A free index creates the window there, without tmux's -S."""
-    calls: list[tuple[t.Any, ...]] = []
+    calls: list[tuple[CmdArg, ...]] = []
     native = session.server.cmd
 
-    def spy(*args: t.Any, **kwargs: t.Any) -> t.Any:
-        calls.append(args)
-        return native(*args, **kwargs)
+    def spy(
+        cmd: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
+        calls.append((cmd, *args))
+        return native(cmd, *args, target=target)
 
     monkeypatch.setattr(session.server, "cmd", spy)
     created = session.new_window(

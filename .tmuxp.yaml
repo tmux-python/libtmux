@@ -11,7 +11,7 @@ windows:
   panes:
   - focus: true
   - pane 
-  - just watch-mypy
+  - just watch-ty
   - just watch-test
 - window_name: docs
   layout: main-horizontal

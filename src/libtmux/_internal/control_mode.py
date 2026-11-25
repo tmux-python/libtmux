@@ -90,7 +90,8 @@ class ControlMode:
             os.close(self._write_fd)
             raise
 
-        self.stdout = self._proc.stdout  # type: ignore[assignment]
+        assert self._proc.stdout is not None
+        self.stdout = self._proc.stdout
         client_pid = str(self._proc.pid)
 
         def client_registered() -> bool:

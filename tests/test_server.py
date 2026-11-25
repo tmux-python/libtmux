@@ -21,10 +21,13 @@ from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux._internal.env import SOCKET_PATH_MAX_BYTES, resolve_socket_path
 from libtmux._internal.support.capabilities import capability_since
+from libtmux.common import tmux_cmd
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.common import CmdArg
+    from libtmux.pytest_plugin import ServerFactory
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -714,7 +717,7 @@ def test_socket_name_precedence(server: Server) -> None:
             myserver2.kill()
 
 
-def test_server_context_manager(TestServer: type[Server]) -> None:
+def test_server_context_manager(TestServer: ServerFactory) -> None:
     """Test Server context manager functionality."""
     with TestServer() as server:
         session = server.new_session()
@@ -852,8 +855,10 @@ def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
         assert s.tmux_bin == tmux_path
         with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
             s.cmd("list-sessions")
-        running_records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
-        assert any(tmux_path in r.tmux_cmd for r in running_records)
+        running_records = [
+            str(r.tmux_cmd) for r in caplog.records if hasattr(r, "tmux_cmd")
+        ]
+        assert any(tmux_path in cmd_line for cmd_line in running_records)
     finally:
         if s.is_alive():
             s.kill()
@@ -1051,15 +1056,22 @@ def test_command_prompt_extra_flags(
     captured: list[tuple[str, ...]] = []
     real_cmd = server.cmd
 
-    class _StubResult:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
+    class _StubResult(tmux_cmd):
+        def __init__(self) -> None:
+            self.cmd = ["tmux"]
+            self.stderr = []
+            self.stdout = []
+            self.returncode = 0
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         if cmd == "command-prompt":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     server.command_prompt("set -g @x '%1'", **kwargs)
@@ -1077,15 +1089,22 @@ def test_command_prompt_expand_format_is_deprecated(
     captured: list[tuple[str, ...]] = []
     real_cmd = server.cmd
 
-    class _StubResult:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
+    class _StubResult(tmux_cmd):
+        def __init__(self) -> None:
+            self.cmd = ["tmux"]
+            self.stderr = []
+            self.stdout = []
+            self.returncode = 0
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         if cmd == "command-prompt":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     with pytest.warns(DeprecationWarning, match="expand_formats"):
@@ -1202,15 +1221,22 @@ def test_display_menu_flags(
     captured: list[tuple[str, ...]] = []
     real_cmd = server.cmd
 
-    class _StubResult:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
+    class _StubResult(tmux_cmd):
+        def __init__(self) -> None:
+            self.cmd = ["tmux"]
+            self.stderr = []
+            self.stdout = []
+            self.returncode = 0
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         if cmd == "display-menu":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     server.display_menu(*items, **kwargs)
@@ -1274,15 +1300,22 @@ def test_refresh_client_request_clipboard(
     captured: list[tuple[str, ...]] = []
     real_cmd = server.cmd
 
-    class _StubResult:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
+    class _StubResult(tmux_cmd):
+        def __init__(self) -> None:
+            self.cmd = ["tmux"]
+            self.stderr = []
+            self.stdout = []
+            self.returncode = 0
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         if cmd == "refresh-client":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     server.refresh_client(request_clipboard=True)
@@ -1327,15 +1360,22 @@ def test_server_access_argv(
     captured: list[tuple[str, ...]] = []
     real_cmd = server.cmd
 
-    class _StubResult:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
+    class _StubResult(tmux_cmd):
+        def __init__(self) -> None:
+            self.cmd = ["tmux"]
+            self.stderr = []
+            self.stdout = []
+            self.returncode = 0
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         if cmd == "server-access":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
 
@@ -2165,11 +2205,15 @@ def test_run_shell_command_starting_with_a_dash(
         capabilities._BY_ID, entry.id, dataclasses.replace(entry, since="1.0")
     )
     server = session.server
-    seen: list[tuple[t.Any, ...]] = []
+    seen: list[tuple[CmdArg, ...]] = []
 
-    def record(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+    def record(
+        cmd: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         seen.append((cmd, *args))
-        return real_cmd("display-message", "-p", "")
+        return real_cmd("display-message", "-p", "", target=target)
 
     real_cmd = server.cmd
     monkeypatch.setattr(server, "cmd", record)

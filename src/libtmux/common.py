@@ -23,7 +23,12 @@ from ._compat import LooseVersion
 from .formats import Format, _escape_format
 
 if t.TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
+    from typing import TypeAlias
+
+    from ._internal.types import StrPath
+
+    CmdArg: TypeAlias = StrPath | int
 
     from libtmux._internal.types import StrPath
 
@@ -45,7 +50,12 @@ PaneDict = dict[str, t.Any]
 class CmdProtocol(t.Protocol):
     """Command protocol for tmux command."""
 
-    def __call__(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def __call__(
+        self,
+        cmd: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         """Wrap tmux_cmd."""
         ...
 
@@ -53,15 +63,20 @@ class CmdProtocol(t.Protocol):
 class CmdMixin:
     """Command mixin for tmux command."""
 
-    cmd: CmdProtocol
+    def cmd(
+        self,
+        cmd: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
+        """Execute tmux command."""
+        raise NotImplementedError
 
 
-class EnvironmentMixin:
+class EnvironmentMixin(CmdMixin):
     """Mixin for manager session and server level environment variables in tmux."""
 
-    _add_option = None
-
-    cmd: Callable[[t.Any, t.Any], tmux_cmd]
+    _add_option: str | None = None
 
     def __init__(self, add_option: str | None = None) -> None:
         self._add_option = add_option
@@ -128,11 +143,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -157,11 +167,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -186,11 +191,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -243,12 +243,10 @@ class EnvironmentMixin:
         str
             Value of environment variable
         """
-        tmux_args: tuple[str | int, ...] = ()
-
-        tmux_args += ("show-environment",)
+        tmux_args: list[str] = ["show-environment"]
         if self._add_option:
-            tmux_args += (self._add_option,)
-        tmux_args += (name,)
+            tmux_args.append(self._add_option)
+        tmux_args.append(name)
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]
@@ -508,14 +506,17 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    cmd: list[str]
+    returncode: int | None
+    stdout: list[str]
+    stderr: list[str]
+
+    def __init__(self, *args: CmdArg, tmux_bin: str | None = None) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
 
-        cmd = [resolved]
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
+        cmd = [resolved, *(str(c) for c in args)]
 
         self.cmd = cmd
 
@@ -540,6 +541,7 @@ class tmux_cmd:
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
+            # Avoid duplicating traceback when re-raising — https://docs.astral.sh/ruff/rules/error-instead-of-exception/
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
                 extra={

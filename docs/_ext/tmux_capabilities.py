@@ -606,7 +606,8 @@ class TmuxCapabilitiesDirective(SphinxDirective):
     has_content: t.ClassVar[bool] = False
     required_arguments: t.ClassVar[int] = 0
     optional_arguments: t.ClassVar[int] = 0
-    option_spec: t.ClassVar[OptionSpec] = {
+    # Directive declares mutable ClassVar[OptionSpec | None], invariant on subclasses.
+    option_spec: t.ClassVar[OptionSpec | None] = {
         "versions": directives.unchanged,
         "api": directives.unchanged,
         "group-releases": directives.flag,

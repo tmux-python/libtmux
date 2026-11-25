@@ -16,6 +16,7 @@ from libtmux.common import has_gte_version
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
+    from libtmux.common import CmdArg, tmux_cmd
     from libtmux.session import Session
 
 
@@ -547,9 +548,13 @@ def test_capture_pane_pending_emits_dash_P(
     captured: list[tuple[str, ...]] = []
     real_cmd = pane.cmd
 
-    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd_name: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         captured.append((cmd_name, *(str(a) for a in args)))
-        return real_cmd(cmd_name, *args, **kw)
+        return real_cmd(cmd_name, *args, target=target)
 
     monkeypatch.setattr(pane, "cmd", fake_cmd)
 

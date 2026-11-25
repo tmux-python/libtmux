@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 import typing as t
 
 import pytest
@@ -9,16 +10,25 @@ from libtmux._internal.query_list import (
     MultipleObjectsReturned,
     ObjectDoesNotExist,
     QueryList,
+    lookup_iregex,
+    lookup_regex,
 )
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import TypeAlias
+
+    from libtmux._internal.query_list import LookupRhs
 
 
 @dataclasses.dataclass
 class Obj:
     test: int
     fruit: list[str] = dataclasses.field(default_factory=list)
+
+
+if t.TYPE_CHECKING:
+    FilterTestItem: TypeAlias = Obj | dict[str, object] | int
 
 
 @pytest.mark.parametrize(
@@ -256,11 +266,14 @@ class Obj:
     ],
 )
 def test_filter(
-    items: list[dict[str, t.Any]],
-    filter_expr: Callable[[t.Any], bool] | t.Any | None,
-    expected_result: QueryList[t.Any] | list[dict[str, t.Any]],
+    items: list[FilterTestItem],
+    filter_expr: Callable[[FilterTestItem], bool]
+    | dict[str, LookupRhs]
+    | list[FilterTestItem]
+    | None,
+    expected_result: QueryList[FilterTestItem] | list[FilterTestItem],
 ) -> None:
-    qs = QueryList(items)
+    qs: QueryList[FilterTestItem] = QueryList(items)
     if filter_expr is not None:
         if isinstance(filter_expr, dict):
             assert qs.filter(**filter_expr) == expected_result
@@ -268,9 +281,6 @@ def test_filter(
             assert qs.filter(filter_expr) == expected_result
     else:
         assert qs.filter() == expected_result
-
-    if not isinstance(expected_result, list):
-        return
 
     # ``get()`` insists on exactly one match. Assert the message too: an
     # exception nobody can read is the defect, not just the raise.
@@ -337,7 +347,7 @@ class _ForwardingMultiple(MultipleObjectsReturned):
 def test_lookup_exceptions_accept_forwarded_kwargs() -> None:
     """A subclass that forwards ``**kwargs: object`` type-checks and works.
 
-    mypy checks this module, so the two subclasses above are the type test;
+    ty checks this module, so the two subclasses above are the type test;
     the assertions cover the values they forward.
     """
     missing = _ForwardingMissing(query={"pane_id": "%9"})
@@ -362,7 +372,7 @@ def test_get_default_with_broad_eq_is_returned() -> None:
         def __eq__(self, other: object) -> bool:
             return True
 
-        __hash__ = None  # type: ignore[assignment]
+        __hash__: t.ClassVar[None] = None
 
     default = BroadEq()
     assert QueryList([]).get(missing="x", default=default) is default
@@ -370,6 +380,27 @@ def test_get_default_with_broad_eq_is_returned() -> None:
 
 def test_object_does_not_exist_exposes_query() -> None:
     """``ObjectDoesNotExist`` exposes its lookup, mirroring its sibling."""
-    query: dict[str, t.Any] = {"pane_id": "%9"}
+    query: dict[str, str] = {"pane_id": "%9"}
     assert ObjectDoesNotExist(query=query).query == query
     assert ObjectDoesNotExist().query is None
+
+
+def test_lookup_regex_and_iregex_characterization() -> None:
+    """Pin ``lookup_regex`` and ``lookup_iregex`` across str, Pattern, and mappings."""
+    assert lookup_regex("apple", r"^app") is True
+    assert lookup_regex("Apple", r"^app") is False
+    assert lookup_regex("apple", re.compile(r"^app")) is True
+    assert lookup_iregex("Apple", r"^app") is True
+    assert lookup_iregex("Apple", re.compile(r"^app")) is True
+    assert lookup_iregex("mango", r"^app") is False
+    assert lookup_regex(["apple"], r"^app") is False
+    assert lookup_iregex({"fruit": "apple"}, r"^app") is False
+
+
+def test_get_with_default_still_raises_on_multiple_matches() -> None:
+    """``get(default=...)`` returns the fallback on zero matches, never on ambiguity."""
+    qs = QueryList([{"pane_id": "%0"}, {"pane_id": "%0"}])
+    assert qs.get(pane_id="%9", default="fallback") == "fallback"
+    assert qs.get(pane_id="%9", default=None) is None
+    with pytest.raises(MultipleObjectsReturned):
+        qs.get(pane_id="%0", default="fallback")

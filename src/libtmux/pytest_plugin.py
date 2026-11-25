@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import functools
 import getpass
 import logging
 import os
@@ -317,13 +316,35 @@ def control_mode(
     ...     with control_mode() as ctl:
     ...         assert ctl.client_name != ''
     """
-    return functools.partial(ControlMode, server=server, session=session)
+
+    def _make_control_mode() -> ControlMode:
+        return ControlMode(server=server, session=session)
+
+    return _make_control_mode
+
+
+class ServerFactory(t.Protocol):
+    """Callable factory for temporary :class:`~libtmux.Server` instances."""
+
+    def __call__(
+        self,
+        socket_name: str | None = None,
+        socket_path: str | pathlib.Path | None = None,
+        config_file: str | None = None,
+        colors: int | None = None,
+        on_init: t.Callable[[Server], None] | None = None,
+        socket_name_factory: t.Callable[[], str] | None = None,
+        tmux_bin: str | pathlib.Path | None = None,
+        **kwargs: object,
+    ) -> Server:
+        """Create a tracked :class:`~libtmux.Server`."""
+        ...
 
 
 @pytest.fixture
 def TestServer(
     request: pytest.FixtureRequest,
-) -> type[Server]:
+) -> ServerFactory:
     """Create a temporary tmux server that cleans up after itself.
 
     This is similar to the server pytest fixture, but can be used outside of pytest.
@@ -343,11 +364,11 @@ def TestServer(
     """
     created_sockets: list[str] = []
 
-    def on_init(server: Server) -> None:
+    def _default_on_init(server: Server) -> None:
         """Track created servers for cleanup."""
         created_sockets.append(server.socket_name or "default")
 
-    def socket_name_factory() -> str:
+    def _default_socket_name_factory() -> str:
         """Generate unique socket names."""
         return f"libtmux_test{next(namer)}"
 
@@ -358,11 +379,25 @@ def TestServer(
 
     request.addfinalizer(fin)
 
-    return t.cast(
-        "type[Server]",
-        functools.partial(
-            Server,
+    def _make_server(
+        socket_name: str | None = None,
+        socket_path: str | pathlib.Path | None = None,
+        config_file: str | None = None,
+        colors: int | None = None,
+        on_init: t.Callable[[Server], None] | None = _default_on_init,
+        socket_name_factory: t.Callable[[], str] | None = _default_socket_name_factory,
+        tmux_bin: str | pathlib.Path | None = None,
+        **kwargs: object,
+    ) -> Server:
+        return Server(
+            socket_name=socket_name,
+            socket_path=socket_path,
+            config_file=config_file,
+            colors=colors,
             on_init=on_init,
             socket_name_factory=socket_name_factory,
-        ),
-    )
+            tmux_bin=tmux_bin,
+            **kwargs,
+        )
+
+    return _make_server

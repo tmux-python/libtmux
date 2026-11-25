@@ -48,7 +48,9 @@ def add_doctest_fixtures(
         doctest_namespace["Format"] = Format
         doctest_namespace["server"] = request.getfixturevalue("server")
         doctest_namespace["Server"] = request.getfixturevalue("TestServer")
-        session: Session = request.getfixturevalue("session")
+        raw_session: object = request.getfixturevalue("session")
+        assert isinstance(raw_session, Session)
+        session = raw_session
         doctest_namespace["session"] = session
         doctest_namespace["window"] = session.active_window
         doctest_namespace["pane"] = session.active_pane

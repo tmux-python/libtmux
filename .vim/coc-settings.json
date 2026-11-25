@@ -7,7 +7,7 @@
   "python.analysis.useLibraryCodeForTypes": true,
   "python.formatting.provider": "ruff",
   "python.linting.ruffEnabled": true,
-  "python.linting.mypyEnabled": true,
+  "python.linting.mypyEnabled": false,
   "python.linting.flake8Enabled": false,
   "python.linting.pyflakesEnabled": false,
   "python.linting.pycodestyleEnabled": false,
