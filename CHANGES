@@ -37,13 +37,30 @@ $ uv add libtmux --prerelease allow
 $ uvx --from 'libtmux' --prerelease allow python
 ```
 
-## libtmux 0.68.x (Yet to be released)
+## libtmux 0.69.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
+
+## libtmux 0.68.0 (2026-11-24)
+
+libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
+window or session no longer exists (including from
+{meth}`~libtmux.Pane.capture_pane` and {meth}`~libtmux.Pane.send_keys`), raises
+{exc}`~libtmux.exc.LibTmuxException` from {meth}`~libtmux.Pane.send_keys` and
+{meth}`~libtmux.Pane.enter` on other tmux errors, and raises
+{exc}`~libtmux.exc.VersionTooLow` from foreground
+{meth}`~libtmux.Server.run_shell` on tmux 3.3a and 3.4 where tmux keeps the
+output in copy mode. {meth}`~libtmux.Session.new_window` with
+`select_existing=True` reuses an existing window by `window_index` or
+`target_window` on every supported tmux and raises `ValueError` when combined
+with `kill_existing=True`. `expand_formats` is now the one parameter name for
+tmux's `-F` across {meth}`~libtmux.Session.set_environment`,
+{meth}`~libtmux.Server.command_prompt` and
+{meth}`~libtmux.Session.set_option`; see {ref}`migration`.
 
 ### Breaking changes
 
