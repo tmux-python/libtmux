@@ -709,6 +709,11 @@ name = "libtmux"
 version = "0.68.0"
 source = { editable = "." }
 
+[package.optional-dependencies]
+textframe = [
+    { name = "syrupy" },
+]
+
 [package.dev-dependencies]
 coverage = [
     { name = "codecov" },
@@ -731,6 +736,7 @@ dev = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style" },
     { name = "sphinx-autodoc-pytest-fixtures" },
+    { name = "syrupy" },
     { name = "types-docutils" },
 ]
 docs = [
@@ -752,6 +758,8 @@ testing = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "syrupy", marker = "extra == 'textframe'", specifier = ">=4.0.0" }]
+provides-extras = ["textframe"]
 
 [package.metadata.requires-dev]
 coverage = [
@@ -775,6 +783,7 @@ dev = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style", specifier = "==0.1.0a39" },
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.1.0a39" },
+    { name = "syrupy" },
     { name = "types-docutils" },
 ]
 docs = [
@@ -1614,6 +1623,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/2e/947cfe02def9371c07cd5bf5b6b61c829e9aecb9904db02a66cfafbc1eec/starlette-1.10.0-py3-none-any.whl", hash = "sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4", size = 80571, upload-time = "2026-10-24T15:04:10.371Z" },
+]
+
+[[package]]
+name = "syrupy"
+version = "7.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/55/ff/308f191363c1bc456323918619597aaf9f3a37405d038a350b45f90b6e9f/syrupy-7.0.2.tar.gz", hash = "sha256:b35d3efc800a3362c20f24026d1d116b91fcd4578a315745860ec234e023592c", size = 122668, upload-time = "2026-11-16T04:40:28.401Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/eb/72e4460a4d36cf6781f3eacc8dd17256d067c841d147a011956c0d6218ef/syrupy-7.0.2-py3-none-any.whl", hash = "sha256:bb7999d6cc1cce6731154fe46ad98874b484904d3e3fba950e244c5666c53c1b", size = 68914, upload-time = "2026-11-16T04:40:26.776Z" },
 ]
 
 [[package]]
