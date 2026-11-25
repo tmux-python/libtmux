@@ -90,6 +90,18 @@ Attached terminal. Read read-only state, theme, termtype.
 Base classes and command execution.
 :::
 
+:::{grid-item-card} Engine
+:link: libtmux.engine
+:link-type: doc
+Raw-byte command transports and custom execution backends.
+:::
+
+:::{grid-item-card} Capabilities
+:link: libtmux.capabilities
+:link-type: doc
+Connected daemon identity, version intervals, and feature inspection.
+:::
+
 :::{grid-item-card} Neo
 :link: libtmux.neo
 :link-type: doc
@@ -173,6 +185,8 @@ Window <libtmux.window>
 Pane <libtmux.pane>
 Client <libtmux.client>
 Common <libtmux.common>
+Engine <libtmux.engine>
+Capabilities <libtmux.capabilities>
 Neo <libtmux.neo>
 Options <libtmux.options>
 Hooks <libtmux.hooks>

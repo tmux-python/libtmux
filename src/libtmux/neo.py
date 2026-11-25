@@ -11,6 +11,8 @@ from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
+from libtmux._internal.protocols import SupportsTmuxVersion
+from libtmux._internal.support.capabilities import normalize_version_for_loose
 from libtmux.common import get_version, raise_if_stderr, tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR, Format
 
@@ -271,9 +273,7 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
     >>> _normalize_tmux_version("3.3a") < _normalize_tmux_version("3.6a")
     True
     """
-    if "master" in version.lower():
-        return LooseVersion("99.0")
-    return LooseVersion(version)
+    return LooseVersion(normalize_version_for_loose(version))
 
 
 @dataclasses.dataclass()
@@ -1095,6 +1095,21 @@ def _split_records(stdout: list[str], field_count: int) -> list[str]:
     return records
 
 
+def _resolve_server_version(server: Server) -> str:
+    """Return a normalized tmux version string for *server* without extra spawns."""
+    cached = getattr(server, "_cached_capabilities", None)
+    if cached is not None:
+        return normalize_version_for_loose(cached.version)
+    engine = server.engine
+    if isinstance(engine, SupportsTmuxVersion):
+        ver = engine.tmux_version()
+        if ver is not None:
+            return normalize_version_for_loose(ver)
+    if getattr(server, "_engine", None) is None:
+        return str(get_version(tmux_bin=server.tmux_bin))
+    return "3.3a"
+
+
 def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
@@ -1154,13 +1169,13 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    tmux_version = _resolve_server_version(server)
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
-    tmux_cmds: list[str | int] = [
-        *server._socket_args(),
-        list_cmd,
-    ]
+    # The engine renders the socket flags; measure the socket per command, as
+    # Server._socket_args() does for every tmux spawn.
+    server._socket_args()
+    tmux_cmds: list[str | int] = [list_cmd]
 
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
@@ -1184,7 +1199,8 @@ def fetch_objs(
 
     proc = tmux_cmd(
         *tmux_cmds,
-        tmux_bin=server.tmux_bin,
+        client_args=("-u",),
+        engine=server.engine,
     )
 
     raise_if_stderr(proc, list_cmd)
