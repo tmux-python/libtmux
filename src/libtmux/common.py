@@ -7,11 +7,11 @@ libtmux.common
 
 from __future__ import annotations
 
+import errno
 import functools
 import logging
 import pathlib
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -20,15 +20,17 @@ import warnings
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal.log_context import LOG_OUTPUT_LINE_LIMIT, command_extra
 from .formats import Format, _escape_format
 
 if t.TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
 
     from libtmux._internal.types import StrPath
 
 logger = logging.getLogger(__name__)
 
+_UNUSABLE_TMUX_ERRNOS = frozenset({errno.EACCES, errno.ENOENT, errno.ENOEXEC})
 
 #: Minimum version of tmux required to run libtmux
 TMUX_MIN_VERSION = "3.3a"
@@ -40,6 +42,12 @@ SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
+
+
+def _raise_if_unusable_tmux(error: OSError) -> None:
+    """Translate an unavailable executable while preserving its OS diagnostic."""
+    if error.errno in _UNUSABLE_TMUX_ERRNOS:
+        raise exc.TmuxCommandNotFound(str(error)) from error
 
 
 class CmdProtocol(t.Protocol):
@@ -128,11 +136,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -157,11 +160,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -186,11 +184,6 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
@@ -363,87 +356,10 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         stderr = "\n".join(proc.stderr)
         if _is_target_not_found_error(stderr):
             raise exc.TmuxObjectDoesNotExist._from_stderr(stderr, subcommand)
-        raise exc.LibTmuxException(stderr, subcommand=subcommand)
-
-
-_REDACTED = "***"
-
-_GLOBAL_FLAGS_WITH_VALUE = frozenset({"-c", "-f", "-L", "-S", "-T"})
-_ENV_FLAG_SUBCOMMANDS = frozenset(
-    {
-        "display-popup",
-        "new-pane",
-        "new-session",
-        "new-window",
-        "respawn-pane",
-        "respawn-window",
-        "split-window",
-    },
-)
-
-
-def _redact_env_values(argv: Sequence[str]) -> list[str]:
-    """Return *argv* with environment values masked and their names kept.
-
-    Covers ``-e NAME=value`` on the commands that take it and the value of
-    ``set-environment``. Only the copy that is logged goes through this; the
-    argv tmux receives is unchanged.
-
-    Examples
-    --------
-    >>> _redact_env_values(["tmux", "new-window", "-eTOKEN=hunter2", "-d"])
-    ['tmux', 'new-window', '-eTOKEN=***', '-d']
-
-    >>> _redact_env_values(["tmux", "split-window", "-e", "TOKEN=hunter2"])
-    ['tmux', 'split-window', '-e', 'TOKEN=***']
-
-    >>> _redact_env_values(["tmux", "set-environment", "-t", "$0", "TOKEN", "hunter2"])
-    ['tmux', 'set-environment', '-t', '$0', 'TOKEN', '***']
-
-    A flag that is not an environment assignment is left alone:
-
-    >>> _redact_env_values(["tmux", "capture-pane", "-e", "-p"])
-    ['tmux', 'capture-pane', '-e', '-p']
-    """
-    out = list(argv)
-    sub = 1  # argv[0] is the tmux binary
-    while sub < len(out) and out[sub].startswith("-"):
-        sub += 2 if out[sub] in _GLOBAL_FLAGS_WITH_VALUE else 1
-    if sub >= len(out):
-        return out
-    if out[sub] in _ENV_FLAG_SUBCOMMANDS:
-        i = sub + 1
-        while i < len(out):
-            if out[i] == "-e" and i + 1 < len(out):
-                key, eq, _ = out[i + 1].partition("=")
-                if eq:
-                    out[i + 1] = f"{key}={_REDACTED}"
-                i += 2
-                continue
-            if out[i].startswith("-e") and "=" in out[i]:
-                out[i] = f"{out[i].partition('=')[0]}={_REDACTED}"
-            i += 1
-    elif out[sub] == "set-environment":
-        positional: list[int] = []
-        i = sub + 1
-        while i < len(out):
-            if out[i] == "--":
-                positional.extend(range(i + 1, len(out)))
-                break
-            if out[i] == "-t":
-                i += 2
-                continue
-            if not out[i].startswith("-"):
-                positional.append(i)
-            i += 1
-        if len(positional) >= 2:
-            out[positional[1]] = _REDACTED
-    return out
-
-
-def _loggable_cmd(argv: Sequence[str]) -> str:
-    """Render *argv* as the command line libtmux writes to its logs."""
-    return shlex.join(_redact_env_values(argv))
+        raise exc.LibTmuxException(
+            stderr,
+            subcommand=subcommand,
+        )
 
 
 def escape_trailing_separator(value: str) -> str:
@@ -498,6 +414,13 @@ class tmux_cmd:
 
         $ tmux new-session -s my session
 
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxCommandNotFound`
+        When the tmux binary cannot be found or executed.
+    :class:`OSError`
+        When the operating system rejects the launch for another reason.
+
     Notes
     -----
     Arguments are passed to tmux unchanged, so an argument ending in ``;``
@@ -510,21 +433,19 @@ class tmux_cmd:
 
     def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
         resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
-
-        cmd = [resolved]
+        cmd = [resolved or "tmux"]
         cmd += args  # add the command arguments to cmd
         cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
 
-        if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = _loggable_cmd(cmd)
-            logger.debug(
-                "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
-            )
+        if not resolved:
+            msg = "tmux executable not found on PATH"
+            raise exc.TmuxCommandNotFound(msg)
+
+        log_extra = command_extra(cmd) if logger.isEnabledFor(logging.DEBUG) else None
+        if log_extra is not None:
+            logger.debug("tmux command dispatched", extra=log_extra)
 
         try:
             self.process = subprocess.Popen(
@@ -535,18 +456,12 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
-                extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
-                },
-            )
+        except OSError as error:
+            _raise_if_unusable_tmux(error)
             raise
+
+        stdout, stderr = self.process.communicate()
+        returncode = self.process.returncode
 
         self.returncode = returncode
 
@@ -563,14 +478,14 @@ class tmux_cmd:
         else:
             self.stdout = stdout_split
 
-        if logger.isEnabledFor(logging.DEBUG):
+        if log_extra is not None:
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": _loggable_cmd(cmd),
+                    **log_extra,
                     "tmux_exit_code": self.returncode,
-                    "tmux_stdout": self.stdout[:100],
-                    "tmux_stderr": self.stderr[:100],
+                    "tmux_stdout": self.stdout[:LOG_OUTPUT_LINE_LIMIT],
+                    "tmux_stderr": self.stderr[:LOG_OUTPUT_LINE_LIMIT],
                     "tmux_stdout_len": len(self.stdout),
                     "tmux_stderr_len": len(self.stderr),
                 },

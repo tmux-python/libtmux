@@ -60,6 +60,7 @@ def add_doctest_fixtures(
             session=session,
         )
         doctest_namespace["monkeypatch"] = request.getfixturevalue("monkeypatch")
+        doctest_namespace["caplog"] = request.getfixturevalue("caplog")
 
 
 @pytest.fixture(autouse=True)

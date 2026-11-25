@@ -7,10 +7,12 @@ Popup execution requires a terminal client on tmux 3.8+.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import typing as t
 
+from libtmux._internal.log_context import command_extra
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
@@ -19,6 +21,10 @@ if t.TYPE_CHECKING:
 
     from libtmux.server import Server
     from libtmux.session import Session
+
+logger = logging.getLogger(__name__)
+
+_TERMINATE_TIMEOUT_SECONDS = 5
 
 
 class ControlMode:
@@ -72,6 +78,12 @@ class ControlMode:
             str(self.session.session_id),
         ]
 
+        self._log_extra = {
+            **command_extra(cmd),
+            "tmux_subcommand": "attach-session",
+            "tmux_target": str(self.session.session_id),
+        }
+
         try:
             try:
                 self._proc = subprocess.Popen(
@@ -89,6 +101,8 @@ class ControlMode:
             # __exit__ will not run if __enter__ fails
             os.close(self._write_fd)
             raise
+
+        logger.debug("control mode client started", extra=self._log_extra)
 
         self.stdout = self._proc.stdout  # type: ignore[assignment]
         client_pid = str(self._proc.pid)
@@ -110,12 +124,7 @@ class ControlMode:
             retry_until(client_registered, 3, raises=True)
         except Exception:
             os.close(self._write_fd)
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-                self._proc.wait()
+            self._terminate()
             raise
 
         return self
@@ -130,9 +139,17 @@ class ControlMode:
         # Close write end — causes the control-mode client to exit (EOF on stdin)
         os.close(self._write_fd)
 
+        self._terminate()
+
+    def _terminate(self) -> None:
+        """Stop the client, escalating to ``SIGKILL`` if it does not exit."""
         self._proc.terminate()
         try:
-            self._proc.wait(timeout=5)
+            self._proc.wait(timeout=_TERMINATE_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
+            logger.warning(
+                "control mode client killed after timeout",
+                extra=self._log_extra,
+            )
             self._proc.kill()
             self._proc.wait()
