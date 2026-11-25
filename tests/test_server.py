@@ -1089,15 +1089,22 @@ def test_command_prompt_expand_format_is_deprecated(
     captured: list[tuple[str, ...]] = []
     real_cmd = server.cmd
 
-    class _StubResult:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
+    class _StubResult(tmux_cmd):
+        def __init__(self) -> None:
+            self.cmd = ["tmux"]
+            self.stderr = []
+            self.stdout = []
+            self.returncode = 0
 
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+    def fake_cmd(
+        cmd: str,
+        *args: str,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
         if cmd == "command-prompt":
             captured.append((cmd, *args))
             return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
+        return real_cmd(cmd, *args, target=target)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
     with pytest.warns(DeprecationWarning, match="expand_formats"):

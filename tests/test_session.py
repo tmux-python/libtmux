@@ -22,7 +22,7 @@ from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
-    from libtmux.common import tmux_cmd
+    from libtmux.common import CmdArg, tmux_cmd
     from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
@@ -898,12 +898,16 @@ def test_new_window_index_reuse_creates_at_free_index(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A free index creates the window there, without tmux's -S."""
-    calls: list[tuple[t.Any, ...]] = []
+    calls: list[tuple[CmdArg, ...]] = []
     native = session.server.cmd
 
-    def spy(*args: t.Any, **kwargs: t.Any) -> t.Any:
-        calls.append(args)
-        return native(*args, **kwargs)
+    def spy(
+        cmd: str,
+        *args: CmdArg,
+        target: str | int | None = None,
+    ) -> tmux_cmd:
+        calls.append((cmd, *args))
+        return native(cmd, *args, target=target)
 
     monkeypatch.setattr(session.server, "cmd", spy)
     created = session.new_window(
