@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import shlex
 import typing as t
 
 from libtmux import exc
+from libtmux.common import raise_if_stderr
 from libtmux.neo import Obj, fetch_obj
 
 if t.TYPE_CHECKING:
@@ -22,6 +24,12 @@ if t.TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+# tmux compares format strings lexically. Match 3.6 patch letters and later
+# numbered releases, including 3.10 and the next-X.Y and X.Y-rcN forms.
+_AFTER_3_6 = r"(3[.]([7-9]|[1-9][0-9]+)|([4-9]|[1-9][0-9]+)[.][0-9]+)"
+_CLIPBOARD_RELEASE = rf"^(3[.]6[a-z]|next-{_AFTER_3_6}|{_AFTER_3_6}([a-z]|-rc[0-9]*)?)$"
+_CLIPBOARD_GATE = "#{m/r:" + _CLIPBOARD_RELEASE + ",#{version}}"
 
 
 @dataclasses.dataclass()
@@ -89,6 +97,44 @@ class Client(Obj):
     """
 
     server: Server
+
+    def request_clipboard(self) -> None:
+        """Ask this client's terminal for its clipboard via ``tmux refresh-client -l``.
+
+        Requires a tmux 3.6a or later server. The call returns when tmux
+        accepts the request. If the terminal permits OSC 52 clipboard reads
+        and replies with data, tmux creates a new paste buffer.
+
+        Raises
+        ------
+        ValueError
+            If the client has no name to target.
+        :exc:`~libtmux.exc.VersionTooLow`
+            If the daemon reports an older or unrecognized release.
+        :exc:`~libtmux.exc.LibTmuxException`
+            If tmux cannot find the client by name or execute the request.
+        """
+        if not self.client_name:
+            msg = "Client must have a client_name to request the clipboard"
+            raise ValueError(msg)
+
+        # Evaluate the gate and issue the request on the same daemon.
+        refused = "libtmux-clipboard-unavailable:"
+        proc = self.server.cmd(
+            "if-shell",
+            "-F",
+            _CLIPBOARD_GATE,
+            shlex.join(["refresh-client", "-t", self.client_name, "-l"]),
+            f"display-message -p '{refused}#{{version}}'",
+        )
+        raise_if_stderr(proc, "refresh-client")
+        if proc.returncode:
+            msg = f"tmux exited with status {proc.returncode}"
+            raise exc.LibTmuxException(msg, subcommand="refresh-client")
+        if proc.stdout and proc.stdout[0].startswith(refused):
+            version = proc.stdout[0].removeprefix(refused)
+            msg = f"clipboard requests require tmux 3.6a or later (daemon: {version!r})"
+            raise exc.VersionTooLow(msg, subcommand="refresh-client")
 
     def refresh(self) -> None:
         """Refresh client attributes from tmux.

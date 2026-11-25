@@ -1260,16 +1260,13 @@ def test_refresh_client_request_clipboard(
     monkeypatch: pytest.MonkeyPatch,
     server: Server,
 ) -> None:
-    """refresh_client(request_clipboard=True) emits -l on tmux 3.7+.
+    """The classic server method warns below 3.7 and sends -l from 3.7.
 
     ``refresh-client -l`` queries the client's clipboard via an xterm
     escape sequence, which has no observable effect under the headless
     test server, so verify the constructed argv instead.
     """
     from libtmux.common import has_gte_version
-
-    if not has_gte_version("3.7"):
-        pytest.skip("refresh-client -l clipboard query requires tmux 3.7+")
 
     captured: list[tuple[str, ...]] = []
     real_cmd = server.cmd
@@ -1285,11 +1282,13 @@ def test_refresh_client_request_clipboard(
         return real_cmd(cmd, *args, **_kw)
 
     monkeypatch.setattr(server, "cmd", fake_cmd)
-    server.refresh_client(request_clipboard=True)
-
-    assert captured, "Server.cmd was not invoked"
-    _name, *flags = captured[0]
-    assert "-l" in flags
+    if has_gte_version("3.7", tmux_bin=server.tmux_bin):
+        server.refresh_client(request_clipboard=True)
+        assert captured == [("refresh-client", "-l")]
+    else:
+        with pytest.warns(UserWarning, match=r"request_clipboard requires tmux 3\.7"):
+            server.refresh_client(request_clipboard=True)
+        assert captured == [("refresh-client",)]
 
 
 def test_suspend_client(
