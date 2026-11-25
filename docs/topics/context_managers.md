@@ -77,6 +77,10 @@ True
 False
 ```
 
+{meth}`~libtmux.Window.__exit__` kills the window even when
+{meth}`~libtmux.Session.new_window` returned an existing window for
+`select_existing=True`, so do not wrap a reuse call in `with`.
+
 ## Pane context manager
 
 You create a temporary pane that will be killed when you're done:

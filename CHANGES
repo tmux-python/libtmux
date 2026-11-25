@@ -125,6 +125,13 @@ resolve, such as a `=name` match, also raises
 
 ### Documentation
 
+#### `select_existing` notes `Window.__exit__` on reused windows (#926)
+
+{meth}`~libtmux.Window.__exit__` kills its window on exit even when
+{meth}`~libtmux.Session.new_window` returned an existing
+{class}`~libtmux.Window` for `select_existing=True`. Avoid wrapping a reuse
+call in `with`; the method and {ref}`context_managers` now say so.
+
 #### `select_existing` names its `#{command}` limit (#921)
 
 {meth}`~libtmux.Session.new_window` with `select_existing=True` expands a
