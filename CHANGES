@@ -45,6 +45,19 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### Server members grouped by purpose (#785)
+
+The {class}`~libtmux.Server` API reference now opens with what a server is and
+a "What is on here" overview that groups every current member by what you reach
+for it to do, from connecting and listing to options, hooks, and the calls that
+need an attached terminal, each linked to its entry. It also states that
+{attr}`~libtmux.Server.sessions`, {attr}`~libtmux.Server.clients`, and
+{attr}`~libtmux.Server.attached_sessions` read as empty when tmux cannot be
+reached, and points to {meth}`~libtmux.Server.is_alive` for telling that from
+an empty server.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
