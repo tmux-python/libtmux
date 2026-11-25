@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### tmux manual links
+
+The references for {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, {class}`~libtmux.Pane`, and
+{class}`~libtmux.Client` link to the versioned tmux manual and the commands
+that create or attach their native objects.
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
