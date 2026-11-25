@@ -3344,3 +3344,6 @@ class Server(
             replacement="Server.sessions property",
             version="0.17.0",
         )
+
+
+_STOCK_SERVER_CMD = Server.cmd
