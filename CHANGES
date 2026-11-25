@@ -45,6 +45,24 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Typed keys and buffer data are masked in logs (#905)
+
+The tmux command line libtmux logs at `DEBUG` and on errors shows `***` in
+place of the keys passed to `send-keys` and the data passed to `set-buffer`, as
+it already does for environment values. Flags, targets and buffer names stay
+readable, and the command tmux runs is unchanged.
+
+A log no longer shows what was typed into a pane, and there is no setting to
+bring it back.
+
+```python
+# Before: logged as  tmux send-keys -t %1 'echo hi'
+# After:  logged as  tmux send-keys -t %1 '***'
+pane.send_keys("echo hi")
+```
+
 ## libtmux 0.68.0 (2026-11-24)
 
 libtmux 0.68.0 raises {exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a pane,
