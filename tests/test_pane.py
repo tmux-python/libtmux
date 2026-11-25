@@ -65,7 +65,7 @@ def setup_shell_window(
         try:
             pane_contents = "\n".join(pane.capture_pane())
             return "READY>" in pane_contents and len(pane_contents.strip()) > 0
-        except Exception:
+        except exc.LibTmuxException:
             return False
 
     retry_until(wait_for_prompt, 2, raises=True)
@@ -89,7 +89,7 @@ def test_send_keys(session: Session) -> None:
                 and "echo 'test-literal'" in pane_contents
                 and pane_contents.count("READY>") >= 2
             )
-        except Exception:
+        except exc.LibTmuxException:
             return False
 
     retry_until(wait_for_literal, 2, raises=True)
@@ -106,7 +106,7 @@ def test_send_keys(session: Session) -> None:
                 pane_contents.count("READY>") >= 3
                 and "c-c" not in pane_contents  # The literal string should not appear
             )
-        except Exception:
+        except exc.LibTmuxException:
             return False
 
     retry_until(wait_for_ctrl_c, 2, raises=True)
@@ -197,7 +197,7 @@ def test_capture_pane(session: Session) -> None:
                 and pane_contents.count("READY>") >= 2
                 and r'printf "\n%s\n" "Hello World !"' in pane_contents
             )
-        except Exception:
+        except exc.LibTmuxException:
             return False
 
     # Wait for command output and new prompt
@@ -223,7 +223,7 @@ def test_capture_pane_start(session: Session) -> None:
     def wait_for_command() -> bool:
         try:
             pane_contents = "\n".join(pane.capture_pane())
-        except Exception:
+        except exc.LibTmuxException:
             return False
         else:
             has_command = r'printf "%s"' in pane_contents
@@ -274,7 +274,7 @@ def test_capture_pane_end(session: Session) -> None:
     def wait_for_command() -> bool:
         try:
             pane_contents = "\n".join(pane.capture_pane())
-        except Exception:
+        except exc.LibTmuxException:
             return False
         else:
             has_command = r'printf "%s"' in pane_contents
@@ -474,7 +474,7 @@ def test_pane_context_manager(session: Session) -> None:
             try:
                 pane_contents = "\n".join(pane.capture_pane())
                 return "READY>" in pane_contents and len(pane_contents.strip()) > 0
-            except Exception:
+            except exc.LibTmuxException:
                 return False
 
         retry_until(wait_for_shell, 2, raises=True)
@@ -489,7 +489,7 @@ def test_pane_context_manager(session: Session) -> None:
                     and "Hello" in pane_contents
                     and pane_contents.count("READY>") >= 2
                 )
-            except Exception:
+            except exc.LibTmuxException:
                 return False
 
         retry_until(wait_for_output, 2, raises=True)

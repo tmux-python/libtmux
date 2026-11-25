@@ -74,7 +74,7 @@ def setup_shell_window(
         try:
             pane_contents = "\n".join(pane.capture_pane())
             return "READY>" in pane_contents and len(pane_contents.strip()) > 0
-        except Exception:
+        except exc.LibTmuxException:
             return False
 
     retry_until(wait_for_prompt, 2, raises=True)
@@ -389,7 +389,7 @@ def test_new_window_with_environment(
             try:
                 pane_contents = pane.capture_pane()
                 return any(value in line for line in pane_contents)
-            except Exception:
+            except exc.LibTmuxException:
                 return False
 
         retry_until(wait_for_output, 2, raises=True)
