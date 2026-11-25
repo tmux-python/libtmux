@@ -96,6 +96,12 @@ Base classes and command execution.
 Raw-byte command transports and custom execution backends.
 :::
 
+:::{grid-item-card} Async I/O
+:link: libtmux.aio
+:link-type: doc
+Opt-in asyncio server and subprocess transport over AsyncTmuxEngine.
+:::
+
 :::{grid-item-card} Capabilities
 :link: libtmux.capabilities
 :link-type: doc
@@ -186,6 +192,7 @@ Pane <libtmux.pane>
 Client <libtmux.client>
 Common <libtmux.common>
 Engine <libtmux.engine>
+Async I/O <libtmux.aio>
 Capabilities <libtmux.capabilities>
 Neo <libtmux.neo>
 Options <libtmux.options>

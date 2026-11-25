@@ -62,6 +62,18 @@ after a command ran through an engine that spawns no process raises
 
 ### What's new
 
+#### Async I/O and recorded tape replay (#738)
+
+{mod}`libtmux.aio` adds {class}`~libtmux.aio.AsyncServer`,
+{class}`~libtmux.aio.AsyncSubprocessEngine`, {func}`~libtmux.aio.adispatch`,
+and {func}`~libtmux.aio.adispatch_batch` over
+{class}`~libtmux.engine.AsyncTmuxEngine` without importing `asyncio` on
+synchronous `import libtmux`.
+
+{class}`~libtmux.test.ReplayEngine` and {class}`~libtmux.test.Exchange` replay
+recorded {class}`~libtmux.test.RecordingEngine` tapes offline, raising
+{exc}`~libtmux.exc.UnscriptedCommand` on unrecorded commands.
+
 #### Pluggable raw-byte command engines (#739)
 
 Every tmux command libtmux runs now dispatches through a

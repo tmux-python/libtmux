@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux._internal.protocols import SupportsBatchExecution
+from libtmux._internal.protocols import (
+    HasConnection,
+    SupportsBatchExecution,
+    SupportsTmuxVersion,
+)
 from libtmux.engine import TmuxEngine, TmuxRequest, TmuxResult
+from libtmux.test.replay import Exchange
 
 __all__ = ("FakeEngine", "RecordingEngine")
 
@@ -154,6 +159,20 @@ class RecordingEngine:
         """Wrapped engine endpoint."""
         return self._inner.endpoint
 
+    @property
+    def connection(self) -> t.Any:
+        """Wrapped engine connection when present."""
+        if isinstance(self._inner, HasConnection):
+            return self._inner.connection
+        msg = f"{type(self._inner).__name__!r} object has no attribute 'connection'"
+        raise AttributeError(msg)
+
+    def tmux_version(self) -> str | None:
+        """Return the wrapped engine's tmux version when available."""
+        if isinstance(self._inner, SupportsTmuxVersion):
+            return self._inner.tmux_version()
+        return None
+
     def __getattr__(self, name: str) -> t.Any:
         """Forward non-protocol attributes to the wrapped engine."""
         return getattr(self._inner, name)
@@ -184,3 +203,40 @@ class RecordingEngine:
             self.results.extend(results)
             return results
         return [self.execute(req) for req in batch]
+
+    @property
+    def tape(self) -> tuple[Exchange, ...]:
+        """Ordered :class:`~libtmux.test.Exchange` pairs for replay."""
+        return tuple(
+            Exchange(
+                commands=req.commands,
+                result=TmuxResult(
+                    argv=res.argv,
+                    stdout=res.stdout,
+                    stderr=res.stderr,
+                    returncode=res.returncode,
+                ),
+            )
+            for req, res in zip(self.requests, self.results, strict=True)
+        )
+
+    def to_dict(self) -> dict[str, t.Any]:
+        """Serialize recorded exchanges into a JSON-compatible dictionary."""
+        tmux_ver = (
+            self._inner.tmux_version()
+            if isinstance(self._inner, SupportsTmuxVersion)
+            else None
+        )
+        return {
+            "tmux_version": tmux_ver,
+            "exchanges": [
+                {
+                    "commands": [list(cmd) for cmd in ex.commands],
+                    "argv": list(ex.result.argv),
+                    "stdout": ex.result.stdout.decode("utf-8", errors="replace"),
+                    "stderr": ex.result.stderr.decode("utf-8", errors="replace"),
+                    "returncode": ex.result.returncode,
+                }
+                for ex in self.tape
+            ],
+        }
