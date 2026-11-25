@@ -14,7 +14,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux._internal.support import MINIMUM as TMUX_MIN_VERSION
+from libtmux._internal.support import MINIMUM as TMUX_MIN_VERSION, server_version
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import (
     _CONTEXT_ONLY_TOKENS,
@@ -335,6 +335,8 @@ def test_split_records_handles_no_objects() -> None:
 
 def test_refresh_clears_a_field_tmux_emptied(session: Session) -> None:
     """A field tmux reports as empty stops holding its earlier value."""
+    if server_version(session.server) == "3.7":
+        pytest.skip("tmux 3.7 ignores select-pane -T with an empty title")
     pane = session.active_window.active_pane
     assert pane is not None
 

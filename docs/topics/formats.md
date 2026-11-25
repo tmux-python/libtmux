@@ -99,9 +99,9 @@ it literal:
 
 ```python
 >>> user_text = "50% #1"
->>> window.rename_window(Format("#{session_name}: ") + user_text)
+>>> window.rename_window(Format("#{session_name} - ") + user_text)
 Window(...)
->>> window.window_name == f"{session.session_name}: 50% #1"
+>>> window.window_name == f"{session.session_name} - 50% #1"
 True
 ```
 

@@ -68,7 +68,7 @@ FIELD_VERSION: dict[str, str] = {
 Field names absent from this dict default to ``"3.3a"`` (always-safe within
 the supported tmux range). Entries here represent tokens added after 3.3a
 that need explicit gating to keep the ``-F`` template compatible with older
-tmux versions.
+tmux versions; the 3.3 entries are met by every supported daemon.
 """
 
 

@@ -20,7 +20,9 @@ import pytest
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
 from libtmux._internal.env import SOCKET_PATH_MAX_BYTES, resolve_socket_path
+from libtmux._internal.support import server_version
 from libtmux._internal.support.capabilities import capability_since
+from libtmux._internal.support.versions import is_at_least
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -401,7 +403,25 @@ def test_socket_args_covers_every_tmux_spawn(
     assert server.sessions
     assert calls, "neo.fetch_objs did not build socket flags via _socket_args"
 
-    calls.clear()
+
+def test_socket_args_covers_control_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """ControlMode builds its socket flags through :meth:`Server._socket_args`."""
+    server = session.server
+    if not is_at_least(server_version(server), "3.7"):
+        pytest.skip("ControlMode requires tmux 3.7+")
+    calls: list[list[str]] = []
+    real = Server._socket_args
+
+    def spy(self: Server) -> list[str]:
+        args = real(self)
+        calls.append(args)
+        return args
+
+    monkeypatch.setattr(Server, "_socket_args", spy)
+
     with ControlMode(server=server, session=session) as ctl:
         assert ctl.client_name != ""
     assert calls, "ControlMode did not build socket flags via _socket_args"
@@ -1490,17 +1510,18 @@ def test_run_shell_refuses_only_captured_output(
 
     assert server.run_shell("true", background=True) is None
     assert server.run_shell("display-message -p tmux", as_tmux_command=True) == ["tmux"]
-    assert server.run_shell("true", target_pane=pane.pane_id) == []
+    assert server.run_shell("true", target_pane=pane.pane_id) is None
 
 
-def test_run_shell_basic(server: Server) -> None:
-    """Test Server.run_shell() executes command and returns output."""
-    from tests.tmux_client import client_gte
-
-    if not client_gte(capability_since("run-shell-output-in-copy-mode")):
-        pytest.skip("run_shell returns output from tmux 3.5")
-
+def test_run_shell_basic(server: Server, tmp_path: pathlib.Path) -> None:
+    """Capture stdout where supported and refuse before jobs on older daemons."""
     server.new_session(session_name="run_shell_test")
+    if not server._has_gte_version("3.5"):
+        marker = tmp_path / "captured-job"
+        with pytest.raises(exc.VersionTooLow, match=r"3\.5"):
+            server.run_shell(f"touch {marker}")
+        assert not marker.exists()
+        return
     result = server.run_shell("echo hello_from_run_shell")
     assert result is not None
     assert any("hello_from_run_shell" in line for line in result)
@@ -1559,29 +1580,23 @@ def test_run_shell_args(server: Server) -> None:
 
 def test_run_shell_cwd_warns_on_old_tmux(
     server: Server,
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
 ) -> None:
-    """``cwd=`` emits a warning and skips ``-c`` on tmux <3.4.
-
-    Simulates an older daemon by patching the daemon release decision.
-    """
-    monkeypatch.setattr(Server, "_has_gte_version", lambda *_a: False)
+    """An actual older daemon warns when a background job cannot select cwd."""
     server.new_session(session_name="run_shell_cwd_warn_test")
+    if server._has_gte_version("3.4"):
+        pytest.skip("requires a supported daemon below 3.4")
     with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
         server.run_shell("true", cwd=tmp_path, background=True)
 
 
 def test_run_shell_show_stderr_warns_on_old_tmux(
     server: Server,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``show_stderr=True`` emits a warning and skips ``-E`` on tmux <3.6.
-
-    Simulates an older daemon by patching the daemon release decision.
-    """
-    monkeypatch.setattr(Server, "_has_gte_version", lambda *_a: False)
+    """An actual older daemon warns about unavailable stderr combination."""
     server.new_session(session_name="run_shell_stderr_warn_test")
+    if server._has_gte_version("3.6"):
+        pytest.skip("requires a supported daemon below 3.6")
     with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
         server.run_shell("true", show_stderr=True, background=True)
 
@@ -1658,6 +1673,12 @@ def test_buffer_delete(server: Server) -> None:
     server.set_buffer("to_delete", buffer_name="del_buf")
     # Verify it exists
     assert server.show_buffer(buffer_name="del_buf") == "to_delete"
+
+    if not server._has_gte_version("3.4"):
+        with pytest.raises(exc.VersionTooLow, match="named-buffer deletion"):
+            server.delete_buffer(buffer_name="del_buf")
+        assert server.show_buffer(buffer_name="del_buf") == "to_delete"
+        return
 
     # Delete it
     server.delete_buffer(buffer_name="del_buf")
