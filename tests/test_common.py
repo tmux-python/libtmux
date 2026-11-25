@@ -896,3 +896,50 @@ def test_compat_sentinel_backport() -> None:
     assert bool(unset) is True
     assert copy.copy(unset) is unset
     assert copy.deepcopy(unset) is unset
+
+
+def test_logged_command_line_masks_keys_and_buffer_data(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Typed keys and buffer data are masked in the logged command line."""
+    caplog.set_level(logging.DEBUG, logger="libtmux.common")
+    pane = session.active_pane
+    assert pane is not None
+
+    pane.send_keys("echo hunter2", enter=False)
+    session.server.set_buffer("swordfish", buffer_name="secret")
+
+    logged = [r.tmux_cmd for r in caplog.records if hasattr(r, "tmux_cmd")]
+    assert not [line for line in logged if "hunter2" in line or "swordfish" in line]
+    assert [line for line in logged if "send-keys" in line and "***" in line]
+    assert [line for line in logged if "set-buffer -b secret -- '***'" in line]
+    assert session.server.show_buffer(buffer_name="secret") == "swordfish"
+
+
+def test_set_argv_redactor_replaces_and_restores_the_default(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A caller can choose what the logged command line shows, then reset it."""
+    from libtmux.common import redact_env_values, set_argv_redactor
+
+    caplog.set_level(logging.DEBUG, logger="libtmux.common")
+    pane = session.active_pane
+    assert pane is not None
+
+    def logged() -> list[str]:
+        return [r.tmux_cmd for r in caplog.records if hasattr(r, "tmux_cmd")]
+
+    set_argv_redactor(redact_env_values)
+    try:
+        pane.send_keys("echo visible", enter=False)
+        session.set_environment("API_TOKEN", "hunter2")
+        assert [line for line in logged() if "echo visible" in line]
+        assert not [line for line in logged() if "hunter2" in line]
+    finally:
+        set_argv_redactor(None)
+
+    caplog.clear()
+    pane.send_keys("echo masked", enter=False)
+    assert not [line for line in logged() if "echo masked" in line]

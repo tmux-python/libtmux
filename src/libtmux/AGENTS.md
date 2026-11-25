@@ -55,7 +55,7 @@ searching, or test assertions.
 
 | Key | Type | Context |
 |-----|------|---------|
-| `tmux_cmd` | `str` | tmux command line, environment values masked |
+| `tmux_cmd` | `str` | tmux command line as returned by the redactor set with `set_argv_redactor` (default masks environment values, typed keys and buffer data) |
 | `tmux_subcommand` | `str` | tmux subcommand (e.g. `new-session`) |
 | `tmux_target` | `str` | tmux target specifier (e.g. `mysession:1.2`) |
 | `tmux_exit_code` | `int` | tmux process exit code |
