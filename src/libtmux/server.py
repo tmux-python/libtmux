@@ -635,6 +635,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -672,6 +673,14 @@ class Server(
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Seconds to wait for the client. ``None`` waits indefinitely.
+            Expiry kills and reaps the client without stopping the server.
+
+        Raises
+        ------
+        subprocess.TimeoutExpired
+            When the client exceeds ``timeout``.
 
         Returns
         -------
@@ -716,7 +725,7 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin, timeout=timeout)
 
     @property
     def attached_sessions(self) -> list[Session]:

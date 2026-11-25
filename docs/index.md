@@ -123,6 +123,7 @@ quickstart
 topics/index
 api/index
 api/testing/index
+contrib/index
 internals/index
 project/index
 history
