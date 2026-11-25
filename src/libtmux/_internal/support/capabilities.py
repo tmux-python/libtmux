@@ -19,7 +19,7 @@ import json
 import typing as t
 from dataclasses import dataclass
 
-from libtmux.common import TMUX_MIN_VERSION
+from libtmux._internal.support.versions import MINIMUM
 
 SCHEMA = "libtmux-capabilities/1"
 PORT = "py"
@@ -260,7 +260,7 @@ def manifest() -> dict[str, t.Any]:
     return {
         "schema": SCHEMA,
         "port": PORT,
-        "floor": {"minimum": TMUX_MIN_VERSION},
+        "floor": {"minimum": MINIMUM},
         "capabilities": [capability.to_manifest() for capability in CAPABILITIES],
         "workarounds": [],
     }

@@ -16,8 +16,9 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux._internal.support import capabilities
-from libtmux.common import escape_trailing_separator, has_gte_version
+from libtmux._internal.support import capabilities, server_version
+from libtmux._internal.support.versions import is_at_least
+from libtmux.common import escape_trailing_separator
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
@@ -30,13 +31,13 @@ if t.TYPE_CHECKING:
 VALUES = ["v;", "v\\;", ";", "v;;"]
 
 
-def shown(value: str) -> str:
-    """Return ``value`` as tmux prints it in a format result.
+def shown(server: Server, value: str) -> str:
+    """Return ``value`` as *server*'s tmux prints it in a format result.
 
     From tmux 3.7 a window name given at creation and a pane title are
     stored encoded, which writes a backslash as two.
     """
-    if has_gte_version("3.7"):
+    if is_at_least(server_version(server), "3.7"):
         return value.replace("\\", "\\\\")
     return value
 
@@ -188,7 +189,7 @@ def test_new_session_window_name(server: Server, value: str) -> None:
         window_command="sleep 30",
     )
     assert server.is_alive()
-    assert new.active_window.window_name == shown(value)
+    assert new.active_window.window_name == shown(server, value)
 
 
 def test_new_session_start_directory(server: Server, tmp_path: pathlib.Path) -> None:
@@ -234,7 +235,7 @@ def test_new_window_window_name(session: Session, value: str) -> None:
     """``Session.new_window(window_name=...)`` names the window as given."""
     window = session.new_window(window_name=value, window_shell="sleep 30")
     assert session.server.is_alive()
-    assert window.window_name == shown(value)
+    assert window.window_name == shown(session.server, value)
 
 
 @pytest.mark.parametrize("value", VALUES)
@@ -353,10 +354,6 @@ def test_window_respawn_environment(
     assert retry_until(lambda: out.exists() and out.read_text() == value)
 
 
-@pytest.mark.skipif(
-    not has_gte_version("3.7"),
-    reason="floating panes need tmux 3.7+",
-)
 @pytest.mark.parametrize("value", VALUES)
 def test_new_pane_environment(
     session: Session,
@@ -364,6 +361,8 @@ def test_new_pane_environment(
     value: str,
 ) -> None:
     """``Pane.new_pane(environment=...)`` reaches the floating pane's process."""
+    if not is_at_least(server_version(session.server), "3.7"):
+        pytest.skip("floating panes need tmux 3.7+")
     out = tmp_path / "out"
     pane = session.active_pane
     assert pane is not None
@@ -415,7 +414,7 @@ def test_set_title(session: Session, value: str) -> None:
     assert pane is not None
     pane.set_title(value)
     assert session.server.is_alive()
-    assert pane.pane_title == shown(value)
+    assert pane.pane_title == shown(session.server, value)
 
 
 @pytest.mark.parametrize("value", VALUES)
@@ -516,7 +515,9 @@ def test_display_popup_arguments(
 
     A popup needs a terminal client, so the argument vector is captured.
     """
-    if flag in {"-T", "-b", "-s", "-S"} and not has_gte_version("3.3"):
+    if flag in {"-T", "-b", "-s", "-S"} and not is_at_least(
+        server_version(session.server), "3.3"
+    ):
         pytest.skip(f"display-popup {flag} requires tmux 3.3+")
     pane = session.active_pane
     assert pane is not None
@@ -549,7 +550,9 @@ def test_display_menu_arguments(
     value: str,
 ) -> None:
     """``Server.display_menu`` escapes each free-text value."""
-    if flag in {"-b", "-s", "-S", "-H"} and not has_gte_version("3.4"):
+    if flag in {"-b", "-s", "-S", "-H"} and not is_at_least(
+        server_version(server), "3.4"
+    ):
         pytest.skip(f"display-menu {flag} requires tmux 3.4+")
     captured = capture_cmd(monkeypatch, server, "display-menu")
     menu_kwargs: dict[str, t.Any] = {kwarg: value}
@@ -593,7 +596,7 @@ def test_new_pane_arguments(
     value: str,
 ) -> None:
     """``Pane.new_pane`` escapes each free-text value."""
-    if not has_gte_version("3.7"):
+    if not is_at_least(server_version(session.server), "3.7"):
         pytest.skip("floating panes need tmux 3.7+")
     pane = session.active_pane
     assert pane is not None
@@ -607,7 +610,7 @@ def test_new_pane_arguments(
 
 def test_new_pane_message_real(session: Session) -> None:
     """A floating pane message ending in ``;`` does not chain a command."""
-    if not has_gte_version("3.7"):
+    if not is_at_least(server_version(session.server), "3.7"):
         pytest.skip("floating panes need tmux 3.7+")
     pane = session.active_pane
     assert pane is not None
@@ -633,7 +636,7 @@ def test_run_shell_cwd_follows_tmux_expansion(
     tmux 3.4 through 3.7 use ``run-shell -c`` as given; 3.8 expands it as a
     format. The table entry's release stands in for the tmux version.
     """
-    if not has_gte_version("3.4"):
+    if not is_at_least(server_version(server), "3.4"):
         pytest.skip("run-shell -c requires tmux 3.4+")
     server.new_session()
     entry = capabilities.get("run-shell-start-directory-format")

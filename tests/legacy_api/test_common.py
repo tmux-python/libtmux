@@ -15,6 +15,7 @@ import pytest
 import libtmux
 from libtmux import exc
 from libtmux._compat import LooseVersion
+from libtmux._internal import version as legacy_version
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,
@@ -36,7 +37,9 @@ if t.TYPE_CHECKING:
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_master_diagnostic_does_not_qualify_minimum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Assert get_version() works with builds from git trunk."""
 
     class Hi:
@@ -48,7 +51,7 @@ def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
 
-    assert has_minimum_version()
+    assert not has_minimum_version(raises=False)
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
     assert get_version() == f"{TMUX_MAX_VERSION}-master", (
@@ -86,7 +89,7 @@ def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
     monkeypatch.setattr(sys, "platform", "openbsd 5.2")
-    assert has_minimum_version()
+    assert not has_minimum_version(raises=False)
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
     assert get_version() == f"{TMUX_MAX_VERSION}-openbsd", (
@@ -118,11 +121,11 @@ def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     allow letters.
 
     """
-    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.9a")
+    monkeypatch.setattr(legacy_version, "TMUX_MIN_VERSION", "1.9a")
     result = has_minimum_version()
     assert result
 
-    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.8a")
+    monkeypatch.setattr(legacy_version, "TMUX_MIN_VERSION", "1.8a")
     result = has_minimum_version()
     assert result
 
@@ -133,20 +136,11 @@ def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test raises if tmux version less than 1.7."""
-
-    def mock_get_version(tmux_bin: str | None = None) -> LooseVersion:
-        return LooseVersion("1.7")
-
-    monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
-    with pytest.raises(exc.LibTmuxException) as excinfo:
+    """Refuse an old executable without dropping its version report."""
+    monkeypatch.setattr(legacy_version, "_query_version", lambda **kwargs: "1.7")
+    with pytest.raises(exc.VersionTooLow, match="libtmux only supports"):
         has_minimum_version()
-        excinfo.match(r"libtmux only supports")
-
-    with pytest.raises(exc.LibTmuxException) as excinfo:
-        has_minimum_version()
-
-        excinfo.match(r"libtmux only supports")
+    assert not has_minimum_version(raises=False)
 
 
 def test_has_version() -> None:

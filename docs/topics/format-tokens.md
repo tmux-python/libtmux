@@ -120,18 +120,18 @@ The result is cached per `(list_cmd, tmux_version)` pair.
 
 ## tmux version detection
 
-You never call this directly, but it's worth knowing how the version
-gate gets its answer. libtmux detects the live tmux version via
-{func}`libtmux.common.get_version` and passes it through to
-`get_output_format` whenever it builds a `-F` template. That lookup is
-memoized for the process lifetime, as is the raw-string
-{func}`libtmux.common.get_version_str`; the two cache independently, so
-if you're swapping the `tmux` binary mid-test, clear both with
-`libtmux.common.get_version.cache_clear()` and
-`get_version_str.cache_clear()`.
+Format templates use a fresh version report from the selected daemon. Before
+startup, they use the selected executable's report. This keeps field selection
+correct when the executable and daemon have different versions.
 
-{doc}`/compatibility` tracks the project's minimum tmux version
-(currently 3.3a) and full capability matrix.
+{func}`libtmux.common.get_version` and
+{func}`libtmux.common.get_version_str` describe the executable, cache their
+results independently and are deprecated. Their caches do not authorize daemon
+operations; use `server_version(server)` from `libtmux._internal.support` to
+read the daemon's release.
+
+See {doc}`/compatibility` for the tmux 3.3a core minimum, the version-check
+rules and the capability matrix.
 
 ## See also
 

@@ -9,7 +9,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.constants import Hooks
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import has_gte_version
+from tests.tmux_client import client_gte, client_lte
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -314,6 +314,7 @@ class HookTestCase(t.NamedTuple):
     test_id: str
     hook: str  # tmux hook name (hyphenated)
     min_version: str = "3.0"  # Minimum tmux version required
+    max_version: str | None = None  # Last tmux version that has the hook
     xfail_reason: str | None = None  # Mark as expected failure with reason
     removed_version: str | None = None
 
@@ -401,7 +402,17 @@ AFTER_HOOKS: list[HookTestCase] = [
     HookTestCase("after_show_messages", "after-show-messages"),
     HookTestCase("after_show_options", "after-show-options"),
     HookTestCase("after_split_window", "after-split-window"),
+    HookTestCase("after_swap_window", "after-swap-window", "3.8"),
     HookTestCase("after_unbind_key", "after-unbind-key"),
+]
+
+# --- Hooks added in tmux 3.8 ---
+TMUX_38_HOOKS: list[HookTestCase] = [
+    HookTestCase("client_closed", "client-closed", "3.8"),
+    HookTestCase("client_created", "client-created", "3.8"),
+    HookTestCase("marked_pane_changed", "marked-pane-changed", "3.8"),
+    HookTestCase("session_added_to_group", "session-added-to-group", "3.8"),
+    HookTestCase("session_removed_from_group", "session-removed-from-group", "3.8"),
 ]
 
 # --- New Hooks (tmux 3.5+) ---
@@ -473,8 +484,10 @@ def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> N
     2. Shown and verified
     3. Unset cleanly
     """
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
+    if test_case.max_version and not client_lte(test_case.max_version):
+        pytest.skip(f"Removed after tmux {test_case.max_version}")
 
     session = server.new_session(session_name="test_hook_cycle")
     window = session.active_window
@@ -484,7 +497,7 @@ def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> N
 
     hook_cmd = "display-message 'test hook fired'"
 
-    if test_case.removed_version and has_gte_version(test_case.removed_version):
+    if test_case.removed_version and client_gte(test_case.removed_version):
         with pytest.raises(exc.InvalidOption, match="invalid option"):
             session.set_hook(f"{test_case.hook}[0]", hook_cmd)
         return
@@ -531,7 +544,7 @@ def test_new_hooks_version_gated(server: Server, test_case: HookTestCase) -> Non
 
     These hooks are version-gated and will skip on older tmux versions.
     """
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
 
     session = server.new_session(session_name="test_new_hooks")
@@ -866,7 +879,7 @@ def test_show_hooks_stores_string_values(
     test_case: ShowHooksTestCase,
 ) -> None:
     """Test that show_hooks() correctly stores string hook values."""
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux >= {test_case.min_version}")
 
     session = server.new_session(session_name="test_show_hooks")
@@ -951,7 +964,7 @@ def test_set_hook_flag_combinations(
     test_case: SetHookFlagTestCase,
 ) -> None:
     """Test set_hook with various flag combinations."""
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
 
     session = server.new_session(session_name="test_flags")
@@ -1036,7 +1049,7 @@ def test_hook_scope_handling(
     test_case: HookScopeTestCase,
 ) -> None:
     """Test hooks at different scopes (session, window, pane)."""
-    if not has_gte_version(test_case.min_version):
+    if not client_gte(test_case.min_version):
         pytest.skip(f"Requires tmux {test_case.min_version}+")
 
     session = server.new_session(session_name="test_scope")

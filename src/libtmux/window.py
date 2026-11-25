@@ -18,7 +18,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     escape_trailing_separator,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -445,6 +444,8 @@ class Window(
                 server=self.server,
                 list_cmd="list-sessions",
             )
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
 
@@ -778,8 +779,8 @@ class Window(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.7"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.7"):
         ...     floating = window.new_pane(width=40, height=10, shell="sleep 5")
         ...     is_floating = floating.pane_floating_flag
         ... else:
@@ -1420,7 +1421,7 @@ class Window(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+            if self.server._has_gte_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(

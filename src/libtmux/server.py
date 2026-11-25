@@ -25,6 +25,7 @@ from libtmux._internal.env import (
     socket_path_from_env,
 )
 from libtmux._internal.query_list import QueryList
+from libtmux._internal.support import versions
 from libtmux._internal.support.capabilities import capability_since
 from libtmux.client import Client
 from libtmux.common import (
@@ -32,8 +33,6 @@ from libtmux.common import (
     _format_path_arg,
     _format_text,
     _literal,
-    get_version,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -93,6 +92,8 @@ def _fetch_or_empty(
     """
     try:
         return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
+    except exc.VersionTooLow:
+        raise
     except exc.LibTmuxException as e:
         if e.args and _is_daemon_not_up_error(str(e.args[0])):
             return []
@@ -364,6 +365,7 @@ class Server(
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self._version_cache = versions.VersionCache()
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
@@ -502,6 +504,8 @@ class Server(
         """
         try:
             res = self.cmd("list-sessions")
+        except exc.VersionTooLow:
+            raise
         except Exception:
             return False
         return res.returncode == 0
@@ -527,18 +531,34 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
+        result = self.cmd("list-sessions")
+        if result.returncode:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                result.cmd,
+                output="\n".join(result.stdout),
+                stderr="\n".join(result.stderr),
+            )
+
+    def _version_endpoint(self) -> tuple[str, list[str]]:
+        binary = self.tmux_bin or shutil.which("tmux")
+        if binary is None:
             raise exc.TmuxCommandNotFound
+        # Selectors come from _socket_args(), which measures the socket path
+        # and joins each flag to its value ("-Lname"). Commands are cached
+        # under the flag and value apart, so split them to share one entry.
+        selectors: list[str] = []
+        for arg in self._socket_args():
+            selectors.extend((arg[:2], arg[2:]))
+        return binary, selectors
 
-        cmd_args: list[str] = [*self._socket_args(), "list-sessions"]
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
+    def _get_version(self) -> str:
+        return versions.endpoint_version(
+            *self._version_endpoint(), cache=self._version_cache
+        )
 
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+    def _has_gte_version(self, minimum: str) -> bool:
+        return versions.is_at_least(self._get_version(), minimum)
 
     #
     # Command
@@ -716,7 +736,12 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self.tmux_bin,
+            _version_cache=self._version_cache,
+        )
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -765,6 +790,8 @@ class Server(
     def kill(self) -> None:
         """Kill tmux server.
 
+        An absent endpoint returns without dispatching or starting a daemon.
+
         >>> svr = Server(socket_name="testing")
         >>> svr
         Server(socket_name=testing)
@@ -780,7 +807,15 @@ class Server(
         >>> svr.is_alive()
         False
         """
+        # Liveness is read afresh; the kill then reuses the version that read checked.
+        self._version_cache.clear()
+        binary, selectors = self._version_endpoint()
+        version = versions.live_version(binary, selectors)
+        if version is None:
+            return
+        self._version_cache.put(binary, selectors, version)
         proc = self.cmd("kill-server")
+        self._version_cache.clear()
         if proc.stderr:
             stderr_text = " ".join(str(line) for line in proc.stderr)
             if _is_daemon_not_up_error(stderr_text):
@@ -913,7 +948,7 @@ class Server(
 
         Raises
         ------
-        :exc:`~libtmux.exc.VersionTooLow`
+        libtmux.exc.VersionTooLow
             On tmux 3.3a and 3.4, for a shell command run without
             *background*, *as_tmux_command* or *target_pane*. Those releases
             send its output to the pane's copy mode instead of returning it.
@@ -925,9 +960,7 @@ class Server(
         """
         captures_output = not (background or as_tmux_command or target_pane)
         output_since = capability_since("run-shell-output-in-copy-mode")
-        if captures_output and not has_gte_version(
-            output_since, tmux_bin=self.tmux_bin
-        ):
+        if captures_output and not self._has_gte_version(output_since):
             # tmux 3.3a and 3.4 send a foreground run-shell's output to the
             # pane's copy mode, not back to the caller.
             msg = f"run_shell output requires tmux {output_since}+"
@@ -948,17 +981,14 @@ class Server(
             tmux_args += ("-t", target_pane)
 
         if cwd is not None:
-            expands_cwd = has_gte_version(
+            expands_cwd = self._has_gte_version(
                 capability_since("run-shell-start-directory-format"),
-                tmux_bin=self.tmux_bin,
             )
             if isinstance(cwd, Format) and not expands_cwd:
                 # Before 3.8, tmux uses run-shell -c as given, without expanding it.
                 msg = "cwd=Format(...) requires tmux 3.8+"
                 raise exc.LibTmuxException(msg)
-            if not has_gte_version(
-                capability_since("run-shell-start-directory"), tmux_bin=self.tmux_bin
-            ):
+            if not self._has_gte_version(capability_since("run-shell-start-directory")):
                 warnings.warn(
                     "cwd requires tmux 3.4+, ignoring",
                     stacklevel=2,
@@ -971,9 +1001,7 @@ class Server(
                 tmux_args += ("-c", str(cwd))
 
         if show_stderr:
-            if has_gte_version(
-                capability_since("run-shell-show-stderr"), tmux_bin=self.tmux_bin
-            ):
+            if self._has_gte_version(capability_since("run-shell-show-stderr")):
                 tmux_args += ("-E",)
             else:
                 warnings.warn(
@@ -984,9 +1012,7 @@ class Server(
         tmux_args += ("--", _format_text(command))
 
         if args:
-            if has_gte_version(
-                capability_since("run-shell-args"), tmux_bin=self.tmux_bin
-            ):
+            if self._has_gte_version(capability_since("run-shell-args")):
                 tmux_args += tuple(args)
             else:
                 warnings.warn(
@@ -1169,9 +1195,7 @@ class Server(
             tmux_args += ("-T", key_table)
 
         if format_ is not None:
-            if has_gte_version(
-                capability_since("list-keys-format"), tmux_bin=self.tmux_bin
-            ):
+            if self._has_gte_version(capability_since("list-keys-format")):
                 tmux_args += ("-F", format_)
             else:
                 warnings.warn(
@@ -1325,7 +1349,7 @@ class Server(
             tmux_args += ("-t", target_client)
 
         if request_clipboard:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.7"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1515,8 +1539,8 @@ class Server(
         works on 3.3+ but the ``send-keys -K -c <client>`` round-trip
         used here is unreliable on 3.3a:
 
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.4"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.4"):
         ...     with control_mode() as ctl:
         ...         server.confirm_before(
         ...             'set -g @cf_test yes',
@@ -1535,7 +1559,7 @@ class Server(
             tmux_args += ("-p", prompt)
 
         if confirm_key is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-c", confirm_key)
             else:
                 warnings.warn(
@@ -1544,7 +1568,7 @@ class Server(
                 )
 
         if default_yes:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-y",)
             else:
                 warnings.warn(
@@ -1625,8 +1649,8 @@ class Server(
         on 3.3+ but the ``send-keys -K -c <client>`` round-trip used
         here is unreliable on 3.3a:
 
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.4"):
+        >>> from libtmux._internal.support import is_at_least, server_version
+        >>> if is_at_least(server_version(server), "3.4"):
         ...     with control_mode() as ctl:
         ...         server.command_prompt(
         ...             "set -g @cp_test '%1'",
@@ -1666,7 +1690,7 @@ class Server(
             tmux_args += ("-F",)
 
         if literal:
-            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.6"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -1675,7 +1699,7 @@ class Server(
                 )
 
         if bspace_exit:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.7"):
                 tmux_args += ("-e",)
             else:
                 warnings.warn(
@@ -1684,7 +1708,7 @@ class Server(
                 )
 
         if no_freeze:
-            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.7"):
                 tmux_args += ("-C",)
             else:
                 warnings.warn(
@@ -1803,7 +1827,7 @@ class Server(
             tmux_args += ("-y", str(y))
 
         if starting_choice is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-C", str(starting_choice))
             else:
                 warnings.warn(
@@ -1812,7 +1836,7 @@ class Server(
                 )
 
         if border_lines is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-b", escape_trailing_separator(border_lines))
             else:
                 warnings.warn(
@@ -1821,7 +1845,7 @@ class Server(
                 )
 
         if style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-s", escape_trailing_separator(style))
             else:
                 warnings.warn(
@@ -1830,7 +1854,7 @@ class Server(
                 )
 
         if border_style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-S", escape_trailing_separator(border_style))
             else:
                 warnings.warn(
@@ -1839,7 +1863,7 @@ class Server(
                 )
 
         if selected_style is not None:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-H", escape_trailing_separator(selected_style))
             else:
                 warnings.warn(
@@ -1848,7 +1872,7 @@ class Server(
                 )
 
         if mouse:
-            if has_gte_version("3.5", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.5"):
                 tmux_args += ("-M",)
             else:
                 warnings.warn(
@@ -2082,7 +2106,7 @@ class Server(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+            if self._has_gte_version("3.4"):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
@@ -2759,7 +2783,7 @@ class Server(
             del os.environ["TMUX"]
 
         try:
-            tmux_version = str(get_version(tmux_bin=self.tmux_bin))
+            tmux_version = self._get_version()
             _fields, format_string = get_output_format("list-sessions", tmux_version)
 
             tmux_args: tuple[str | int, ...] = (
@@ -2845,12 +2869,15 @@ class Server(
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no sessions" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        Unsupported tmux reports raise :exc:`~libtmux.exc.VersionTooLow`.
         """
         try:
             sessions: list[Session] = [
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2906,6 +2933,7 @@ class Server(
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no clients attached" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+        Unsupported tmux reports raise :exc:`~libtmux.exc.VersionTooLow`.
 
         Returns
         -------
@@ -2923,6 +2951,8 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except exc.VersionTooLow:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)

@@ -16,7 +16,6 @@ import warnings
 from libtmux._internal.query_list import QueryList
 from libtmux.common import (
     escape_trailing_separator,
-    has_gte_version,
     raise_if_stderr,
     tmux_cmd,
 )
@@ -810,7 +809,7 @@ class Session(
             flags += ("-C",)
 
         if group:  # Kill all sessions in this session's group (tmux 3.7+)
-            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            if self.server._has_gte_version("3.7"):
                 flags += ("-g",)
             else:
                 warnings.warn(

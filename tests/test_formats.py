@@ -7,8 +7,9 @@ import typing as t
 import pytest
 
 from libtmux import Format, exc
+from libtmux._internal.support import server_version
 from libtmux._internal.support.capabilities import capability_since
-from libtmux.common import has_gte_version
+from libtmux._internal.support.versions import is_at_least
 from libtmux.constants import WindowDirection
 from libtmux.test.retry import retry_until
 
@@ -257,7 +258,9 @@ def test_escape_is_literal_inside_expressions(session: Session) -> None:
 
 def test_always_expanded_command_keeps_added_text_literal(server: Server) -> None:
     """Text added to a ``run_shell`` command format reaches the shell as typed."""
-    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+    if not is_at_least(
+        server_version(server), capability_since("run-shell-output-in-copy-mode")
+    ):
         pytest.skip("run_shell returns output from tmux 3.5")
     server.new_session()
     output = server.run_shell(Format("echo ") + "a#S%d")
@@ -272,11 +275,13 @@ def test_new_session_refuses_format_with_kill_session(server: Server) -> None:
 
 def test_run_shell_cwd(session: Session, tmp_path: pathlib.Path) -> None:
     """A ``#`` directory is literal; a ``Format`` directory needs tmux 3.8."""
-    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+    server = session.server
+    if not is_at_least(
+        server_version(server), capability_since("run-shell-output-in-copy-mode")
+    ):
         pytest.skip("run_shell returns output from tmux 3.5")
     directory = tmp_path / "d#S"
     directory.mkdir()
-    server = session.server
 
     assert server.run_shell("pwd", cwd=directory) == [str(directory)]
 
@@ -284,7 +289,7 @@ def test_run_shell_cwd(session: Session, tmp_path: pathlib.Path) -> None:
     source = window.active_pane
     assert source is not None
     assert retry_until(lambda: _has_cwd(source))
-    if has_gte_version("3.8"):
+    if is_at_least(server_version(server), "3.8"):
         output = server.run_shell("pwd", cwd=Format("#{pane_current_path}"))
         assert output == [str(directory)]
     else:

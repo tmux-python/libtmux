@@ -14,7 +14,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import TMUX_MIN_VERSION
+from libtmux._internal.support import MINIMUM as TMUX_MIN_VERSION
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import (
     _CONTEXT_ONLY_TOKENS,

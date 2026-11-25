@@ -588,7 +588,6 @@ def test_new_session_shell_env(server: Server) -> None:
     assert pane_start_command.replace('"', "") == cmd
 
 
-@pytest.mark.skipif(True, reason="tmux 3.2 returns wrong width - test needs rework")
 def test_new_session_width_height(server: Server) -> None:
     """Verify ``Server.new_session`` creates valid session running w/ dimensions."""
     cmd = "/usr/bin/env PS1='$ ' sh"
@@ -928,9 +927,9 @@ def test_confirm_before(
     server: Server,
 ) -> None:
     """Test Server.confirm_before() with send-keys -K confirmation."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     with control_mode() as ctl:
@@ -998,9 +997,9 @@ def test_command_prompt(
     server: Server,
 ) -> None:
     """Test Server.command_prompt() with send-keys -K input."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     with control_mode() as ctl:
@@ -1043,9 +1042,9 @@ def test_command_prompt_extra_flags(
     constructed argv instead, matching the test_display_menu_flags
     monkeypatch pattern.
     """
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     captured: list[tuple[str, ...]] = []
@@ -1194,9 +1193,9 @@ def test_display_menu_flags(
     the constructed argument vector instead — the only deviation from
     the test-suite's standard "use real tmux" pattern.
     """
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     captured: list[tuple[str, ...]] = []
@@ -1266,9 +1265,9 @@ def test_refresh_client_request_clipboard(
     escape sequence, which has no observable effect under the headless
     test server, so verify the constructed argv instead.
     """
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if not has_gte_version("3.7"):
+    if not client_gte("3.7"):
         pytest.skip("refresh-client -l clipboard query requires tmux 3.7+")
 
     captured: list[tuple[str, ...]] = []
@@ -1380,10 +1379,10 @@ def test_list_keys(server: Server) -> None:
 
 def test_list_keys_format(server: Server) -> None:
     """Server.list_keys(format_=...) applies -F on tmux 3.7+; warns below."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
     server.new_session(session_name="listkeys_fmt")
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         result = server.list_keys(format_="fmt")
         assert result
         assert all(line == "fmt" for line in result)
@@ -1431,9 +1430,9 @@ def test_show_messages_terminals_jobs(server: Server) -> None:
     :c:func:`cmd_show_messages_exec` can take the ``-T``/``-J``
     early-return paths, so this clientless codepath is unreachable.
     """
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if not has_gte_version("3.6"):
+    if not client_gte("3.6"):
         pytest.skip("show-messages -T/-J without a client requires tmux 3.6+")
 
     server.new_session(session_name="showmsg_alt_test")
@@ -1496,9 +1495,9 @@ def test_run_shell_refuses_only_captured_output(
 
 def test_run_shell_basic(server: Server) -> None:
     """Test Server.run_shell() executes command and returns output."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+    if not client_gte(capability_since("run-shell-output-in-copy-mode")):
         pytest.skip("run_shell returns output from tmux 3.5")
 
     server.new_session(session_name="run_shell_test")
@@ -1516,9 +1515,9 @@ def test_run_shell_background(server: Server) -> None:
 
 def test_run_shell_cwd(server: Server, tmp_path: pathlib.Path) -> None:
     """``cwd=`` sets the working directory for the shell command."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if not has_gte_version(capability_since("run-shell-output-in-copy-mode")):
+    if not client_gte(capability_since("run-shell-output-in-copy-mode")):
         pytest.skip("run_shell returns output from tmux 3.5")
 
     server.new_session(session_name="run_shell_cwd_test")
@@ -1529,9 +1528,9 @@ def test_run_shell_cwd(server: Server, tmp_path: pathlib.Path) -> None:
 
 def test_run_shell_show_stderr(server: Server) -> None:
     """``show_stderr=True`` captures the command's stderr into the output."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if not has_gte_version("3.6"):
+    if not client_gte("3.6"):
         pytest.skip("run-shell -E (JOB_SHOWSTDERR) requires tmux 3.6+")
 
     server.new_session(session_name="run_shell_stderr_test")
@@ -1547,10 +1546,10 @@ def test_run_shell_show_stderr(server: Server) -> None:
 
 def test_run_shell_args(server: Server) -> None:
     """``args`` fill #{1}/#{2} in the command on tmux 3.7+; warn below."""
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
     server.new_session(session_name="run_shell_args_test")
-    if has_gte_version("3.7"):
+    if client_gte("3.7"):
         result = server.run_shell("echo #{1}-#{2}", args=["alpha", "beta"])
         assert result == ["alpha-beta"]
     else:
@@ -1565,13 +1564,9 @@ def test_run_shell_cwd_warns_on_old_tmux(
 ) -> None:
     """``cwd=`` emits a warning and skips ``-c`` on tmux <3.4.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace (where it's bound at
-    import time).
+    Simulates an older daemon by patching the daemon release decision.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(Server, "_has_gte_version", lambda *_a: False)
     server.new_session(session_name="run_shell_cwd_warn_test")
     with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
         server.run_shell("true", cwd=tmp_path, background=True)
@@ -1583,12 +1578,9 @@ def test_run_shell_show_stderr_warns_on_old_tmux(
 ) -> None:
     """``show_stderr=True`` emits a warning and skips ``-E`` on tmux <3.6.
 
-    Simulates older tmux by patching ``has_gte_version`` in the
-    :mod:`libtmux.server` module namespace.
+    Simulates an older daemon by patching the daemon release decision.
     """
-    import libtmux.server
-
-    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    monkeypatch.setattr(Server, "_has_gte_version", lambda *_a: False)
     server.new_session(session_name="run_shell_stderr_warn_test")
     with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
         server.run_shell("true", show_stderr=True, background=True)
@@ -2082,9 +2074,9 @@ def test_server_display_message_flags(
     omits ``-t <pane-id>`` but still needs a client to receive stdout. The
     headless test environment provides one via :class:`ControlMode`.
     """
-    from libtmux.common import has_gte_version
+    from tests.tmux_client import client_gte
 
-    if min_tmux_version and not has_gte_version(min_tmux_version):
+    if min_tmux_version and not client_gte(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
     with control_mode() as ctl:
