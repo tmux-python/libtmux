@@ -260,7 +260,7 @@ class Server(
         Whether leaving a ``with`` block kills the server. Off by default.
         See :attr:`Server.kill_on_exit`.
 
-        .. versionadded:: 0.63
+        .. versionadded:: 0.69
 
     Examples
     --------
@@ -533,7 +533,7 @@ class Server(
         >>> disposable.is_alive()
         False
 
-        .. versionchanged:: 0.63
+        .. versionchanged:: 0.69
 
            Previously killed any live server on the way out, including one the
            block did not start. Pass ``kill_on_exit=True`` for that.

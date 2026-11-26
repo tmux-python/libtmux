@@ -125,29 +125,28 @@ False
 
 ## Nested context managers
 
-For complex setups, you can nest contexts to build a whole tmux hierarchy at
-once and have the layers you created torn down for you:
+For an isolated setup, pass `kill_on_exit=True` on the outer server to build a
+whole tmux hierarchy at once and tear every layer down on exit:
 
 ```python
->>> with Server() as server:
-...     with server.new_session() as session:
-...         with session.new_window() as window:
-...             with window.split() as pane:
-...                 pane.send_keys('echo "Hello"')
-...                 # Do work with the pane
+>>> with Server(socket_name='libtmux_doctest_nested', kill_on_exit=True) as disposable:
+...     with disposable.new_session() as nested_session:
+...         with nested_session.new_window() as nested_window:
+...             with nested_window.split() as nested_pane:
+...                 nested_pane.send_keys('echo "Hello"')
+>>> disposable.is_alive()
+False
 ```
 
-This ensures that:
+This tears down each layer in reverse order (pane → window → session → server):
 
 1. The pane is killed when exiting its context
 2. The window is killed when exiting its context
 3. The session is killed when exiting its context
-4. The server context sends no kill command unless `kill_on_exit=True`
+4. The server is killed when exiting its context because `kill_on_exit=True` (without it, the server context sends no kill command)
 
-The pane, window and session tear down in reverse order (pane → window →
-session), which keeps tmux's own bookkeeping consistent.
-tmux may still exit after its last session ends, according to its
-[`exit-empty` option](https://github.com/tmux/tmux/blob/3.2a/tmux.1#L3413-L3417).
+When `kill_on_exit` is left `False`, tmux may still exit after its last session
+ends according to its [`exit-empty` option](https://man.openbsd.org/tmux.1#exit-empty).
 
 ## Benefits
 

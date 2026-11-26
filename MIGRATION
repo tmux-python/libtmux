@@ -118,7 +118,7 @@ _Detailed migration steps for the next version will be posted here._
 
 ### Server context managers preserve the daemon (#728)
 
-In libtmux 0.62.0, leaving a {class}`~libtmux.Server` context killed the
+Before libtmux 0.69.0, leaving a {class}`~libtmux.Server` context killed the
 selected tmux server and all its sessions, including servers started by other
 processes. The default now preserves the server on normal and exceptional
 exit. A daemon that appears during the block also survives.
