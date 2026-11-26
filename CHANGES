@@ -55,12 +55,16 @@ picks the change up. `None` now means only that tmux was not asked for the
 field, for example one newer than the running tmux. Both cases previously read
 as `None`.
 
+Before:
+
 ```python
-# Before
 if pane.pane_title is None:
     ...
+```
 
-# After
+After:
+
+```python
 if not pane.pane_title:
     ...
 ```
