@@ -55,12 +55,16 @@ user option as the string tmux stores. `"123"`, `"on"` and `"off"` previously
 came back as an integer or a boolean. Built-in options are converted as before.
 See {ref}`options-and-hooks` and {ref}`migration`.
 
-```python
-# Before
-retries = session.show_option("@retries")  # 3
+Before, numeric and `on`/`off` user options were coerced (`3`, `True`, `False`):
 
-# After
-retries = int(session.show_option("@retries"))  # "3" -> 3
+```python
+retries = session.show_option("@retries")
+```
+
+After, convert explicitly when your application wants an integer or boolean:
+
+```python
+retries = int(session.show_option("@retries"))
 ```
 
 #### Empty tmux fields read as `""` (#900)
