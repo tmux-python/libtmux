@@ -250,7 +250,19 @@ def test_custom_options(
         OptionScope.Pane: window.active_pane,
     }[scope]
     assert obj is not None
-    for value in ["123", "on", "off", ""]:
+    for value in [
+        "123",
+        "on",
+        "off",
+        "",
+        "hello world",
+        "a\nb",
+        "a\tb",
+        "quote\"and'both",
+        "back\\slash",
+        "$HOME",
+        "~literal",
+    ]:
         obj.set_option("@custom-option", value, global_=global_)
         assert obj.show_option("@custom-option", global_=global_) == value
         assert obj.show_options(global_=global_)["@custom-option"] == value

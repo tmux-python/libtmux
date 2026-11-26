@@ -105,8 +105,12 @@ including `"123"`, `"on"`, `"off"`, and `""`:
 ```
 
 This applies to server, session, window, and pane user options, including global
-session and window defaults. Built-in options keep their existing conversions:
-`buffer-limit` returns an integer and `automatic-rename` returns a boolean.
+session and window defaults. To read a global `@` default through a child
+session, window, or pane, pass `include_inherited=True` to
+{meth}`~libtmux.options.OptionsMixin.show_option` by name (tmux omits inherited
+`@` options from bulk `show-options -A`). Built-in options keep their existing
+conversions: `buffer-limit` returns an integer and `automatic-rename` returns a
+boolean.
 
 ## Hooks
 

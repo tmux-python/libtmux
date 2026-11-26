@@ -207,6 +207,66 @@ def convert_value(
     return value
 
 
+_C_ESCAPES: dict[str, str] = {
+    "a": "\a",
+    "b": "\b",
+    "e": "\x1b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "s": " ",
+    "t": "\t",
+    "v": "\v",
+}
+
+
+def _unescape_user_option_value(raw: str) -> str:
+    r"""Decode a user-option value formatted by tmux ``args_escape`` (``#{q/a:...}``).
+
+    tmux formats string options in ``show-options`` through ``args_escape``
+    (``arguments.c``), which encodes tabs, newlines, backslashes, and control
+    bytes with ``utf8_strvis`` even when no outer quotes are added. Passing
+    unquoted ``a\nb`` to :func:`shlex.split` would strip the backslash and
+    return ``"anb"``.
+
+    Examples
+    --------
+    >>> _unescape_user_option_value("''")
+    ''
+    >>> _unescape_user_option_value(r"a\nb")
+    'a\nb'
+    >>> _unescape_user_option_value('"both\\"and\'"')
+    'both"and\''
+    """
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+        raw = raw[1:-1]
+    out: list[str] = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch != "\\" or i + 1 >= n:
+            out.append(ch)
+            i += 1
+            continue
+        nxt = raw[i + 1]
+        if (
+            nxt in "0123"
+            and i + 3 < n
+            and raw[i + 2] in "01234567"
+            and raw[i + 3] in "01234567"
+        ):
+            out.append(chr(int(raw[i + 1 : i + 4], 8)))
+            i += 4
+        elif nxt in _C_ESCAPES:
+            out.append(_C_ESCAPES[nxt])
+            i += 2
+        else:
+            out.append(nxt)
+            i += 2
+    return "".join(out)
+
+
 def _is_user_option(name: object) -> bool:
     """Identify user options, including tmux's inherited ``*`` marker."""
     return isinstance(name, str) and name.startswith("@")
@@ -316,10 +376,15 @@ def parse_options_to_dict(
 
     for item in stdout.readlines():
         if " " in item:
-            try:
-                key, val = shlex.split(item)
-            except ValueError:
-                key, val = item.split(" ", maxsplit=1)
+            head, raw_val = item.rstrip("\n").split(" ", maxsplit=1)
+            if _is_user_option(head.strip()):
+                key = head.strip()
+                val = _unescape_user_option_value(raw_val)
+            else:
+                try:
+                    key, val = shlex.split(item)
+                except ValueError:
+                    key, val = item.split(" ", maxsplit=1)
         else:
             key, val = item, None
         key = key.strip()
@@ -1024,7 +1089,9 @@ class OptionsMixin(CmdMixin):
         include_hooks : bool, optional
             Include hook options (``-H`` flag).
         include_inherited : bool, optional
-            Include inherited options (``-A`` flag).
+            Include inherited built-in options (``-A`` flag). tmux omits
+            inherited ``@`` user options from bulk ``show-options -A``; query
+            them by name with :meth:`show_option` and ``include_inherited=True``.
         quiet : bool, optional
             Suppress errors silently (``-q`` flag).
 
