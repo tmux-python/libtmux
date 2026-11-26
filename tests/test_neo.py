@@ -32,9 +32,6 @@ from libtmux.pane import Pane
 if t.TYPE_CHECKING:
     from libtmux.session import Session
 
-if t.TYPE_CHECKING:
-    from libtmux.session import Session
-
 
 class TargetNotFoundFixture(t.NamedTuple):
     """One line of tmux stderr, and whether it means "that object is gone"."""

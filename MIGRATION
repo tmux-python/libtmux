@@ -116,6 +116,26 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+### Empty tmux fields read as `""` (#900)
+
+Fields that tmux reports as empty on {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, {class}`~libtmux.Pane`, and {class}`~libtmux.Client`
+(such as a cleared {attr}`~libtmux.Pane.pane_title` or an unset
+{attr}`~libtmux.Session.session_group`) now hydrate as `""` on initial queries
+and after `refresh()`. `None` is reserved for format tokens that the listing
+command or running tmux version did not request.
+
+Replace `is None` emptiness checks with truthiness checks:
+
+```python
+>>> _ = pane.set_title('')
+>>> pane.refresh()
+>>> pane.pane_title
+''
+>>> not pane.pane_title
+True
+```
+
 ### Server context managers preserve the daemon (#728)
 
 Before libtmux 0.69.0, leaving a {class}`~libtmux.Server` context killed the

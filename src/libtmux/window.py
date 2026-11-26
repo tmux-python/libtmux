@@ -63,7 +63,8 @@ class Window(
     Holds :class:`Pane` objects.
 
     **Reading it.** Every field is a tmux format token read when the window was
-    listed or last refreshed, and is ``None`` when tmux gave no value.
+    listed or last refreshed: ``""`` when tmux reports an empty value, and
+    ``None`` when the listing did not request the token.
     :meth:`~libtmux.Window.refresh` rewrites the fields in place and raises
     :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when the window has gone.
 
