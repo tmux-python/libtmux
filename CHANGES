@@ -57,12 +57,16 @@ in it. The block now leaves the server running. Set
 blocks still destroy their object. See {ref}`context_managers` and
 {doc}`migration`.
 
+Before, leaving the block killed whatever server was on that socket:
+
 ```python
-# Before: killed whatever server was on that socket
 with Server(socket_name="my-work") as server:
     pass
+```
 
-# After: nothing is killed unless you ask
+After, pass `kill_on_exit=True` when you want leaving the block to kill the server:
+
+```python
 with Server(socket_name="my-work", kill_on_exit=True) as server:
     pass
 ```
