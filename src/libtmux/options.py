@@ -220,6 +220,11 @@ _C_ESCAPES: dict[str, str] = {
 }
 
 
+def _is_tmux_var_start(ch: str) -> bool:
+    """Match C-locale ``isalpha((u_char)c) || c == '_' || c == '{'`` in tmux ``vis``."""
+    return ("A" <= ch <= "Z") or ("a" <= ch <= "z") or ch in ("_", "{")
+
+
 def _unescape_user_option_value(raw: str) -> str:
     r"""Decode a user-option value formatted by tmux ``args_escape`` (``#{q/a:...}``).
 
@@ -229,6 +234,13 @@ def _unescape_user_option_value(raw: str) -> str:
     unquoted ``a\nb`` to :func:`shlex.split` would strip the backslash and
     return ``"anb"``.
 
+    In ``args_escape``, ``$`` is in ``dquoted``, so any multi-character value
+    containing ``$`` sets ``VIS_DQ`` and emits ``2k + 1`` (odd) backslashes
+    before ``$[A-Za-z_{]``. tmux 3.4's ``server_client_print`` omits ``VIS_DQ``
+    and adds one more backslash there (``2k + 2``, nonzero even); dropping one
+    backslash on an even run of length ``>= 2`` before ``$[A-Za-z_{]`` decodes
+    both losslessly.
+
     Examples
     --------
     >>> _unescape_user_option_value("''")
@@ -237,6 +249,14 @@ def _unescape_user_option_value(raw: str) -> str:
     'a\nb'
     >>> _unescape_user_option_value('"both\\"and\'"')
     'both"and\''
+    >>> _unescape_user_option_value(r'"\$HOME"')
+    '$HOME'
+    >>> _unescape_user_option_value(r'"\\$HOME"')
+    '$HOME'
+    >>> _unescape_user_option_value(r'"\\\$HOME"')
+    '\\$HOME'
+    >>> _unescape_user_option_value(r'"\\\\$HOME"')
+    '\\$HOME'
     """
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
         raw = raw[1:-1]
@@ -245,25 +265,46 @@ def _unescape_user_option_value(raw: str) -> str:
     n = len(raw)
     while i < n:
         ch = raw[i]
-        if ch != "\\" or i + 1 >= n:
+        if ch != "\\":
             out.append(ch)
             i += 1
             continue
-        nxt = raw[i + 1]
+        j = i
+        while j < n and raw[j] == "\\":
+            j += 1
+        m = j - i
+        if j + 1 < n and raw[j] == "$" and _is_tmux_var_start(raw[j + 1]):
+            if m >= 2 and m % 2 == 0:
+                m -= 1
+            if m > 1:
+                out.append("\\" * ((m - 1) // 2))
+            out.append("$")
+            i = j + 1
+            continue
+        if m >= 2:
+            out.append("\\" * (m // 2))
+        if m % 2 == 0:
+            i = j
+            continue
+        if j >= n:
+            out.append("\\")
+            i = j
+            continue
+        nxt = raw[j]
         if (
             nxt in "0123"
-            and i + 3 < n
-            and raw[i + 2] in "01234567"
-            and raw[i + 3] in "01234567"
+            and j + 2 < n
+            and raw[j + 1] in "01234567"
+            and raw[j + 2] in "01234567"
         ):
-            out.append(chr(int(raw[i + 1 : i + 4], 8)))
-            i += 4
+            out.append(chr(int(raw[j : j + 3], 8)))
+            i = j + 3
         elif nxt in _C_ESCAPES:
             out.append(_C_ESCAPES[nxt])
-            i += 2
+            i = j + 1
         else:
             out.append(nxt)
-            i += 2
+            i = j + 1
     return "".join(out)
 
 
@@ -375,24 +416,23 @@ def parse_options_to_dict(
     val: ConvertedValue | None = None
 
     for item in stdout.readlines():
-        if " " in item:
-            head, raw_val = item.rstrip("\n").split(" ", maxsplit=1)
-            if _is_user_option(head.strip()):
-                key = head.strip()
+        stripped = item.lstrip(" ")
+        if " " in stripped:
+            head, raw_val = stripped.removesuffix("\n").split(" ", maxsplit=1)
+            key = head.strip()
+            if _is_user_option(key):
                 val = _unescape_user_option_value(raw_val)
             else:
                 try:
                     key, val = shlex.split(item)
                 except ValueError:
                     key, val = item.split(" ", maxsplit=1)
+                    val = val.rstrip("\n")
+                key = key.strip()
         else:
-            key, val = item, None
-        key = key.strip()
+            key, val = item.strip(), None
 
         if key:
-            if isinstance(val, str) and val.endswith("\n"):
-                val = val.rstrip("\n")
-
             output[key] = val
     return output
 

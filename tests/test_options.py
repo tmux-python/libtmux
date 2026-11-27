@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import textwrap
 import typing as t
 
@@ -19,7 +20,14 @@ from libtmux._internal.constants import (
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
-from libtmux.options import TerminalOverrides, convert_values, explode_arrays
+from libtmux.options import (
+    OptionsMixin,
+    TerminalOverrides,
+    _unescape_user_option_value,
+    convert_values,
+    explode_arrays,
+    parse_options_to_dict,
+)
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
@@ -225,6 +233,47 @@ def test_options_grid(server: Server) -> None:
                         assert objglobal__options.pane_base_index == 0
 
 
+USER_OPTION_ROUNDTRIP_VALUES: tuple[str, ...] = (
+    "123",
+    "007",
+    "on",
+    "off",
+    "",
+    " ",
+    "hello world",
+    "a\nb",
+    r"a\nb",
+    "\n",
+    "hello\n\n",
+    "a\tb",
+    r"a\tb",
+    "\r",
+    "a\rb",
+    "a\r\nb",
+    "\x010",
+    "\x1b",
+    "\x7f",
+    "quote\"and'both",
+    '~has"double',
+    "back\\slash",
+    "$",
+    "$HOME",
+    "\\$HOME",
+    "\\\\$HOME",
+    "${USER}",
+    "$_priv",
+    "$HOME/$USER",
+    "$1",
+    "$é",
+    "\\$é",
+    "~literal",
+    "\\~literal",
+    "abc;",
+    "-g",
+    "café ☕",
+)
+
+
 @pytest.mark.parametrize(
     ("scope", "global_"),
     [
@@ -243,31 +292,142 @@ def test_custom_options(
 ) -> None:
     """Preserve user-option strings in both read methods and inherited values."""
     window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
     obj = {
         OptionScope.Server: session.server,
         OptionScope.Session: session,
         OptionScope.Window: window,
-        OptionScope.Pane: window.active_pane,
+        OptionScope.Pane: pane,
     }[scope]
     assert obj is not None
-    for value in [
-        "123",
-        "on",
-        "off",
-        "",
-        "hello world",
-        "a\nb",
-        "a\tb",
-        "quote\"and'both",
-        "back\\slash",
-        "$HOME",
-        "~literal",
-    ]:
+    with pytest.raises(exc.InvalidOption):
+        obj.show_option("@unset-custom-option", global_=global_)
+    assert (
+        obj.show_option(
+            "@unset-custom-option",
+            global_=global_,
+            ignore_errors=True,
+        )
+        is None
+    )
+    for value in USER_OPTION_ROUNDTRIP_VALUES:
         obj.set_option("@custom-option", value, global_=global_)
         assert obj.show_option("@custom-option", global_=global_) == value
+        assert (
+            obj.show_option(
+                "@custom-option",
+                global_=global_,
+                ignore_errors=True,
+            )
+            == value
+        )
         assert obj.show_options(global_=global_)["@custom-option"] == value
         if global_:
             assert obj.show_option("@custom-option", include_inherited=True) == value
+        if scope == OptionScope.Window:
+            assert pane.show_option("@custom-option", include_inherited=True) == value
+
+
+def test_custom_options_standalone_mixin(server: Server) -> None:
+    """Decode user options on a standalone ``OptionsMixin`` without ``.server``."""
+    from libtmux.common import tmux_cmd
+
+    class StandaloneOptions(OptionsMixin):
+        default_option_scope = OptionScope.Server
+
+        def cmd(self, cmd: str, *args: object) -> tmux_cmd:
+            cmd_args: list[str | int] = ["-f/dev/null", cmd]
+            if server.socket_name:
+                cmd_args.insert(0, f"-L{server.socket_name}")
+            return tmux_cmd(*cmd_args, *args)
+
+    server.new_session(session_name="standalone-opt", detach=True)
+    standalone = StandaloneOptions()
+    standalone.set_option("@custom-var", "$HOME")
+    assert standalone.show_option("@custom-var") == "$HOME"
+    assert standalone.show_options()["@custom-var"] == "$HOME"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("123", "123"),
+        ("007", "007"),
+        ("on", "on"),
+        ("off", "off"),
+        ("''", ""),
+        ('" "', " "),
+        ('"hello world"', "hello world"),
+        (r"a\nb", "a\nb"),
+        (r"\n", "\n"),
+        (r"hello\n\n", "hello\n\n"),
+        (r"a\tb", "a\tb"),
+        ('"quote\\"and\'both"', "quote\"and'both"),
+        ("'~has\"double'", '~has"double'),
+        (r"back\\slash", "back\\slash"),
+        (r"\$", "$"),
+        # tmux 3.3a and 3.5+: 2k + 1 (odd) backslashes before $[A-Za-z_{]
+        (r'"\$HOME"', "$HOME"),
+        (r'"\\\$HOME"', "\\$HOME"),
+        (r'"\\\\\$HOME"', "\\\\$HOME"),
+        (r'"\${USER}"', "${USER}"),
+        (r'"\$_priv"', "$_priv"),
+        (r'"\$HOME/\$USER"', "$HOME/$USER"),
+        # tmux 3.4 server_client_print quirk: 2k + 2 (nonzero even) backslashes
+        (r'"\\$HOME"', "$HOME"),
+        (r'"\\\\$HOME"', "\\$HOME"),
+        (r'"\\\\\\$HOME"', "\\\\$HOME"),
+        (r'"\\${USER}"', "${USER}"),
+        (r'"\\$_priv"', "$_priv"),
+        (r'"\\$HOME/\\$USER"', "$HOME/$USER"),
+        # Non-variable $ (digit, end, or non-ASCII after $): C-locale isalpha only
+        ('"$1"', "$1"),
+        (r'"\\$1"', "\\$1"),
+        ('"$é"', "$é"),
+        (r'"\\$é"', "\\$é"),
+        (r'"\\\\$é"', "\\\\$é"),
+        (r'"\\$"', "\\$"),
+        # Tilde, semicolon, flags, UTF-8, octal and C escapes
+        (r"\~literal", "~literal"),
+        (r"\\~literal", "\\~literal"),
+        ('"abc;"', "abc;"),
+        ("-g", "-g"),
+        ('"café ☕"', "café ☕"),
+        (r"\007\033\e\s", "\a\x1b\x1b "),
+        ("\\", "\\"),
+    ],
+)
+def test_unescape_user_option_value(raw: str, expected: str) -> None:
+    """Decode tmux ``args_escape`` user-option tokens across all supported versions."""
+    assert _unescape_user_option_value(raw) == expected
+
+
+def test_parse_options_to_dict_preserves_trailing_newlines_and_escapes() -> None:
+    """Preserve decoded trailing newlines while stripping raw fallback line endings."""
+    raw = io.StringIO(
+        "@nl \\n\n"
+        "@two_nl hello\\n\\n\n"
+        '@space " "\n'
+        "@empty ''\n"
+        '@tmux34* "\\\\$HOME"\n'
+        '@nonascii "\\\\$é"\n'
+        'command-alias[0] "choose-session=choose-tree -s"\n'
+        "session-renamed[0] display-message 'renamed'\n"
+        'malformed "unclosed\n'
+    )
+    parsed = parse_options_to_dict(raw)
+    assert parsed == {
+        "@nl": "\n",
+        "@two_nl": "hello\n\n",
+        "@space": " ",
+        "@empty": "",
+        "@tmux34*": "$HOME",
+        "@nonascii": "\\$é",
+        "command-alias[0]": "choose-session=choose-tree -s",
+        "session-renamed[0]": "display-message 'renamed'",
+        "malformed": '"unclosed',
+    }
 
 
 MOCKED_GLOBAL_OPTIONS: list[LiteralString] = """
