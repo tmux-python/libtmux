@@ -27,6 +27,7 @@ from libtmux.neo import (
     _token_scope,
     get_output_format,
 )
+from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -334,7 +335,7 @@ def test_split_records_handles_no_objects() -> None:
 
 
 def test_refresh_clears_a_field_tmux_emptied(session: Session) -> None:
-    """A field tmux reports as empty stops holding its earlier value."""
+    """A field tmux reports as empty reads ``""`` after a refresh."""
     pane = session.active_window.active_pane
     assert pane is not None
 
@@ -344,4 +345,20 @@ def test_refresh_clears_a_field_tmux_emptied(session: Session) -> None:
 
     pane.cmd("select-pane", "-T", "")
     pane.refresh()
-    assert pane.pane_title is None
+    assert pane.pane_title == ""
+
+
+def test_empty_field_is_an_empty_string(session: Session) -> None:
+    """A field tmux reports as empty is ``""``; ``None`` means it was not asked."""
+    window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
+
+    pane.set_title("titled")
+    pane.set_title("")
+    pane.refresh()
+    assert pane.pane_title == ""
+
+    fresh = Pane.from_pane_id(server=session.server, pane_id=str(pane.pane_id))
+    assert fresh.pane_title == ""
+    assert fresh.session_name == session.session_name

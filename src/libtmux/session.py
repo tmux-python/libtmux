@@ -62,9 +62,10 @@ class Session(
     Holds :class:`Window` objects.
 
     **Reading it.** Every field is a tmux format token read when the session was
-    listed or last refreshed, and is ``None`` when tmux gave no value.
-    :meth:`~libtmux.Session.refresh` rewrites the fields in place and returns
-    ``None``.
+    listed or last refreshed: ``""`` when tmux reports an empty value, and
+    ``None`` when the listing did not request the token.
+    :meth:`~libtmux.Session.refresh` rewrites the fields in place and raises
+    :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when the session has gone.
 
     - Identity: :attr:`~libtmux.Session.session_id`,
       :attr:`~libtmux.Session.id`

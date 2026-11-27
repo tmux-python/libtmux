@@ -67,7 +67,8 @@ class Pane(
     between linked tmux objects.
 
     **Reading it.** Every field is a tmux format token read when the pane was
-    listed or last refreshed, and is ``None`` when tmux gave no value.
+    listed or last refreshed: ``""`` when tmux reports an empty value, and
+    ``None`` when the listing did not request the token.
     :meth:`~libtmux.Pane.refresh` rewrites the fields in place and raises
     :exc:`~libtmux.exc.TmuxObjectDoesNotExist` when the pane has gone. The edge
     properties convert tmux's flags to bools.
