@@ -39,15 +39,10 @@ being inherited,
 
 User options
 ------------
-There are also custom user options, preceded with @, which exist are stored to
-`Options.context.user_options` as a dictionary.
-
-> tmux set-option -w my-custom-variable my-value
-invalid option: my-custom-option
-
-> tmux set-option -w @my-custom-option my-value
-> tmux show-option -w
-@my-custom-optione my-value
+User options have names beginning with ``@``. Read and write them through
+:meth:`OptionsMixin.show_option`, :meth:`OptionsMixin.show_options`, and
+:meth:`OptionsMixin.set_option`. Their values remain strings, including
+``"123"``, ``"on"``, ``"off"``, and the empty string.
 
 Inherited options
 -----------------
@@ -212,10 +207,116 @@ def convert_value(
     return value
 
 
+_C_ESCAPES: dict[str, str] = {
+    "a": "\a",
+    "b": "\b",
+    "e": "\x1b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "s": " ",
+    "t": "\t",
+    "v": "\v",
+}
+
+
+def _is_tmux_var_start(ch: str) -> bool:
+    """Match C-locale ``isalpha((u_char)c) || c == '_' || c == '{'`` in tmux ``vis``."""
+    return ("A" <= ch <= "Z") or ("a" <= ch <= "z") or ch in ("_", "{")
+
+
+def _unescape_user_option_value(raw: str) -> str:
+    r"""Decode a user-option value formatted by tmux ``args_escape`` (``#{q/a:...}``).
+
+    tmux formats string options in ``show-options`` through ``args_escape``
+    (``arguments.c``), which encodes tabs, newlines, backslashes, and control
+    bytes with ``utf8_strvis`` even when no outer quotes are added. Passing
+    unquoted ``a\nb`` to :func:`shlex.split` would strip the backslash and
+    return ``"anb"``.
+
+    In ``args_escape``, ``$`` is in ``dquoted``, so any multi-character value
+    containing ``$`` sets ``VIS_DQ`` and emits ``2k + 1`` (odd) backslashes
+    before ``$[A-Za-z_{]``. tmux 3.4's ``server_client_print`` omits ``VIS_DQ``
+    and adds one more backslash there (``2k + 2``, nonzero even); dropping one
+    backslash on an even run of length ``>= 2`` before ``$[A-Za-z_{]`` decodes
+    both losslessly.
+
+    Examples
+    --------
+    >>> _unescape_user_option_value("''")
+    ''
+    >>> _unescape_user_option_value(r"a\nb")
+    'a\nb'
+    >>> _unescape_user_option_value('"both\\"and\'"')
+    'both"and\''
+    >>> _unescape_user_option_value(r'"\$HOME"')
+    '$HOME'
+    >>> _unescape_user_option_value(r'"\\$HOME"')
+    '$HOME'
+    >>> _unescape_user_option_value(r'"\\\$HOME"')
+    '\\$HOME'
+    >>> _unescape_user_option_value(r'"\\\\$HOME"')
+    '\\$HOME'
+    """
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+        raw = raw[1:-1]
+    out: list[str] = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch != "\\":
+            out.append(ch)
+            i += 1
+            continue
+        j = i
+        while j < n and raw[j] == "\\":
+            j += 1
+        m = j - i
+        if j + 1 < n and raw[j] == "$" and _is_tmux_var_start(raw[j + 1]):
+            if m >= 2 and m % 2 == 0:
+                m -= 1
+            if m > 1:
+                out.append("\\" * ((m - 1) // 2))
+            out.append("$")
+            i = j + 1
+            continue
+        if m >= 2:
+            out.append("\\" * (m // 2))
+        if m % 2 == 0:
+            i = j
+            continue
+        if j >= n:
+            out.append("\\")
+            i = j
+            continue
+        nxt = raw[j]
+        if (
+            nxt in "0123"
+            and j + 2 < n
+            and raw[j + 1] in "01234567"
+            and raw[j + 2] in "01234567"
+        ):
+            out.append(chr(int(raw[j : j + 3], 8)))
+            i = j + 3
+        elif nxt in _C_ESCAPES:
+            out.append(_C_ESCAPES[nxt])
+            i = j + 1
+        else:
+            out.append(nxt)
+            i = j + 1
+    return "".join(out)
+
+
+def _is_user_option(name: object) -> bool:
+    """Identify user options, including tmux's inherited ``*`` marker."""
+    return isinstance(name, str) and name.startswith("@")
+
+
 def convert_values(
     value: _V | None,
 ) -> ConvertedValues | _V | None:
-    """Recursively convert values to python types via :func:`convert_value`.
+    """Convert values via :func:`convert_value`, preserving user-option strings.
 
     >>> convert_values(None)
 
@@ -234,13 +335,16 @@ def convert_values(
 
     >>> convert_values({"visual-bell": "on"})
     {'visual-bell': True}
+
+    >>> convert_values({"@count": "123", "@enabled*": "on"})
+    {'@count': '123', '@enabled*': 'on'}
     """
     if value is None:
         return None
     if isinstance(value, dict):
         # Note: SparseArray inherits from dict, so this branch handles both
         for k, v in value.items():
-            value[k] = convert_value(v)
+            value[k] = v if _is_user_option(k) else convert_value(v)
         return value
     if isinstance(value, list):
         for idx, v in enumerate(value):
@@ -312,19 +416,23 @@ def parse_options_to_dict(
     val: ConvertedValue | None = None
 
     for item in stdout.readlines():
-        if " " in item:
-            try:
-                key, val = shlex.split(item)
-            except ValueError:
-                key, val = item.split(" ", maxsplit=1)
+        stripped = item.lstrip(" ")
+        if " " in stripped:
+            head, raw_val = stripped.removesuffix("\n").split(" ", maxsplit=1)
+            key = head.strip()
+            if _is_user_option(key):
+                val = _unescape_user_option_value(raw_val)
+            else:
+                try:
+                    key, val = shlex.split(item)
+                except ValueError:
+                    key, val = item.split(" ", maxsplit=1)
+                    val = val.rstrip("\n")
+                key = key.strip()
         else:
-            key, val = item, None
-        key = key.strip()
+            key, val = item.strip(), None
 
         if key:
-            if isinstance(val, str) and val.endswith("\n"):
-                val = val.rstrip("\n")
-
             output[key] = val
     return output
 
@@ -1021,7 +1129,9 @@ class OptionsMixin(CmdMixin):
         include_hooks : bool, optional
             Include hook options (``-H`` flag).
         include_inherited : bool, optional
-            Include inherited options (``-A`` flag).
+            Include inherited built-in options (``-A`` flag). tmux omits
+            inherited ``@`` user options from bulk ``show-options -A``; query
+            them by name with :meth:`show_option` and ``include_inherited=True``.
         quiet : bool, optional
             Suppress errors silently (``-q`` flag).
 
@@ -1030,7 +1140,8 @@ class OptionsMixin(CmdMixin):
         Returns
         -------
         ExplodedComplexUntypedOptionsDict
-            Dictionary with all options, arrays exploded and values converted.
+            Dictionary with all options, arrays exploded and built-in values
+            converted. User options (names beginning with ``@``) remain strings.
 
         Raises
         ------
@@ -1225,6 +1336,8 @@ class OptionsMixin(CmdMixin):
         # Direct lookup for indexed queries (e.g., "status-format[0]")
         # tmux returns only that index's value, so we handle it before exploding
         if option_key in output_raw:
+            if _is_user_option(option_key):
+                return output_raw[option_key]
             return convert_value(output_raw[option_key])
 
         # For base name queries, explode arrays and return structured data
@@ -1261,6 +1374,9 @@ class OptionsMixin(CmdMixin):
         include_inherited: bool | None = None,
     ) -> t.Any | None:
         """Return option value for the target.
+
+        User options (names beginning with ``@``) remain strings. Built-in options
+        retain their numeric, boolean, or structured conversions.
 
         Parameters
         ----------
