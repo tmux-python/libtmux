@@ -33,6 +33,8 @@ from libtmux.pane import Pane
 if t.TYPE_CHECKING:
     from typing import LiteralString
 
+    from _pytest.mark.structures import ParameterSet
+
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -639,7 +641,7 @@ class OptionDataclassTestFixture(t.NamedTuple):
     tmux_option: str  # e.g. terminal-features
 
     # results
-    expected: t.Any  # e.g. 50, TerminalFeatures({}), etc.
+    expected: dict[str, str | list[str]]
     dataclass_attribute: str  # e.g. terminal_features
 
 
@@ -699,7 +701,7 @@ def test_mocked_cmd_stdoutclass_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: t.Any,
+    expected: dict[str, str | list[str]],
     dataclass_attribute: str,
     server: Server,
 ) -> None:
@@ -724,7 +726,7 @@ def test_show_option_pane_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: t.Any,
+    expected: dict[str, str | list[str]],
     dataclass_attribute: str,
     server: Server,
 ) -> None:
@@ -972,7 +974,7 @@ class OptionTestCase(t.NamedTuple):
     test_id: str
     option: str  # tmux option name (hyphenated)
     scope: OptionScope
-    test_value: t.Any  # Value to set
+    test_value: str | int  # Value to set
     expected_type: type  # Expected Python type after retrieval
     min_version: str | None = None  # Minimum tmux version required
     xfail_reason: str | None = None  # Mark as expected failure with reason
@@ -1451,11 +1453,11 @@ ALL_OPTION_TEST_CASES: list[OptionTestCase] = (
 )
 
 
-def _build_option_params() -> list[t.Any]:
+def _build_option_params() -> list[ParameterSet]:
     """Build pytest params with appropriate marks."""
     params = []
     for tc in ALL_OPTION_TEST_CASES:
-        marks: list[t.Any] = []
+        marks: list[pytest.MarkDecorator] = []
         if tc.xfail_reason:
             marks.append(pytest.mark.xfail(reason=tc.xfail_reason))
         params.append(pytest.param(tc, id=tc.test_id, marks=marks))
@@ -1564,7 +1566,7 @@ SHOW_OPTIONS_TEST_CASES: list[ShowOptionsTestCase] = [
 ]
 
 
-def _build_show_options_params() -> list[t.Any]:
+def _build_show_options_params() -> list[ParameterSet]:
     """Build pytest params for show_options tests."""
     return [pytest.param(tc, id=tc.test_id) for tc in SHOW_OPTIONS_TEST_CASES]
 
@@ -1615,7 +1617,7 @@ class ConvertValuesSparseTestCase(t.NamedTuple):
 
     test_id: str
     initial_values: dict[int, str]  # index -> value
-    expected_converted: dict[int, t.Any]  # index -> converted value
+    expected_converted: dict[int, bool | int | str]
 
 
 CONVERT_SPARSE_TEST_CASES: list[ConvertValuesSparseTestCase] = [
