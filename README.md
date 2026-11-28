@@ -67,18 +67,25 @@ From the main branch (bleeding edge):
 $ pip install 'git+https://github.com/tmux-python/libtmux.git'
 ```
 
-Tip: libtmux is pre-1.0. Pin a range in projects to avoid surprises:
+Tip: libtmux is pre-1.0, and a minor release can change the API. Pin the
+minor series your project tests against. Print the installed version:
+
+```console
+$ python -c 'import libtmux; print(libtmux.__version__)'
+```
+
+Then pin its series, writing `0.N` for that version's first two numbers:
 
 requirements.txt:
 
 ```ini
-libtmux==0.50.*
+libtmux==0.N.*
 ```
 
 pyproject.toml:
 
 ```toml
-libtmux = "0.50.*"
+libtmux = "0.N.*"
 ```
 
 ## 🚀 Quickstart
