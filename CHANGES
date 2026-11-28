@@ -37,13 +37,24 @@ $ uv add libtmux --prerelease allow
 $ uvx --from 'libtmux' --prerelease allow python
 ```
 
-## libtmux 0.69.x (Yet to be released)
+## libtmux 0.70.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
+
+## libtmux 0.69.0 (2026-11-27)
+
+libtmux 0.69.0 leaves a running {class}`~libtmux.Server` alive when exiting a
+`with Server() as server:` block unless {attr}`~libtmux.Server.kill_on_exit`
+is `True`, preserves `@` user-option values as strings in
+{meth}`~libtmux.options.OptionsMixin.show_option` and
+{meth}`~libtmux.options.OptionsMixin.show_options`, and hydrates empty tmux
+format fields on {class}`~libtmux.Session`, {class}`~libtmux.Window`,
+{class}`~libtmux.Pane` and {class}`~libtmux.Client` as `""` rather than `None`;
+see {ref}`context_managers`, {ref}`options-and-hooks` and {ref}`migration`.
 
 ### Breaking changes
 

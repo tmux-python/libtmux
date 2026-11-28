@@ -105,6 +105,7 @@ sections below for detailed migration examples and code samples.
 
 | Method | Old Default | New Default | Since |
 |--------|-------------|-------------|-------|
+| `Server.__exit__()` (`with Server()`) | Kills the server | Leaves the server running (`kill_on_exit=False`) | 0.69.0 (2026-11-27) |
 | `Session.new_window()` | `attach=True` | `attach=False` | 0.28.0 (2024-02-14) |
 | `Window.split_window()` | `attach=True` | `attach=False` | 0.28.0 (2024-02-14) |
 
@@ -115,6 +116,8 @@ sections below for detailed migration examples and code samples.
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
+
+## libtmux 0.69.0: User-option strings, empty fields, and scoped servers (#826, #900, #728)
 
 ### User-option values remain strings (#759, #826)
 
