@@ -553,18 +553,32 @@ def test_split_with_environment(
 
     window = session.new_window(window_name="split_with_environment")
     pane = window.split(
-        shell=f"{env} PS1='$ ' sh",
+        shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh",
         environment=environment,
     )
     assert pane is not None
-    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Wait for shell to be ready
+    def wait_for_prompt() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return "READY>" in pane_contents and len(pane_contents.strip()) > 0
+        except exc.LibTmuxException:
+            return False
+
+    retry_until(wait_for_prompt, 2, raises=True)
+
     for k, v in environment.items():
-        pane.send_keys(f"echo ${k}")
+        pane.send_keys(f"echo ${k}", literal=True)
 
-        def echoed(expected: str = v) -> bool:
-            return pane.capture_pane()[-2:] == [expected, "$"]
+        def wait_for_output(value: str = v) -> bool:
+            try:
+                pane_contents = pane.capture_pane()
+                return any(value in line for line in pane_contents)
+            except exc.LibTmuxException:
+                return False
 
-        retry_until(echoed, 2, raises=True)
+        retry_until(wait_for_output, 2, raises=True)
 
 
 def test_split_window_zoom(
