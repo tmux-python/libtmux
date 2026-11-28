@@ -198,7 +198,8 @@ class Server(
     :class:`~libtmux.Client` objects and :meth:`~libtmux.Server.list_clients`
     returns tmux's raw lines. Switching and attaching take a session name, which
     raises :exc:`~libtmux.exc.BadSessionName` when it is empty or holds a period
-    or colon.
+    or colon. Locking the server, and refreshing, suspending or locking a client,
+    need an attached client.
 
     - Listing: :attr:`~libtmux.Server.clients`,
       :meth:`~libtmux.Server.list_clients`
@@ -206,6 +207,9 @@ class Server(
       :meth:`~libtmux.Server.attach_session`
     - Detach: :meth:`~libtmux.Server.detach_client`,
       :meth:`~libtmux.Server.detach_all_clients`
+    - Refresh, suspend or lock one: :meth:`~libtmux.Server.refresh_client`,
+      :meth:`~libtmux.Server.suspend_client`, :meth:`~libtmux.Server.lock_client`
+    - Lock the server: :meth:`~libtmux.Server.lock_server`
 
     **Options, hooks and environment.** These calls come from mixins and act on
     the server scope by default. The option and hook setters return the object, so
@@ -235,6 +239,27 @@ class Server(
       :meth:`~libtmux.Server.load_buffer`
     - Key bindings: :meth:`~libtmux.Server.list_keys`,
       :meth:`~libtmux.Server.bind_key`, :meth:`~libtmux.Server.unbind_key`
+
+    **Messages, prompts and access.** The command list, the message log, prompt
+    history and access control each have their own method.
+
+    - The command list: :meth:`~libtmux.Server.list_commands`
+    - The message log: :meth:`~libtmux.Server.show_messages`
+    - Show a message or evaluate a format:
+      :meth:`~libtmux.Server.display_message`
+    - Prompt history: :meth:`~libtmux.Server.show_prompt_history`,
+      :meth:`~libtmux.Server.clear_prompt_history`
+    - Access control: :meth:`~libtmux.Server.server_access`
+
+    **Things that need a terminal.** Menus and prompts draw on an attached client.
+    A menu needs a TTY-backed client, so a control-mode client cannot show one. A
+    prompt or a confirmation always runs in the background and needs tmux 3.3 or
+    newer; answer it by sending ``send-keys -K -c <client>`` through
+    :meth:`~libtmux.Server.cmd`.
+
+    - Display a menu: :meth:`~libtmux.Server.display_menu`
+    - Open a command prompt: :meth:`~libtmux.Server.command_prompt`
+    - Ask for confirmation: :meth:`~libtmux.Server.confirm_before`
 
     **Running a command.** Anything tmux can do that has no method here goes
     through :meth:`~libtmux.Server.cmd`, which adds the socket, config file and
